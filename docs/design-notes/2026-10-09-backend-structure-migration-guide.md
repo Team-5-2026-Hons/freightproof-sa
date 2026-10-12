@@ -1,6 +1,6 @@
 # Backend structure: teammate migration guide
 
-**Updated:** 2026-10-09. **Status:** instructions for adopting the package moves; no teammate's
+**Updated:** 2026-10-12. **Status:** instructions for adopting the package moves; no teammate's
 migration or wrapper removal is asserted by this document.
 
 The [structure audit](2026-10-06-backend-structure-tech-debt-audit.md) owns the plan. Its §6.1 tracks
@@ -89,9 +89,22 @@ not named here. Do not import a package root as a replacement shortcut; orchestr
 | `pp_manifest_service` | `consignments.manifest_import` |
 | `pp_manifest` | `consignments.manifest_snapshot` |
 | `scan_service` | `consignments.scans` |
+| `audit_pack_analysis` | `audit_packs.analysis`: moved without wrapper |
+| `incident_declaration_service` | `audit_packs.incident_declarations`: moved without wrapper |
+| `audit_pack_builder` | `audit_packs.builder`: moved without wrapper |
+| `audit_pack_service` | `audit_packs.lifecycle`: moved without wrapper |
+| `audit_pack_access` | `audit_packs.access`: moved without wrapper |
 
 Other paths:
 
+- The five audit-pack modules (last five rows of the table) have **no compatibility wrapper**, like
+  `app.dev`: the old paths no longer exist, so a branch that still imports them fails with
+  `ModuleNotFoundError` until it migrates. Module names changed (the `audit_pack_` prefix and the
+  `_service` suffix are gone); function, class and constant names did not. Patch targets keep the module
+  that looks the name up, now `app.orchestration.audit_packs.lifecycle` (`upload_audit_pack_pdf`,
+  `download_audit_pack_pdf`, `anchor_subject`) or `app.orchestration.audit_packs.access`
+  (`download_audit_pack_pdf`, `download_evidence_file`, `HederaService`). Logger names follow
+  `__name__`, so they changed with the module path.
 - `app.integrations.parcel_perfect.get_pp_client` → import from
   `app.integrations.parcel_perfect.factory`; `ParcelPerfectPort` from `.port`, response types from
   `.models`, live client from `.client`, mock client from `.mock`, errors from `.errors`, and time

@@ -1,4 +1,4 @@
-"""Integration tests for orchestration/audit_pack_builder.build_audit_manifest,
+"""Integration tests for orchestration/audit_packs/builder.build_audit_manifest,
 against the realistic trip in tests/integration/audit_pack_seed.py."""
 
 import hashlib
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import canonicalize_payload
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.enums import TripStatus
-from app.orchestration.audit_pack_builder import build_audit_manifest
+from app.orchestration.audit_packs.builder import build_audit_manifest
 from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
 from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip

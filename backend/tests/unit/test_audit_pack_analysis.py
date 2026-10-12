@@ -1,4 +1,4 @@
-"""Unit tests for orchestration/audit_pack_analysis.py — pure functions, no DB, no HTTP.
+"""Unit tests for orchestration/audit_packs/analysis.py — pure functions, no DB, no HTTP.
 
 Coordinates are real points on the N3 (Johannesburg → Durban), the corridor the
 beachhead trips run on.
@@ -8,7 +8,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from app.orchestration.audit_pack_analysis import (
+from app.orchestration.audit_packs.analysis import (
     COVERAGE_GAP_THRESHOLD,
     STATIONARY_MIN_DURATION,
     derive_observations,

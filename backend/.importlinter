@@ -366,3 +366,24 @@ forbidden_modules =
     app.orchestration.phases.advance_confirmation
     app.orchestration.phases.override
     app.orchestration.phases.service
+
+# ---------------------------------------------------------------------------
+# 21. Tier order inside audit_packs/ (audit 5.7, stage 5). A module may import only from tiers
+#     below it; modules on one tier ("|") may not import each other. The tiers are the edges the
+#     code has today: access (the share-link side) builds on lifecycle (issue, revoke, hash and
+#     seal helpers); lifecycle builds the manifest through builder; builder reads the pure
+#     rules in analysis and the declarations loader in incident_declarations, which are leaves
+#     and share nothing. audit_packs/__init__ stays empty (audit 5 rule 1), so there is no
+#     package facade to reach siblings through. These modules moved without wrappers.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:audit-packs-tier-order]
+name = Inside audit_packs/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.audit_packs
+layers =
+    access
+    lifecycle
+    builder
+    analysis | incident_declarations

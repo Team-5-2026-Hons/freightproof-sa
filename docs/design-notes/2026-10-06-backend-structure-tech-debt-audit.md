@@ -18,7 +18,7 @@
 
 ---
 
-## 0. Progress (updated 2026-10-09)
+## 0. Progress (updated 2026-10-12)
 
 | Phase | Item | Status | Commit(s) |
 |---|---|---|---|
@@ -39,6 +39,7 @@
 | | fleet, handover, consignments | **Done** as one batch: eleven modules moved whole (§5 layout); old modules are facades. Two string-constant patch targets that B8 could not see were found and retargeted. Step 3: `update_vehicle` does more than one job and belongs with phase 3 D (`record_and_anchor`); `sync_consignment_from_waybill` is one job, kept whole | `d4a621a` |
 | | app/dev | **Done**: dev endpoints, services and schemas moved into `app/dev/` with no facades (no branch imported them). `app.dev` sits in the top layer, so production code cannot import it. All endpoint layer-skip ignores are gone. B8 now resolves patch targets held in module-level string constants | `a2a8847` |
 | 4b Remaining grouping | — | Planned, not implemented: analytics, verification/receipts, trip reads and review helpers (§5.7). Retain wrappers for any additional moved public paths | — |
+| | audit packs (§6.2 stage 5) | **Done** 2026-10-12: Tim's five modules (2,076 lines) moved whole into `orchestration/audit_packs/` as `analysis`, `incident_declarations`, `builder`, `lifecycle` and `access`; empty `__init__`. **No wrappers**: a search of every remote branch found importers only on `dev`, `Ciaran` and `Feat-ValueAddedDocumentation`, and `Chiko` held only a prose mention in the old §5.7 row. Import-linter contract 21 (tier order) added. The six distinct patch targets in the audit-pack tests (nine break cases) were retargeted and each shown to fail when its fake is broken. AST check: all 104 classes and functions identical to `dev`; only imports and two module docstrings differ. B1/B2 snapshots and B3/B4/B6/B8 unchanged. Step 3: nothing needed splitting (`_phase_record` 68 code lines, `build_audit_manifest` 62; see §5.7) | this change |
 | 5 Facade removal | — | **Retained during team migration.** 24 facades in `orchestration/` plus the `integrations/parcel_perfect` package `__init__`. Track acknowledgements and removal evidence in §6.1; do not infer completion from this branch passing tests | — |
 
 **Team handoff:** use the [backend structure migration guide](2026-10-09-backend-structure-migration-guide.md)
@@ -48,16 +49,16 @@ not a second refactor plan. Branch migration statuses remain unconfirmed until t
 
 **Current baselines** (re-measure after every PR):
 
-| Measure | At `8e2b698` | Now (`0942d41`) |
+| Measure | At `8e2b698` | Now (stage 5, on `7232998`) |
 |---|---|---|
-| Backend suite, slow included | — | **2,572 passed, 4 skipped** (230 of them the slow B7 import checks) |
-| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,342 passed, 4 skipped** |
+| Backend suite, slow included | — | **2,800 passed, 4 skipped** (252 of them the slow B7 import checks; stage 5 adds one, because B7 tests each module and `audit_packs/__init__` is new) |
+| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,548 passed, 4 skipped** (full run minus the 252 slow checks) |
 | dispatcher vitest | 1,480 | **1,500** (at `84c2753`; frontend untouched since) |
 | driver-pwa vitest | 821 | **859** (at `84c2753`; frontend untouched since) |
-| import-linter contracts | 0 | **20** |
+| import-linter contracts | 0 | **21** |
 | import-linter ignores, endpoint layer skips | 10 | **0** |
 | import-linter ignores, layer order | 8 | **7** (`schemas.dev -> scan_feed` went with `app/dev/`) |
-| `orchestration/` top level | 34 modules, one flat folder | **8** real modules, 24 facades, 7 packages (`phases`, `trips`, `exceptions`, `evidence`, `fleet`, `handover`, `consignments`) |
+| `orchestration/` top level | 34 modules, one flat folder | **8** real modules, 24 facades, 9 packages (`phases`, `trips`, `exceptions`, `evidence`, `fleet`, `handover`, `consignments`, `parcel_trace`, `audit_packs`). Tim's five modules made it 13 real modules until stage 5 |
 | `orchestration/phase_service.py` | 2,289 lines | **119** (facade only) |
 | `orchestration/trip_service.py` | 825 lines | **47** (facade only) |
 | `orchestration/exception_service.py` | 1,121 lines | **68** (facade only) |
@@ -464,7 +465,7 @@ fixing the exact split. These are separate package windows, not permission to mo
 | `verification_service.py`, `receipt_service.py` | `orchestration/verification/` | Separate receipt reads, shared verification coordination and subject-specific reconstruction. Coordinate with phase 3 D and Tim's `subject_visibility.py` work; preserve all legacy hash generations |
 | `resource_service.py` | `orchestration/trips/` | Its remaining responsibilities are trip listing, history and detail reads. Put shared detail assembly below creation/administration/driver queries rather than adding sideways dependencies between those independent modules |
 | `review_identity.py`, `review_policy.py` | `orchestration/exceptions/` | Move as shared leaf modules: neither may import creation/review/query coordinators. Keep the package `__init__.py` empty so callers outside exceptions do not acquire a cycle |
-| Tim's `audit_pack_access`, `audit_pack_analysis`, `audit_pack_builder`, `audit_pack_service`, `incident_declaration_service` (1,841 lines on `Feat-ValueAddedDocumentation`) | `orchestration/audit_packs/` | After Tim integrates `dev` and merges. Assess `build_audit_manifest`'s responsibilities in the same window, not only the file location. Imports `verification_service`, so it lands before the verification window |
+| Tim's `audit_pack_access`, `audit_pack_analysis`, `audit_pack_builder`, `audit_pack_service`, `incident_declaration_service` (1,841 lines on `Feat-ValueAddedDocumentation`) | `orchestration/audit_packs/` | **Done 2026-10-12 (stage 5).** Moved whole, without wrappers (the exception to the wrapper rule below, as for `app/dev`: no importer outside `dev`, `Ciaran` and `Feat-ValueAddedDocumentation`). Homes: `analysis`, `incident_declarations`, `builder`, `lifecycle` (the old `audit_pack_service`: issue, revoke, list, preview, download) and `access`; tier order is enforced by import-linter contract 21 (`access` > `lifecycle` > `builder` > `analysis` \| `incident_declarations`). `build_audit_manifest` assessed, no split: 62 code lines (74 with docstring and comments), a pipeline of single calls (load the graph, resolve scope, build each section, assemble, derive observations) after Tim's split into loaders and section builders. `_phase_record` (68 code lines, 76 with docstring and comments) turns one phase event into one record; it also holds two separable rules, the anchor reconciliation and the evidence-tier choice. Both functions are under the 100-line limit, so no split was needed; extracting those two rules is an optional later commit, not part of the move. `access` imports `verification_service`, so stage 6 must retarget that one import (`access.py`) when it moves |
 | `integrity.py` | Keep as a small shared module | Database uniqueness-error decoding supports multiple domains; a new folder or a function split adds no useful separation |
 
 Receipts concern trips, phases and fleet events, so they belong with verification, not exception
@@ -604,7 +605,7 @@ changes and moves stay in separate commits.
 | 3b | `resource_service` → `trips/` (list, history, detail reads) | Ciaran | 1 | Wrapper kept; patches retargeted; guardrails green | Thu 15 Oct |
 | 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green | Thu 15 Oct |
 | — | Tim integrates `dev` into his branch and merges | **Tim** | 1 | His branch green on the integrated revision; §6.1 row filled in | Thu 15 Oct |
-| 5 | Tim's modules → `orchestration/audit_packs/` | Ciaran | Tim's merge | Audit-pack tests green; `build_audit_manifest` assessed | Fri 16 Oct |
+| 5 | Tim's modules → `orchestration/audit_packs/` | Ciaran | Tim's merge | Audit-pack tests green; `build_audit_manifest` assessed. **Done 12 Oct**: no wrappers; 21 contracts; 2,800 passed, 4 skipped; assessment in §5.7 | Fri 16 Oct |
 | 6 | `verification_service`, `receipt_service` → `verification/`, with phase 3 D (`SubjectPolicy`, `record_and_anchor`) | Ciaran | 5 | B3/B4 legacy hashes unchanged; verification and subject-visibility tests green. **Dropped if not started by Fri 16 Oct**, recorded as remaining work | Sat 17 Oct |
 | 7 | Remove wrappers that have no consumers (§6.1) | Ciaran | 1–6 | §6.1 checklist met for each removed wrapper; the rest stay, documented | Sun 18 Oct |
 | — | **Structural freeze** from Mon 19 Oct | everyone | — | No moves, renames or refactors; only fixes found by testing | Mon 19 Oct |

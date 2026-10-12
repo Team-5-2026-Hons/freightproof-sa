@@ -1,6 +1,6 @@
 """Public audit-pack routes — the share link an insurer opens, and the seal check
 printed on every PDF. No authentication: the unguessable token in the path is the
-credential, and every use of it is logged (orchestration/audit_pack_access.py).
+credential, and every use of it is logged (orchestration/audit_packs/access.py).
 
 A closed link answers 410 as a normal response rather than by raising: get_db rolls the
 transaction back on an exception, which would erase the very "denied" log row that lets
@@ -22,7 +22,7 @@ from app.core.rate_limit import rate_limit
 from app.db.models.audit_packs import AuditPack
 from app.db.models.enums import AuditPackAccessEventType
 from app.db.session import get_db
-from app.orchestration.audit_pack_access import (
+from app.orchestration.audit_packs.access import (
     Requester,
     ShareLinkClosed,
     open_shared_pack,

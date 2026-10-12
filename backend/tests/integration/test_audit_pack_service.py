@@ -13,8 +13,8 @@ from app.core.exceptions import HederaServiceError, ResourceNotFoundError
 from app.db.models.audit_packs import AuditPack, AuditPackAccessEvent
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import AuditPackAccessEventType
-from app.orchestration import audit_pack_service
-from app.orchestration.audit_pack_service import (
+from app.orchestration.audit_packs import lifecycle
+from app.orchestration.audit_packs.lifecycle import (
     issue_audit_pack,
     list_audit_packs,
     revoke_audit_pack,
@@ -43,7 +43,7 @@ def stored_pdfs(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
         store[key] = pdf_bytes
         return UploadResult(s3_bucket="evidence-artifacts", s3_key=key, file_hash=hashlib.sha256(pdf_bytes).hexdigest())
 
-    monkeypatch.setattr(audit_pack_service, "upload_audit_pack_pdf", fake_upload)
+    monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", fake_upload)
     return store
 
 
@@ -60,7 +60,7 @@ def _request(**overrides: object) -> AuditPackCreate:
     return AuditPackCreate.model_validate(fields)
 
 
-async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> audit_pack_service.IssuedPack:
+async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> lifecycle.IssuedPack:
     return await issue_audit_pack(
         db, trip_id=seed.trip.id, issued_by=_user(seed), request=_request(**overrides), now=NOW,
     )
@@ -140,7 +140,7 @@ async def test_issue_audit_pack_anchor_failure_still_issues(db_session, audit_tr
     async def failing_anchor(*_args: object, **_kwargs: object) -> BlockchainReceipt:
         raise HederaServiceError("mirror down")
 
-    monkeypatch.setattr(audit_pack_service, "anchor_subject", failing_anchor)
+    monkeypatch.setattr(lifecycle, "anchor_subject", failing_anchor)
 
     # Act
     issued = await _issue(db_session, audit_trip)

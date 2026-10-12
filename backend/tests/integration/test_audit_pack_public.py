@@ -18,8 +18,8 @@ from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionTyp
 from app.db.models.transit import TripException
 from app.db.session import get_db
 from app.main import app
-from app.orchestration import audit_pack_access, audit_pack_service
-from app.orchestration.audit_pack_service import IssuedPack, issue_audit_pack, revoke_audit_pack
+from app.orchestration.audit_packs import access, lifecycle
+from app.orchestration.audit_packs.lifecycle import IssuedPack, issue_audit_pack, revoke_audit_pack
 from app.schemas.audit_pack import AuditPackCreate
 from app.schemas.people import UserRead
 from app.storage.supabase_storage import UploadResult
@@ -64,9 +64,9 @@ def storage(monkeypatch: pytest.MonkeyPatch, audit_trip: AuditTrip) -> dict[str,
     async def fake_hash(*, s3_bucket: str, s3_key: str) -> str:
         return hashlib.sha256(store[s3_key]).hexdigest()
 
-    monkeypatch.setattr(audit_pack_service, "upload_audit_pack_pdf", fake_upload)
-    monkeypatch.setattr(audit_pack_access, "download_audit_pack_pdf", fake_download)
-    monkeypatch.setattr(audit_pack_access, "download_evidence_file", fake_download)
+    monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", fake_upload)
+    monkeypatch.setattr(access, "download_audit_pack_pdf", fake_download)
+    monkeypatch.setattr(access, "download_evidence_file", fake_download)
     monkeypatch.setattr("app.orchestration.verification_service.hash_stored_evidence_file", fake_hash)
     return store
 
@@ -212,7 +212,7 @@ async def test_live_verification_reports_verified_records_and_seal(client, db_se
     issued = await _issue(db_session, audit_trip)
 
     # Act
-    with patch("app.orchestration.audit_pack_access.HederaService") as mirror:
+    with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
@@ -232,7 +232,7 @@ async def test_live_verification_detects_record_changed_after_issue(client, db_s
     await db_session.flush()
 
     # Act
-    with patch("app.orchestration.audit_pack_access.HederaService") as mirror:
+    with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
@@ -252,7 +252,7 @@ async def test_live_verification_counts_records_added_after_issue(client, db_ses
     await db_session.flush()
 
     # Act
-    with patch("app.orchestration.audit_pack_access.HederaService") as mirror:
+    with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         mirror.return_value.verify_hash.return_value = True
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")
 
@@ -265,7 +265,7 @@ async def test_live_verification_mirror_down_is_error_not_mismatch(client, db_se
     issued = await _issue(db_session, audit_trip)
 
     # Act
-    with patch("app.orchestration.audit_pack_access.HederaService") as mirror:
+    with patch("app.orchestration.audit_packs.access.HederaService") as mirror:
         from app.blockchain.hedera import HederaVerifyError
         mirror.return_value.verify_hash.side_effect = HederaVerifyError("mirror down")
         response = await client.post(f"{PUBLIC}/{issued.raw_token}/verify")

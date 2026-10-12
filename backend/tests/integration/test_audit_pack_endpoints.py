@@ -18,7 +18,7 @@ from app.db.models.organisations import Organization
 from app.db.models.people import User
 from app.db.session import get_db
 from app.main import app
-from app.orchestration import audit_pack_service
+from app.orchestration.audit_packs import lifecycle
 from app.storage.supabase_storage import EvidenceStorageUnavailableError, UploadResult
 
 from tests.conftest import auth_header, make_token
@@ -179,8 +179,8 @@ def pdf_store(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     async def fake_download(*, s3_bucket: str, s3_key: str) -> bytes:
         return store[s3_key]
 
-    monkeypatch.setattr(audit_pack_service, "upload_audit_pack_pdf", fake_upload)
-    monkeypatch.setattr(audit_pack_service, "download_audit_pack_pdf", fake_download)
+    monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", fake_upload)
+    monkeypatch.setattr(lifecycle, "download_audit_pack_pdf", fake_download)
     return store
 
 
@@ -265,7 +265,7 @@ async def test_issue_pack_storage_outage_is_503_and_issues_nothing(client, audit
     async def broken_upload(**_kwargs: object) -> UploadResult:
         raise EvidenceStorageUnavailableError("down")
 
-    monkeypatch.setattr(audit_pack_service, "upload_audit_pack_pdf", broken_upload)
+    monkeypatch.setattr(lifecycle, "upload_audit_pack_pdf", broken_upload)
 
     # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id), json=ISSUE_BODY,
