@@ -27,6 +27,13 @@
       "input_tokens": 0,
       "output_tokens": 0,
       "files": 804
+    },
+    {
+      "date": "2026-10-12T13:40:41.222229+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 1531,
+      "note": "subagent token counts not split into input/output; not recorded"
     }
   ],
   "total_input_tokens": 855916,
