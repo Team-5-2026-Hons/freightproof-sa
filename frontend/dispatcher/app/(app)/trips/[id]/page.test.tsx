@@ -78,6 +78,23 @@ vi.mock('@/components/blockchain/VerifyButton', () => ({
 
 const mockedUseTripDetail = vi.mocked(useTripDetail)
 
+describe('parcel search return navigation', () => {
+  it('returns to the selected barcode and waybill', () => {
+    const returnTo = '/parcels?barcode=000123%2Fa&waybill=WB-01'
+    navigation.search.set('returnTo', returnTo)
+    render(<TripDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(push).toHaveBeenCalledWith(returnTo)
+  })
+
+  it('rejects off-site return destinations', () => {
+    navigation.search.set('returnTo', '//other.example/path')
+    render(<TripDetailPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(push).toHaveBeenCalledWith('/')
+  })
+})
+
 function tripWithLoadingExceptionsOutOfOrder(): Trip {
   const trip = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)
   if (!trip) throw new Error('TRIP_0040 fixture is missing')

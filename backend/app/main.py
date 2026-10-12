@@ -30,6 +30,7 @@ from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_disp
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
+from app.api.v1.endpoints.parcels import router as parcels_router
 from app.api.v1.endpoints.handover import public_router as handover_public_router
 from app.api.v1.endpoints.handover import router as handover_router
 from app.api.v1.endpoints.phases import router as phases_router
@@ -108,6 +109,7 @@ app.include_router(exceptions_dispatcher_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")
+app.include_router(parcels_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")

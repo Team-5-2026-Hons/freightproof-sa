@@ -58,20 +58,13 @@ beforeEach(() => {
 })
 
 describe('Sidebar role-based navigation', () => {
-  it('hides the receipt lookup and its empty group from regular dispatchers', () => {
+  it.each(['dispatcher', 'admin_dispatcher'] as const)('offers parcel search to %s without the retired receipt page', (role) => {
+    mockAuth.role = role
     renderSidebar()
 
+    expect(screen.getByRole('link', { name: 'Parcel Search' })).toHaveAttribute('href', ROUTES.parcels)
     expect(screen.queryByRole('link', { name: 'Receipt Lookup' })).not.toBeInTheDocument()
     expect(screen.queryByText('Blockchain')).not.toBeInTheDocument()
-  })
-
-  it('shows the receipt lookup to admin dispatchers', () => {
-    mockAuth.role = 'admin_dispatcher'
-    renderSidebar()
-
-    expect(screen.getByRole('link', { name: 'Receipt Lookup' }))
-      .toHaveAttribute('href', ROUTES.blockchainReceipts)
-    expect(screen.getByText('Blockchain')).toBeInTheDocument()
   })
 })
 
@@ -147,7 +140,7 @@ describe('Sidebar profile footer', () => {
 describe('Sidebar navigation', () => {
   it('links a regular dispatcher to analytics', () => {
     // The analytics endpoints take any dispatcher (get_current_dispatcher, not
-    // require_admin_dispatcher), so unlike the receipt lookup this entry is never hidden.
+    // require_admin_dispatcher), so this entry is never hidden.
     renderSidebar()
 
     expect(screen.getByRole('link', { name: 'Analytics' }))
