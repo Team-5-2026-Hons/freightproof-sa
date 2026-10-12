@@ -69,6 +69,8 @@ const ARTIFACT_WITH_URL: EvidenceArtifactWithUrl = {
   captured_lat: -33.9249,
   captured_lng: 18.4241,
   created_at: '2026-09-03T10:00:00Z',
+  phase_event_id: null,
+  evidence_role: null,
   signed_url: 'https://storage.example/photo.jpg',
 }
 
