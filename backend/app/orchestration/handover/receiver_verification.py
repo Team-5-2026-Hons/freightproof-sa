@@ -39,7 +39,7 @@ from app.integrations.idvs import (
     _parse_decision,
     get_idvs_client,
 )
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 from app.orchestration.handover.capability import build_scan_url, extend_token_for_verification
 
 logger = logging.getLogger(__name__)

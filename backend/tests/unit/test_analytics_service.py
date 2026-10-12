@@ -11,7 +11,7 @@ from datetime import date
 import pytest
 
 from app.db.models.enums import VehicleType
-from app.orchestration.analytics_service import (
+from app.orchestration.analytics.metrics import (
     VehicleLabel,
     attach_driver_names,
     attach_facility_names,

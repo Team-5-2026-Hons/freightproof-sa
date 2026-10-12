@@ -73,7 +73,7 @@ from app.orchestration.evidence.geofence import (
 )
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.evidence.proximity import evaluate_proximity
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 from app.schemas.action_location import (
     ACTION_LOCATION_POLICY_VERSION, ActionLocationAssessment, DriverLocationCapture,
 )

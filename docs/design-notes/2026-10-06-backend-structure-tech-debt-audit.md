@@ -38,11 +38,12 @@
 | | evidence | **Done**: eight `*_service` modules moved whole into `evidence/`; the old modules are facades. Step 3: only `log_checkpoint` (102 code lines) does more than one job; split in a follow-up commit (`_corroborate_and_assess`) | `bc03250`, `dcc9bf7` |
 | | fleet, handover, consignments | **Done** as one batch: eleven modules moved whole (§5 layout); old modules are facades. Two string-constant patch targets that B8 could not see were found and retargeted. Step 3: `update_vehicle` does more than one job and belongs with phase 3 D (`record_and_anchor`); `sync_consignment_from_waybill` is one job, kept whole | `d4a621a` |
 | | app/dev | **Done**: dev endpoints, services and schemas moved into `app/dev/` with no facades (no branch imported them). `app.dev` sits in the top layer, so production code cannot import it. All endpoint layer-skip ignores are gone. B8 now resolves patch targets held in module-level string constants | `a2a8847` |
-| 4b Remaining grouping | — | Planned, not implemented: analytics, verification/receipts, trip reads and review helpers (§5.7). Retain wrappers for any additional moved public paths | — |
+| 4b Remaining grouping | — | Trip reads, review helpers and analytics **done** (stages 3b and 4, below). Planned, not implemented: verification/receipts (§5.7, stage 6). Retain wrappers for any additional moved public paths | — |
 | | audit packs (§6.2 stage 5) | **Done** 2026-10-12: Tim's five modules (2,076 lines) moved whole into `orchestration/audit_packs/` as `analysis`, `incident_declarations`, `builder`, `lifecycle` and `access`; empty `__init__`. **No wrappers**: a search of every remote branch found importers only on `dev`, `Ciaran` and `Feat-ValueAddedDocumentation`, and `Chiko` held only a prose mention in the old §5.7 row. Import-linter contract 21 (tier order) added. The six distinct patch targets in the audit-pack tests (nine break cases) were retargeted and each shown to fail when its fake is broken. AST check: all 104 classes and functions identical to `dev`; only imports and two module docstrings differ. B1/B2 snapshots and B3/B4/B6/B8 unchanged. Step 3: nothing needed splitting (`_phase_record` 68 code lines, `build_audit_manifest` 62; see §5.7) | this change |
 | | handover route (§6.2 stage 3a) | **Done** 2026-10-12: the route's DB work moved into `orchestration/handover/service.py` (new top tier; contract 16 is now `service` > `receiver_verification` > `capability`). `endpoints/handover.py` has no `select`, `db.execute`, `db.add`, `db.flush` or scalar call; every `commit`, `rollback` and `except SQLAlchemyError` stays in the route at its original point (`service.py` never ends a transaction, and confirm still saves the attempt row before its generic 404). Two domain errors added to `core/exceptions.py` (`HandoverLinkInvalidError` → the generic 404, `HandoverAlreadyConfirmedError` → 409); the confirmation lookup raises `ResourceNotFoundError`. Characterised first: 19 tests added to the existing handover and receiver test files and run green on the unchanged code, then the move. Route signatures, decorators and docstrings unchanged; B1/B2 snapshots unchanged. No log line moved module | this change |
 | | resource_service reads (§6.2 stage 3b) | **Done** 2026-10-12: `get_trip_detail` and the two helpers every trip read shares (`_client_names`, `_pp_manifest`) moved whole into `trips/detail.py` (lowest tier, imports no sibling); `list_trips` and `list_trip_history` into `trips/listing.py`, which imports `detail`. `resource_service.py` is now a 15-line wrapper re-exporting the three public names, and is in B8's `FROZEN_FACADES`. All app callers (`endpoints/trips.py`, `phases/gate`, `completion`, `override`, `trips/administration`, `trips/queries`) and `test_exception_claims.py` import the new paths; no patch site existed against `resource_service`. AST check: all 5 definitions identical to `HEAD`, source text included; only imports differ. Import-linter contract 6 also forbids `resource_service`, and contract 22 (`creation` \| `administration` \| `queries` \| `listing` above `detail`) is new; it fails when `detail` imports `listing`. `resource_service` still imports `review_identity` from its flat path until stage 4. `check_structure --update` re-keyed the three over-limit functions (148, 154 and 106 lines, unchanged) to their new files; no function was split | this change |
-| 5 Facade removal | — | **Retained during team migration.** 25 facades in `orchestration/` plus the `integrations/parcel_perfect` package `__init__`. Track acknowledgements and removal evidence in §6.1; do not infer completion from this branch passing tests | — |
+| | review helpers and analytics coordinators (§6.2 stage 4) | **Done** 2026-10-12: `review_identity` and `review_policy` moved whole into `exceptions/` as shared leaf modules (they import nothing from `creation`, `review` or `queries`); `analytics_service` and `fleet_analytics_service` moved whole into the new `orchestration/analytics/` package as `metrics` and `fleet` (empty `__init__`; the query and calculation code in `app/analytics/` did not move, and the moved modules use absolute imports only). All four old paths are wrappers re-exporting their public names and are in B8's `FROZEN_FACADES`; every app caller and test import uses the new paths, and no patch site existed against any of the four. AST check: all 34 top-level definitions identical to `HEAD`, source text included, and the four moved files are byte-identical to `HEAD` (none of their imports named a moved module, so nothing differs at all). Import-linter: contract 8 also forbids `review_identity` and `review_policy`; contract 23 (`creation` \| `review` \| `queries` above `review_identity` \| `review_policy`), contract 24 (`orchestration.analytics` must not import its two facades) and contract 25 (`metrics` and `fleet` independent) are new. Contracts 23 and 25 each fail when a wrong-direction import is added (`review_policy` importing `creation`; `metrics` importing `fleet`). `check_structure` needed no update: nothing moved was over a limit | this change |
+| 5 Facade removal | — | **Retained during team migration.** 29 facades in `orchestration/` plus the `integrations/parcel_perfect` package `__init__`. Track acknowledgements and removal evidence in §6.1; do not infer completion from this branch passing tests | — |
 
 **Team handoff:** use the [backend structure migration guide](2026-10-09-backend-structure-migration-guide.md)
 for current import paths, test-patch examples and handling edits on older branches. This audit remains
@@ -51,16 +52,16 @@ not a second refactor plan. Branch migration statuses remain unconfirmed until t
 
 **Current baselines** (re-measure after every PR):
 
-| Measure | At `8e2b698` | Now (stage 3b, on `a3b6082` plus this change) |
+| Measure | At `8e2b698` | Now (stage 4, on `df88352` plus this change) |
 |---|---|---|
-| Backend suite, slow included | — | **2,822 passed, 4 skipped** (255 of them the slow B7 import checks; stage 5 added one for `audit_packs/__init__`, stage 3a one for `handover/service` plus 19 handover characterisation tests, stage 3b two for `trips/detail` and `trips/listing`) |
-| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,567 passed, 4 skipped** (full run minus the 255 slow checks) |
+| Backend suite, slow included | — | **2,827 passed, 4 skipped** (260 of them the slow B7 import checks; stage 5 added one for `audit_packs/__init__`, stage 3a one for `handover/service` plus 19 handover characterisation tests, stage 3b two for `trips/detail` and `trips/listing`, stage 4 five for `exceptions/review_identity`, `exceptions/review_policy` and `analytics/{__init__,metrics,fleet}`) |
+| Backend suite as CI runs it (`-m "not slow"`) | 2,263 passed, 4 skipped | **2,567 passed, 4 skipped** (full run minus the 260 slow checks) |
 | dispatcher vitest | 1,480 | **1,500** (at `84c2753`; frontend untouched since) |
 | driver-pwa vitest | 821 | **859** (at `84c2753`; frontend untouched since) |
-| import-linter contracts | 0 | **22** |
+| import-linter contracts | 0 | **25** |
 | import-linter ignores, endpoint layer skips | 10 | **0** |
 | import-linter ignores, layer order | 8 | **7** (`schemas.dev -> scan_feed` went with `app/dev/`) |
-| `orchestration/` top level | 34 modules, one flat folder | **7** real modules, 25 facades, 9 packages (`phases`, `trips`, `exceptions`, `evidence`, `fleet`, `handover`, `consignments`, `parcel_trace`, `audit_packs`). Tim's five modules made it 13 real modules until stage 5; `resource_service` became a facade in stage 3b |
+| `orchestration/` top level | 34 modules, one flat folder | **3** real modules (`integrity`, `receipt_service`, `verification_service`), 29 facades, 10 packages (`phases`, `trips`, `exceptions`, `evidence`, `fleet`, `handover`, `consignments`, `parcel_trace`, `audit_packs`, `analytics`). Tim's five modules made it 13 real modules until stage 5; `resource_service` became a facade in stage 3b and the four stage 4 modules in stage 4 |
 | `orchestration/phase_service.py` | 2,289 lines | **119** (facade only) |
 | `orchestration/trip_service.py` | 825 lines | **47** (facade only) |
 | `orchestration/exception_service.py` | 1,121 lines | **68** (facade only) |
@@ -229,9 +230,10 @@ As built (rev. 4). Where this differs from rev. 3's plan, the reason is under th
 
 ```
 backend/app/orchestration/
-├── trips/            creation.py · queries.py · administration.py
+├── trips/            creation.py · queries.py · administration.py · listing.py · detail.py (stage 3b; detail is the lowest tier)
 ├── phases/           (§5.1 — 25 modules)
-├── exceptions/       creation.py · review.py · queries.py
+├── exceptions/       creation.py · review.py · queries.py · review_identity.py · review_policy.py (stage 4; the last two are shared leaves)
+├── analytics/        metrics.py · fleet.py (stage 4; the dispatcher and fleet analytics coordinators)
 ├── evidence/         artifacts · checkpoints · corroboration · action_location · geofence ·
 │                     location · proximity · road_check (existing *_service modules, moved whole)
 ├── fleet/            drivers.py · vehicles.py · precincts.py
@@ -239,8 +241,7 @@ backend/app/orchestration/
 ├── consignments/     sync · scans · waybill_lookup · manifest_snapshot · manifest_import ·
 │                     manifest_reads (consignment, scan, pp_lookup, pp_manifest, pp_manifest_service
 │                     and manifest services, moved whole; named for the job, not the vendor, §5.6)
-└── (flat: integrity, review_policy, review_identity, receipt_service,
-     verification_service, analytics_service, fleet_analytics_service; plus the 25 facades)
+└── (flat: integrity, receipt_service, verification_service; plus the 29 facades)
 
 backend/app/integrations/parcel_perfect/   __init__ (facade) · errors · timestamps · models · port ·
                                            waybill_fixtures · unassigned_fixtures · manifest_fixtures ·
@@ -466,10 +467,10 @@ fixing the exact split. These are separate package windows, not permission to mo
 
 | Current implementation | Proposed home | Scope and sequencing |
 |---|---|---|
-| `analytics_service.py`, `fleet_analytics_service.py` | `orchestration/analytics/metrics.py`, `fleet.py` | Group the application-facing coordinators. Keep query/calculation code in `app/analytics/`; no need to split already-cohesive functions |
+| `analytics_service.py`, `fleet_analytics_service.py` | `orchestration/analytics/metrics.py`, `fleet.py` | **Done 2026-10-12 (stage 4).** Moved whole; wrappers kept. Query and calculation code stays in `app/analytics/`; the moved modules use absolute imports because `app.analytics` and `app.orchestration.analytics` are different packages. `metrics` and `fleet` share no code, enforced by import-linter contract 25. Nothing was split: they were already cohesive |
 | `verification_service.py`, `receipt_service.py` | `orchestration/verification/` | Separate receipt reads, shared verification coordination and subject-specific reconstruction. Coordinate with phase 3 D and Tim's `subject_visibility.py` work; preserve all legacy hash generations |
 | `resource_service.py` | `orchestration/trips/` | **Done 2026-10-12 (stage 3b).** Moved whole: `detail.py` (`get_trip_detail` plus the `_client_names` and `_pp_manifest` helpers both reads share) is the lowest tier and imports no sibling; `listing.py` (`list_trips`, `list_trip_history`) builds on it; tier order is import-linter contract 22. `resource_service.py` stays as a wrapper for the three public names. It still imports `review_identity` from its flat path until stage 4 moves that module |
-| `review_identity.py`, `review_policy.py` | `orchestration/exceptions/` | Move as shared leaf modules: neither may import creation/review/query coordinators. Keep the package `__init__.py` empty so callers outside exceptions do not acquire a cycle |
+| `review_identity.py`, `review_policy.py` | `orchestration/exceptions/` | **Done 2026-10-12 (stage 4).** Moved whole as shared leaf modules; wrappers kept. Neither imports `creation`, `review` or `queries`, enforced by import-linter contract 23 (the three coordinators sit above the two leaves). `exceptions/__init__.py` stays empty. `phases/`, `evidence/`, `consignments/`, `handover/` and `trips/` import `exceptions.review_policy` directly; none of those contracts broke |
 | Tim's `audit_pack_access`, `audit_pack_analysis`, `audit_pack_builder`, `audit_pack_service`, `incident_declaration_service` (1,841 lines on `Feat-ValueAddedDocumentation`) | `orchestration/audit_packs/` | **Done 2026-10-12 (stage 5).** Moved whole, without wrappers (the exception to the wrapper rule below, as for `app/dev`: no importer outside `dev`, `Ciaran` and `Feat-ValueAddedDocumentation`). Homes: `analysis`, `incident_declarations`, `builder`, `lifecycle` (the old `audit_pack_service`: issue, revoke, list, preview, download) and `access`; tier order is enforced by import-linter contract 21 (`access` > `lifecycle` > `builder` > `analysis` \| `incident_declarations`). `build_audit_manifest` assessed, no split: 62 code lines (74 with docstring and comments), a pipeline of single calls (load the graph, resolve scope, build each section, assemble, derive observations) after Tim's split into loaders and section builders. `_phase_record` (68 code lines, 76 with docstring and comments) turns one phase event into one record; it also holds two separable rules, the anchor reconciliation and the evidence-tier choice. Both functions are under the 100-line limit, so no split was needed; extracting those two rules is an optional later commit, not part of the move. `access` imports `verification_service`, so stage 6 must retarget that one import (`access.py`) when it moves |
 | `integrity.py` | Keep as a small shared module | Database uniqueness-error decoding supports multiple domains; a new folder or a function split adds no useful separation |
 
@@ -538,7 +539,7 @@ patches and aliases.
 
 **Rev. 4:** every site above was retargeted in its window. The later windows added more:
 evidence 19, fleet 29, consignments 29 (plus 2 string-constant targets the scanner could not see
-then), `app/dev` 7. B8 now freezes 26 facades (25 in `orchestration/` plus the `parcel_perfect` package) and
+then), `app/dev` 7. B8 now freezes 30 facades (29 in `orchestration/` plus the `parcel_perfect` package) and
 reports no patch through any of them.
 
 ### How to avoid breaking four branches
@@ -608,7 +609,7 @@ changes and moves stay in separate commits.
 | 2 | Receiver selfie: retain capture and implement secure upload/storage (review F2/F5; handoff below) | Tim | 3a | `SELFIE_ONLY` is assigned only after a photo is stored and linked through `selfie_artifact_id`; skip or failed upload retains `TYPED_ONLY`. Decision recorded 12 Oct: keep capture; handed to Tim after 3a, not urgent; not yet implemented | Tim to set, before stage 8 |
 | 3a | Thin `endpoints/handover.py` | Ciaran | 1 | Routes validate, call `orchestration/handover/`, return; no DB calls in the route module; B1 snapshot unchanged. **Done 12 Oct**: 466 lines, DB work in `handover/service.py`, transactions stay in the route (§5 deviations); 19 characterisation tests added first; 2,820 passed, 4 skipped | Wed 14 Oct |
 | 3b | `resource_service` → `trips/` (list, history, detail reads) | Ciaran | 1 | Wrapper kept; patches retargeted; guardrails green. **Done 12 Oct**: `trips/detail.py` and `trips/listing.py`, 22 contracts, 2,822 passed, 4 skipped | Thu 15 Oct |
-| 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green | Thu 15 Oct |
+| 4 | `review_identity`, `review_policy` → `exceptions/`; analytics pair → `orchestration/analytics/` | Ciaran | 1 | Wrappers kept; guardrails green. **Done 12 Oct**: 25 contracts, 2,827 passed, 4 skipped | Thu 15 Oct |
 | — | Tim integrates `dev` into his branch and merges | **Tim** | 1 | His branch green on the integrated revision; §6.1 row filled in | Thu 15 Oct |
 | 5 | Tim's modules → `orchestration/audit_packs/` | Ciaran | Tim's merge | Audit-pack tests green; `build_audit_manifest` assessed. **Done 12 Oct**: no wrappers; 21 contracts; 2,800 passed, 4 skipped; assessment in §5.7 | Fri 16 Oct |
 | 6 | `verification_service`, `receipt_service` → `verification/`, with phase 3 D (`SubjectPolicy`, `record_and_anchor`) | Ciaran | 5 | B3/B4 legacy hashes unchanged; verification and subject-visibility tests green. **Dropped if not started by Fri 16 Oct**, recorded as remaining work | Sat 17 Oct |

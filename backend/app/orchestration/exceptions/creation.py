@@ -24,7 +24,7 @@ from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus,
 from app.orchestration.evidence import action_location
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.queries import current_phase_event
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 from app.schemas.transit import TripExceptionRead
 
 logger = logging.getLogger(__name__)

@@ -44,7 +44,7 @@ from app.orchestration.exception_service import (
     review_exception,
     review_exceptions_batch,
 )
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 
 _OUTBOX_KEY = "realtime_outbox"
 

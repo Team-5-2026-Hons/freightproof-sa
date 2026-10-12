@@ -141,16 +141,19 @@ modules =
     app.orchestration.trips.queries
 
 # ---------------------------------------------------------------------------
-# 8. Stops the exceptions package importing back into its own facade (audit 5.5, rule 2:
-#    imports only run old -> new). Wildcard form for the same reason as contract 3.
+# 8. Stops the exceptions package importing back into its own facades, exception_service,
+#    review_identity and review_policy (audit 5.5, rule 2: imports only run old -> new).
+#    Wildcard form for the same reason as contract 3.
 # ---------------------------------------------------------------------------
 [importlinter:contract:exceptions-no-facade]
-name = app.orchestration.exceptions must not import the exception_service facade
+name = app.orchestration.exceptions must not import the exception_service, review_identity or review_policy facades
 type = forbidden
 source_modules =
     app.orchestration.exceptions.**
 forbidden_modules =
     app.orchestration.exception_service
+    app.orchestration.review_identity
+    app.orchestration.review_policy
 
 # ---------------------------------------------------------------------------
 # 9. creation, review and queries share no code today and must stay that way (audit 5.4).
@@ -409,3 +412,45 @@ containers =
 layers =
     creation | administration | queries | listing
     detail
+
+# ---------------------------------------------------------------------------
+# 23. Tier order inside exceptions/ (audit 5.7, stage 4). review_identity and review_policy are
+#     shared leaves: they import nothing from creation, review or queries, and not each other.
+#     creation, review and queries sit above them (contract 9 holds those three apart). exceptions/
+#     __init__ stays empty (audit 5 rule 1). Layers are not optional: a misspelt or missing
+#     module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-tier-order]
+name = Inside exceptions/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.exceptions
+layers =
+    creation | review | queries
+    review_identity | review_policy
+
+# ---------------------------------------------------------------------------
+# 24. Stops orchestration/analytics/ importing back into its own facades (audit 5.5, rule 2:
+#     imports only run old -> new). Wildcard form for the same reason as contract 3. Absolute
+#     imports only: app.analytics (query and calculation code) and app.orchestration.analytics
+#     (the coordinators) are different packages.
+# ---------------------------------------------------------------------------
+[importlinter:contract:orchestration-analytics-no-facade]
+name = app.orchestration.analytics must not import the analytics_service or fleet_analytics_service facades
+type = forbidden
+source_modules =
+    app.orchestration.analytics.**
+forbidden_modules =
+    app.orchestration.analytics_service
+    app.orchestration.fleet_analytics_service
+
+# ---------------------------------------------------------------------------
+# 25. metrics (the dispatcher analytics screen) and fleet (the fleet-wide page) share no code and
+#     must stay that way; a shared helper goes down into a lower module, not sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:orchestration-analytics-independent-modules]
+name = analytics.metrics and analytics.fleet do not import each other
+type = independence
+modules =
+    app.orchestration.analytics.metrics
+    app.orchestration.analytics.fleet

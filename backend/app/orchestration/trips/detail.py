@@ -21,7 +21,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phases.blocking import blocked_on_by_stop
-from app.orchestration.review_identity import with_reviewer_names
+from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.orchestration.consignments.scans import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead

@@ -16,7 +16,7 @@ from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_seve
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, TripStatus
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
-from app.orchestration.review_policy import dispatcher_authored_review
+from app.orchestration.exceptions.review_policy import dispatcher_authored_review
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 

@@ -9,7 +9,7 @@ those proposed paths are not available yet. The paths below describe the impleme
 
 ## What changed
 
-Large backend domains now live in packages under `app/orchestration/`. The 25 old orchestration
+Large backend domains now live in packages under `app/orchestration/`. The 29 old orchestration
 modules remain as compatibility wrappers: they re-export existing functions so older branches can
 still import them. New functions belong in the implementation modules, never in wrappers.
 
@@ -71,6 +71,10 @@ not named here. Do not import a package root as a replacement shortcut; orchestr
 | `trip_service` | `trips.creation` (create/persist); `trips.administration` (cancel); `trips.queries` (driver reads) |
 | `resource_service` | `trips.detail` (`get_trip_detail`); `trips.listing` (`list_trips`, `list_trip_history`). Wrapper kept for the three public names |
 | `exception_service` | `exceptions.creation` (raise); `exceptions.review` (claim/release/review); `exceptions.queries` (queue/history/detail) |
+| `review_identity` | `exceptions.review_identity` (`user_names`, `name_of`, `with_reviewer_names`). Wrapper kept |
+| `review_policy` | `exceptions.review_policy` (`initial_review_status`, `dispatcher_authored_review`, `AuthoredReviewFields`). Wrapper kept |
+| `analytics_service` | `analytics.metrics` (dispatcher analytics screen). Wrapper kept. Not `app.analytics`: that package holds the query and calculation code and did not move |
+| `fleet_analytics_service` | `analytics.fleet` (fleet-wide analytics page). Wrapper kept |
 | `action_location_service` | `evidence.action_location` |
 | `artifact_service` | `evidence.artifacts` |
 | `checkpoint_service` | `evidence.checkpoints` |
@@ -118,8 +122,7 @@ Other paths:
 - Handover route database work (the receiver QR routes' queries and sequencing) lives in
   `app.orchestration.handover.service`, the top tier of `handover/`. It is new code, not a move, so
   there is no wrapper and no old path. `endpoints/handover.py` keeps `commit` and `rollback`.
-- `analytics_service`, `fleet_analytics_service`, `verification_service`, `receipt_service`,
-  `review_identity`, `review_policy` and `integrity` still contain real code at
+- `verification_service`, `receipt_service` and `integrity` still contain real code at
   their existing paths. Do not target the audit's proposed future folders before those moves land.
 
 Example of an ordinary import migration:

@@ -42,7 +42,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFixStatus, get_pulsit_client
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
 from app.orchestration.phases.queries import current_phase_event
 
