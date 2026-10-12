@@ -1,5 +1,5 @@
 """Recovers a phase anchor that was never submitted, by rebuilding its payload from the
-committed phase ledger. Imports verification_service lazily.
+committed phase ledger. Imports verification.phase_payloads lazily.
 """
 
 import logging
@@ -24,7 +24,7 @@ async def recover_phase_anchor(db: AsyncSession, *, due_before: datetime) -> boo
     recovery workers from waiting on the same phase, and updated_at rotates failures
     to the back of the queue instead of starving newer debts.
     """
-    from app.orchestration.verification_service import reconstruct_pending_phase_payload
+    from app.orchestration.verification.phase_payloads import reconstruct_pending_phase_payload
 
     event = (await db.execute(
         select(PhaseEvent).where(

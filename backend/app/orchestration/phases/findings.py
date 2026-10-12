@@ -17,7 +17,7 @@ from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
 

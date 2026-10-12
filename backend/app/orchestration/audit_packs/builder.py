@@ -2,7 +2,7 @@
 
 Read-only: loads the trip's evidence graph in a fixed number of queries (no per-row
 lookups, so a 3,000-ping trip costs the same round trips as a 3-ping one), then hands
-plain values to the pure functions in audit_pack_analysis.
+plain values to the pure functions in audit_packs.analysis.
 
 Redaction happens here, at assembly, not in the renderers — a field that never enters
 the manifest cannot leak through a template bug.
@@ -35,8 +35,8 @@ from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, DriverSubstitution, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.core.display import DISPLAY_TIMEZONE
-from app.orchestration.incident_declaration_service import load_declarations
-from app.orchestration.audit_pack_analysis import (
+from app.orchestration.audit_packs.incident_declarations import load_declarations
+from app.orchestration.audit_packs.analysis import (
     derive_observations,
     find_coverage_gaps,
     find_stationary_periods,

@@ -15,8 +15,8 @@ from app.core.exceptions import ResourceNotFoundError
 from app.db.models.audit_packs import IncidentDeclaration
 from app.db.session import get_db
 from app.main import app
-from app.orchestration.audit_pack_builder import build_audit_manifest
-from app.orchestration.incident_declaration_service import list_declarations, record_declaration
+from app.orchestration.audit_packs.builder import build_audit_manifest
+from app.orchestration.audit_packs.incident_declarations import list_declarations, record_declaration
 from app.schemas.audit_pack import AuditPackOptions, IncidentDeclarationCreate
 
 from tests.conftest import auth_header, make_token

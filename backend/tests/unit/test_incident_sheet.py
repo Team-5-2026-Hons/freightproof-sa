@@ -14,7 +14,7 @@ from app.reporting.incident_sheet import (
     render_incident_sheet_pdf,
     suggested_tapa_category,
 )
-from app.orchestration.audit_pack_analysis import summarise_incident
+from app.orchestration.audit_packs.analysis import summarise_incident
 from app.schemas.audit_pack import IncidentDeclarationRecord, PositionFix, VehicleRecord
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest

@@ -15,7 +15,7 @@ from app.db.models.trips import Trip
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_driver
 from app.orchestration.phases.state import _is_resolved
-from app.orchestration.resource_service import get_trip_detail
+from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
 

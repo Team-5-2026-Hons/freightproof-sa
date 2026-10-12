@@ -1,7 +1,7 @@
 """Audit Pack lifecycle: preview, issue (snapshot → PDF → store → seal), list, revoke.
 
-Thin coordination only — assembly lives in audit_pack_builder, rules in
-audit_pack_analysis, layout in app/reporting.
+Thin coordination only — assembly lives in audit_packs.builder, rules in
+audit_packs.analysis, layout in app/reporting.
 
 Issuing runs inside the request, anchor included. Unlike a driver's handshake (which
 queues its anchor so nobody stands holding a swipe), issuing is a rare, deliberate
@@ -43,7 +43,7 @@ from app.db.models.enums import (
     enum_text,
 )
 from app.db.models.trips import Trip
-from app.orchestration.audit_pack_builder import build_audit_manifest
+from app.orchestration.audit_packs.builder import build_audit_manifest
 from app.reporting.incident_sheet import render_incident_sheet_pdf
 from app.reporting.pdf_renderer import render_audit_pack_pdf
 from app.schemas.audit_pack import (

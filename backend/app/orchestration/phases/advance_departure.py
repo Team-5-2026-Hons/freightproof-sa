@@ -19,7 +19,7 @@ from app.orchestration.phases.driver_position import _record_driver_position
 from app.orchestration.phases.gate import _gate_and_load
 from app.orchestration.phases.payloads import compute_departure_canonical_payload_v2
 from app.orchestration.phases.seals import _normalized_seal
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 from app.schemas.phases import DepartureCompleteRequest
 from app.schemas.trips import TripDetailResponse
 

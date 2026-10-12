@@ -37,6 +37,7 @@ from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import BlockchainReceiptType, PrecinctEventType, SubjectType
 from app.db.models.events import PrecinctEvent
 from app.db.models.organisations import Precinct
+from app.orchestration.fleet.canonical import anchor_fleet_event
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import PrecinctEventRead
 from app.schemas.organisations import (
@@ -168,22 +169,12 @@ async def create_precinct(
     # address and a business coordinate — no personal data — so nothing here is subject
     # to the POPIA rule that keeps identifiers off-chain. The geofence is anchored in the
     # clear precisely so a later verification can reproduce it.
-    canonical = {
-        "precinct_event_id": str(event.id),
-        "precinct_id": str(precinct.id),
-        "event_type": PrecinctEventType.CREATED.value,
-        "fields": snapshot,
-        "changed_by_user_id": str(current_user_id),
-        "timestamp": event.created_at.isoformat(),
-    }
-    receipt = await anchor_subject(
+    await anchor_fleet_event(
         db,
-        subject_type=SubjectType.PRECINCT_EVENT,
-        subject_id=event.id,
-        canonical_payload=canonical,
+        anchor=anchor_subject,
+        event=event,
         receipt_type=BlockchainReceiptType.PRECINCT_CREATED,
     )
-    event.blockchain_receipt_id = receipt.id
 
     await db.refresh(precinct)
     return PrecinctRead.model_validate(precinct)
@@ -281,28 +272,18 @@ async def update_precinct(
     # Cosmetic-only changes are logged and left unanchored — same fee logic as
     # update_vehicle. No hashing on this path either; see create_precinct.
     if critical_diff is not None:
-        # fields carries the FULL diff, not just the critical half, even though only a
-        # critical change gets us here. verification_service rebuilds this payload from
-        # the event row's changed_fields column, so anchoring a subset of that column
-        # makes a legitimate mixed edit — move a depot and rename it in one PATCH —
-        # hash differently on verification and report tampering that never happened.
-        # create_precinct anchors its whole snapshot for the same reason.
-        canonical = {
-            "precinct_event_id": str(event.id),
-            "precinct_id": str(precinct.id),
-            "event_type": event_type.value,
-            "fields": full_diff,
-            "changed_by_user_id": str(current_user_id),
-            "timestamp": event.created_at.isoformat(),
-        }
-        receipt = await anchor_subject(
+        # The payload carries the FULL diff, not just the critical half, even though only a
+        # critical change gets us here. The verification package rebuilds it from the event
+        # row's changed_fields column through the same fleet.canonical builder, so anchoring a
+        # subset of that column would make a legitimate mixed edit — move a depot and rename
+        # it in one PATCH — hash differently on verification and report tampering that never
+        # happened. create_precinct anchors its whole snapshot for the same reason.
+        await anchor_fleet_event(
             db,
-            subject_type=SubjectType.PRECINCT_EVENT,
-            subject_id=event.id,
-            canonical_payload=canonical,
+            anchor=anchor_subject,
+            event=event,
             receipt_type=BlockchainReceiptType.PRECINCT_UPDATED,
         )
-        event.blockchain_receipt_id = receipt.id
 
     await db.refresh(precinct)
     return PrecinctRead.model_validate(precinct)

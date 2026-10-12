@@ -50,16 +50,15 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import scan_service
-from app.orchestration.exception_service import raise_exception, review_exception
-from app.orchestration.phase_service import (
-    _finish_phase,
-    advance_arrival,
-    advance_confirmation,
-    advance_loading,
-    override_phase,
-)
-from app.orchestration.trip_service import cancel_trip
+from app.orchestration.consignments.scans import ingest_scans
+from app.orchestration.exceptions.creation import raise_exception
+from app.orchestration.exceptions.review import review_exception
+from app.orchestration.phases.completion import _finish_phase
+from app.orchestration.phases.advance_arrival import advance_arrival
+from app.orchestration.phases.advance_confirmation import advance_confirmation
+from app.orchestration.phases.advance_loading import advance_loading
+from app.orchestration.phases.override import override_phase
+from app.orchestration.trips.administration import cancel_trip
 from app.schemas.phases import (
     ArrivalCompleteRequest,
     ConfirmationCompleteRequest,
@@ -251,7 +250,7 @@ async def test_a_hijacking_is_never_quieter_than_a_count_check(db_session):
         stop_reference=str(stop.id), direction=ScanDirection.OUT,
         barcodes=_BARCODES[:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
     count_severity = _severities(db_session)[0]
@@ -612,7 +611,7 @@ async def test_scan_discrepancy_at_ingest_enqueues_exception_raised(db_session, 
         barcodes=_BARCODES[:2],  # one parcel never scanned
     )
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
 
@@ -642,12 +641,12 @@ async def test_repeat_ingest_of_an_unchanged_feed_enqueues_nothing(db_session, s
         stop_reference=str(stop.id), direction=ScanDirection.OUT,
         barcodes=_BARCODES[:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
     db_session.info.pop(_OUTBOX_KEY, None)  # drain, as after_commit would
 
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
 
@@ -668,7 +667,7 @@ async def test_loading_shortfall_backstop_enqueues_exception_raised(db_session, 
 
     feed = MockScanFeed()
     # Nothing staged, then closed: the warehouse said "done" having scanned zero.
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop.id, direction=ScanDirection.OUT,
     )
     assert _kinds(db_session) == []  # scan_service really did stay silent

@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH
 from app.main import app
-from app.orchestration.trip_service import cancel_trip
+from app.orchestration.trips.administration import cancel_trip
 from tests.integration._pp_manifest_world import (
     build_manifest_world, create_body, install_pp_mock, preview,
 )

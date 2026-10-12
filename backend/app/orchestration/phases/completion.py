@@ -19,7 +19,7 @@ from app.orchestration.phases.findings import (
     _raise_position_disagreement_if_unrecorded, _raise_trailer_decoupling_if_unrecorded,
 )
 from app.orchestration.phases.state import recompute_position
-from app.orchestration.resource_service import get_trip_detail
+from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
 logger = logging.getLogger(__name__)

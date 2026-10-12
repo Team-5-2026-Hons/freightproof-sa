@@ -176,7 +176,7 @@ def compute_confirmation_canonical_payload_v1(
     canonicalize_payload is a plain json.dumps(sort_keys=True), so None
     serialises to `null` deterministically either way — but an omitted key
     would change the payload's SHAPE, not just one value, and
-    verification_service._reconstruct_phase_event_payload rebuilds this exact
+    verification.phase_payloads._reconstruct_phase_event_payload rebuilds this exact
     dict from the stored column on every verify, so the key's presence must be
     unconditional for that rebuild to reproduce the original hash.
     """

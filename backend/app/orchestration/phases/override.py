@@ -17,8 +17,8 @@ from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_dispatcher
 from app.orchestration.phases.payloads import compute_override_canonical_payload_v2
 from app.orchestration.phases.state import recompute_position
-from app.orchestration.resource_service import get_trip_detail
-from app.orchestration.review_policy import dispatcher_authored_review, initial_review_status
+from app.orchestration.trips.detail import get_trip_detail
+from app.orchestration.exceptions.review_policy import dispatcher_authored_review, initial_review_status
 from app.schemas.trips import TripDetailResponse
 
 

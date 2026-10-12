@@ -173,7 +173,7 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
     client: AsyncClient, db_session, monkeypatch, seed_trip,
 ):
     """The adapter timeout is comparison-only; no wall-clock sleep is required."""
-    from app.orchestration import exception_service
+    from app.orchestration.exceptions.creation import _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS
     from app.orchestration.exceptions import creation as exception_creation
 
     class StalledTracker:
@@ -181,7 +181,7 @@ async def test_driver_report_survives_a_bounded_tracker_timeout(
             await asyncio.Event().wait()
 
     async def timeout_immediately(_awaitable, *, timeout: float):
-        assert timeout == exception_service._DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS
+        assert timeout == _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS
         _awaitable.close()
         raise TimeoutError
 

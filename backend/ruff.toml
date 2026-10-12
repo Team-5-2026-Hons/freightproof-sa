@@ -59,7 +59,6 @@ max-statements = 50
 "app/orchestration/consignments/manifest_import.py" = ["C901", "PLR0913"]  # _build_context, _resolve_precinct
 "app/orchestration/consignments/scans.py" = ["PLR0913"]  # _reconcile_consignment, _raise_discrepancy, _build_discrepancy_description
 "app/orchestration/consignments/sync.py" = ["C901", "PLR0913", "PLR0915"]  # fetch_and_sync_consignment (PLR0913), sync_consignment_from_waybill (all three)
-"app/orchestration/fleet/vehicles.py" = ["C901"]  # update_vehicle
 "app/orchestration/handover/capability.py" = ["PLR0913"]  # record_handover_confirmation
 # Relocated, not added: each entry below is an existing violation that moved out of the flat
 # *_service.py modules with its functions (audit phase 4, evidence window); the count of
@@ -81,11 +80,12 @@ max-statements = 50
 "app/orchestration/phases/findings.py" = ["PLR0913"]  # _raise_scan_shortfall_if_unrecorded, _record_seal_finding
 "app/orchestration/phases/override.py" = ["PLR0913"]  # override_phase
 "app/orchestration/phases/payloads.py" = ["PLR0913"]  # compute_confirmation_canonical_payload_v2
-"app/orchestration/resource_service.py" = ["PLR0913"]
 # Relocated, not added: persist_trip moved out of trip_service.py with its C901 and PLR0915
 # violations (audit 5.3); the count of violating functions is unchanged.
 "app/orchestration/trips/creation.py" = ["C901", "PLR0915"]  # persist_trip
-"app/orchestration/verification_service.py" = ["C901"]
+"app/orchestration/trips/listing.py" = ["PLR0913"]  # list_trip_history, relocated from resource_service.py
+"app/orchestration/verification/phase_payloads.py" = ["C901"]  # _reconstruct_phase_event_payload, relocated from verification_service.py
+"app/orchestration/verification/service.py" = ["C901"]  # verify_subject, relocated from verification_service.py
 "app/storage/supabase_storage.py" = ["C901"]
 "scripts/check_supabase_wiring.py" = ["C901"]
 "scripts/pp_watch.py" = ["C901", "PLR0913", "PLR0915"]

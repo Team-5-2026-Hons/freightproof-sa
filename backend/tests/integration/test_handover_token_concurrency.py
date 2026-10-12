@@ -24,7 +24,7 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration.handover_service import issue_capability_token, redeem_capability_token
+from app.orchestration.handover.capability import issue_capability_token, redeem_capability_token
 
 
 async def _seed(session: AsyncSession) -> dict:

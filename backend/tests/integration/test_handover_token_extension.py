@@ -18,7 +18,7 @@ from app.db.models.trips import Trip, TripStop
 from datetime import UTC, datetime, timedelta
 
 from app.core.config import settings
-from app.orchestration.handover_service import (
+from app.orchestration.handover.capability import (
     extend_token_for_verification,
     issue_capability_token,
 )

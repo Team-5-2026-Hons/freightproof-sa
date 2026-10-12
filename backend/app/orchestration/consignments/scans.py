@@ -33,7 +33,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.integrations.scan_feed import ScanDirection, ScanEvent, get_scan_feed
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.review_policy import initial_review_status
 
 logger = logging.getLogger(__name__)
 

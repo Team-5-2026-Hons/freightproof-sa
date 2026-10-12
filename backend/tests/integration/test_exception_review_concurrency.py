@@ -38,7 +38,7 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import review_exception
+from app.orchestration.exceptions.review import review_exception
 
 _FIRST_NOTE = "Phoned the depot; the seal was cut during a lawful SARS inspection."
 _SECOND_NOTE = "Spoke to the driver in person; he says the inspection was at Beitbridge."

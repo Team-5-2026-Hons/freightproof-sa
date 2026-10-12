@@ -87,7 +87,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.crypto.hashing import compute_snapshot_sha256
 from app.orchestration.consignments import manifest_import as consignments_manifest_import
-from app.orchestration.pp_manifest import manifest_snapshot
+from app.orchestration.consignments.manifest_snapshot import manifest_snapshot
 from app.integrations.parcel_perfect import (
     PPManifestHeader, PPManifestResponse,
     PPContents,
@@ -96,7 +96,7 @@ from app.integrations.parcel_perfect import (
     PPWaybillResponse,
 )
 from app.main import app
-from app.orchestration.consignment_service import fetch_and_sync_consignment
+from app.orchestration.consignments.sync import fetch_and_sync_consignment
 from tests.conftest import auth_header, make_token
 
 # Two callers, released together. Named rather than inlined because both tests

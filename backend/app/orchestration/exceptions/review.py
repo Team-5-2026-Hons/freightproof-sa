@@ -29,7 +29,7 @@ from app.db.models.enums import (
 )
 from app.db.models.trips import Trip
 from app.db.models.transit import TripException
-from app.orchestration.review_identity import with_reviewer_names
+from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.schemas.transit import TripExceptionRead
 
 logger = logging.getLogger(__name__)

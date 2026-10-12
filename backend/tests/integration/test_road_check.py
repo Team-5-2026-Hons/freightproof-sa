@@ -20,7 +20,7 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations import pulsit as pulsit_module
 from app.integrations.pulsit import get_pulsit_client
-from app.orchestration.road_check_service import check_trip_on_road
+from app.orchestration.evidence.road_check import check_trip_on_road
 from tests.conftest import FakeMockStateStore
 
 _ORIGIN = (Decimal("-33.9249000"), Decimal("18.4241000"))

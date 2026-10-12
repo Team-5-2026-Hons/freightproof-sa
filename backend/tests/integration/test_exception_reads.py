@@ -38,7 +38,7 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
-from app.orchestration.exception_service import _load_trip_contexts
+from app.orchestration.exceptions.queries import _load_trip_contexts
 
 from tests.conftest import auth_header, make_token
 

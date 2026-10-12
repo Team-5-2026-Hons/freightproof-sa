@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.endpoints.fleet_analytics import router as fleet_router
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
-from app.orchestration.analytics_service import (
+from app.orchestration.analytics.metrics import (
     check_month_range,
     list_driver_analytics,
     list_facility_analytics,

@@ -21,8 +21,8 @@ import pytest
 
 from app.core.geo import EARTH_RADIUS_METRES, haversine_metres
 from app.db.models.organisations import Precinct
-from app.orchestration.geofence_service import TrackerFix, evaluate_geofence
-from app.orchestration.proximity_service import FUTURE_FIX_SLACK_SECONDS, evaluate_proximity
+from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
+from app.orchestration.evidence.proximity import FUTURE_FIX_SLACK_SECONDS, evaluate_proximity
 
 # ── Shared fixtures ──────────────────────────────────────────────────────────────
 

@@ -35,7 +35,7 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import raise_exception
+from app.orchestration.exceptions.creation import raise_exception
 
 
 async def _seed(session: AsyncSession) -> dict:

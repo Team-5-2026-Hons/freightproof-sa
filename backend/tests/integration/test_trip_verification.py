@@ -21,7 +21,7 @@ from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.session import get_db
 from app.main import app
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from tests.integration._pp_manifest_world import build_manifest_world
 
 

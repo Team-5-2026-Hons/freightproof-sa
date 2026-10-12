@@ -83,7 +83,7 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
     queue boundary. Draining before pytest closes the loop keeps tasks from leaking
     into the next test without changing the application's async dispatch behavior.
     """
-    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS
+    from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
     from app.tasks.blockchain import anchor_phase_event_task
 
     monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))

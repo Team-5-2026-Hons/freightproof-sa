@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.enums import SubjectType, VerifyStatus
-from app.orchestration import receipt_service
-from app.orchestration.verification_service import VerifyOutcome, verify_visible_subject
+from app.orchestration.verification import receipts as receipt_reads
+from app.orchestration.verification.service import VerifyOutcome, verify_visible_subject
 
 
 def _db() -> AsyncSession:
@@ -27,7 +27,7 @@ async def test_lookup_receipts_delegates_with_the_same_arguments() -> None:
     with patch(
         "app.blockchain.anchor_service.lookup_receipts", new_callable=AsyncMock, return_value=expected,
     ) as inner:
-        result = await receipt_service.lookup_receipts(
+        result = await receipt_reads.lookup_receipts(
             _db(), organization_id=org_id, data_hash="ab" * 32, subject_id=subject_id,
         )
 
@@ -40,7 +40,7 @@ async def test_lookup_receipts_delegates_with_the_same_arguments() -> None:
 
 async def test_lookup_receipts_still_rejects_an_ambiguous_key() -> None:
     with pytest.raises(ValueError):
-        await receipt_service.lookup_receipts(_db(), organization_id=uuid.uuid4())
+        await receipt_reads.lookup_receipts(_db(), organization_id=uuid.uuid4())
 
 
 async def test_list_receipts_for_subject_delegates_with_the_same_arguments() -> None:
@@ -51,7 +51,7 @@ async def test_list_receipts_for_subject_delegates_with_the_same_arguments() -> 
         "app.blockchain.anchor_service.list_receipts_for_subject",
         new_callable=AsyncMock, return_value=expected,
     ) as inner:
-        result = await receipt_service.list_receipts_for_subject(
+        result = await receipt_reads.list_receipts_for_subject(
             _db(), subject_type=SubjectType.VEHICLE, subject_id=subject_id, organization_id=org_id,
         )
 
@@ -74,8 +74,8 @@ async def test_verify_visible_subject_verifies_after_the_visibility_check() -> N
         return outcome
 
     with (
-        patch("app.orchestration.verification_service.assert_subject_visible", _visible),
-        patch("app.orchestration.verification_service.verify_subject", _verify),
+        patch("app.orchestration.verification.service.assert_subject_visible", _visible),
+        patch("app.orchestration.verification.service.verify_subject", _verify),
     ):
         result = await verify_visible_subject(
             _db(), subject_type=SubjectType.DRIVER, subject_id=subject_id, organization_id=org_id,
@@ -90,10 +90,10 @@ async def test_verify_visible_subject_does_not_verify_a_foreign_subject() -> Non
 
     with (
         patch(
-            "app.orchestration.verification_service.assert_subject_visible",
+            "app.orchestration.verification.service.assert_subject_visible",
             new_callable=AsyncMock, side_effect=SubjectNotVisibleError("driver", str(subject_id)),
         ),
-        patch("app.orchestration.verification_service.verify_subject", new_callable=AsyncMock) as verify,
+        patch("app.orchestration.verification.service.verify_subject", new_callable=AsyncMock) as verify,
     ):
         with pytest.raises(SubjectNotVisibleError):
             await verify_visible_subject(

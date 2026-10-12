@@ -23,7 +23,7 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
 from app.main import app
-from app.orchestration import checkpoint_service
+from app.orchestration.evidence.checkpoints import _find_by_client_report_id, log_checkpoint
 from app.orchestration.evidence import checkpoints as evidence_checkpoints
 from app.schemas.transit import DriverCheckpointCreateBody
 
@@ -247,7 +247,7 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
 
     barrier = asyncio.Barrier(2)
     lookup_calls = 0
-    original_lookup = checkpoint_service._find_by_client_report_id
+    original_lookup = _find_by_client_report_id
 
     async def synchronized_lookup(*args, **kwargs):
         nonlocal lookup_calls
@@ -276,7 +276,7 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
 
     async def attempt() -> uuid.UUID:
         async with AsyncSession(test_engine, expire_on_commit=False) as session:
-            result = await checkpoint_service.log_checkpoint(
+            result = await log_checkpoint(
                 session, trip_id=ids["trip_id"], driver_id=ids["driver_id"], payload=payload,
             )
             await session.commit()

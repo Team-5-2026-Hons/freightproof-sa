@@ -13,9 +13,8 @@ unwritable. These constants must therefore never be derived or regenerated at ru
 There is deliberately no UPDATE_SNAPSHOTS switch for this file: changing a vector is an
 edit a reviewer sees in the diff, together with an explanation of how old receipts stay valid.
 
-Builders are imported through the compatibility facade (app.orchestration.phase_service),
-which is an import, not a patch, so it stays legal after the phases/ package exists (audit
-section 5.5).
+Builders are imported from app.orchestration.phases.payloads, the module that defines them
+(the phase_service compatibility wrapper that used to front it is retired; audit section 5.5).
 """
 
 import uuid
@@ -30,7 +29,7 @@ from app.crypto.hashing import (
     compute_trip_canonical_payload_v2,
 )
 from app.db.models.enums import PhaseType
-from app.orchestration.phase_service import (
+from app.orchestration.phases.payloads import (
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,

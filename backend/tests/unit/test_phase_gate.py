@@ -10,7 +10,7 @@ import pytest
 from app.db.models.enums import PhaseType
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import phase_gate
+from app.orchestration.phases.blocking import BLOCKED_ON_SCAN, blocked_on_by_stop, blocked_on_for
 from tests.conftest import FakeMockStateStore
 
 
@@ -22,9 +22,9 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
 
 
 async def test_loading_is_blocked_before_the_session_closes(db_session, store, seeded):
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
-    assert blocked[(PhaseType.LOADING, seeded["stop"].id)] == phase_gate.BLOCKED_ON_SCAN
+    assert blocked[(PhaseType.LOADING, seeded["stop"].id)] == BLOCKED_ON_SCAN
 
 
 async def test_loading_unblocks_once_the_session_closes(db_session, store, seeded):
@@ -33,7 +33,7 @@ async def test_loading_unblocks_once_the_session_closes(db_session, store, seede
         direction=ScanDirection.OUT,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
     assert blocked[(PhaseType.LOADING, seeded["stop"].id)] is None
 
@@ -50,7 +50,7 @@ async def test_a_short_scan_still_unblocks_when_the_session_is_closed(db_session
         direction=ScanDirection.OUT,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
     assert blocked[(PhaseType.LOADING, seeded["stop"].id)] is None
 
@@ -59,7 +59,7 @@ async def test_a_stop_with_no_consignments_is_never_blocked(db_session, store, e
     """Trips created without a PP reference have no Parcel rows at all. manifest.ts
     documents this as 'common' and 'a normal state, not a failure' — blocking them
     would make the dispatcher override the default path for a legitimate trip shape."""
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=empty_trip["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=empty_trip["trip"].id)
 
     assert all(value is None for value in blocked.values())
 
@@ -71,10 +71,10 @@ async def test_closing_one_stop_does_not_unblock_another(db_session, store, xdoc
         direction=ScanDirection.OUT,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=xdock_trip["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=xdock_trip["trip"].id)
 
     assert blocked[(PhaseType.LOADING, xdock_trip["stop_1"].id)] is None
-    assert blocked[(PhaseType.LOADING, xdock_trip["stop_2"].id)] == phase_gate.BLOCKED_ON_SCAN
+    assert blocked[(PhaseType.LOADING, xdock_trip["stop_2"].id)] == BLOCKED_ON_SCAN
 
 
 async def test_confirmation_reads_scan_in_not_scan_out(db_session, store, seeded):
@@ -83,22 +83,22 @@ async def test_confirmation_reads_scan_in_not_scan_out(db_session, store, seeded
         direction=ScanDirection.OUT,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
-    assert blocked[(PhaseType.CONFIRMATION, seeded["stop"].id)] == phase_gate.BLOCKED_ON_SCAN
+    assert blocked[(PhaseType.CONFIRMATION, seeded["stop"].id)] == BLOCKED_ON_SCAN
 
 
 async def test_departure_is_never_blocked(db_session, store, seeded):
     """DEPARTURE is absent from GATED_PHASES entirely — never gated regardless of
     consignment or scan-session state. (UNLOADING used to share this property too,
     until it joined LOADING/CONFIRMATION as a gated phase — see the tests below.)"""
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
     # Via blocked_on_for, not blocked[...]: an ungated phase has NO KEY in the map —
     # "absent means not gated" is the contract. Indexing it directly raises KeyError,
     # and the fix for that is to use the accessor, never to insert null keys for every
     # phase type into the derivation.
-    assert phase_gate.blocked_on_for(
+    assert blocked_on_for(
         blocked, phase_type=PhaseType.DEPARTURE, trip_stop_id=seeded["stop"].id,
     ) is None
 
@@ -106,9 +106,9 @@ async def test_departure_is_never_blocked(db_session, store, seeded):
 async def test_unloading_is_blocked_before_the_session_closes(db_session, store, seeded):
     """UNLOADING gates on ScanDirection.IN — the warehouse scanning parcels off the
     truck at the delivery stop — mirroring LOADING's OUT-direction gate at pickup."""
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
-    assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] == phase_gate.BLOCKED_ON_SCAN
+    assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] == BLOCKED_ON_SCAN
 
 
 async def test_unloading_unblocks_once_the_session_closes(db_session, store, seeded):
@@ -117,7 +117,7 @@ async def test_unloading_unblocks_once_the_session_closes(db_session, store, see
         direction=ScanDirection.IN,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
+    blocked = await blocked_on_by_stop(db_session, trip_id=seeded["trip"].id)
 
     assert blocked[(PhaseType.UNLOADING, seeded["stop"].id)] is None
 
@@ -131,13 +131,13 @@ async def test_a_stop_with_two_waybills_blocks_until_both_close(
         direction=ScanDirection.OUT,
     )
 
-    blocked = await phase_gate.blocked_on_by_stop(
+    blocked = await blocked_on_by_stop(
         db_session, trip_id=two_waybill_stop["trip"].id,
     )
 
     assert blocked[
         (PhaseType.LOADING, two_waybill_stop["stop"].id)
-    ] == phase_gate.BLOCKED_ON_SCAN
+    ] == BLOCKED_ON_SCAN
 
 
 async def test_the_whole_trip_resolves_in_one_batch(db_session, store, xdock_trip):
@@ -149,6 +149,6 @@ async def test_the_whole_trip_resolves_in_one_batch(db_session, store, xdock_tri
     """
     store.batch_calls = 0
 
-    await phase_gate.blocked_on_by_stop(db_session, trip_id=xdock_trip["trip"].id)
+    await blocked_on_by_stop(db_session, trip_id=xdock_trip["trip"].id)
 
     assert store.batch_calls == 1

@@ -7,7 +7,7 @@ Run: pytest tests/unit/test_phase_plan.py -v
 """
 
 from app.db.models.enums import PhaseType
-from app.orchestration.phase_plan import PlanStop, PlannedPhase, build_phase_plan
+from app.orchestration.phases.plan import PlanStop, PlannedPhase, build_phase_plan
 
 
 def _as_tuples(plan: list[PlannedPhase]) -> list[tuple[int, PhaseType, int | None]]:

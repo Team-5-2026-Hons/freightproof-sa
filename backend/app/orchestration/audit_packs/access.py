@@ -28,14 +28,14 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip
-from app.orchestration.audit_pack_service import (
+from app.orchestration.audit_packs.lifecycle import (
     hash_token,
     pack_label,
     seal_payload,
     storage_errors_as_domain_errors,
     verify_url,
 )
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.verification.service import verify_subject
 from app.reporting.incident_sheet import render_incident_sheet_pdf
 from app.schemas.audit_pack import (
     AuditPackManifest,

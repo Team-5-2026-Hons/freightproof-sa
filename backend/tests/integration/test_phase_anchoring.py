@@ -212,7 +212,8 @@ async def _drain_anchors(db_session, dispatched) -> None:
     """Commit first — the override of get_db in these tests doesn't commit, so the
     after_commit hook that dispatches the anchor hasn't fired yet — then run every queued
     anchor exactly as the worker would."""
-    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS, anchor_phase_event
+    from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+    from app.orchestration.phases.anchor_execution import anchor_phase_event
 
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)

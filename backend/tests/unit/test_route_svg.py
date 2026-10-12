@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import timedelta
 
-from app.orchestration.audit_pack_analysis import COVERAGE_GAP_THRESHOLD
+from app.orchestration.audit_packs.analysis import COVERAGE_GAP_THRESHOLD
 from app.reporting.route_svg import render_route_svg
 from app.schemas.audit_pack import CoverageGap, PositionFix, StopRecord
 

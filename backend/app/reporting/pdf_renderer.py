@@ -1,7 +1,7 @@
 """Render an Audit Pack manifest to HTML, then to PDF with WeasyPrint.
 
 The template only lays out what the manifest already says; anything that needs working
-out (gaps, incidents, observations) was decided upstream in audit_pack_analysis, so the
+out (gaps, incidents, observations) was decided upstream in audit_packs.analysis, so the
 PDF and the web page can never compute two different answers.
 
 Autoescaping is on for every value: descriptions, notes and names are free text typed

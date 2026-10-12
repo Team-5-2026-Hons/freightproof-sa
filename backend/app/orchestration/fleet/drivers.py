@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject
 from app.blockchain.critical_fields import diff_critical_fields
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.orchestration.fleet.canonical import anchor_fleet_event
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.integrations.supabase_admin import create_driver_auth_user
 from app.db.models.blockchain import BlockchainReceipt
@@ -120,22 +121,12 @@ async def create_driver(
     db.add(driver_event)
     await db.flush()
 
-    canonical = {
-        "driver_event_id": str(driver_event.id),
-        "driver_id": str(driver.id),
-        "event_type": DriverEventType.CREATED.value,
-        "fields": snapshot,
-        "changed_by_user_id": str(current_user_id),
-        "timestamp": driver_event.created_at.isoformat(),
-    }
-    receipt = await anchor_subject(
+    await anchor_fleet_event(
         db,
-        subject_type=SubjectType.DRIVER_EVENT,
-        subject_id=driver_event.id,
-        canonical_payload=canonical,
+        anchor=anchor_subject,
+        event=driver_event,
         receipt_type=BlockchainReceiptType.DRIVER_CREATED,
     )
-    driver_event.blockchain_receipt_id = receipt.id
 
     await db.refresh(driver)
     return DriverRead.model_validate(driver)
@@ -206,22 +197,12 @@ async def update_driver(
     await db.flush()
 
     if diff is not None:
-        canonical = {
-            "driver_event_id": str(event.id),
-            "driver_id": str(driver.id),
-            "event_type": event_type.value,
-            "fields": diff,
-            "changed_by_user_id": str(current_user_id),
-            "timestamp": event.created_at.isoformat(),
-        }
-        receipt = await anchor_subject(
+        await anchor_fleet_event(
             db,
-            subject_type=SubjectType.DRIVER_EVENT,
-            subject_id=event.id,
-            canonical_payload=canonical,
+            anchor=anchor_subject,
+            event=event,
             receipt_type=BlockchainReceiptType.DRIVER_UPDATED,
         )
-        event.blockchain_receipt_id = receipt.id
 
     await db.refresh(driver)
     return DriverRead.model_validate(driver)

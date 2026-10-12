@@ -25,7 +25,7 @@ from app.integrations.parcel_perfect import (
 from app.db.models.enums import ParcelStatus, PhaseType, SealCondition
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Parcel
-from app.orchestration.phase_plan import PlanStop, build_phase_plan
+from app.orchestration.phases.plan import PlanStop, build_phase_plan
 from scripts.seed_demo import _PRECINCTS as DEMO_PRECINCTS
 from scripts.seed_trips import (
     _manifest_key_for,

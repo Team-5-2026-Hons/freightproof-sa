@@ -26,7 +26,7 @@ from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.enums import BlockchainReceiptType, SubjectType, VehicleEventType, VehicleType
 from app.db.models.events import VehicleEvent
 from app.db.models.vehicles import UQ_VEHICLES_ORG_PULSIT, UQ_VEHICLES_ORG_REGISTRATION, Vehicle
-from app.orchestration.vehicle_service import create_vehicle, update_vehicle
+from app.orchestration.fleet.vehicles import create_vehicle, update_vehicle
 from app.schemas.vehicles import VehicleCreateBody, VehicleUpdateBody
 
 # Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.
