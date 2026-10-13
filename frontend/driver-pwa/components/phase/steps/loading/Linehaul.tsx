@@ -41,7 +41,7 @@ export function Linehaul({
   // permanently true, so the field is coalesced to null first.
   const isBlocked = (phase.blocked_on ?? null) !== null
 
-  const { uploadNow } = useArtifactUpload(tripId)
+  const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
 
   // Upload starts the moment the photo exists, not when the driver swipes — the walk
   // between the two is dead time otherwise. Same pattern as departure/CaptureSeal.tsx.
@@ -53,7 +53,7 @@ export function Linehaul({
   function handleCapture(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ linehaulPhotoDataUrl: dataUrl, linehaulPhotoArtifactId: null, capturedAt })
-    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+    void uploadNow(dataUrl, 'photo', capturedAt, 'linehaul_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ linehaulPhotoArtifactId: artifactId })
     })
   }

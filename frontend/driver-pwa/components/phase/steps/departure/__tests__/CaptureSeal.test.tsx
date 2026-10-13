@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { CaptureSeal } from '../CaptureSeal'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { DepartureEvidence } from '@/lib/types/evidence-draft'
+import type { PhaseEventId } from '@shared/lib/types/phase'
 
 // StepHeader (rendered by the step) calls useRouter — stub it so the component mounts
 // under jsdom, same as every other step-component test.
@@ -32,6 +33,19 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
   ),
+}))
+
+// The hook is the seam under test here: what matters is the phase id and role each step
+// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
+const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
+  mockUseArtifactUpload: vi.fn(),
+  mockUploadNow: vi.fn().mockResolvedValue(null),
+}))
+vi.mock('@/lib/hooks/useArtifactUpload', () => ({
+  useArtifactUpload: (...args: unknown[]) => {
+    mockUseArtifactUpload(...args)
+    return { uploadNow: mockUploadNow }
+  },
 }))
 
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
@@ -209,5 +223,30 @@ describe('CaptureSeal — completing the swipe', () => {
     })
 
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CaptureSeal — evidence attribution', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('captures with this phase and the step\'s role', () => {
+    const phase = makePhase('departure', { phase_event_id: 'phase-event-77' as PhaseEventId })
+    render(
+      <CaptureSeal
+        tripId="t1"
+        phase={phase}
+        stepIndex={1}
+        draft={makeDraft()}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Seal photo'))
+
+    expect(mockUseArtifactUpload).toHaveBeenCalledWith('t1', 'phase-event-77')
+    expect(mockUploadNow).toHaveBeenCalledWith(
+      'data:image/jpeg;base64,Seal photo', 'photo', expect.any(String), 'seal_photo',
+    )
   })
 })
