@@ -92,20 +92,20 @@ export function destinationScannedCount(phases: readonly PhaseDescriptor[]): num
   return sortedPlan(phases).filter(phase => phase.phase_type === 'confirmation').at(-1)?.parcel_count_destination ?? null
 }
 
-/** The seal applied at THIS unloading's own leg's departure — mirrors the backend's
- *  _find_departure_for_leg (phase_service.py). A cross-dock trip has one departure per
- *  leg, so this must be leg-scoped, not trip-wide. Null if not yet recorded. */
+/** The seal applied at THIS leg's own departure — mirrors the backend's
+ *  _find_departure_for_leg (phases/seals.py). A cross-dock trip has one departure per
+ *  leg, so this must be leg-scoped, not trip-wide. Takes the IMMEDIATELY preceding
+ *  departure and then reads its seal, even when null: skipping a seal-less departure
+ *  would return an earlier leg's seal for a leg that recorded none (D40). Null if not
+ *  yet recorded. */
 export function departureSealForLeg(
   phases: readonly PhaseDescriptor[],
-  unloadingPhase: PhaseDescriptor,
+  legPhase: PhaseDescriptor,
 ): string | null {
   const departures = sortedPlan(phases).filter(
-    phase => phase.phase_type === 'departure'
-      && phase.sequence_number < unloadingPhase.sequence_number
-      && phase.seal_number !== null,
+    phase => phase.phase_type === 'departure' && phase.sequence_number < legPhase.sequence_number,
   )
-  if (departures.length === 0) return null
-  return departures[departures.length - 1].seal_number
+  return departures.at(-1)?.seal_number ?? null
 }
 
 /** When THIS leg actually departed, leg-scoped like departureSealForLeg. Never

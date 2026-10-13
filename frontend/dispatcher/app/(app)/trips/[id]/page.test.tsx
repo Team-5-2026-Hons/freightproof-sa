@@ -6,6 +6,7 @@ import { useTripDetail } from '@/lib/hooks/useTripDetail'
 import { mockPrecincts, mockTrips, TRIP_0040_ID } from '@shared/lib/mocks'
 import type { TripException } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
+import { line } from '@/components/domain/__tests__/textLine'
 
 const push = vi.fn()
 const notify = vi.fn()
@@ -168,39 +169,28 @@ beforeEach(() => {
 })
 
 describe('Trip detail phase timeline', () => {
-  it('renders exceptions inside the phase group that recorded them', () => {
+  it('renders each exception as one row inside the phase group that recorded it', () => {
     render(<TripDetailPage />)
 
-    const loadingGroup = screen.getByRole('group', {
-      name: 'Loading phase and exceptions',
-    })
-    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
-    const exceptionRows = within(loadingGroup).getAllByRole('group', {
-      name: 'Exception linked to Loading phase',
-    })
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    const rows = within(loadingGroup).getAllByRole('button', { name: /Cargo Damage|Checkpoint Timeout/ })
 
-    expect(exceptionRows).toHaveLength(2)
-    // The cards sit inside one branch off the rail, marked as the exception kind so
-    // the timeline never confuses it with a phase row.
-    expect(within(loadingGroup).getByRole('group', { name: 'Exceptions linked to Loading phase' })).toHaveAttribute('data-timeline-kind', 'exception')
-    expect(exceptionRows[0]).toHaveTextContent('Loading · Exception')
-    expect(exceptionRows[0]).toHaveTextContent('System')
-    expect(exceptionRows[0]).toHaveTextContent('Info')
+    // Collapsed, the rows sit under the verdict: an exception is never hidden behind a closed card.
+    expect(rows).toHaveLength(2)
+    expect(within(loadingGroup).getByRole('button', { name: /Loading/, expanded: false })).toBeInTheDocument()
+    expect(rows[0]).toHaveTextContent('Raised by system')
+    expect(rows[0]).toHaveTextContent('Info')
+    expect(loadingGroup.querySelector('article')).toBeNull()
   })
 
-  it('orders a phase exception stack from earliest to latest', () => {
+  it('orders a phase\'s exception rows from earliest to latest', () => {
     render(<TripDetailPage />)
 
-    const loadingGroup = screen.getByRole('group', {
-      name: 'Loading phase and exceptions',
-    })
-    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
-    const exceptionRows = within(loadingGroup).getAllByRole('group', {
-      name: 'Exception linked to Loading phase',
-    })
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    const rows = within(loadingGroup).getAllByRole('button', { name: /Cargo Damage|Checkpoint Timeout/ })
 
-    expect(exceptionRows[0]).toHaveTextContent('Cargo Damage')
-    expect(exceptionRows[1]).toHaveTextContent('Checkpoint Timeout')
+    expect(rows[0]).toHaveTextContent('Cargo Damage')
+    expect(rows[1]).toHaveTextContent('Checkpoint Timeout')
   })
 
   it.each([
@@ -214,8 +204,9 @@ describe('Trip detail phase timeline', () => {
     mockedUseTripDetail.mockReturnValue({
       trip: {
         ...base,
+        // The Audit trail belongs to a resolved phase: nothing is anchored before one completes.
         phases: base.phases.map(phase => phase.phase_event_id === evidencePhase.phase_event_id
-          ? { ...phase, blockchain_receipt_id: receiptId }
+          ? { ...phase, blockchain_receipt_id: receiptId, status: 'completed' as const, completed_at: phase.completed_at ?? '2026-05-09T17:00:00Z' }
           : phase),
         blockchain_receipts: [...base.blockchain_receipts, {
           id: receiptId,
@@ -237,6 +228,8 @@ describe('Trip detail phase timeline', () => {
     render(<TripDetailPage />)
 
     const phaseGroup = screen.getByRole('group', { name: new RegExp(`^${phaseType} phase$`, 'i') })
+    // The receipt and Verify live in the card's Audit trail, so the card is opened first.
+    fireEvent.click(within(phaseGroup).getByRole('button', { name: new RegExp(`^${phaseType}`, 'i'), expanded: false }))
     const verification = within(phaseGroup).getByTestId('verify-subject')
     expect(verification).toHaveTextContent(
       `phase_event:${evidencePhase.phase_event_id}`,
@@ -289,6 +282,7 @@ describe('Trip detail phase timeline', () => {
     render(<TripDetailPage />)
 
     const departureGroup = screen.getByRole('group', { name: /^Departure phase$/i })
+    fireEvent.click(within(departureGroup).getByRole('button', { name: /^Departure/i, expanded: false }))
     expect(within(departureGroup).queryByTestId('verify-subject')).toBeNull()
   })
 })
@@ -365,6 +359,11 @@ describe('Trip detail hash-anchored phase scroll', () => {
 })
 
 describe('Trip detail summary and panels', () => {
+  // The exceptions panel scrolls a selected record into view; jsdom has no layout to do it.
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+  })
+
   it('keeps the route summary visible and opens the exception panel', () => {
     render(<TripDetailPage />)
     expect(screen.getByRole('heading', { name: 'TRP-2026-0040' })).toBeInTheDocument()
@@ -379,21 +378,19 @@ describe('Trip detail summary and panels', () => {
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=information'), { scroll: false })
   })
 
-  it('routes a phase group to the all-exceptions panel scope for that exact phase', () => {
+  it('opens the exceptions panel on the exact record when its row on the timeline is clicked', () => {
     const trip = tripWithLoadingExceptionsOutOfOrder()
     const loading = trip.phases.find(phase => phase.phase_type === 'loading')
     if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    const earlierId = trip.exceptions.find(exception => exception.exception_type === 'cargo_damage')!.id
     render(<TripDetailPage />)
 
     const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
-    // The panel trigger lives inside each card, so the branch is opened first. Both
-    // exceptions in this group carry their own trigger; either routes to the same
-    // phase-scoped panel.
-    fireEvent.click(within(loadingGroup).getByRole('button', { name: /2 exceptions · 0 need review/ }))
-    fireEvent.click(within(loadingGroup).getAllByRole('button', { name: 'Open in exceptions panel' })[0]!)
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: /Cargo Damage/ }))
 
+    // The record's id AND its phase: a phase-scoped view with that one record selected.
     expect(push).toHaveBeenCalledWith(
-      expect.stringContaining(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`),
+      `/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&phase=${loading.phase_event_id}&exception=${earlierId}`,
       { scroll: false },
     )
   })
@@ -423,7 +420,7 @@ describe('Trip detail summary and panels', () => {
     expect(allRecorded).toHaveStyle({ background: 'linear-gradient(135deg,#1b1b1c 0%,#303031 100%)' })
   })
 
-  it('closes the narrow overlay before revealing the phase group in the timeline', async () => {
+  it('closes the narrow overlay before revealing the exception row in the timeline, then focuses that row', async () => {
     const trip = tripWithLoadingExceptionsOutOfOrder()
     const loading = trip.phases.find(phase => phase.phase_type === 'loading')
     if (!loading) throw new Error('TRIP_0040 loading phase is missing')
@@ -437,10 +434,13 @@ describe('Trip detail summary and panels', () => {
     rendered.rerender(<TripDetailPage />)
 
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Trip exceptions' })).not.toBeInTheDocument())
-    await waitFor(() => expect(within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /2 exceptions · 0 need review/ })).toHaveAttribute('aria-expanded', 'true'))
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    await waitFor(() => expect(within(loadingGroup).getByRole('button', { name: /Loading/, expanded: true })).toBeInTheDocument())
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('data-highlighted', 'true'))
+    expect(loadingGroup).toContainElement(document.activeElement as HTMLElement)
   })
 
-  it('keeps the docked panel open while revealing a phase group in the timeline', async () => {
+  it('keeps the docked panel open while revealing the exception row in the timeline', async () => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = vi.fn().mockReturnValue({
       matches: true, media: '(min-width: 1280px)', onchange: null,
@@ -458,9 +458,213 @@ describe('Trip detail summary and panels', () => {
       fireEvent.click(within(panel).getAllByRole('button', { name: 'Show in timeline' })[0]!)
 
       expect(panel).toBeInTheDocument()
-      await waitFor(() => expect(within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /2 exceptions · 0 need review/ })).toHaveAttribute('aria-expanded', 'true'))
+      const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+      await waitFor(() => expect(within(loadingGroup).getByRole('button', { name: /Loading/, expanded: true })).toBeInTheDocument())
+      await waitFor(() => expect(loadingGroup).toContainElement(document.activeElement as HTMLElement))
+      expect(document.activeElement).toHaveAttribute('data-highlighted', 'true')
     } finally {
       window.matchMedia = originalMatchMedia
     }
+  })
+
+  it('reveals a trip-level exception in the "Trip record" list from the panel', async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true, media: '(min-width: 1280px)', onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const tripLevel: TripException = { ...base.exceptions[0]!, id: 'trip-level-exception' as TripException['id'], phase_event_id: null, exception_type: 'dispatcher_note' }
+    mockedUseTripDetail.mockReturnValue({
+      trip: { ...base, exceptions: [tripLevel] }, isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&exception=trip-level-exception')
+
+    try {
+      render(<TripDetailPage />)
+      fireEvent.click(within(screen.getByRole('complementary', { name: 'Trip detail' })).getByRole('button', { name: 'Show in timeline' }))
+
+      const record = screen.getByRole('region', { name: 'Trip-level events' })
+      await waitFor(() => expect(record).toContainElement(document.activeElement as HTMLElement))
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+
+  it('returns focus to the row that opened the overlay when the overlay closes', async () => {
+    const trip = tripWithLoadingExceptionsOutOfOrder()
+    const loading = trip.phases.find(phase => phase.phase_type === 'loading')
+    if (!loading) throw new Error('TRIP_0040 loading phase is missing')
+    const earlierId = trip.exceptions.find(exception => exception.exception_type === 'cargo_damage')!.id
+    const rendered = render(<TripDetailPage />)
+    const row = within(screen.getByRole('group', { name: 'Loading phase and exceptions' })).getByRole('button', { name: /Cargo Damage/ })
+    row.focus()
+    fireEvent.click(row)
+
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}&exception=${earlierId}`)
+    rendered.rerender(<TripDetailPage />)
+    expect(screen.getByRole('dialog', { name: 'Trip exceptions' })).toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Trip exceptions' })).getByRole('button', { name: 'Close modal' }))
+    expect(push).toHaveBeenLastCalledWith(`/trips/${TRIP_0040_ID}?exceptions=all`, { scroll: false })
+
+    navigation.search = new URLSearchParams('exceptions=all')
+    rendered.rerender(<TripDetailPage />)
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Trip exceptions' })).not.toBeInTheDocument())
+    expect(row).toHaveFocus()
+  })
+})
+
+describe('Trip detail exceptions panel opened on one exception', () => {
+  const EARLIER_ID = `${mockTrips.find(candidate => candidate.id === TRIP_0040_ID)!.exceptions[0]!.id}-earlier`
+  const scrollIntoView = vi.fn()
+
+  function dockedMatchMedia(): () => void {
+    const original = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: true, media: '(min-width: 1280px)', onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    })
+    return () => { window.matchMedia = original }
+  }
+  function selectedRecord(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[data-exception-id="${EARLIER_ID}"]`)
+  }
+  function loadingPhaseId(): string {
+    return tripWithLoadingExceptionsOutOfOrder().phases.find(phase => phase.phase_type === 'loading')!.phase_event_id
+  }
+
+  beforeEach(() => {
+    scrollIntoView.mockReset()
+    Element.prototype.scrollIntoView = scrollIntoView
+  })
+
+  it('raises the overlay on the selected record when the width is below the dock, and again after a reload of the same URL', async () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+
+    const first = render(<TripDetailPage />)
+
+    const dialog = screen.getByRole('dialog', { name: 'Trip exceptions' })
+    expect(within(dialog).queryByRole('complementary')).toBeNull()
+    expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+    expect(dialog).toContainElement(selectedRecord())
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
+
+    // A reload is a fresh mount of the same URL: it must land on the same record.
+    first.unmount()
+    scrollIntoView.mockReset()
+    render(<TripDetailPage />)
+    expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
+  })
+
+  it('selects the record inside the docked panel at 1280 px and wider', async () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+
+    try {
+      render(<TripDetailPage />)
+
+      const panel = screen.getByRole('complementary', { name: 'Trip detail' })
+      expect(panel).toContainElement(selectedRecord())
+      expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+      expect(screen.queryByRole('dialog', { name: 'Trip exceptions' })).toBeNull()
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
+    } finally {
+      restore()
+    }
+  })
+
+  it('opens on the record from an exception link alone, without a panel parameter', () => {
+    navigation.search = new URLSearchParams(`exception=${EARLIER_ID}`)
+
+    render(<TripDetailPage />)
+
+    expect(screen.getByRole('dialog', { name: 'Trip exceptions' })).toBeInTheDocument()
+    expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows a reviewed record even when the stored filter is "needs review"', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=needs_review&exception=${EARLIER_ID}`)
+
+    render(<TripDetailPage />)
+
+    // Both fixture exceptions are already past review, so the narrow filter alone would show none.
+    expect(selectedRecord()).toBeInTheDocument()
+  })
+
+  it('opens a trip-level exception with no phase filter', () => {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const tripLevel: TripException = { ...base.exceptions[0]!, id: 'trip-level-exception' as TripException['id'], phase_event_id: null }
+    mockedUseTripDetail.mockReturnValue({
+      trip: { ...base, exceptions: [...base.exceptions, tripLevel] }, isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&exception=trip-level-exception')
+
+    render(<TripDetailPage />)
+
+    expect(document.querySelector('[data-exception-id="trip-level-exception"]')).toHaveAttribute('aria-current', 'true')
+    expect(screen.queryByText(/^Selected phase/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'All recorded · 3' })).toBeInTheDocument()
+  })
+
+  it('keeps the phase filter and marks the record when both are in the URL', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loadingPhaseId()}&exception=${EARLIER_ID}`)
+
+    render(<TripDetailPage />)
+
+    expect(screen.getByText(line('Selected phase · 2 of 2 trip exceptions'))).toBeInTheDocument()
+    expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('shows a recoverable message for an exception id that is not on this trip', () => {
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&exception=foreign-exception')
+
+    render(<TripDetailPage />)
+
+    expect(screen.getByText('This exception is not part of this trip.')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Cargo Damage' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all exceptions' }))
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
+  })
+
+  it('keeps the selected record when only the phase filter is cleared', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loadingPhaseId()}&exception=${EARLIER_ID}`)
+    render(<TripDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&exception=${EARLIER_ID}`, { scroll: false })
+  })
+
+  it('leaves the single-record view when a reader picks a filter', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    render(<TripDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unreviewed · 0' }))
+
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=needs_review`, { scroll: false })
+  })
+
+  it('routes "+n more" to the phase-scoped panel with no exception selected', () => {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const phaseId = loadingPhaseId()
+    const many = Array.from({ length: 4 }, (_unused, index) => ({
+      ...base.exceptions[0]!, id: `more-${index}` as TripException['id'], phase_event_id: phaseId, review_status: 'needs_review' as const,
+    }))
+    mockedUseTripDetail.mockReturnValue({
+      trip: { ...base, exceptions: many }, isLoading: false, isValidating: false, error: null,
+      refetch: vi.fn(), refetchSilent: vi.fn(), errorStatus: null, lastUpdated: Date.now(),
+    })
+    render(<TripDetailPage />)
+    const loadingGroup = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+
+    fireEvent.click(within(loadingGroup).getByRole('button', { name: /\+1 more/ }))
+
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&phase=${phaseId}`, { scroll: false })
   })
 })

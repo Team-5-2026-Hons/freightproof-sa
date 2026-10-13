@@ -1,15 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fmtExceptionRaised } from '@/lib/format/exception'
 import { EXCEPTION_BATCH_LIMIT, sortQueueChronologically } from '@/lib/exceptions/queue'
 import type { TripException } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
+import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import { precinctAtPhase } from '@/lib/phase/trip-detail'
 import { ExceptionMapButton, hasExceptionMapEvidence } from './ExceptionMapButton'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { ExceptionSummary } from '@/components/domain/ExceptionSummary'
+import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
+import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { Button } from '@/components/ui/Button'
 import { useDocked } from '@/components/ui/DetailPanel'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -19,12 +22,22 @@ import { uniqueExceptionsById } from './exception-dedupe'
 export type ExceptionFilter = 'needs_review' | 'all'
 interface Props {
   trip: Trip; precincts: Precinct[]; filter: ExceptionFilter; onFilter: (filter: ExceptionFilter) => void; returnTo: string
+  /** The trip's artifacts by id, so an exception's supporting photo can be shown here
+   *  (the timeline card that used to carry it is going away). */
+  artifactsById: Map<string, EvidenceArtifactWithUrl>
   selectedPhaseId?: string | null
   invalidPhaseId?: string | null
+  /** The one record the panel was opened on (`exception=<id>` in the URL), already known
+   *  to belong to this trip. */
+  selectedExceptionId?: string | null
+  /** An `exception` id in the URL that is not on this trip. */
+  invalidExceptionId?: string | null
   onClearPhaseFilter?: () => void
-  onShowInTimeline?: (phaseId: string) => void
+  onClearExceptionSelection?: () => void
+  /** The record's own id travels with its phase (null for a trip-level record), so the timeline can reveal that row. */
+  onShowInTimeline?: (exceptionId: string, phaseId: string | null) => void
 }
-export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId = null, invalidPhaseId = null, onFilter, onClearPhaseFilter, onShowInTimeline, returnTo }: Props) {
+export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, selectedPhaseId = null, invalidPhaseId = null, selectedExceptionId = null, invalidExceptionId = null, onFilter, onClearPhaseFilter, onClearExceptionSelection, onShowInTimeline, returnTo }: Props) {
   // Docked, this panel is DetailPanel's own `bg-surf-low` <aside>, a 'low' card there
   // is the exact same tone as its own container, indistinguishable but for a faint
   // border. Below the dock width it renders inside Modal instead, whose background is
@@ -36,10 +49,27 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
   const [batchSelection, setBatchSelection] = useState<{tripId: string; rows: TripException[]} | null>(null)
   const [grouping, setGrouping] = useState<'none' | 'phase'>('none')
   const batchOpen = batchSelection?.tripId === trip.id
-  if (invalidPhaseId) {
-    return <div role="status" className="rounded-lg border border-warn/30 bg-warn-c/30 p-4 text-sm text-on-surf">
-      <p>This phase filter is not part of this trip.</p>
-      <Button className="mt-3" variant="secondary" size="sm" onClick={onClearPhaseFilter}>Clear phase filter</Button>
+  const selectedRef = useRef<HTMLDivElement>(null)
+  // Scroll once per selection, not per render: a polling refetch hands this panel a new
+  // trip object every few seconds, and re-running on that would drag a reader who has
+  // scrolled on back to the record. The frame wait is for the overlay: Modal calls
+  // showModal() in its own effect, which runs after this one (children first), and a
+  // dialog that is not yet open has no layout to scroll within.
+  useEffect(() => {
+    if (!selectedExceptionId) return
+    const frame = window.requestAnimationFrame(() => selectedRef.current?.scrollIntoView({ block: 'center' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [selectedExceptionId])
+  if (invalidPhaseId || invalidExceptionId) {
+    return <div className="space-y-3">
+      {invalidPhaseId && <div role="status" className="rounded-lg border border-warn/30 bg-warn-c/30 p-4 text-sm text-on-surf">
+        <p>This phase filter is not part of this trip.</p>
+        <Button className="mt-3" variant="secondary" size="sm" onClick={onClearPhaseFilter}>Clear phase filter</Button>
+      </div>}
+      {invalidExceptionId && <div role="status" className="rounded-lg border border-warn/30 bg-warn-c/30 p-4 text-sm text-on-surf">
+        <p>This exception is not part of this trip.</p>
+        <Button className="mt-3" variant="secondary" size="sm" onClick={onClearExceptionSelection}>Show all exceptions</Button>
+      </div>}
     </div>
   }
 
@@ -56,7 +86,11 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
     e.review_status === 'needs_review'
     && e.severity !== 'critical'
     && (e.claimed_by_user_id === null || e.claimed_by_user_id === user?.id))
+  // A record the URL selected but the phase filter excludes would otherwise open the panel
+  // on nothing, with no sign of why; say so and offer the way out.
+  const selectedOutsideScope = selectedExceptionId !== null && !scopedExceptions.some(e => e.id === selectedExceptionId)
   return <div>
+    {selectedOutsideScope && <p role="status" className="mb-4 rounded-lg border border-warn/30 bg-warn-c/30 p-3 text-sm text-on-surf">The selected exception is outside this phase filter.</p>}
     {selectedPhaseId && <div className="mb-4 rounded-lg border border-outline-v/30 bg-surf-low p-3 text-sm text-on-surf">
       <p>Selected phase · {scopedExceptions.length} of {tripExceptions.length} trip exceptions</p>
       <Button className="mt-2" variant="secondary" size="sm" onClick={onClearPhaseFilter}>Clear phase filter</Button>
@@ -89,22 +123,42 @@ export function TripExceptionsPanel({ trip, precincts, filter, selectedPhaseId =
       const phase = trip.phases.find(p => p.phase_event_id === exception.phase_event_id)
       const precinct = phase ? precinctAtPhase(trip, phase, precincts) : undefined
       const mapEvidence = hasExceptionMapEvidence(exception, phase, precinct)
-      // Same footer mechanism the timeline card uses: nothing renders (no stray
-      // divider) when this record has neither a map nor a phase to jump to.
-      const footer = (mapEvidence || phase) && <div className="flex flex-wrap items-center gap-2">
-        {/* The map comes first: for a position finding it answers the dispatcher's
-            first question ("how far off?") before any navigation does. */}
-        {mapEvidence && <ExceptionMapButton exception={exception} phase={phase} precinct={precinct} />}
-        {phase && <Button variant="ghost" size="sm" onClick={() => onShowInTimeline?.(phase.phase_event_id)}>Show in timeline</Button>}
+      // A position finding compares the linked phase's own fixes, so it needs the phase;
+      // a photo or fix on the record itself does not.
+      const showsPositions = exception.exception_type === 'gps_mismatch' && phase !== undefined
+      const hasSupportingEvidence = showsPositions || exceptionHasEvidence(exception)
+      // Every record can be shown on the timeline, so the footer is never empty: the map and the
+      // supporting evidence are what vary.
+      const footer = <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The map comes first: for a position finding it answers the dispatcher's
+              first question ("how far off?") before any navigation does. */}
+          {mapEvidence && <ExceptionMapButton exception={exception} phase={phase} precinct={precinct} />}
+          {/* A trip-level record has no phase, but it has a row in the timeline's "Trip record" list. */}
+          <Button variant="ghost" size="sm" onClick={() => onShowInTimeline?.(exception.id, phase?.phase_event_id ?? null)}>Show in timeline</Button>
+        </div>
+        {hasSupportingEvidence && <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-sec">Supporting evidence</summary>
+          <div className="mt-3">
+            {showsPositions && (
+              // The panel's own map button above already draws a driver-raised finding from
+              // its snapshot; the inner one is only needed when the record has none.
+              <PositionDisagreement phase={phase} precinct={precinct} source={exception.source} hideMapButton={!exception.action_location_assessment} />
+            )}
+            <ExceptionEvidence exception={exception} artifactsById={artifactsById} />
+          </div>
+        </details>}
       </div>
-      return <div key={exception.id} className="[&_time]:text-on-surf-v">
-        <p className="mb-2 break-words text-xs text-on-surf-v tabular-nums">Trip {trip.trip_reference} · Raised {fmtExceptionRaised(exception.created_at)}</p>
+      const selected = exception.id === selectedExceptionId
+      return <div key={exception.id} ref={selected ? selectedRef : undefined} data-exception-id={exception.id} aria-current={selected ? 'true' : undefined}
+        className={selected ? 'rounded-lg ring-2 ring-sec ring-offset-4 ring-offset-transparent [&_time]:text-on-surf-v' : '[&_time]:text-on-surf-v'}>
+        <p className="mb-2 break-words text-xs text-on-surf-v tabular-nums">Trip {trip.trip_reference} · Raised {fmtExceptionRaised(exception.created_at)}{selected && ' · Selected exception'}</p>
         <ExceptionSummary
           exception={exception}
           phaseLabel={phase ? PHASE_NAMES[phase.phase_type] : 'Trip record'}
           returnTo={returnTo}
           tone={tone}
-          footer={footer || undefined}
+          footer={footer}
         />
       </div>
   }

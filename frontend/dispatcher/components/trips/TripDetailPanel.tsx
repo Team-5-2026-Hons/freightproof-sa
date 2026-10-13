@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
+import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import { DetailPanel } from '@/components/ui/DetailPanel'
 import type { Tab } from '@/components/ui/Tabs'
 import { ManifestContent } from '@/components/domain/ManifestContent'
@@ -20,13 +21,16 @@ const TITLES: Record<TripPanel, string> = { information: 'Trip information', man
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
+  /** Resolves an exception's supporting photo in the exceptions tab. */
+  artifactsById: Map<string, EvidenceArtifactWithUrl>
   selectedPhaseId?: string | null; invalidPhaseId?: string | null
+  selectedExceptionId?: string | null; invalidExceptionId?: string | null
   overlayOpen: boolean
   onSelect: (panel: TripPanel) => void
-  onClose: () => void; onFilter: (value: ExceptionFilter) => void; onClearPhaseFilter?: () => void
-  onShowInTimeline?: (phaseId: string) => void; onChanged: () => void; returnTo: string
+  onClose: () => void; onFilter: (value: ExceptionFilter) => void; onClearPhaseFilter?: () => void; onClearExceptionSelection?: () => void
+  onShowInTimeline?: (exceptionId: string, phaseId: string | null) => void; onChanged: () => void; returnTo: string
 }
-export function TripDetailPanel({ panel, trip, precincts, filter, selectedPhaseId, invalidPhaseId, overlayOpen, onSelect, onClose, onFilter, onClearPhaseFilter, onShowInTimeline, onChanged, returnTo }: Props) {
+export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById, selectedPhaseId, invalidPhaseId, selectedExceptionId, invalidExceptionId, overlayOpen, onSelect, onClose, onFilter, onClearPhaseFilter, onClearExceptionSelection, onShowInTimeline, onChanged, returnTo }: Props) {
   const exceptions = uniqueExceptionsById(trip.exceptions)
   const needsReview = exceptions.filter(e => e.review_status === 'needs_review').length
   // Rendered as siblings of DetailPanel, not inside it: below the dock width DetailPanel
@@ -52,7 +56,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, selectedPhaseI
       {panel === 'information' && <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />}
       {panel === 'manifest' && <ManifestContent tripId={trip.id} />}
       {panel === 'audit' && <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference} onIssue={() => setIssueOpen(true)} onDeclare={() => setDeclareOpen(true)} />}
-      {panel === 'exceptions' && <TripExceptionsPanel trip={trip} precincts={precincts} filter={filter} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} onFilter={onFilter} onClearPhaseFilter={onClearPhaseFilter} onShowInTimeline={onShowInTimeline} returnTo={returnTo} />}
+      {panel === 'exceptions' && <TripExceptionsPanel trip={trip} precincts={precincts} filter={filter} artifactsById={artifactsById} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} selectedExceptionId={selectedExceptionId} invalidExceptionId={invalidExceptionId} onFilter={onFilter} onClearPhaseFilter={onClearPhaseFilter} onClearExceptionSelection={onClearExceptionSelection} onShowInTimeline={onShowInTimeline} returnTo={returnTo} />}
     </DetailPanel>
     {openPrecinct && <PrecinctModal precinct={openPrecinct} open onClose={() => setOpenPrecinct(null)} returnTo={returnTo} />}
     <CancelTripDialog tripId={trip.id} status={trip.status} open={cancelOpen} onClose={() => setCancelOpen(false)} onCancelled={onChanged} />

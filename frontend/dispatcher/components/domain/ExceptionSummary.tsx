@@ -20,12 +20,6 @@ interface Props {
    *  reads as one bordered block instead of a card with unrelated controls floating
    *  below it. */
   footer?: ReactNode
-  /** When provided, replaces the "View exception"/"Review exception" link (a full page
-   *  navigation) with an "Open in exceptions panel" trigger. The trip timeline passes
-   *  this: review and full detail both belong to the exceptions panel, not a second,
-   *  competing route out of the timeline card. TripExceptionsPanel never passes it — it
-   *  IS that panel, so its own cards keep the real link through to the exception's page. */
-  onOpenPanel?: () => void
   /** Card surface tone. 'low' (default) reads correctly against a 'lowest'-toned
    *  container — the trip timeline's scroller and the overlay Modal both are. The
    *  docked exceptions panel is itself 'low' (DetailPanel's `<aside>`), so a card
@@ -34,7 +28,7 @@ interface Props {
    *  indistinguishable from its own background but for a faint border. */
   tone?: 'low' | 'lowest'
 }
-export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOpenPanel, tone = 'low' }: Props) {
+export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone = 'low' }: Props) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const target = ROUTES.exceptionDetail(exception.id)
   const { user } = useAuth()
@@ -69,13 +63,9 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOp
             marker, and the label already says who wrote it. */}
         {exception.review_outcome && exception.review_outcome !== 'dispatcher_authored' && ` · ${exception.review_outcome.replaceAll('_', ' ')}`}
       </p>
-      {onOpenPanel
-        ? <button type="button" onClick={onOpenPanel} className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
-            Open in exceptions panel
-          </button>
-        : <Link className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4" href={withReturnTo(target, returnTo)}>
-            {exception.review_status === 'needs_review' ? 'Review exception' : 'View exception'} →
-          </Link>}
+      <Link className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4" href={withReturnTo(target, returnTo)}>
+        {exception.review_status === 'needs_review' ? 'Review exception' : 'View exception'} →
+      </Link>
       {footer && <div className="mt-3 border-t border-outline-v/20 pt-3">{footer}</div>}
     </article>
   )

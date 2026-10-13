@@ -97,6 +97,17 @@ const config: Config = {
         },
       },
 
+      // D37: four named steps, in rem so browser zoom scales them. Aliases of DESIGN_SYSTEM §5.1
+      // roles (label = Label-M, meta = Body-S, body = Body-M, title = Title-S). Anything that
+      // carries a value (an id, a count, a time) is never below `meta`. New and rewritten
+      // components use only these; the ~357 literal sizes elsewhere migrate in a later codemod.
+      fontSize: {
+        label: ['0.6875rem', { lineHeight: '1rem', fontWeight: '600', letterSpacing: '0.04em' }],
+        meta:  ['0.75rem',   { lineHeight: '1rem', letterSpacing: '0.03em' }],
+        body:  ['0.8125rem', { lineHeight: '1.125rem' }],
+        title: ['0.9375rem', { lineHeight: '1.25rem', fontWeight: '700' }],
+      },
+
       fontFamily: {
         sans:     ['var(--font-inter)', 'system-ui', 'sans-serif'],
         mono:     ['var(--font-inter)', 'system-ui', 'sans-serif'],

@@ -12,6 +12,7 @@ import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
 import { TripTimeline } from '@/components/trips/TripTimeline'
 import { TripDetailPanel } from '@/components/trips/TripDetailPanel'
 import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
+import type { RevealRequest } from '@/components/trips/useExceptionReveal'
 import type { ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
 import { IntegritySummary } from '@/components/blockchain/IntegritySummary'
 import { useTripDetail } from '@/lib/hooks/useTripDetail'
@@ -21,6 +22,7 @@ import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/t
 import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
+import { buildTripPanelQuery } from '@/lib/trips/panel-query'
 
 const PANELS: readonly string[] = ['information', 'manifest', 'exceptions', 'audit']
 const DOCKED_PANEL_QUERY = '(min-width: 1280px)'
@@ -55,7 +57,10 @@ function TripDetail({ tripId }: { tripId: string }) {
   const artifacts = useTripArtifacts(tripId)
   const { precincts, error: precinctsError, refetch: retryPrecincts } = usePrecincts()
   const panelValue = search.get('panel')
-  const selected = panelValue && PANELS.includes(panelValue) ? panelValue as TripPanel : null
+  const exceptionQuery = search.get('exception')
+  // A link to one exception names no tab of its own: `exception=<id>` alone must still
+  // open the exceptions panel instead of landing on a page that shows nothing.
+  const selected = panelValue && PANELS.includes(panelValue) ? panelValue as TripPanel : exceptionQuery ? 'exceptions' : null
   // Docked, the panel is permanent, so it always has a view: Information is the default.
   // The URL parameter still drives it, and below the dock width doubles as "the reader
   // asked for this", which is what raises the overlay.
@@ -66,26 +71,34 @@ function TripDetail({ tripId }: { tripId: string }) {
   // records — a copied link must never look successful when it is not.
   const selectedPhaseId = trip && phaseQuery && trip.phases.some(phase => phase.phase_event_id === phaseQuery) ? phaseQuery : null
   const invalidPhaseId = trip && phaseQuery && !selectedPhaseId ? phaseQuery : null
+  // Same rule for the exception id: it must be one of this trip's records, or the panel
+  // says so rather than showing something else.
+  const selectedExceptionId = trip && exceptionQuery && trip.exceptions.some(exception => exception.id === exceptionQuery) ? exceptionQuery : null
+  const invalidExceptionId = trip && exceptionQuery && !selectedExceptionId ? exceptionQuery : null
   // A phase link is an evidence view, not a review queue. It must retain every record
-  // for that phase when browser history restores an older narrow-filter URL.
-  const filter: ExceptionFilter = selectedPhaseId || search.get('exceptions') === 'all' ? 'all' : 'needs_review'
-  const [revealRequest, setRevealRequest] = useState<{ phaseId: string; requestId: number } | null>(null)
-  const [pendingOverlayReveal, setPendingOverlayReveal] = useState<string | null>(null)
+  // for that phase when browser history restores an older narrow-filter URL. A selected
+  // exception is the same: it may be reviewed already, and "needs review" would hide it.
+  const filter: ExceptionFilter = selectedPhaseId || selectedExceptionId || search.get('exceptions') === 'all' ? 'all' : 'needs_review'
+  const [revealRequest, setRevealRequest] = useState<RevealRequest | null>(null)
+  const [pendingOverlayReveal, setPendingOverlayReveal] = useState<Omit<RevealRequest, 'requestId'> | null>(null)
   const returnTo = `${ROUTES.tripDetail(tripId)}${search.size ? `?${search.toString()}` : ''}`
   // What the list that led here already knew. Lets the header name the trip immediately
   // instead of holding the whole page behind one slow record fetch.
   const seed = getTripSeed(tripId)
   const facts = tripHeaderFacts(trip, seed)
 
-  function setPanel(next: TripPanel | null, nextFilter?: ExceptionFilter, nextPhaseId?: string | null): void {
-    const query = new URLSearchParams(search.toString())
-    if (next) query.set('panel', next)
-    else query.delete('panel')
-    if (nextFilter) query.set('exceptions', nextFilter)
-    if (next !== 'exceptions' || nextPhaseId === null) query.delete('phase')
-    else if (nextPhaseId) query.set('phase', nextPhaseId)
-    const suffix = query.toString()
+  // `undefined` keeps the phase / exception already in the URL; `null` clears it.
+  function setPanel(next: TripPanel | null, nextFilter?: ExceptionFilter, nextPhaseId?: string | null, nextExceptionId?: string | null): void {
+    const suffix = buildTripPanelQuery(search.toString(), { panel: next, filter: nextFilter, phaseId: nextPhaseId, exceptionId: nextExceptionId })
     router.push(`${ROUTES.tripDetail(tripId)}${suffix ? `?${suffix}` : ''}`, { scroll: false })
+  }
+
+  /** What an exception row on the timeline calls (D42). An exception id selects that
+   *  record; a null id opens the panel on the phase's records ("+n more"). A null phase
+   *  is a trip-level exception, so no phase filter is applied. Opens the docked panel at
+   *  1280 px and wider and the overlay below, by the URL alone. */
+  function openException(exceptionId: string | null, phaseId: string | null): void {
+    setPanel('exceptions', 'all', phaseId, exceptionId)
   }
 
   const terminal = trip ? isTerminalTrip(trip) : seed?.status === 'closed' || seed?.status === 'cancelled'
@@ -97,22 +110,24 @@ function TripDetail({ tripId }: { tripId: string }) {
     scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${active.phase_event_id}`))
   }
 
-  function showInTimeline(phaseId: string): void {
-    const requestReveal = () => setRevealRequest(previous => ({ phaseId, requestId: (previous?.requestId ?? 0) + 1 }))
+  /** "Show in timeline" from the panel: the row for that exception, whichever phase (or the
+   *  trip record) it belongs to. The counter makes a repeat request for the same row land again. */
+  function showInTimeline(exceptionId: string, phaseId: string | null): void {
+    const request = { exceptionId, phaseId }
     if (window.matchMedia(DOCKED_PANEL_QUERY).matches) {
-      requestReveal()
+      setRevealRequest(previous => ({ ...request, requestId: (previous?.requestId ?? 0) + 1 }))
       return
     }
     // The overlay's focus trap must be gone before moving focus into the timeline. The
     // docked panel stays put: it is a sibling column, not an overlay to dismiss.
-    setPendingOverlayReveal(phaseId)
+    setPendingOverlayReveal(request)
     setPanel(null)
   }
 
   useEffect(() => {
     if (!pendingOverlayReveal || selected !== null) return
     const frame = window.requestAnimationFrame(() => {
-      setRevealRequest(previous => ({ phaseId: pendingOverlayReveal, requestId: (previous?.requestId ?? 0) + 1 }))
+      setRevealRequest(previous => ({ ...pendingOverlayReveal, requestId: (previous?.requestId ?? 0) + 1 }))
       setPendingOverlayReveal(null)
     })
     return () => window.cancelAnimationFrame(frame)
@@ -156,15 +171,17 @@ function TripDetail({ tripId }: { tripId: string }) {
         {precinctsError && <ResourceWarning message={`Location names could not be refreshed. ${precinctsError}`} onRetry={retryPrecincts} />}
         {artifacts.error && <ResourceWarning message={`Evidence could not be refreshed. ${artifacts.error}`} onRetry={artifacts.refetch} />}
         <div ref={timelineRef} data-timeline-scroller className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
-          <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} returnTo={returnTo} lastUpdated={lastUpdated} onJump={jump}
-            onOpenExceptions={phaseId => setPanel('exceptions', 'all', phaseId)} revealRequest={revealRequest}
-            onRevealHandled={phaseId => scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${phaseId}`))} />
+          <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
+            onOpenException={openException} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest}
+            onRevealHandled={targetId => scrollIntoTimeline(timelineRef, document.getElementById(targetId))} />
           <IntegritySummary trip={trip} />
         </div>
       </div>
-      <TripDetailPanel panel={panel} trip={trip} precincts={precincts} filter={filter} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} overlayOpen={selected !== null}
-        onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId)}
-        onClearPhaseFilter={() => setPanel('exceptions', undefined, null)} onShowInTimeline={showInTimeline}
+      <TripDetailPanel panel={panel} trip={trip} precincts={precincts} filter={filter} artifactsById={artifacts.byId}
+        selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} selectedExceptionId={selectedExceptionId} invalidExceptionId={invalidExceptionId} overlayOpen={selected !== null}
+        // Picking a filter is leaving the single-record view, so the selection goes.
+        onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId, null)}
+        onClearPhaseFilter={() => setPanel('exceptions', undefined, null)} onClearExceptionSelection={() => setPanel('exceptions', undefined, undefined, null)} onShowInTimeline={showInTimeline}
         onChanged={refetchSilent} returnTo={returnTo} />
     </div>
   </div>

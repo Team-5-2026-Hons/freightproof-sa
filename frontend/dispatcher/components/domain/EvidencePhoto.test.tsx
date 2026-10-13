@@ -27,3 +27,21 @@ describe('EvidencePhoto recovery', () => {
     expect(screen.getByRole('img', { name: 'Seal' })).toBeInTheDocument()
   })
 })
+
+describe('EvidencePhoto thumbnail size', () => {
+  it('keeps the 96 px thumbnail by default, so every existing caller is unchanged', () => {
+    render(<EvidencePhoto label="Seal" artifact={artifact} />)
+
+    expect(screen.getByRole('img', { name: 'Seal' })).toHaveClass('w-[96px]', 'h-[96px]')
+  })
+
+  it('draws a 44 px thumbnail for a Recorded row, and the same modal opens from it', () => {
+    render(<EvidencePhoto label="Seal" artifact={artifact} size="compact" />)
+
+    const thumbnail = screen.getByRole('img', { name: 'Seal' })
+    expect(thumbnail).toHaveClass('w-11', 'h-11')
+    expect(thumbnail).not.toHaveClass('w-[96px]')
+    fireEvent.click(screen.getByRole('button', { name: 'Open Seal' }))
+    expect(screen.getAllByRole('img', { name: 'Seal' })).toHaveLength(2)
+  })
+})
