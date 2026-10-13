@@ -236,7 +236,7 @@ export const FLEET_COPY = {
       source: 'Seal, trailer-separation, parcel, waybill, panic and receiver-ID reports in our ledger, on closed trips. The trailer check runs on the simulated Pulsit tracker feed; parcel and waybill counts come from the parcel feeds.',
       question: 'Is theft risk going up?',
       basis: (count: number): string =>
-        `${count} seal, parcel, waybill, panic or receiver ID signs on closed trips. A seal that could not be checked is a paperwork gap, not a theft sign, so it is left out.`,
+        `${count} seal, trailer-separation, parcel, waybill, panic or receiver ID signs on closed trips. A seal that could not be checked is a paperwork gap, not a theft sign, so it is left out.`,
       total: 'Theft signs',
       lower: 'theft signs',
     },
@@ -438,7 +438,9 @@ export const FLEET_COPY = {
     },
     incidents: {
       title: 'Incident map',
-      source: 'The position saved with each report: the driver’s phone for driver reports, the simulated tracker for automatic tracker checks. Any trip status; dispatcher notes are left out.',
+      // A stop's tracker mismatch saves the driver's own fix (orchestration/phases/findings.py);
+      // only the road check saves the tracker's (orchestration/evidence/road_check.py).
+      source: 'The position saved with each report: the driver’s phone for driver reports and for tracker mismatches at a stop; the simulated tracker for checks on the road. Any trip status; dispatcher notes are left out.',
       question: 'Where do problems happen?',
       basis: (count: number): string =>
         `${count} reports with a location in this period, any trip status. Dispatcher notes are left out.`,

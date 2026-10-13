@@ -360,7 +360,8 @@ describe('RoutesTab', () => {
     fireEvent.click(within(map).getByRole('button', { name: 'About this chart: Incident map' }))
 
     const source = within(map).getByText('Source:').closest('p')
-    expect(source).toHaveTextContent('the simulated tracker for automatic tracker checks')
+    expect(source).toHaveTextContent('for tracker mismatches at a stop')
+    expect(source).toHaveTextContent('the simulated tracker for checks on the road')
     expect(source).toHaveTextContent('dispatcher notes are left out')
   })
 })
