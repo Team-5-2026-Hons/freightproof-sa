@@ -1,14 +1,23 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { api } from '@/lib/api/client'
 import type { TabQuery } from '@/lib/format/period'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import type { DurationStats } from '@shared/lib/types/analytics'
 import type { FleetIncidents, FleetRoutes, IncidentPin, LaneRisk, SiteActivity } from '@shared/lib/types/fleet-analytics'
+import type { MapWindow } from '../navigation'
 import { RoutesTab } from './RoutesTab'
 
 vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn() },
+}))
+
+// The tab subscribes to the live channel; the provider is not mounted in these tests and its
+// absence must not be what the assertions are measuring.
+vi.mock('@/lib/realtime/useLiveResource', () => ({
+  useLiveResource: vi.fn(),
 }))
 
 // Leaflet has no place in jsdom; the map's own pure parts are tested in IncidentMap.test.tsx.
@@ -21,13 +30,34 @@ vi.mock('../map/IncidentMap', () => ({
 }))
 
 const mockedGet = vi.mocked(api.get)
+const mockedUseLiveResource = vi.mocked(useLiveResource)
 
 const TODAY = '2026-09-16'
 const QUERY: TabQuery = { start: '2026-08-31', end: TODAY, grain: 'week', grainAdjusted: false, disabledGrains: [] }
 const RETURN_TO = '/analytics?tab=routes&grain=week&period=last_12_weeks'
 
-function renderTab() {
-  return render(<RoutesTab query={QUERY} returnTo={RETURN_TO} />)
+const TODAY_PATH = `/api/v1/analytics/fleet/incidents?start=${TODAY}&end=${TODAY}`
+const PERIOD_PATH = `/api/v1/analytics/fleet/incidents?start=${QUERY.start}&end=${TODAY}`
+const ROUTES_PATH = `/api/v1/analytics/fleet/routes?start=${QUERY.start}&end=${TODAY}`
+
+/** The page owns the map's window, so the switch only moves if a parent re-renders with the
+ *  new value; this stands in for that parent. */
+function Harness({ initialWindow }: { initialWindow: MapWindow }) {
+  const [mapWindow, setMapWindow] = useState<MapWindow>(initialWindow)
+  return (
+    <RoutesTab
+      query={QUERY} returnTo={RETURN_TO} today={TODAY}
+      mapWindow={mapWindow} onMapWindowChange={setMapWindow}
+    />
+  )
+}
+
+function renderTab(initialWindow: MapWindow = 'period') {
+  return render(<Harness initialWindow={initialWindow} />)
+}
+
+function incidentPaths(): string[] {
+  return mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('/incidents?'))
 }
 
 function stats(values: number[]): DurationStats {
@@ -98,6 +128,7 @@ function rowsOf(element: HTMLElement): (string | null)[][] {
 
 beforeEach(() => {
   mockedGet.mockReset()
+  mockedUseLiveResource.mockReset()
 })
 
 describe('RoutesTab', () => {
@@ -227,5 +258,109 @@ describe('RoutesTab', () => {
     renderTab()
 
     expect(await screen.findByText(/No reports with a location in this period\..*2 reports in this period had no location\./)).toBeInTheDocument()
+  })
+
+  it('names every kind of report that sends a location, not just the panic button', async () => {
+    serve(makeRoutes(), makeIncidents([], 0))
+
+    renderTab()
+
+    const empty = await screen.findByText(/No reports with a location in this period\./)
+    expect(empty).toHaveTextContent('Driver reports, panic alerts and automatic tracker checks send one')
+    expect(empty).not.toHaveTextContent(/only panic-button/i)
+  })
+
+  it('starts on This period and asks incidents for the tab period', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+
+    renderTab()
+    const map = await waitFor(() => card('Incident map'))
+
+    const group = within(map).getByRole('radiogroup', { name: 'Show reports from' })
+    expect(within(group).getByRole('radio', { name: 'This period' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(group).getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'false')
+    await waitFor(() => expect(incidentPaths()).toEqual([PERIOD_PATH]))
+  })
+
+  it('asks incidents for today alone when Today is chosen, and leaves routes alone', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+    renderTab()
+    const map = await waitFor(() => card('Incident map'))
+
+    fireEvent.click(within(map).getByRole('radio', { name: 'Today' }))
+
+    await waitFor(() => expect(incidentPaths()).toEqual([PERIOD_PATH, TODAY_PATH]))
+    // The sites and lanes charts keep the tab's period: asking them for today would empty them.
+    expect(mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('/routes?')))
+      .toEqual([ROUTES_PATH])
+  })
+
+  it('opens straight on Today when the page starts there, without asking for the period first', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+
+    renderTab('today')
+
+    await waitFor(() => expect(incidentPaths()).toEqual([TODAY_PATH]))
+  })
+
+  it('says which day Today means', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical'), pin('b', 'warning')], 0))
+
+    renderTab('today')
+    const map = await waitFor(() => card('Incident map'))
+
+    // The basis lives in the "i", not on the card face (fleet spec D22).
+    fireEvent.click(within(map).getByRole('button', { name: 'About this chart: Incident map' }))
+
+    expect(await within(map).findByText(
+      '2 reports with a location today (16 Sep 2026, South African time), any trip status. Dispatcher notes are left out.',
+    )).toBeInTheDocument()
+  })
+
+  it('listens for a report being raised on any trip, and refreshes without dimming', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+
+    renderTab('today')
+    await waitFor(() => card('Incident map'))
+
+    const [resource, id, , options] = mockedUseLiveResource.mock.calls.at(-1) ?? []
+    expect(resource).toBe('trip')
+    expect(id).toBe('any')
+    // Only exception_raised: ordinary phase traffic must not re-poll the map.
+    expect(options).toEqual({ kinds: ['exception_raised'] })
+  })
+
+  it('re-asks only the incidents when a report is raised, leaving routes alone', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+    renderTab('today')
+    await waitFor(() => expect(incidentPaths()).toEqual([TODAY_PATH]))
+    const onChange = mockedUseLiveResource.mock.calls.at(-1)?.[2]
+    if (onChange === undefined) throw new Error('no live callback')
+
+    await act(async () => { onChange() })
+
+    expect(incidentPaths()).toEqual([TODAY_PATH, TODAY_PATH])
+    expect(mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('/routes?')))
+      .toEqual([ROUTES_PATH])
+  })
+
+  it('says nothing has come in yet when Today is empty', async () => {
+    serve(makeRoutes(), makeIncidents([], 0))
+
+    renderTab('today')
+
+    expect(await screen.findByText('No reports with a location yet today (South African time).')).toBeInTheDocument()
+  })
+
+  it('names where the incident map comes from, and says the tracker is simulated', async () => {
+    serve(makeRoutes(), makeIncidents([pin('a', 'critical')], 0))
+    renderTab()
+    const map = await waitFor(() => card('Incident map'))
+
+    fireEvent.click(within(map).getByRole('button', { name: 'About this chart: Incident map' }))
+
+    const source = within(map).getByText('Source:').closest('p')
+    expect(source).toHaveTextContent('the simulated tracker for automatic tracker checks')
+    expect(source).toHaveTextContent('dispatcher notes are left out')
   })
 })

@@ -17,13 +17,16 @@ interface InfoPopoverProps {
   /** How to read the chart, e.g. "Top-right = busy and risky". A description; a warning
    *  belongs on the card face instead. */
   note?: string
+  /** Where the figure comes from, e.g. "Closed trips only, from our trip records…". Shown
+   *  last before the footnote, so a presenter is one click from any figure's provenance. */
+  source?: string
   /** The popover's last line, e.g. what faded buckets mean. */
   footnote?: string
 }
 
 /** The small "i" beside a chart title. Keeps the card face clean and holds the chart's
  *  question and basis. Non-modal: closes on a second click, Escape or an outside click. */
-export function InfoPopover({ title, question, basis, note, footnote }: InfoPopoverProps) {
+export function InfoPopover({ title, question, basis, note, source, footnote }: InfoPopoverProps) {
   const [open, setOpen] = useState(false)
   const popoverId = useId()
   const wrapperRef = useRef<HTMLSpanElement>(null)
@@ -75,6 +78,11 @@ export function InfoPopover({ title, question, basis, note, footnote }: InfoPopo
           <p className="text-[13px] font-[600] text-on-surf">{question}</p>
           {basis !== undefined && <p className="mt-1 text-[12px] text-on-surf-v">{basis}</p>}
           {note !== undefined && <p className="mt-2 text-[12px] text-on-surf-v">{note}</p>}
+          {source !== undefined && (
+            <p className="mt-2 text-[12px] text-on-surf-v">
+              <span className="font-[600] text-on-surf">{`${FLEET_COPY.chart.sourceLabel}:`}</span> {source}
+            </p>
+          )}
           {footnote !== undefined && <p className="mt-2 text-[12px] text-on-surf-v">{footnote}</p>}
         </div>
       )}

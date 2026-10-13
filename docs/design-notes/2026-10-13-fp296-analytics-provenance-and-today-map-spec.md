@@ -1,7 +1,9 @@
 # FP-296 — Today's incidents on the map, and a source for every analytics figure
 
-**Status:** SPEC — not started. Written 2026-10-13 from `dev` at `15c44e0`. Every path below was
-checked against that commit.
+**Status: COMPLETE — built and checked 2026-10-13, awaiting Tom's commit and PR into `dev`.**
+Stages 0–4 and 6 done; Stage 5 SKIPPED on evidence (§14.1); Stage 2's live browser check deferred
+(§14.4). Decisions taken during the build are in §15. Written 2026-10-13 from `dev` at `15c44e0`;
+every path below was checked against that commit and re-checked while building.
 **Owner:** Tom (sign-off after every stage). **Written:** 2026-10-13 by Claude, from a decision
 session with Tom. Every choice in §2 was agreed with him.
 **Ticket:** FP-296 (Sprint 9, parent epic FP-136 "Evidence Analytics & Live Alerting").
@@ -28,6 +30,10 @@ The executor never creates or switches branches.
 > Tom's sign-off.** Follow `CLAUDE.md` exactly: a PLAN block before each stage, TASK COMPLETE after it, no git
 > write commands, never `alembic`, never read `.env`. Structural freeze starts 19 Oct: **don't move or rename
 > any file**. Start at the first stage in §14 that is not DONE.
+>
+> **This work is COMPLETE as of 13 Oct 2026** — the handoff above is kept as written for the
+> record. For the state of the work, read §14 (progress and findings) and §15 (decisions taken
+> during the build, and what is still open).
 
 ---
 
@@ -357,10 +363,161 @@ are green. The backend suite is unchanged from Stage 0.
 
 | Stage | Status | Tests (dispatcher / backend) | Notes |
 |---|---|---|---|
-| 0 Baseline + deployed check | NOT STARTED | | |
-| 1 Today switch + deep link + map text | NOT STARTED | | |
-| 2 Live pins | NOT STARTED | | |
-| 3 Chart source lines | NOT STARTED | | |
-| 4 Tiles + detail sources | NOT STARTED | | |
-| 5 Wording fix (conditional) | NOT STARTED | | |
-| 6 Full checks | NOT STARTED | | |
+| 0 Baseline + deployed check | DONE (13 Oct 2026) | dispatcher 1511 pass / 147 files · backend 2622 pass, 4 skipped | Deployed check impossible — see 14.1. Done on localhost instead. Phrase NOT FOUND. Recommend Stage 5 SKIPPED, awaiting Tom. |
+| 1 Today switch + deep link + map text | **DONE** (13 Oct 2026) | dispatcher 1521 pass / 147 files (+10) · backend untouched | Deviation: `MapWindow` declared in `navigation.ts`, not `RoutesTab.tsx` (§7.1), so the address parser needn't import a React component. `IncidentsCard`'s prop is `mapWindow`, not `window`, to avoid shadowing the browser global. |
+| 2 Live pins | **BUILT** (13 Oct 2026) — live browser check DEFERRED, see 14.4 | dispatcher 1528 pass / 147 files (+7) · backend untouched | R2 cleared: `EXCEPTION_RAISED` is emitted by `orchestration/exceptions/creation.py:401` (driver reports) and `orchestration/evidence/road_check.py:311` (automatic checks), plus 13 other paths. `pinSignature` compares report ids only — position and severity are fixed when a report is raised. |
+| 3 Chart source lines | **DONE** (13 Oct 2026) | dispatcher 1537 pass / 147 files (+9) · backend untouched | All 22 cards carry a verified `source`; `ChartCard.source` is required, so tsc enumerated every call site. 11 of §5.3's drafts were wrong and were corrected against the queries (see 14.3). Tom chose D10 option C: the mock-feed note lives in `FLEET_COPY.dataNote` at page level only. |
+| 4 Tiles + detail sources | **DONE** (Tom checked, 13 Oct 2026) | dispatcher 1541 pass / 147 files (+4) · backend untouched | `AnalyticsSummaryFrame.source` is required, so tsc named all three summaries. The frame wraps every state, so loading, error, empty and ready all carry it. `FleetTiles` renders its line outside the three state branches for the same reason. The three detail-summary drafts in §5.3 needed no correction. |
+| 5 Wording fix (conditional) | **SKIPPED** (Tom, 13 Oct 2026) | n/a | Stage 0 found no such text in code or on screen. Evidence in 14.1. Jira comment drafted in 14.2, not posted. |
+| 6 Full checks | **DONE** (13 Oct 2026) | dispatcher: lint 0 errors / type-check clean / 1541 pass / build OK · backend: 2622 pass, 4 skipped — identical to Stage 0 | Both CI blocks run in full, including the deferred `npm run build`. No shared file touched; no migration; no new .env key. |
+
+### 14.1 Stage 0 findings (13 Oct 2026)
+
+**The deployed-site check in §9 could not be performed.** Signing in at
+`https://freightproof-sa.vercel.app/` returns "Signed in, but your dispatcher profile could not be
+loaded" — Supabase Auth accepts the credentials, then the dispatcher profile fetch fails because the
+Railway backend is not serving. A site that cannot load a profile cannot render a vehicle detail page.
+**Substituted:** the same check on `localhost:3000` against the current branch, agreed with Tom.
+This is a spec/reality disagreement under rule 6: §9 and D11 assume the deployed site is reachable.
+
+**"done for vehicle details" — NOT FOUND.** Evidence:
+- Whole-repo grep, frontend *and* backend, at `HEAD` and at the presented commit `d785615`:
+  `"done for"` has no user-facing hit (one unrelated Python comment, `orchestration/trips/listing.py:97`).
+  `"vehicle details"` appears only as `'Vehicle details updated'`, `components/blockchain/EventTimeline.tsx:36,43`.
+- Rendered page text (which grep cannot cover — runtime-assembled or DB-sourced strings) on
+  horse `CA 123-456` and trailer `CA 789-012`, Analytics tab and Immutable History tab: no "done for",
+  no "vehicle details", no standalone "Done". The trailer also exercised the empty state.
+- The vehicle-detail right-panel toggle is `Immutable History | Analytics`
+  (`app/(app)/fleet/vehicles/[id]/page.tsx:54-57`). Nothing on it reads "done".
+- The source minutes hedge: *"something reading 'done for vehicle details'"*
+  (`docs/Iteration_3_Documentation/iteration-3-presentation-minutes.md:168`), and `docs/iteration4_plan.md:99`
+  already recorded "Not in dispatcher source · Can't verify".
+- **Reading offered to Tom, not proven:** the phrase is plausibly a garbled transcription of a spoken
+  remark — "[it's] done for vehicle details" — i.e. the analytics toggle was built for vehicle details,
+  asking what about elsewhere. FP-296's provenance-on-every-page work is already the answer to that.
+
+**Three incidental findings (not FP-296 work, not fixed here):**
+1. `lib/auth/SupabasePasswordAuth.ts:47` — the comment claims "the login page shows this error's own
+   message". No longer true: `app/(public)/login/page.tsx` replaces every non-`ProfileUnavailableError`
+   with the generic `'Invalid credentials'`. Stale comment.
+2. That generic string makes a wrong password indistinguishable from a network, key or timeout failure
+   (and `lib/supabase/client.ts` aborts the first auth attempt at 3s). Deliberate anti-enumeration
+   choice, but it cost real debugging time. Worth its own ticket.
+3. Local `npm run type-check` reports one error in `.next/types/validator.ts` for
+   `app/(app)/blockchain/receipts/page.js`, a route deleted in `2a99080` (FP-149). The generated file is
+   dated 16 Sep; `tsconfig.json` includes `.next/types/**/*.ts`. A stale local artifact, invisible to CI
+   (`.next` is gitignored). Not a real type error.
+
+
+### 14.2 Drafted FP-296 comment for Stage 5 (NOT posted — Tom posts)
+
+> "done for vehicle details": text not found. Not in the code at the presented commit d785615 or at
+> dev 15c44e0 (whole-repo search, frontend and backend), and not on the rendered vehicle detail page —
+> Analytics or Immutable History, horse or trailer — checked on 13 Oct 2026. The deployed site could not
+> be checked: it authenticates but cannot load a dispatcher profile while the Railway backend is down.
+> Closest string in the product is the event title "Vehicle details updated". No wording change made.
+
+**Not run in Stage 0:** `npm run build` (would force a cold rebuild of Tom's dev server's `.next`) and
+`git fetch origin` (no SSH key in the agent sandbox; `origin/dev` last fetched 13 Oct 13:16 at `15c44e0`).
+Both carried to Stage 6.
+
+### 14.3 Stage 3 — §5.3 corrections made after reading the queries (rule 8)
+
+Verified first: migration `2026_09_13_tom_live_analytics_views.py` turned all five analytics views from
+materialized into **plain** views, so the three detail-summary lines may say "live" truthfully.
+
+| Card | Correction | Evidence |
+|---|---|---|
+| 1.1 Trips over time | added "Closed trips only" | `base.py:closed_trips` filters `status == CLOSED` |
+| 1.7 Cancellations | added the denominator: every trip that ended | `activity.py:cancellations_by_bucket` counts cancelled *and* total ended |
+| 1.3 Busy patterns | arrivals are the **in-transit** step; overridden steps excluded; **any trip status** | `patterns.py:build_patterns` uses `PhaseType.IN_TRANSIT`; `attested_instants` has no closed-trip filter |
+| 2.1 On-time | only trips that had planned times; arrival is *recorded*, not attested | `on_time.py` returns `None` without a plan; `actual_arrival_at` is a Trip column |
+| 2.2 How late | same as 2.1 | same source |
+| 3.1 / 3.3 / 3.4 Problems | added "on closed trips, dispatcher notes left out" | `EXCLUDED_FROM_PROBLEMS = {DISPATCHER_NOTE}` |
+| 3.2 Theft signs | added **trailer-separation**, and that it runs on the simulated Pulsit feed | `constants.py:THEFT_SIGNAL_TYPES` includes `TRAILER_LOCATION_MISMATCH`; the draft omitted it |
+| 4.1–4.4 Review desk | any trip status; 4.1–4.3 critical only, 4.4 any severity; legacy markers excluded | `review.py` docstring and `outcomes()` |
+| 5.1 Tracker agreement | attested stop steps on closed trips; the driving step has no verdict | `evidence.py:tracker` excludes `IN_TRANSIT`, requires `trip_stop_id` |
+| 5.2 Overrides | it is a share of every step on closed trips, not a bare count | `evidence.py:overrides` |
+| 1.6 Busiest sites | attested steps, closed trips, empty-run unloadings are not deliveries | `routes.py:site_counts` requires `trip_type == LOADED` for a delivery |
+
+Unchanged because they were already accurate: Tiles · 2.5 Plans vs reality · **3.5 Risky times** (checked line by
+line against `problems.py:112`, the figure the panel challenged) · 2.4 Driving time · 6.3 Lane risk · 3.6 Incident
+map · all three detail summaries.
+
+**Finding for Tom, beyond D10's two feeds.** Four integrations default to mock in `core/config.py`, not two:
+`PULSE_USE_MOCK`, `PP_USE_MOCK`, **`IDVS_USE_MOCK`** (`integrations/idvs`, which raises `RECEIVER_ID_MISMATCH`, a
+theft signal) and **`SCAN_FEED_USE_MOCK`** (`integrations/scan_feed`, which `orchestration/consignments/scans.py`
+uses for parcel and waybill mismatches). Tom chose **option C**: name the gap once in the page-level data note
+rather than lengthening each card's line or re-opening D10.
+
+### 14.4 Stage 2's live check is deferred, not done
+
+The pin-appears-by-itself behaviour was **not** verified against a running server: the driver app runs on a
+team phone Tom did not have. Unit tests cover the wiring (the subscription's resource/id/kinds, that its callback
+re-asks only the incidents, that a silent refetch never sets `isRefreshing`, and that an unchanged pin set yields
+an unchanged signature), but the real SSE round trip is unproven.
+
+**No phone is needed to close this.** The dispatcher's own dev panel at `/dev/triggers` has a Tracker actions
+control (`components/dev/TrackerActions.tsx`, wired at `DevTriggerPanel.tsx:71`) whose **Run road check** button
+calls `POST /dev/tracker/check` → `road_check.check_trip_on_road`, which saves `gps_lat`/`gps_lng` from the
+simulated Pulsit fix (`road_check.py:305-306`) and publishes `EXCEPTION_RAISED` (`road_check.py:311`) — a real
+located pin and a real live event. The panel's plain **Raise exception** control
+(`backend/app/dev/endpoints/triggers.py:461`) sends no GPS, which is the other half of the test: the unlocated
+count must rise while the map stays still.
+
+Test steps are in the hand-over note Tom holds. If a pin needs a reload, that is the live channel, not the map —
+report it, do not change the backend (D13).
+
+### 14.5 Final check run (Stage 6, 13 Oct 2026)
+
+| Check | Stage 0 baseline | Stage 6 | |
+|---|---|---|---|
+| backend `ruff check .` | passed | passed | — |
+| backend `scripts/check_structure.py` | OK | OK | same pre-existing "tree shrank" note |
+| backend `lint-imports` | 17 kept, 0 broken | 17 kept, 0 broken | — |
+| backend `mypy .` | 505 files, clean | 505 files, clean | — |
+| backend `pytest -m "not slow"` | 2622 passed, 4 skipped | **2622 passed, 4 skipped** | unchanged, as intended |
+| dispatcher `npm run lint` | 0 errors, 2 warnings | 0 errors, 2 warnings | warnings pre-date FP-296 (`EvidencePhoto.tsx`) |
+| dispatcher `npm run type-check` | 1 phantom error | **clean** | the stale `.next` artifact cleared itself |
+| dispatcher `npm test` | 1511 passed | **1541 passed** | +30 across stages 1–4 |
+| dispatcher `npm run build` | not run | **passed** | every route compiled; `/analytics` 157 kB |
+
+Diff: 36 files, +744 / −37. **No shared file touched** — each of CLAUDE.md's eight was checked explicitly.
+No migration, no new dependency, no new `.env` key, no file moved or renamed.
+
+---
+
+## 15. Decisions taken during the build (13 Oct 2026)
+
+§2 holds the decisions agreed before any code. These are the ones the build itself forced, each
+agreed with Tom at the time. They are recorded here because the reasoning, not just the result, is
+what a reviewer or examiner will ask about.
+
+| # | Decision | Why | Who |
+|---|---|---|---|
+| B1 | **The deployed-site check in §9 was replaced by the same check on `localhost`.** | The deployed dispatcher authenticates but then fails with "Signed in, but your dispatcher profile could not be loaded": Supabase Auth accepts the credentials and the profile fetch fails because the Railway backend is not serving. A site that cannot load a profile cannot render a vehicle detail page, so the check was impossible as written. | Tom |
+| B2 | **Stage 5 SKIPPED: the "done for vehicle details" text does not exist.** | Whole-repo search (frontend *and* backend) at `HEAD` and at the presented commit `d785615` found no user-facing hit; the rendered Analytics and Immutable History tabs of a horse and a trailer showed none either. The minutes themselves hedge ("something reading…"). Changing a label on a guess would have altered text the driver and precinct pages share. Evidence: §14.1. | Tom |
+| B3 | **`MapWindow` is declared in `navigation.ts`, not `RoutesTab.tsx` as §7.1 said.** | `navigation.ts` needs the type to annotate `mapWindowFromSearch`. A plain-TypeScript URL parser importing from a React component is the wrong dependency direction. Same type, same behaviour. | Claude, flagged to Tom |
+| B4 | **`IncidentsCard`'s prop is `mapWindow`, not `window`.** | A prop named `window` shadows the browser global inside the component. It passed lint and tsc, but it is a trap for the next edit. | Claude, flagged to Tom |
+| B5 | **`pinSignature` compares report ids only.** | A pin's position and severity are fixed when the report is raised, so the set of ids is the whole identity. This is what stops a live refetch redrawing the markers and refitting the map mid-demo (D4). Assumes ids contain no comma, which holds because they are UUIDs. | Claude |
+| B6 | **11 of the 21 draft Source lines in §5.3 were wrong and were corrected against the queries.** | Rule 8 requires every Source line to be true. Reading the ten fleet query modules showed real errors, not stylistic ones: a missing theft-signal type, a chart that is not limited to closed trips, a rate described as a count. Full table with evidence: §14.3. | Tom approved all 11 |
+| B7 | **D10 option C: the mock-feed gap is named once in the page-level data note, not on each card.** | Tracing the theft signals found **four** integrations defaulting to mock, not the two D10 names: `PULSE_USE_MOCK`, `PP_USE_MOCK`, `IDVS_USE_MOCK` (receiver-ID checks) and `SCAN_FEED_USE_MOCK` (parcel and waybill counts). Naming all four on every card line would bloat them; the page note is where a presenter would point anyway. D10 itself was not re-opened. | Tom |
+| B8 | **`source` is a *required* prop on both `ChartCard` and `AnalyticsSummaryFrame`.** | D7 applied to the detail pages as well. The compiler, not a manual sweep, is what enumerates every figure: making it required produced the exact list of 21 chart call sites and all 3 summaries. A card added later cannot forget one. | Tom (D7), extended by Claude |
+| B9 | **The tile row's and the summaries' Source lines render outside the loading/error/empty branches.** | Where a figure comes from does not depend on whether it arrived. Putting the line in one place per surface means no state can silently lose it, and the tests assert all three states. | Claude |
+| B10 | **Em dashes removed from dispatcher-facing analytics copy only; comments, docs and `NO_DATA` left alone.** | Tom's rule is "not customer facing in the dispatcher UI". Seven rendered strings were reworded (paired em dashes became parentheses or commas, not bare hyphens, which read as typos). The 48 pre-existing em dashes in teammates' comments were left: touching them would widen an FP-296 PR into nine unrelated files days before the 19 Oct freeze. `NO_DATA = '—'` (`lib/format/analytics.ts:6`) was left as deliberate typography for an empty cell; it is rendered by 10 files including non-analytics screens. **Open question for Tom.** | Tom |
+
+### 15.1 Still open after this ticket
+
+1. **Stage 2's live behaviour is unverified against a running server** (§14.4). Closeable from the
+   dispatcher's own dev panel without the team phone.
+2. **The FP-296 Jira comment in §14.2 has not been posted.** Tom posts it.
+3. **`lib/auth/SupabasePasswordAuth.ts:47` carries a stale comment** claiming the login page shows
+   Supabase's own error message. It does not — `app/(public)/login/page.tsx` replaces every
+   non-`ProfileUnavailableError` with a generic "Invalid credentials", which makes a wrong password
+   indistinguishable from a network, key or timeout failure. Deliberate anti-enumeration design, but
+   it cost real debugging time in this session. Worth its own ticket; outside FP-296.
+4. **Busy patterns counts trips of any status**, unlike every other chart on the page, which counts
+   closed trips only. Its Source line now says so honestly, but the inconsistency is in the backend
+   (`patterns.py:attested_instants` has no closed-trip filter) and a reviewer may ask about it.
+5. **`NO_DATA = '—'`** — see B10.
+

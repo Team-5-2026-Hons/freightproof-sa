@@ -9,6 +9,11 @@ import type { TabControls } from './controls/ControlRow'
 
 /** The page's own tab parameter: shared, so the return address and the tabs agree. */
 export const TAB_PARAM = 'tab'
+/** Which window the incident map is showing. Declared here rather than beside the tab so the
+ *  address parser doesn't have to import a React component to name its own return type. */
+export type MapWindow = 'today' | 'period'
+export const MAP_PARAM = 'map'
+const MAP_TODAY = 'today'
 const GRAIN_PARAM = 'grain'
 const PERIOD_PARAM = 'period'
 const START_PARAM = 'start'
@@ -22,8 +27,11 @@ const ALL_PRESETS: ReadonlySet<string> = new Set<PresetId>([
 ])
 
 /** The Analytics address for `tab` with these choices, e.g.
- *  "/analytics?tab=routes&grain=week&period=last_26_weeks". */
-export function analyticsReturnHref(tab: string, controls: TabControls): string {
+ *  "/analytics?tab=routes&grain=week&period=last_26_weeks".
+ *
+ *  `mapWindow` is written only when it is Today: "period" is the default the page already
+ *  reaches without it, so leaving it out keeps the common address short and bookmarkable. */
+export function analyticsReturnHref(tab: string, controls: TabControls, mapWindow?: MapWindow): string {
   const params = new URLSearchParams({
     [TAB_PARAM]: tab,
     [GRAIN_PARAM]: controls.grain,
@@ -33,7 +41,14 @@ export function analyticsReturnHref(tab: string, controls: TabControls): string 
     params.set(START_PARAM, controls.period.start)
     params.set(END_PARAM, controls.period.end)
   }
+  if (mapWindow === MAP_TODAY) params.set(MAP_PARAM, MAP_TODAY)
   return `${ROUTES.analytics}?${params.toString()}`
+}
+
+/** The incident map's window from the address. Anything the page didn't write (missing,
+ *  hand-edited, or from an older version) reads as the default rather than failing. */
+export function mapWindowFromSearch(search: URLSearchParams): MapWindow {
+  return search.get(MAP_PARAM) === MAP_TODAY ? MAP_TODAY : 'period'
 }
 
 /** True when the address carries choices from analyticsReturnHref. */

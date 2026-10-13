@@ -11,6 +11,8 @@ import {
   analyticsReturnHref,
   controlsFromSearch,
   hasReturnedControls,
+  mapWindowFromSearch,
+  type MapWindow,
 } from '@/components/analytics/fleet/navigation'
 import { ActivityTab } from '@/components/analytics/fleet/tabs/ActivityTab'
 import { EvidenceTab } from '@/components/analytics/fleet/tabs/EvidenceTab'
@@ -106,6 +108,10 @@ function FleetAnalytics() {
   const tiles = useFleetTiles()
   const [controls, setControls] = useState<Record<TabId, TabControls>>(() => initialControls(active, search))
   const [patternPeriod, setPatternPeriod] = useState<PeriodSelection>(DEFAULT_PATTERN_PERIOD)
+  // Seeded from the address once, so /analytics?tab=routes&map=today opens on Today and Back
+  // from a report returns to it. The tidy-address effect below then drops the parameter: the
+  // choice lives in state from here on, exactly as the View by and Period choices do.
+  const [mapWindow, setMapWindow] = useState<MapWindow>(() => mapWindowFromSearch(search))
   const today = todaySast()
   const allTimeStart = tiles.data?.all_time_start ?? null
   const activeControls = controls[active]
@@ -143,6 +149,8 @@ function FleetAnalytics() {
               allTimeStart={allTimeStart}
             />
             <p className="text-[12px] text-on-surf-v">{FLEET_COPY.scopeNote}</p>
+            {/* Where the figures come from, once for the page; each card's "i" names its own. */}
+            <p className="text-[12px] text-on-surf-v">{FLEET_COPY.dataNote}</p>
             {/* Only the open tab is mounted, so only its requests run. */}
             {active === 'activity' && (
               <ActivityTab
@@ -157,7 +165,15 @@ function FleetAnalytics() {
             {active === 'problems' && <ProblemsTab query={query} allTimeStart={allTimeStart} today={today} />}
             {active === 'review' && <ReviewDeskTab query={query} allTimeStart={allTimeStart} today={today} />}
             {active === 'evidence' && <EvidenceTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'routes' && <RoutesTab query={query} returnTo={analyticsReturnHref(active, activeControls)} />}
+            {active === 'routes' && (
+              <RoutesTab
+                query={query}
+                returnTo={analyticsReturnHref(active, activeControls, mapWindow)}
+                today={today}
+                mapWindow={mapWindow}
+                onMapWindowChange={setMapWindow}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -169,4 +169,16 @@ describe('OnTimeTab', () => {
     ])
     expect(within(card('Plans vs reality')).getByText('11 finished early (typically 40 min) · 5 ran over (typically 20 min)')).toBeInTheDocument()
   })
+
+  it('names where Plans vs reality comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeOnTime(true))
+    renderTab()
+    const element = await waitFor(() => card('Plans vs reality'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Plans vs reality' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Only closed trips with both planned times and an arrival')
+  })
 })

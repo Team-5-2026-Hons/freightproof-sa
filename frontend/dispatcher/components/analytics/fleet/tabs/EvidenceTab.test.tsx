@@ -116,4 +116,17 @@ describe('EvidenceTab', () => {
     expect(screen.getByText('No closed trips departed in this period.')).toBeInTheDocument()
     expect(screen.getByText('No sign-offs on closed trips in this period.')).toBeInTheDocument()
   })
+
+  it('names where Tracker agreement comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeEvidence(true))
+    renderTab()
+    const element = await waitFor(() => card('Tracker agreement'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Tracker agreement' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('simulated Pulsit feed')
+    expect(source).toHaveTextContent('not live trackers')
+  })
 })
