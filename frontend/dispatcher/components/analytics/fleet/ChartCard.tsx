@@ -35,6 +35,10 @@ interface ChartCardProps {
   caveat?: string
   /** How to read the chart. Shown in the "i" popover, under the basis. */
   note?: string
+  /** Where this chart's figures come from. Required, not optional: the type checker is what
+   *  guarantees "every figure names a source", so a card added later cannot forget one.
+   *  Shown in the "i" popover, never on the card face. */
+  source: string
   /** The card draws buckets over time, so its popover ends with what a faded bucket means. */
   timeAxis?: boolean
   /** Controls for this one chart, shown in the header in every state. */
@@ -61,7 +65,7 @@ interface ChartCardProps {
  *  plus first load, refetch, error, empty and low-sample states, and the Show table toggle.
  *  The low-sample warning stays on the card face since it must be seen without clicking. */
 export function ChartCard({
-  title, question, basis, sampleSize, caveat, note, timeAxis = false, controls, legend, isLoading, isRefreshing = false, error, onRetry,
+  title, question, basis, sampleSize, caveat, note, source, timeAxis = false, controls, legend, isLoading, isRefreshing = false, error, onRetry,
   isEmpty, emptyBody, table, children, chartHeight = CHART_HEIGHT, className,
 }: ChartCardProps) {
   const [showTable, setShowTable] = useState(false)
@@ -105,7 +109,7 @@ export function ChartCard({
         <div className="flex min-w-0 items-center gap-1">
           <h3 id={titleId} className="text-[14px] font-[700] text-on-surf">{title}</h3>
           <InfoPopover
-            title={title} question={question} basis={basis} note={note}
+            title={title} question={question} basis={basis} note={note} source={source}
             footnote={timeAxis ? COPY.partialFootnote : undefined}
           />
         </div>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
@@ -195,5 +195,20 @@ describe('DriverAnalyticsSummary — no closed trips in the range', () => {
     expect(screen.queryByText('Trips')).not.toBeInTheDocument()
     expect(screen.queryByText('Info')).not.toBeInTheDocument()
     expect(screen.queryByText('Confirmation')).not.toBeInTheDocument()
+  })
+
+  it('says where the figures come from, whether they loaded, were empty or failed', () => {
+    const line = /Closed trips this driver ran/
+
+    renderSummary()
+    expect(screen.getByText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ rows: [] })
+    expect(screen.getByText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ error: 'Server unavailable' })
+    expect(screen.getByText(line)).toBeInTheDocument()
   })
 })

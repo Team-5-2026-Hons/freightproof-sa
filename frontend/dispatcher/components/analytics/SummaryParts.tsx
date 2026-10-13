@@ -50,13 +50,17 @@ interface AnalyticsSummaryFrameProps {
   isLoading: boolean
   error: string | null
   onRetry: () => void
+  /** Where this page's figures come from. Required, not optional: the type checker is what
+   *  guarantees all three detail pages name a source, and it shows in every state because the
+   *  answer doesn't depend on whether the figures loaded. */
+  source: string
   /** The figures, shown once loaded without error. */
   children: ReactNode
 }
 
 /** Month range picker above a spinner, an error with retry, or the figures. */
 export function AnalyticsSummaryFrame({
-  range, onRangeChange, isLoading, error, onRetry, children,
+  range, onRangeChange, isLoading, error, onRetry, source, children,
 }: AnalyticsSummaryFrameProps) {
   let body: ReactNode = children
   if (isLoading) {
@@ -82,6 +86,7 @@ export function AnalyticsSummaryFrame({
       {/* Always shown, so the range can still be changed after an error or an empty result. */}
       <MonthRangePicker value={range} onChange={onRangeChange} />
       {body}
+      <p className="text-[12px] text-on-surf-v">{source}</p>
     </div>
   )
 }

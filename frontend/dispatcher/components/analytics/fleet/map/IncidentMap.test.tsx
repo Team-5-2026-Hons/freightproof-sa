@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { IncidentPin } from '@shared/lib/types/fleet-analytics'
-import { PIN_STYLE, buildPinPopup } from './IncidentMap'
+import { PIN_STYLE, buildPinPopup, pinSignature } from './IncidentMap'
 
 function makePin(overrides: Partial<IncidentPin> = {}): IncidentPin {
   return {
@@ -94,5 +94,27 @@ describe('IncidentMap pins', () => {
     expect(PIN_STYLE.warning.glyph).not.toBe(PIN_STYLE.critical.glyph)
     expect(PIN_STYLE.warning.className).toContain('bg-warn-c')
     expect(PIN_STYLE.critical.className).toContain('bg-err')
+  })
+})
+
+describe('pinSignature', () => {
+  const a = makePin({ exception_id: 'exc-a' as IncidentPin['exception_id'] })
+  const b = makePin({ exception_id: 'exc-b' as IncidentPin['exception_id'] })
+
+  it('is the same for the same reports in a different order, so a refetch never refits the map', () => {
+    expect(pinSignature([a, b])).toBe(pinSignature([b, a]))
+  })
+
+  it('changes when a report joins the set', () => {
+    expect(pinSignature([a, b])).not.toBe(pinSignature([a]))
+    expect(pinSignature([a])).not.toBe(pinSignature([]))
+  })
+
+  it('leaves the array it was given alone', () => {
+    const pins = [b, a]
+
+    pinSignature(pins)
+
+    expect(pins).toEqual([b, a])
   })
 })

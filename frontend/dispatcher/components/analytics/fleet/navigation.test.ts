@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { analyticsReturnHref, controlsFromSearch, hasReturnedControls } from './navigation'
+import { analyticsReturnHref, controlsFromSearch, hasReturnedControls, mapWindowFromSearch } from './navigation'
 
 function search(href: string): URLSearchParams {
   return new URLSearchParams(href.split('?')[1] ?? '')
@@ -28,6 +28,23 @@ describe('analytics return address', () => {
   it('knows a plain tab address from a return address', () => {
     expect(hasReturnedControls(search('/analytics?tab=routes'))).toBe(false)
     expect(hasReturnedControls(search('/analytics?tab=routes&grain=week&period=all_time'))).toBe(true)
+  })
+
+  it('carries the incident map window only when it is Today', () => {
+    const controls = { grain: 'week', period: { preset: 'last_12_weeks' } } as const
+
+    expect(analyticsReturnHref('routes', controls, 'today'))
+      .toBe('/analytics?tab=routes&grain=week&period=last_12_weeks&map=today')
+    expect(analyticsReturnHref('routes', controls, 'period')).not.toContain('map=')
+    expect(analyticsReturnHref('routes', controls)).not.toContain('map=')
+  })
+
+  it('reads the map window back, and treats anything it did not write as This period', () => {
+    expect(mapWindowFromSearch(search('/analytics?tab=routes&map=today'))).toBe('today')
+    expect(mapWindowFromSearch(search('/analytics?tab=routes'))).toBe('period')
+    expect(mapWindowFromSearch(search('/analytics?tab=routes&map=period'))).toBe('period')
+    expect(mapWindowFromSearch(search('/analytics?tab=routes&map=yesterday'))).toBe('period')
+    expect(mapWindowFromSearch(search('/analytics?tab=routes&map='))).toBe('period')
   })
 
   it('ignores choices that make no sense rather than guessing', () => {

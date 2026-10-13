@@ -89,6 +89,7 @@ function PunctualityCard({ onTime, grain, today }: TrendCardProps) {
   return (
     <ChartCard
       title={COPY.punctuality.title}
+      source={COPY.punctuality.source}
       question={COPY.punctuality.question}
       basis={COPY.punctuality.basis(departures, arrivals)}
       note={COPY.punctuality.note}
@@ -160,6 +161,7 @@ function LatenessCard({ onTime }: { onTime: FleetQueryResult<FleetOnTime> }) {
   return (
     <ChartCard
       title={COPY.lateness.title}
+      source={COPY.lateness.source}
       question={COPY.lateness.question}
       basis={COPY.lateness.basis(total, noun)}
       sampleSize={total}
@@ -238,6 +240,7 @@ function PlanSpreadCard({ onTime }: { onTime: FleetQueryResult<FleetOnTime> }) {
     <ChartCard
       className="lg:col-span-2"
       title={COPY.spread.title}
+      source={COPY.spread.source}
       question={COPY.spread.question}
       basis={COPY.spread.basis(counted)}
       note={COPY.spread.note}
