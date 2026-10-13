@@ -15,6 +15,7 @@ import type { TripException } from '@shared/lib/types/exception'
 import type { TripStatus } from '@shared/lib/types/trip'
 import type { PhaseCheck } from './checks'
 import { isResolved, nodeTypeFor, type PhaseNodeType } from './derive'
+import { exceptionTrigger } from './acts'
 
 export type PhaseOutcome = 'overridden' | 'attention' | 'reviewed' | 'unverified' | 'clean' | 'in_progress' | 'current'
 
@@ -114,9 +115,9 @@ function parseMs(iso: string | null): number | null {
 /** "40 min" below an hour, "3 h 12 m" from an hour up. Whole minutes, rounded down. */
 function formatRoadTime(elapsedMs: number): string {
   const minutes = Math.floor(elapsedMs / MS_PER_MINUTE)
-  if (minutes < MINUTES_PER_HOUR) return `${minutes} min`
+  if (minutes < MINUTES_PER_HOUR) return `${minutes}\u00a0min`
   const hours = Math.floor(minutes / MINUTES_PER_HOUR)
-  return `${hours} h ${String(minutes % MINUTES_PER_HOUR).padStart(MINUTE_PAD_WIDTH, '0')} m`
+  return `${hours}\u00a0h\u00a0${String(minutes % MINUTES_PER_HOUR).padStart(MINUTE_PAD_WIDTH, '0')}\u00a0m`
 }
 
 /** The leg's departure and duration. Both are left out, never guessed, when the departure is
@@ -127,10 +128,7 @@ function legReasons(input: PhaseVerdictInput, finished: boolean): string[] {
   if (leg === null) return []
   const departedMs = parseMs(leg.departedAt)
   if (departedMs === null) return []
-  const reasons: string[] = []
-  // A finished leg's header already says it arrived; the departure time only matters while
-  // the truck is still out.
-  if (!finished) reasons.push(VERDICT_WORDING.departed(fmtTime(leg.departedAt)))
+  const reasons: string[] = [VERDICT_WORDING.departed(fmtTime(leg.departedAt))]
   // The clock stops at arrival (D41): a finished leg with no arrival time has no duration,
   // rather than one that keeps ticking.
   if (finished && leg.arrivedAt === null) return reasons
@@ -148,6 +146,15 @@ const needsReview = (exceptions: readonly TripException[]): TripException[] =>
 
 function describeException(exception: TripException): string {
   return `${fmtExceptionType(exception.exception_type)} (${exception.severity})`
+}
+
+function transitExceptionReasons(input: PhaseVerdictInput): string[] {
+  const events = input.exceptions.filter(exception => exceptionTrigger(exception, input.phase) === 'event')
+  const atArrival = input.exceptions.filter(exception => exceptionTrigger(exception, input.phase) === 'handshake').length
+  return [
+    ...(events.length ? [VERDICT_WORDING.enRoute(events.length, needsReview(events).length)] : []),
+    ...(atArrival ? [`${atArrival} at arrival check`] : []),
+  ]
 }
 
 function overriddenBody(input: PhaseVerdictInput): VerdictBody | null {
@@ -168,7 +175,7 @@ function attentionBody(input: PhaseVerdictInput): VerdictBody | null {
   const inTransit = input.phase.phase_type === 'in_transit'
   const exceptionReason = pending === 0
     ? []
-    : [inTransit ? VERDICT_WORDING.enRoute(input.exceptions.length, pending) : VERDICT_WORDING.toReview(pending)]
+    : inTransit ? transitExceptionReasons(input) : [VERDICT_WORDING.toReview(pending)]
   return {
     outcome: 'attention',
     headline: VERDICT_WORDING.attention,
@@ -196,7 +203,7 @@ function reviewedBody(input: PhaseVerdictInput): VerdictBody | null {
     reviewed: allReviewed,
     headline,
     reasons: [
-      single ? describeException(exceptions[0]) : countLabel(exceptions.length, 'exception'),
+      ...(phase.phase_type === 'in_transit' ? transitExceptionReasons(input) : [single ? describeException(exceptions[0]) : countLabel(exceptions.length, 'exception')]),
       ...(phase.phase_type === 'in_transit' ? legReasons(input, true) : []),
     ],
   }

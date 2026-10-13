@@ -14,7 +14,7 @@ describe('groupActs', () => {
   it('puts several uploads for one role in one group at the position of the first', () => {
     const acts: PhaseAct[] = [
       evidence('a', 'seal_photo'),
-      { kind: 'exception', key: 'p:exception:x', exceptionId: 'x', at: '2026-01-01T10:30:00Z' },
+      { kind: 'exception', key: 'p:exception:x', exceptionId: 'x', at: '2026-01-01T10:30:00Z', trigger: 'event' },
       evidence('b', 'seal_photo'),
     ]
 

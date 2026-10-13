@@ -114,7 +114,7 @@ describe('PhaseChecks', () => {
     expect(screen.queryByText(CHECK_WORDING.counts.blindCountNote)).not.toBeInTheDocument()
   })
 
-  it('keeps the raw fixes, capture times, separation, boundary and the map behind "Location details"', () => {
+  it('keeps location details closed until the reader opens them', () => {
     const phase = makePhase('loading', {
       status: 'completed', driver_phone_lat: -33.9249, driver_phone_lng: 18.4241, horse_gps_lat: -33.9251, horse_gps_lng: 18.4243,
       pulsit_geofence_confirmed: true,
@@ -125,8 +125,9 @@ describe('PhaseChecks', () => {
     const details = screen.getByText('Location details').closest('details')
     expect(details).not.toHaveAttribute('open')
     fireEvent.click(screen.getByText('Location details'))
-    expect(within(details!).getByText('Driver phone')).toBeInTheDocument()
-    expect(within(details!).getByText('Horse tracker')).toBeInTheDocument()
+    expect(details).toHaveAttribute('open')
+    expect(within(details!).getByText('Driver phone capture time')).toBeInTheDocument()
+    expect(within(details!).getByText('Horse tracker capture time')).toBeInTheDocument()
     expect(within(details!).getByText('Driver–truck separation')).toBeInTheDocument()
     expect(within(details!).getByText('Boundary')).toBeInTheDocument()
     expect(within(details!).getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
@@ -179,6 +180,6 @@ describe('PhaseChecks: in_transit', () => {
 
     const details = screen.getByText('Location details').closest('details')!
     expect(within(details).getByText('Recorded location at arrival')).toBeInTheDocument()
-    expect(within(details).getByText('Driver phone')).toBeInTheDocument()
+    expect(within(details).getByText('Driver phone capture time')).toBeInTheDocument()
   })
 })

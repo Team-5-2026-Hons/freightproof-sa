@@ -1,8 +1,10 @@
 'use client'
 
+import { Fragment, type ReactNode } from 'react'
+
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException } from '@shared/lib/types/exception'
-import { groupActs, type ActItem } from '@/lib/phase/act-groups'
+import { groupActs, isUntimedSubmittedEvidence, type ActItem } from '@/lib/phase/act-groups'
 import type { PhaseAct } from '@/lib/phase/acts'
 import { useRecentKeys } from '@/lib/hooks/useRecentKeys'
 import { ExceptionMoreRow, type OpenException } from './ExceptionRow'
@@ -29,6 +31,7 @@ export interface PhaseActsProps {
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
   onOpenException: OpenException
+  density?: 'compact' | 'full'
 }
 
 /** The keys a row can be identified by, for the "new while live" highlight. Expectations and
@@ -54,10 +57,11 @@ function lastVisibleExceptionIndex(items: readonly ActItem[]): number {
  * exceptions panel; the full card is never drawn here (D33).
  */
 export function PhaseActs(props: PhaseActsProps) {
-  const { acts, phase, visibleExceptionIds, hiddenExceptionCount, live } = props
-  const grouped = groupActs(acts)
+  const { acts, phase, visibleExceptionIds, hiddenExceptionCount, live, density = 'full' } = props
+  const compact = density === 'compact'
+  const grouped = groupActs(acts).filter(item => !compact || item.kind !== 'anchor')
   const shown = grouped.filter(item => !isHiddenException(item, visibleExceptionIds))
-  const recent = useRecentKeys(grouped.flatMap(highlightKeysOf), live)
+  const recent = useRecentKeys(grouped.flatMap(highlightKeysOf), live && !compact)
   const context: ActRowContext = {
     phase,
     stopName: props.stopName,
@@ -72,21 +76,63 @@ export function PhaseActs(props: PhaseActsProps) {
   const moreAfter = hiddenExceptionCount > 0 ? lastVisibleExceptionIndex(shown) : -1
 
   if (shown.length === 0) return null
-  return (
-    <PhaseZone title="Recorded">
-      <ol>
-        {shown.map((item, index) => (
-          <ActEntry
-            key={item.key}
-            item={item}
-            context={context}
-            highlighted={highlightKeysOf(item).some(key => recent.has(key))}
-            more={index === moreAfter ? { hiddenCount: hiddenExceptionCount, phaseId: phase.phase_event_id, onOpen: props.onOpenException } : null}
-          />
-        ))}
-      </ol>
-    </PhaseZone>
-  )
+  // Items that belong to the confirmation rather than to a point on the chronology: findings the
+  // confirmation raised, and evidence submitted with it that carries no capture time. They are
+  // drawn under the completion, so they only leave the chronology when a completion exists.
+  const attached = shown.filter(item => item.kind === 'exception' && item.trigger !== 'event')
+  const untimed = shown.filter(isUntimedSubmittedEvidence)
+  const hasCompletion = shown.some(item => item.kind === 'completion')
+  const underCompletion = new Set<ActItem>(hasCompletion ? [...attached, ...untimed] : [])
+  const chronology = shown.filter(item => !underCompletion.has(item))
+  // The "+n more" row follows the last visible exception.
+  const moreItem = moreAfter >= 0 ? shown[moreAfter] : null
+
+  /** Whether the rail continues from this row into the next one. */
+  function connectsToNext(item: ActItem, nested: boolean): boolean {
+    const hasMore = item === moreItem
+    if (nested) {
+      const index = attached.indexOf(item)
+      return index >= 0 && (index < attached.length - 1 || hasMore)
+    }
+    // A group heading interrupts the rail, so the confirmation does not connect into its groups.
+    if (item.kind === 'completion' && underCompletion.size > 0) return false
+    return chronology.indexOf(item) < chronology.length - 1 || hasMore
+  }
+
+  function entry(item: ActItem, nested = false): ReactNode {
+    return <ActEntry key={item.key} item={item} context={context} density={density} nested={nested} connectToNext={connectsToNext(item, nested)}
+      highlighted={highlightKeysOf(item).some(key => recent.has(key))}
+      more={item === moreItem ? { hiddenCount: hiddenExceptionCount, phaseId: phase.phase_event_id, onOpen: props.onOpenException } : null} />
+  }
+
+  const rows = <ol>
+    {chronology.map(item => (
+      <Fragment key={item.key}>
+        {entry(item)}
+        {item.kind === 'completion' && <>
+          {attached.length > 0 && <ConfirmationGroup title={item.outcome === 'overridden' ? 'Recorded with this override' : 'Findings from this confirmation'}>
+            {attached.map(finding => entry(finding, true))}
+          </ConfirmationGroup>}
+          {untimed.length > 0 && <ConfirmationGroup title="Submitted evidence · capture time unavailable">
+            {untimed.map(evidence => entry(evidence, true))}
+          </ConfirmationGroup>}
+        </>}
+      </Fragment>
+    ))}
+  </ol>
+  return compact ? <div className="mt-2">{rows}</div> : <PhaseZone title="Recorded">{rows}</PhaseZone>
+}
+
+interface ConfirmationGroupProps { title: string; children: ReactNode }
+
+/** A group that belongs to the confirmation, not to a later instant on the chronology. Its
+ * heading is flush left, in full-strength text, so it reads as a label for the rows under it
+ * rather than as one more row; the rail breaks at the heading. */
+function ConfirmationGroup({ title, children }: ConfirmationGroupProps) {
+  return <li role="group" aria-label={title} className="pb-1">
+    <p className="pb-1 pt-2 text-meta font-semibold text-on-surf">{title}</p>
+    <ol>{children}</ol>
+  </li>
 }
 
 interface EntryProps {
@@ -94,18 +140,19 @@ interface EntryProps {
   context: ActRowContext
   highlighted: boolean
   more: { hiddenCount: number; phaseId: string; onOpen: OpenException } | null
+  density: 'compact' | 'full'
+  nested: boolean
+  connectToNext: boolean
 }
 
 /** One item, plus the "+n more" row when this is the last visible exception. */
-function ActEntry({ item, context, highlighted, more }: EntryProps) {
+function ActEntry({ item, context, highlighted, more, density, nested, connectToNext }: EntryProps) {
   return (
     <>
-      <ActRow item={item} context={context} highlighted={highlighted} />
-      {more && (
-        <RailRow kind="more" highlighted={false}>
-          <ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} />
-        </RailRow>
-      )}
+      <ActRow item={item} context={context} highlighted={highlighted} density={density} nested={nested} connectToNext={connectToNext} />
+      {more && (density === 'compact'
+        ? <li><ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} density={density} /></li>
+        : <RailRow kind="more" highlighted={false}><ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} /></RailRow>)}
     </>
   )
 }

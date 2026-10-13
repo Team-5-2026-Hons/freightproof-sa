@@ -6,10 +6,12 @@ import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
 import { TripExceptionsPanel, type ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
 import { TripTimeline } from '@/components/trips/TripTimeline'
 import type { RevealRequest } from '@/components/trips/useExceptionReveal'
+import { useDismissExceptionSelection } from '@/components/trips/useDismissExceptionSelection'
 import { uniqueExceptionsById } from '@/components/trips/exception-dedupe'
 import { DetailPanel, useDocked } from '@/components/ui/DetailPanel'
 import type { Tab } from '@/components/ui/Tabs'
 import { currentTripPhase } from '@/lib/phase/trip-detail'
+import { TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 import { frameWidthPx, type ViewportPreset } from './frame'
 
 interface Props {
@@ -42,6 +44,9 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   const { trip } = scenario
   const docked = useDocked()
   const [selection, setSelection] = useState<PanelSelection | null>(null)
+  useDismissExceptionSelection(selection?.exceptionId ?? null, () => {
+    setSelection(previous => previous ? { ...previous, exceptionId: null } : null)
+  })
   const [filter, setFilter] = useState<ExceptionFilter>('needs_review')
   const [reveal, setReveal] = useState<RevealRequest | null>(null)
   const [pendingReveal, setPendingReveal] = useState<Omit<RevealRequest, 'requestId'> | null>(null)
@@ -54,7 +59,7 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   const headingId = `scenario-heading-${scenario.id}`
 
   function openException(exceptionId: string | null, phaseId: string | null): void {
-    setSelection({ exceptionId, phaseId })
+    setSelection({ exceptionId, phaseId: phaseId ?? TRIP_LEVEL_SCOPE })
     setFilter('all')
   }
 
@@ -102,7 +107,7 @@ export function ScenarioView({ scenario, position, preset }: Props) {
         selectedExceptionId={selection?.exceptionId ?? null}
         // Picking a filter leaves the single-record view, so the selection goes; the phase stays.
         onFilter={value => { setFilter(value); setSelection(previous => ({ exceptionId: null, phaseId: previous?.phaseId ?? null })) }}
-        onClearPhaseFilter={() => setSelection(previous => ({ exceptionId: previous?.exceptionId ?? null, phaseId: null }))}
+        onClearPhaseFilter={() => setSelection({ exceptionId: null, phaseId: null })}
         onClearExceptionSelection={() => setSelection(previous => ({ exceptionId: null, phaseId: previous?.phaseId ?? null }))}
         onShowInTimeline={showInTimeline}
         returnTo={PREVIEW_RETURN_TO}

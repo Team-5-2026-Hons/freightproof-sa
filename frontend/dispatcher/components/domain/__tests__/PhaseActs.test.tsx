@@ -51,7 +51,7 @@ function exceptionRecord(id: string, overrides: Partial<TripException> = {}): Tr
 }
 
 function exceptionAct(id: string): ExceptionAct {
-  return { kind: 'exception', key: `phase-event-1:exception:${id}`, exceptionId: id, at: TAKEN }
+  return { kind: 'exception', key: `phase-event-1:exception:${id}`, exceptionId: id, at: TAKEN, trigger: 'event' }
 }
 
 function props(acts: readonly PhaseAct[], overrides: Partial<PhaseActsProps> = {}): PhaseActsProps {
@@ -83,6 +83,151 @@ beforeEach(() => {
   forensic.forensicOn = false
 })
 
+describe('compact rail (D45)', () => {
+
+  it.each(['compact', 'full'] as const)('sets the finding heading flush left in full-strength text in the %s rail', density => {
+    render(<PhaseActs {...props([completionAct(), { ...exceptionAct('e'), trigger: 'handshake' }])} density={density} />)
+
+    const group = screen.getByRole('group', { name: 'Findings from this confirmation' })
+    const heading = within(group).getByText('Findings from this confirmation')
+    expect(heading).toHaveClass('text-on-surf')
+    expect(heading.className).not.toMatch(/\bp[lx]-/)
+    expect(group.querySelector('[data-rail-heading-connector]')).toBeNull()
+    expect(screen.queryByText('Checked at this confirmation')).not.toBeInTheDocument()
+  })
+
+  it('connects compact findings to each other but not to evidence with unknown capture time', () => {
+    const findings = ['e1', 'e2'].map(id => ({ ...exceptionAct(id), trigger: 'handshake' as const }))
+    render(<PhaseActs {...props([
+      completionAct(), ...findings,
+      evidenceAct('untimed', { takenAt: null, receivedAt: null, metadataAvailable: false }),
+    ])} density="compact" />)
+
+    const completion = document.querySelector('[data-row-kind="completion"]')
+    // The group heading interrupts the rail, so the confirmation does not connect into it.
+    expect(completion?.querySelector('[data-compact-connector]')).toBeNull()
+    const group = screen.getByRole('group', { name: 'Findings from this confirmation' })
+    const rows = within(group).getAllByRole('listitem')
+    expect(rows[0].querySelector('[data-compact-connector]')).not.toBeNull()
+    expect(rows[1].querySelector('[data-compact-connector]')).toBeNull()
+    const evidence = screen.getByRole('group', { name: 'Submitted evidence · capture time unavailable' })
+    expect(evidence.querySelector('[data-compact-connector]')).toBeNull()
+  })
+
+  it('ends the compact rail at its final event', () => {
+    render(<PhaseActs {...props([exceptionAct('e1'), exceptionAct('e2')])} density="compact" />)
+
+    const rows = screen.getAllByRole('listitem')
+    expect(rows[0].querySelector('[data-compact-connector]')).not.toBeNull()
+    expect(rows[1].querySelector('[data-compact-connector]')).toBeNull()
+  })
+
+  it('keeps each time and its source separate from the event label', () => {
+    render(<PhaseActs {...props([completionAct(), exceptionAct('e'), evidenceAct('a')])} density="compact" />)
+
+    const rows = screen.getAllByRole('listitem')
+    expect(within(rows[0]).getByText('Driver’s phone')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('System recorded')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('Driver’s phone')).toBeInTheDocument()
+    for (const row of rows) expect(within(row).getByRole('time')).toHaveAttribute('datetime', TAKEN)
+  })
+
+  it.each(['compact', 'full'] as const)('places submitted evidence with no capture time in a labelled confirmation group (%s)', density => {
+    render(<PhaseActs {...props([completionAct(), evidenceAct('missing', { metadataAvailable: false, takenAt: null, receivedAt: null })])} density={density} />)
+
+    const group = screen.getByRole('group', { name: 'Submitted evidence · capture time unavailable' })
+    expect(within(group).getByText(/Linehaul|Seal photographed/)).toBeInTheDocument()
+    expect(group).toHaveTextContent('Time unavailable')
+    expect(group).toHaveTextContent('Submitted at completion')
+  })
+
+  it('keeps untimed late uploads outside the submitted confirmation group', () => {
+    render(<PhaseActs {...props([completionAct(), evidenceAct('late', { state: 'after_close', takenAt: null, receivedAt: null, metadataAvailable: false })])} density="compact" />)
+
+    expect(screen.queryByRole('group', { name: 'Submitted evidence · capture time unavailable' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('Received after the phase closed')
+  })
+  it('keeps both receiver and unattributed provenance when confirmation files share a role', () => {
+    render(<PhaseActs {...props([
+      evidenceAct('receiver', { role: 'pod_signature', provenance: 'receiver' }),
+      evidenceAct('unknown', { role: 'pod_signature', provenance: 'unknown', state: 'not_submitted' }),
+    ])} density="compact" />)
+
+    expect(screen.getByRole('listitem')).toHaveTextContent('Receiver confirmed delivery')
+    expect(screen.getByRole('listitem')).toHaveTextContent('Submitted as receiver confirmation')
+  })
+  it.each([
+    ['submitted', 'Submitted at completion'], ['after_close', 'Received after the phase closed'],
+    ['not_submitted', 'Not submitted'], ['trip_cancelled', 'Not submitted — trip cancelled'],
+  ] as const)('preserves %s without images or links', (state, label) => {
+    render(<PhaseActs {...props([evidenceAct('a', { state })])} density="compact" />)
+
+    expect(screen.getByRole('listitem')).toHaveTextContent(label)
+    expect(screen.getByRole('listitem')).toHaveTextContent('Driver’s phone')
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.queryByText('Recorded artifact unavailable')).not.toBeInTheDocument()
+  })
+
+  it('keeps missing time, absence, receiver provenance and both clocks explicit', () => {
+    const acts: PhaseAct[] = [
+      evidenceAct('a', { takenAt: null, receivedAt: null, metadataAvailable: false }),
+      evidenceAct('sig', { role: 'pod_signature', provenance: 'receiver' }),
+      evidenceAct('pod', { role: 'pod_photo', receivedAt: '2026-01-01T11:00:00Z' }),
+      { kind: 'absent', key: 'abs', role: 'linehaul_photo' },
+    ]
+    render(<PhaseActs {...props(acts, { phase: makePhase('confirmation') })} density="compact" />)
+
+    expect(screen.getAllByText(/Time unavailable/)[0]).toBeInTheDocument()
+    expect(screen.getByText(/Receiver confirmed delivery/)).toBeInTheDocument()
+    expect(document.body.textContent).toContain('System recorded')
+    expect(document.body.textContent).toContain('Driver’s phone')
+    expect(document.body.textContent).toMatch(/linehaul.*not submitted/i)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('groups three uploads into one line and suppresses new-record highlights and anchors', () => {
+    const first = evidenceAct('a', { state: 'uploaded' })
+    const { rerender } = render(<PhaseActs {...props([first], { live: true })} density="compact" />)
+    rerender(<PhaseActs {...props([first, evidenceAct('b', { state: 'uploaded' }), evidenceAct('c', { state: 'uploaded' }), { kind: 'anchor', key: 'an', status: 'pending', consensusAt: null }], { live: true })} density="compact" />)
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByRole('listitem')).toHaveTextContent('3 photos uploaded')
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
+    expect(screen.queryByText('Anchoring pending')).not.toBeInTheDocument()
+  })
+
+  it.each(['{Enter}', ' '])('opens compact exceptions by keyboard (%s), with no description', async key => {
+    const onOpen = vi.fn()
+    render(<PhaseActs {...props([exceptionAct('e')], { onOpenException: onOpen })} density="compact" />)
+
+    expect(screen.queryByText('Description e')).not.toBeInTheDocument()
+    screen.getByRole('button').focus()
+    await userEvent.keyboard(key)
+    expect(onOpen).toHaveBeenCalledWith('e', 'phase-event-1')
+  })
+
+  it('retains expectations with full wording when manually collapsed', () => {
+    render(<PhaseActs {...props([{ kind: 'expected', key: 'ex', role: 'seal_photo', reason: 'evidence' }], { live: true })} density="compact" />)
+
+    expect(screen.getByRole('listitem')).toHaveTextContent('Expected: seal photo')
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
+  })
+
+  it.each(['handshake', 'override'] as const)('groups %s findings beneath their completion with honest heading', trigger => {
+    const finding = { ...exceptionAct('e'), trigger }
+    const completion = completionAct({ outcome: trigger === 'override' ? 'overridden' : 'completed' })
+    render(<PhaseActs {...props([completion, finding])} />)
+
+    const group = screen.getByRole('group', { name: trigger === 'override' ? 'Recorded with this override' : 'Findings from this confirmation' })
+    expect(within(group).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
+    const marker = group.querySelector('.text-warn svg')
+    expect(marker).not.toBeNull()
+    expect(marker?.closest('button')).toBeNull()
+    if (trigger === 'override') expect(screen.queryByText('Findings from this confirmation')).not.toBeInTheDocument()
+  })
+})
+
 describe('PhaseActs: the Recorded rail', () => {
   it('renders every act in the order given inside a Recorded region', () => {
     const acts: PhaseAct[] = [evidenceAct('a'), completionAct(), { kind: 'absent', key: 'k', role: 'waybill_photo' } satisfies AbsentAct]
@@ -97,13 +242,13 @@ describe('PhaseActs: the Recorded rail', () => {
     expect(rows[2]).toHaveTextContent('No waybill photo submitted at completion')
   })
 
-  it('shows an uploaded photo with its state and the device clock, through EvidencePhoto', () => {
+  it('shows an uploaded photo with its state and the driver’s phone, through EvidencePhoto', () => {
     const acts = [evidenceAct('a', { state: 'uploaded' })]
 
     render(<PhaseActs {...props(acts, { lookup: lookupWith([artifact('a')]) })} />)
 
     expect(screen.getByText('Uploaded')).toBeInTheDocument()
-    expect(screen.getByText(`Taken ${fmtDateTime(TAKEN)} (device clock)`)).toBeInTheDocument()
+    expect(screen.getByText(`Taken ${fmtDateTime(TAKEN)} (driver’s phone)`)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Seal photo' })).toHaveAttribute('src', 'https://example.test/a.jpg')
   })
 
@@ -130,6 +275,14 @@ describe('PhaseActs: the Recorded rail', () => {
     expect(screen.getByText('Submitted at completion')).toBeInTheDocument()
     expect(screen.getByText('Time unavailable')).toBeInTheDocument()
     expect(screen.getByText('Recorded artifact unavailable')).toBeInTheDocument()
+  })
+
+  it('keeps an evidence row\'s state and times lighter than its title', () => {
+    render(<PhaseActs {...props([evidenceAct('missing', { metadataAvailable: false, takenAt: null, receivedAt: null })])} />)
+
+    expect(screen.getByText('Seal photographed')).toHaveClass('font-semibold')
+    expect(screen.getByText('Submitted at completion')).not.toHaveClass('font-semibold')
+    expect(screen.getByText('Time unavailable')).not.toHaveClass('font-semibold')
   })
 
   it('shows "Evidence lookup failed" with a Retry that calls the page\'s retry', () => {
@@ -192,7 +345,7 @@ describe('PhaseActs: the Recorded rail', () => {
     expect(screen.queryByRole('button', { name: /more/ })).not.toBeInTheDocument()
   })
 
-  it('records the completion with its device and server clocks, values, and the override and who authorised it', () => {
+  it('records the completion with its device and system recordeds, values, and the override and who authorised it', () => {
     const completion = completionAct({
       outcome: 'overridden', recordedAt: '2026-01-01T12:00:00Z',
       values: { sealNumber: 'FP-7204', sealCondition: null, parcelsScanned: null, driverVisualCount: null },
@@ -205,7 +358,7 @@ describe('PhaseActs: the Recorded rail', () => {
     expect(screen.getByText(line('Seal FP-7204'))).toBeInTheDocument()
     expect(screen.getByText('Driver phone lost')).toBeInTheDocument()
     expect(screen.getByText(line('Authorised by user-42'))).toBeInTheDocument()
-    expect(screen.getByText(/Confirmed .*\(device clock\) · recorded .*\(server clock\)/)).toBeInTheDocument()
+    expect(screen.getByText(/Confirmed .*\(driver’s phone\) · recorded .*\(system recorded\)/)).toBeInTheDocument()
   })
 
   it('applies the numeric rule to seal numbers, counts and ids on the rail', () => {
@@ -242,7 +395,7 @@ describe('PhaseActs: the Recorded rail', () => {
 
     expect(screen.getByText('Departed Cape Town Depot')).toBeInTheDocument()
     expect(screen.getByText(line('Sealed FP-6390 at departure'))).toBeInTheDocument()
-    expect(screen.getByText('Arrived Johannesburg Depot')).toBeInTheDocument()
+    expect(screen.getByText('Reached Johannesburg Depot')).toBeInTheDocument()
   })
 
   it('shows expectations as dashed rows that never claim anything is missing', () => {

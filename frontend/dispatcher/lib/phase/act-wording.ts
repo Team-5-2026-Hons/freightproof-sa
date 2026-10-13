@@ -18,8 +18,32 @@ import {
 } from './acts'
 
 /** Every time names the clock it came from (D16). Exported so the exception rows say it the same way. */
-export const DEVICE_CLOCK = '(device clock)'
-export const SERVER_CLOCK = '(server clock)'
+export const CLOCK_SOURCE_LABEL = { device: 'Driver’s phone', server: 'System recorded' } as const
+export const DEVICE_CLOCK = '(driver’s phone)'
+export const SERVER_CLOCK = '(system recorded)'
+
+export interface RecordedTime {
+  at: string | null
+  source: keyof typeof CLOCK_SOURCE_LABEL | null
+}
+
+/** A missing capture time stays missing; it must never inherit the completion's time. */
+export function evidenceTimes(act: EvidenceAct): RecordedTime[] {
+  if (act.provenance === 'receiver' && act.role === 'pod_signature') return [{ at: act.receivedAt, source: act.receivedAt ? 'server' : null }]
+  if (!act.metadataAvailable || act.takenAt === null) return [{ at: null, source: null }]
+  return [
+    { at: act.takenAt, source: 'device' },
+    ...(act.receivedAt && showsReceivedTime(act.takenAt, act.receivedAt) ? [{ at: act.receivedAt, source: 'server' } as const] : []),
+  ]
+}
+
+export function completionTimes(act: CompletionAct): RecordedTime[] {
+  if (act.confirmedAt === null) return [{ at: act.recordedAt, source: 'server' }]
+  return [
+    { at: act.confirmedAt, source: 'device' },
+    ...(showsReceivedTime(act.confirmedAt, act.recordedAt) ? [{ at: act.recordedAt, source: 'server' } as const] : []),
+  ]
+}
 const TIME_UNAVAILABLE = 'Time unavailable'
 const NO_SEAL_RECORDED = 'No seal number recorded'
 
@@ -76,7 +100,7 @@ const EXCEPTION_SUFFIX = ' — exception recorded'
 
 function completionBase(phaseType: PhaseType, stopName: string, destinationName: string): string {
   if (phaseType === 'activation') return `Driver confirmed arrival at ${stopName}`
-  if (phaseType === 'in_transit') return `Arrived ${destinationName}`
+  if (phaseType === 'in_transit') return `Reached ${destinationName}`
   return `Driver confirmed ${CONFIRM_VERBS[phaseType]}`
 }
 

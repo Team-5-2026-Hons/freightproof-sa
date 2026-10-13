@@ -23,6 +23,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('reserves room for the close icon beside a long recorded-location title', () => {
+  render(<Modal open onClose={vi.fn()} title="Recorded locations: a very long precinct name that wraps"><p>body</p></Modal>)
+
+  expect(screen.getByRole('button', { name: 'Close modal' })).toHaveClass('shrink-0')
+  expect(screen.getByRole('heading')).toHaveClass('min-w-0', 'break-words')
+})
+
 it('keeps the fitted width and a plain dim backdrop by default', () => {
   render(<Modal open onClose={vi.fn()} title="Default"><p>body</p></Modal>)
 

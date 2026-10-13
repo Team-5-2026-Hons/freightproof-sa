@@ -57,14 +57,16 @@ function EvidenceImage({ act, caption, lookup }: { act: EvidenceAct; caption: st
 
 function EvidenceActBlock({ act, caption, lookup }: { act: EvidenceAct; caption: string; lookup: EvidenceLookup }) {
   return (
-    <div className="flex items-start justify-between gap-3 pt-1">
+    <div className="flex flex-wrap items-start gap-3 pt-1.5">
+      {/* Regular weight: the title above is the headline, and its state and times are detail
+          that must not compete with it. */}
       <div className="min-w-0">
-        <p className="text-meta font-semibold text-on-surf-v">{evidenceStateLabel(act)}</p>
+        <p className="text-meta text-on-surf-v">{evidenceStateLabel(act)}</p>
         {evidenceTimeLines(act).map(line => (
-          <p key={line} className="text-meta font-semibold tabular-nums tracking-[0.03em] text-on-surf-v">{line}</p>
+          <p key={line} className="text-meta tabular-nums tracking-[0.03em] text-on-surf-v">{line}</p>
         ))}
       </div>
-      <div className="shrink-0"><EvidenceImage act={act} caption={caption} lookup={lookup} /></div>
+      <div className="min-w-0 max-w-full"><EvidenceImage act={act} caption={caption} lookup={lookup} /></div>
     </div>
   )
 }

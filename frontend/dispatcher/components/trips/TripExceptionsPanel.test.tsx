@@ -55,6 +55,15 @@ function tripWith(reviewed: number, needsReview: number): Trip {
 }
 
 describe('TripExceptionsPanel filters', () => {
+  it('opens all trip-level records without including phased exceptions', () => {
+    const trip = tripWith(1, 1)
+    trip.exceptions = trip.exceptions.map((e, i) => ({ ...e, phase_event_id: i === 0 ? null : trip.phases[0].phase_event_id }))
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedPhaseId="trip-level" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByText('Trip-level records · 1 of 2 trip exceptions')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-exception-id]')).toHaveLength(1)
+  })
   it('states the size of each filter, so the unselected one is not a blind click', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(10, 2)} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
 
@@ -240,6 +249,9 @@ describe('selecting one exception', () => {
 
     const selected = document.querySelector<HTMLElement>(`[data-exception-id="${target.id}"]`)!
     expect(selected).toHaveAttribute('aria-current', 'true')
+    expect(selected.className).not.toMatch(/(^| )ring-/)
+    expect(within(selected).getByRole('article')).toHaveClass('bg-sec-c/25', 'ring-2', 'ring-sec')
+    expect(within(selected).getByRole('article').className).not.toContain('before:')
     // Never colour alone: the ring is paired with a word.
     expect(within(selected).getByText(/Selected exception/)).toBeInTheDocument()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)

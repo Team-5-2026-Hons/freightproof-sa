@@ -5,6 +5,10 @@ import { NUMERIC_VALUE, NumericText } from '../NumericText'
 const NUMERIC_CLASSES = ['font-semibold', 'tabular-nums']
 
 describe('NumericText (DESIGN_SYSTEM §5.2)', () => {
+  it('keeps sentence spaces breakable', () => {
+    const { container } = render(<NumericText text="Driver counted 16 parcels at the depot" />)
+    expect(container.textContent).toBe('Driver counted 16 parcels at the depot')
+  })
   it('puts the numeric rule on a seal number, a count and an id, and on nothing else in the line', () => {
     const { container } = render(<p><NumericText text="Seal FP-7204 · 7 parcels · Authorised by user-42" /></p>)
 

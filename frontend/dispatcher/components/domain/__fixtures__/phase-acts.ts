@@ -39,6 +39,7 @@ type FixtureImage = keyof typeof FIXTURE_IMAGES
 /** Stable ids and the order the page lists them in. */
 export const SCENARIO_IDS = [
   'normal-single-leg',
+  'handshake-findings-every-phase',
   'cross-dock-13-phase',
   'four-stop-three-legs',
   'transit-active-critical',
@@ -122,6 +123,9 @@ const ASSESSMENT_TOLERANCE_M = 50
 const DRIVER_OFFSET_DEG = 0.0003
 const TRACKER_OFFSET_DEG = 0.0001
 const COINCIDENT_SEPARATION_M = 40
+const REVIEW_SEPARATION_M = 840
+const REVIEW_TRACKER_OFFSET_DEG = 0.009
+const REVIEW_DRIVER_OFFSET_DEG = 0.0165
 
 const HEDERA_TOPIC = '0.0.4829301'
 const HEDERA_FIRST_SEQUENCE = 1842
@@ -635,6 +639,33 @@ const LONG_DESCRIPTION = 'Driver reports the trailer was stopped for 38 minutes 
   + 'Photographs taken and seal number read to dispatch by phone. Driver waits there.'
 
 const BUILDERS: Record<ScenarioId, Builder> = {
+  'handshake-findings-every-phase': anchorMs => {
+    const draft = newDraft({ id: 'handshake-findings-every-phase', route: SINGLE_ROUTE, cargo: SINGLE_CARGO, status: 'closed', through: 7, anchorMs, tailMin: 45 })
+    walk(draft)
+    for (const phase of draft.trip.phases) {
+      if (phase.phase_type === 'trip_creation') continue
+      const atMs = Date.parse(phase.completed_at!) + MS_PER_SECOND
+      const precinct = precinctOf(draft, phase)
+      const assessment = phase.action_location_assessment
+      // A synthetic finding must agree with its stored comparison, rather than a happy-path
+      // snapshot showing "Driver with truck" next to the separation finding being reviewed.
+      setPhase(draft, phase, { status: 'exception', ...(assessment && precinct ? {
+        pulsit_geofence_confirmed: false,
+        driver_phone_lat: precinct.latitude + REVIEW_DRIVER_OFFSET_DEG,
+        horse_gps_lat: precinct.latitude + REVIEW_TRACKER_OFFSET_DEG,
+        action_location_assessment: { ...assessment,
+          driver_lat: precinct.latitude + REVIEW_DRIVER_OFFSET_DEG,
+          tracker_lat: precinct.latitude + REVIEW_TRACKER_OFFSET_DEG,
+          separation_metres: REVIEW_SEPARATION_M, proximity: 'separated', driver_in_precinct: false, truck_in_precinct: false,
+        },
+      } : {}) })
+      raise(draft, { key: `${phase.sequence_number}-separation`, phase, type: 'driver_vehicle_separation', severity: 'warning', source: 'system',
+        description: 'At confirmation, the driver phone was 840 m from the truck tracker. The dispatcher has not reviewed this finding.', atMs })
+      if (phase.phase_type !== 'in_transit') raise(draft, { key: `${phase.sequence_number}-outside`, phase, type: 'gps_mismatch', severity: 'warning', source: 'system',
+        description: 'At confirmation, the truck tracker was outside the recorded precinct tolerance. This is a confirmation finding, not an en-route event.', atMs: atMs + MS_PER_SECOND })
+    }
+    return finish(draft, 'Handshake findings on every phase', 'A completed trip with separation and outside-precinct findings at each handshake, plus separation at the transit arrival. Collapsed cards keep a compact record; findings belong beneath their confirmation.')
+  },
   'normal-single-leg': anchorMs => {
     const draft = newDraft({ id: 'normal-single-leg', route: SINGLE_ROUTE, cargo: SINGLE_CARGO, status: 'closed', through: 7, anchorMs, tailMin: 45 })
     walk(draft)

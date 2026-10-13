@@ -41,6 +41,24 @@ const LONG_PRECINCT_SCENARIO: ScenarioId = 'long-precinct-name'
 const scenarios = buildScenarios()
 const byId = new Map<string, TimelineScenario>(scenarios.map(scenario => [scenario.id, scenario]))
 
+it('exercises confirmation findings on every handshake, including the transit arrival', () => {
+  const scenario = scenarios.find(s => s.id as string === 'handshake-findings-every-phase')
+  expect(scenario).toBeDefined()
+  expect(scenario?.trip.exceptions).toHaveLength(13)
+  expect(scenario?.trip.exceptions.some(e => e.exception_type === 'driver_vehicle_separation' && scenario.trip.phases.find(p => p.phase_event_id === e.phase_event_id)?.phase_type === 'in_transit')).toBe(true)
+})
+
+it('matches the recorded checks to the separation finding in the review scenario', () => {
+  const scenario = scenarioOf('handshake-findings-every-phase')
+  renderScenario(scenario)
+  const loading = screen.getByRole('group', { name: /^Loading phase/ })
+  fireEvent.click(within(loading).getByRole('button', { name: /^Loading/, expanded: false }))
+
+  const checked = within(loading).getByRole('region', { name: 'Checked' })
+  expect(within(checked).getByText('Driver separated from truck')).toBeInTheDocument()
+  expect(within(checked).getAllByText('Truck outside precinct tolerance')[0]).toBeInTheDocument()
+})
+
 function scenarioOf(id: ScenarioId): TimelineScenario {
   const scenario = byId.get(id)
   if (!scenario) throw new Error(`scenario ${id} is missing`)
@@ -237,12 +255,12 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     expect(within(phaseGroups('In Transit')[0]!).getByText('Exception reviewed')).toBeInTheDocument()
   })
 
-  it('offline-arrival: the arrival names both the phone clock and the server clock', () => {
+  it('offline-arrival: the arrival names both the phone clock and the system recorded', () => {
     renderScenario(scenarioOf('offline-arrival'))
     openAll()
 
-    expect(screen.getAllByText(/\(device clock\)/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Received .*\(server clock\)/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/\(driver’s phone\)/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Received .*\(system recorded\)/).length).toBeGreaterThan(0)
   })
 
   it('three-seal-uploads: three uploads on the live phase read as one group of three', () => {
@@ -307,7 +325,7 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     renderScenario(scenarioOf('phase-overridden'))
 
     const departure = phaseGroups('Departure')[0]!
-    expect(within(departure).getByText('Closed by dispatcher override')).toBeInTheDocument()
+    expect(departure.querySelector('[data-outcome]')).toHaveTextContent('Closed by dispatcher override')
     expect(within(departure).getByText(/Checks did not run/)).toBeInTheDocument()
   })
 

@@ -13,7 +13,7 @@ export interface RevealRequest {
 }
 
 // Long enough to be seen after the scroll lands, short enough not to read as a status.
-export const REVEAL_HIGHLIGHT_MS = 1400
+export const REVEAL_HIGHLIGHT_MS = 2000
 
 interface Pending {
   frames: number[]

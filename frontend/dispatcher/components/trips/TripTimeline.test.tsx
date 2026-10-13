@@ -52,6 +52,74 @@ const evidence = {
 
 type Overrides = Partial<React.ComponentProps<typeof TripTimeline>>
 
+describe('Task 10b timeline regressions', () => {
+  it('collapses loading to ordered compact acts, expanding to full rows once', () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', parcel_count_origin: 16 } })
+    const phase = phaseOf(trip, 'loading')
+    trip.exceptions = [exception('loading-event', { phase_event_id: phase.phase_event_id, created_at: '2026-05-03T20:00:00Z' })]
+    renderTimeline(trip, { artifactsById: artifactMap(artifact('sheet', phase.phase_event_id, 'linehaul_photo', { captured_at: '2026-05-03T19:46:00Z' })) })
+
+    const card = phaseGroup('Loading')
+    const rows = within(card).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Driver confirmed loading')
+    expect(rows[0]).toHaveTextContent('16 parcels')
+    expect(rows[1]).toHaveTextContent('Linehaul sheet photographed')
+    expect(rows[2]).toHaveTextContent('Route Deviation')
+    expect(within(card).queryByText('Description of loading-event')).not.toBeInTheDocument()
+    expect(within(card).queryByRole('img')).not.toBeInTheDocument()
+    openCard('Loading')
+    expect(within(card).getByText('Description of loading-event')).toBeInTheDocument()
+    expect(within(card).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+    expect(within(card).getByRole('img')).toBeInTheDocument()
+  })
+
+  it('keeps trip_creation exceptions on the Trip Created card collapsed and open', () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('creation-event', { phase_event_id: phaseOf(trip, 'trip_creation').phase_event_id })]
+    renderTimeline(trip)
+
+    const card = phaseGroup('Trip Created')
+    expect(within(card).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+    openCard('Trip Created')
+    expect(within(card).getByText('Description of creation-event')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('keeps warning nodes and verdicts amber on a neutral card', () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('e', { phase_event_id: phaseOf(trip, 'loading').phase_event_id })]
+    renderTimeline(trip)
+
+    const card = phaseGroup('Loading')
+    expect(card.querySelector('[data-node-type="warn"]')).toHaveClass('bg-warn-c')
+    expect(card.querySelector('[data-outcome="attention"] .text-warn')).not.toBeNull()
+    expect(card.querySelector('.bg-warn-c\\/40')).toBeNull()
+  })
+
+  it('names the transit leg with an arrow and records Reached and Departed', () => {
+    renderTimeline(closedTrip())
+    const card = phaseGroup('In Transit')
+
+    expect(card.textContent).toContain('FedEx JHB → FedEx DBN')
+    expect(card.textContent).toContain('Reached FedEx DBN')
+    expect(card.querySelector('[data-outcome]')?.textContent).toContain('Departed')
+  })
+
+  it('caps trip-level records and opens all trip-level records from more', async () => {
+    const trip = closedTrip({}, { exceptions: Array.from({ length: 5 }, (_, i) => exception(`trip-${i}`)) })
+    const onOpenException = vi.fn()
+    const { rerender } = renderTimeline(trip, { onOpenException })
+    const list = screen.getByRole('region', { name: 'Trip-level events' })
+
+    expect(within(list).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(3)
+    await userEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
+    expect(onOpenException).toHaveBeenCalledWith(null, null)
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} revealRequest={{ exceptionId: 'trip-4', phaseId: null, requestId: 1 }} />)
+    await waitFor(() => expect(document.getElementById(exceptionRowId('trip-4'))).toHaveAttribute('data-highlighted', 'true'))
+  })
+})
+
 function renderTimeline(trip: Trip, overrides: Overrides = {}) {
   return render(
     <TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} {...overrides} />,
@@ -221,7 +289,7 @@ describe('TripTimeline: the header verdict answers "did this phase go cleanly?" 
     renderTimeline(closedTrip({ departure: { status: 'overridden', dispatcher_override_note: 'Phone lost', dispatcher_override_user_id: 'user-9' } }))
 
     const row = phaseGroup('Departure')
-    expect(within(row).getByText('Closed by dispatcher override')).toBeInTheDocument()
+    expect(within(row).getAllByText('Closed by dispatcher override')[0]).toBeInTheDocument()
     expect(within(row).getByText(/Checks did not run/)).toBeInTheDocument()
   })
 
@@ -407,7 +475,7 @@ describe('TripTimeline: nothing lost when the detail panels are unmounted (desig
     const checked = zone('Departure', 'Checked')
     expect(checkLines(checked)).toEqual(['Truck within precinct tolerance'])
     fireEvent.click(within(checked).getByText('Location details'))
-    for (const label of ['Driver phone', 'Horse tracker', 'Driver phone capture time', 'Driver–truck separation', 'Boundary']) {
+    for (const label of ['Driver phone capture time', 'Horse tracker capture time', 'Driver–truck separation', 'Boundary']) {
       expect(within(checked).getByText(label)).toBeInTheDocument()
     }
     expect(within(checked).getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
@@ -842,11 +910,11 @@ describe('TripTimeline: the in-transit leg', () => {
 
     const row = phaseGroup('In Transit')
     expect(within(row).getByText(line(/Departed 10:10 SAST/))).toBeInTheDocument()
-    expect(within(row).getByText(line(/3 h 12 m on the road/))).toBeInTheDocument()
+    expect(within(row).getByText(line(/3\s+h\s+12\s+m on the road/))).toBeInTheDocument()
 
     act(() => { vi.advanceTimersByTime(60_000) })
 
-    expect(within(row).getByText(line(/3 h 13 m on the road/))).toBeInTheDocument()
+    expect(within(row).getByText(line(/3\s+h\s+13\s+m on the road/))).toBeInTheDocument()
   })
 
   it('records the departure with its seal, the dashed en-route rows, and the standing seal line', () => {
@@ -1129,7 +1197,7 @@ describe('TripTimeline: facts shown once, and cards that stay put', () => {
     renderTimeline(closedTrip())
 
     expect(screen.getAllByText(/^Departed /)).toHaveLength(1)
-    expect(screen.getAllByText(/^Arrived /)).toHaveLength(1)
+    expect(screen.getAllByText(/^Reached /)).toHaveLength(1)
   })
 
   it('leaves a card collapsed and unhighlighted when the reveal request is addressed to another phase', async () => {
@@ -1297,6 +1365,26 @@ describe('TripTimeline: "Show in timeline" reveals the row', () => {
     expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('ex-1'))
     // Rendered once: in the opened rail, not also under the header.
     expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('keeps the landing highlight visible long enough to find the row, then clears it', () => {
+    vi.useFakeTimers()
+    try {
+      const base = closedTrip()
+      const loading = phaseOf(base, 'loading')
+      const trip = { ...base, exceptions: [exception('landing', { phase_event_id: loading.phase_event_id })] }
+      renderTimeline(trip, { revealRequest: { exceptionId: 'landing', phaseId: loading.phase_event_id, requestId: 1 } })
+
+      act(() => { vi.advanceTimersByTime(100) })
+      const row = document.getElementById(exceptionRowId('landing'))!
+      expect(row).toHaveAttribute('data-highlighted', 'true')
+      act(() => { vi.advanceTimersByTime(1500) })
+      expect(row).toHaveAttribute('data-highlighted', 'true')
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(row).not.toHaveAttribute('data-highlighted')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reveals the 5th of 6 exceptions, which the cap of three hides, then scrolls to and highlights it', async () => {

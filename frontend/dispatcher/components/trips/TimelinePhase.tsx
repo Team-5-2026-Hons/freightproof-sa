@@ -7,9 +7,8 @@ import type { TripException } from '@shared/lib/types/exception'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { Trip } from '@shared/lib/types/trip'
-import { ExceptionRowList } from '@/components/domain/ExceptionRowList'
 import type { ExceptionRowData, OpenException } from '@/components/domain/ExceptionRow'
-import type { EvidenceLookup } from '@/components/domain/PhaseActs'
+import { PhaseActs, type EvidenceLookup } from '@/components/domain/PhaseActs'
 import { PhaseVerdictLine } from '@/components/domain/PhaseVerdictLine'
 import { TripCreatedDetail } from '@/components/domain/TripCreatedDetail'
 import { buildPhaseCardModel, type PhaseCardModel } from '@/lib/phase/card'
@@ -83,7 +82,7 @@ export function TimelinePhase(props: Props) {
     onOpenException: props.onOpenException,
   }
   const body = phase.phase_type === 'trip_creation'
-    ? <TripCreatedDetail trip={trip} />
+    ? <><PhaseActs {...recorded} acts={model.acts} phase={phase} live={false} /><TripCreatedDetail trip={trip} /></>
     : model.hasBody && (
       <PhaseCardBody
         trip={trip} phase={phase} model={model} precincts={precincts} receipt={receiptOf(trip, phase)} recorded={recorded}
@@ -98,7 +97,7 @@ export function TimelinePhase(props: Props) {
         id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`}
         number={phase.sequence_number}
         label={phaseName}
-        meta={phaseStopLabel(trip, phase, precincts)}
+        meta={isTransit ? `${recorded.stopName} → ${recorded.destinationName}` : phaseStopLabel(trip, phase, precincts)}
         timestamp={phase.completed_at}
         nodeType={model.verdict?.nodeType ?? baseNode}
         initialOpen={live}
@@ -108,18 +107,9 @@ export function TimelinePhase(props: Props) {
         // In transit is where theft signals arrive, so it is never worth hiding (D31): open with
         // no toggle while the leg is happening and after it (completed, exception or overridden).
         // A leg not yet started or not reached has no body and stays a collapsed dashed card.
-        alwaysOpen={isTransit && (live || isResolved(phase))}
+        alwaysOpen={isTransit && model.hasBody}
         verdict={model.verdict ? <PhaseVerdictLine verdict={model.verdict} /> : undefined}
-        collapsedContent={rows.length > 0 ? (
-          <ExceptionRowList
-            rows={rows.filter(row => visibleIds.has(row.exception.id))}
-            hiddenCount={hiddenCount}
-            phaseId={phase.phase_event_id}
-            selectedId={props.selectedExceptionId}
-            highlightedId={props.highlightedExceptionId}
-            onOpen={props.onOpenException}
-          />
-        ) : undefined}
+        collapsedContent={!isTransit && model.acts.length > 0 ? <PhaseActs {...recorded} acts={model.acts} phase={phase} live={false} density="compact" /> : undefined}
         warning={phase.anchor_status === 'failed' ? ANCHOR_FAILED_WARNING : undefined}
         openRequestId={reveal?.requestId ?? null}
       >

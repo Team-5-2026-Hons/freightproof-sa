@@ -18,6 +18,7 @@ import { useDocked } from '@/components/ui/DetailPanel'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BatchReviewForm } from './BatchReviewForm'
 import { uniqueExceptionsById } from './exception-dedupe'
+import { isTripLevelException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 
 export type ExceptionFilter = 'needs_review' | 'all'
 interface Props {
@@ -74,8 +75,10 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
   }
 
   const tripExceptions = uniqueExceptionsById(trip.exceptions)
+  const tripLevel = selectedPhaseId === TRIP_LEVEL_SCOPE
+  const phaseIds = new Set(trip.phases.map(phase => phase.phase_event_id))
   const scopedExceptions = selectedPhaseId
-    ? tripExceptions.filter(exception => exception.phase_event_id === selectedPhaseId)
+    ? tripExceptions.filter(exception => tripLevel ? isTripLevelException(exception, phaseIds) : exception.phase_event_id === selectedPhaseId)
     : tripExceptions
   const exceptions = sortQueueChronologically(scopedExceptions.filter(e => filter === 'all' || e.review_status === 'needs_review'))
   const needsReview = scopedExceptions.filter(e => e.review_status === 'needs_review').length
@@ -92,7 +95,7 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
   return <div>
     {selectedOutsideScope && <p role="status" className="mb-4 rounded-lg border border-warn/30 bg-warn-c/30 p-3 text-sm text-on-surf">The selected exception is outside this phase filter.</p>}
     {selectedPhaseId && <div className="mb-4 rounded-lg border border-outline-v/30 bg-surf-low p-3 text-sm text-on-surf">
-      <p>Selected phase · {scopedExceptions.length} of {tripExceptions.length} trip exceptions</p>
+      <p>{tripLevel ? 'Trip-level records' : 'Selected phase'} · {scopedExceptions.length} of {tripExceptions.length} trip exceptions</p>
       <Button className="mt-2" variant="secondary" size="sm" onClick={onClearPhaseFilter}>Clear phase filter</Button>
     </div>}
     {/* Each filter states its own size. Without it the unselected one is a blind click -
@@ -151,13 +154,14 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
       </div>
       const selected = exception.id === selectedExceptionId
       return <div key={exception.id} ref={selected ? selectedRef : undefined} data-exception-id={exception.id} aria-current={selected ? 'true' : undefined}
-        className={selected ? 'rounded-lg ring-2 ring-sec ring-offset-4 ring-offset-transparent [&_time]:text-on-surf-v' : '[&_time]:text-on-surf-v'}>
+        className="[&_time]:text-on-surf-v">
         <p className="mb-2 break-words text-xs text-on-surf-v tabular-nums">Trip {trip.trip_reference} · Raised {fmtExceptionRaised(exception.created_at)}{selected && ' · Selected exception'}</p>
         <ExceptionSummary
           exception={exception}
           phaseLabel={phase ? PHASE_NAMES[phase.phase_type] : 'Trip record'}
           returnTo={returnTo}
           tone={tone}
+          selected={selected}
           footer={footer}
         />
       </div>

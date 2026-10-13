@@ -27,6 +27,32 @@ const XD_IN_TRANSIT_2 = 9
 
 const T = (hhmm: string): string => `2026-10-13T${hhmm}:00Z`
 
+describe('confirmation findings (D46)', () => {
+  it('attaches a late handshake finding directly after completion, leaving road events chronological', () => {
+    const s = scenario(ARRIVAL, { status: 'completed', completed_at: T('09:00'), driver_captured_at: T('09:00') })
+    const acts = buildPhaseActs(input(s, { exceptions: [
+      exception('check', s.phase.phase_event_id, { exception_type: 'driver_vehicle_separation', created_at: T('11:00') }),
+      exception('road', s.phase.phase_event_id, { exception_type: 'tracker_silent', created_at: T('10:00') }),
+    ] }))
+
+    expect(acts.filter(a => a.kind === 'completion' || a.kind === 'exception').map(a => a.kind === 'exception' ? [a.exceptionId, a.trigger] : ['completion'])).toEqual([
+      ['completion'], ['check', 'handshake'], ['road', 'event'],
+    ])
+  })
+
+  it.each([
+    [{ status: 'overridden', completed_at: T('09:00') }, { exception_type: 'seal_unverified' }, 'override'],
+    [{ status: 'in_progress', completed_at: null }, { exception_type: 'driver_vehicle_separation' }, 'event'],
+    [{ status: 'completed', completed_at: T('09:00') }, { exception_type: 'driver_vehicle_separation', checkpoint_id: 'cp' }, 'event'],
+    [{ status: 'completed', completed_at: T('09:00') }, { exception_type: 'driver_vehicle_separation', source: 'driver' }, 'event'],
+  ] as const)('classifies only confirmed system checks, including override and cancellation', (phasePatch, exceptionPatch, trigger) => {
+    const s = scenario(ARRIVAL, phasePatch)
+    const acts = buildPhaseActs(input(s, { tripStatus: 'cancelled', exceptions: [exception('e', s.phase.phase_event_id, exceptionPatch)] }))
+
+    expect(acts.find(a => a.kind === 'exception')).toMatchObject({ trigger })
+  })
+})
+
 interface Scenario { phase: PhaseDescriptor; allPhases: PhaseDescriptor[] }
 
 // Anchor defaults to not_required so tests that are not about anchoring do not have to

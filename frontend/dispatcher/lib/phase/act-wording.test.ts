@@ -64,18 +64,25 @@ describe('evidenceStateLabel', () => {
 })
 
 describe('evidenceTimeLines', () => {
-  it('labels the device clock and leaves the server time out when it is within two minutes', () => {
+  it('names the phone and system as the sources without technical clock terminology', () => {
+    const lines = evidenceTimeLines(evidence({ receivedAt: '2026-01-01T10:09:00Z' }))
+
+    expect(lines[0]).toContain('driver’s phone')
+    expect(lines[1]).toContain('system recorded')
+    expect(lines.join(' ')).not.toContain('clock')
+  })
+  it('labels the driver’s phone and leaves the server time out when it is within two minutes', () => {
     const lines = evidenceTimeLines(evidence())
 
-    expect(lines).toEqual([`Taken ${fmtDateTime('2026-01-01T10:00:00Z')} (device clock)`])
+    expect(lines).toEqual([`Taken ${fmtDateTime('2026-01-01T10:00:00Z')} (driver’s phone)`])
   })
 
   it('adds the server time when it differs from the device time by two minutes or more', () => {
     const lines = evidenceTimeLines(evidence({ receivedAt: '2026-01-01T10:09:00Z' }))
 
     expect(lines).toEqual([
-      `Taken ${fmtDateTime('2026-01-01T10:00:00Z')} (device clock)`,
-      `Received ${fmtDateTime('2026-01-01T10:09:00Z')} (server clock)`,
+      `Taken ${fmtDateTime('2026-01-01T10:00:00Z')} (driver’s phone)`,
+      `Received ${fmtDateTime('2026-01-01T10:09:00Z')} (system recorded)`,
     ])
   })
 
@@ -83,19 +90,22 @@ describe('evidenceTimeLines', () => {
     expect(evidenceTimeLines(evidence({ metadataAvailable: false, takenAt: null, receivedAt: null }))).toEqual(['Time unavailable'])
   })
 
-  it('shows the receiver\'s confirmation on the server clock only', () => {
+  it('shows the receiver\'s confirmation on the system recorded only', () => {
     const lines = evidenceTimeLines(evidence({ role: 'pod_signature', provenance: 'receiver' }))
 
-    expect(lines).toEqual([`Confirmed ${fmtDateTime('2026-01-01T10:00:30Z')} (server clock)`])
+    expect(lines).toEqual([`Confirmed ${fmtDateTime('2026-01-01T10:00:30Z')} (system recorded)`])
   })
 })
 
 describe('completionTitle', () => {
+  it('distinguishes reaching the destination from the Arrival confirmation', () => {
+    expect(completionTitle(completion(), 'in_transit', 'Cape Town Depot (Epping)', 'Johannesburg Depot (Linbro)')).toBe('Reached Johannesburg Depot (Linbro)')
+  })
   it.each([
     ['activation', 'Driver confirmed arrival at Cape Town Depot'],
     ['loading', 'Driver confirmed loading'],
     ['departure', 'Driver confirmed departure'],
-    ['in_transit', 'Arrived Johannesburg Depot'],
+    ['in_transit', 'Reached Johannesburg Depot'],
     ['arrival', 'Driver confirmed arrival'],
     ['unloading', 'Driver confirmed unloading'],
     ['confirmation', 'Driver confirmed delivery'],
@@ -147,17 +157,17 @@ describe('completionValueLines', () => {
 
 describe('completionTimeLine', () => {
   it('shows the device time only when the recorded time is within two minutes', () => {
-    expect(completionTimeLine(completion())).toBe(`Confirmed ${fmtDateTime('2026-01-01T10:00:00Z')} (device clock)`)
+    expect(completionTimeLine(completion())).toBe(`Confirmed ${fmtDateTime('2026-01-01T10:00:00Z')} (driver’s phone)`)
   })
 
   it('adds the recorded time when it differs by two minutes or more', () => {
     const line = completionTimeLine(completion({ recordedAt: '2026-01-01T11:00:00Z' }))
 
-    expect(line).toBe(`Confirmed ${fmtDateTime('2026-01-01T10:00:00Z')} (device clock) · recorded ${fmtDateTime('2026-01-01T11:00:00Z')} (server clock)`)
+    expect(line).toBe(`Confirmed ${fmtDateTime('2026-01-01T10:00:00Z')} (driver’s phone) · recorded ${fmtDateTime('2026-01-01T11:00:00Z')} (system recorded)`)
   })
 
   it('shows only the server time when the device time is unknown', () => {
-    expect(completionTimeLine(completion({ confirmedAt: null }))).toBe(`Recorded ${fmtDateTime('2026-01-01T10:00:20Z')} (server clock)`)
+    expect(completionTimeLine(completion({ confirmedAt: null }))).toBe(`Recorded ${fmtDateTime('2026-01-01T10:00:20Z')} (system recorded)`)
   })
 })
 
@@ -199,7 +209,7 @@ describe('absent, anchor, expected and awaiting wording', () => {
 
 describe('clock labels', () => {
   it('are exported once, for every row that names a clock', () => {
-    expect(DEVICE_CLOCK).toBe('(device clock)')
-    expect(SERVER_CLOCK).toBe('(server clock)')
+    expect(DEVICE_CLOCK).toBe('(driver’s phone)')
+    expect(SERVER_CLOCK).toBe('(system recorded)')
   })
 })

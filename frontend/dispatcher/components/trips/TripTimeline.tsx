@@ -7,7 +7,9 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
 import { fmtTime } from '@shared/lib/utils/datetime'
 import { Button } from '@/components/ui/Button'
-import { ExceptionRow, type OpenException } from '@/components/domain/ExceptionRow'
+import type { OpenException } from '@/components/domain/ExceptionRow'
+import { ExceptionRowList } from '@/components/domain/ExceptionRowList'
+import { isTripLevelException, visibleExceptions } from '@/lib/phase/exception-rows'
 import { useNow } from '@/lib/hooks/useNow'
 import { sortedPlan } from '@/lib/phase/derive'
 import { exceptionEventTime } from '@/lib/phase/acts'
@@ -76,9 +78,10 @@ export function TripTimeline({
   const activeTransitOrigin = activeTransit ? precinctLabel(precinctAtPhase(trip, activeTransit, precincts)) : ''
   const activeTransitDestination = activeTransit ? precinctLabel(precincts.find(precinct => precinct.id === nextTripStop(trip, activeTransit)?.precinct_id)) : ''
   const tripNotes = sortExceptionsByEventTime(
-    exceptionsById.filter(e => !e.phase_event_id || !phaseIds.has(e.phase_event_id as typeof phases[number]['phase_event_id'])),
+    exceptionsById.filter(e => isTripLevelException(e, phaseIds)),
     evidence.artifactsById,
   )
+  const tripVisible = visibleExceptions(tripNotes, revealRequest?.phaseId === null ? revealRequest.exceptionId : null)
   return <section aria-label="Trip timeline" className="mx-auto w-full max-w-4xl p-4 md:p-6">
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
@@ -119,15 +122,8 @@ export function TripTimeline({
       ))}
       {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-2 border-t border-outline-v/30 pt-4">
         <h3 className="text-body font-bold text-on-surf">Trip record</h3>
-        {tripNotes.map(exception => <ExceptionRow
-          key={exception.id}
-          exception={exception}
-          at={exceptionEventTime(exception, evidence.artifactsById)}
-          phaseId={null}
-          selected={exception.id === selectedExceptionId}
-          highlighted={exception.id === highlightedId}
-          onOpen={onOpenException}
-        />)}
+        <ExceptionRowList rows={tripNotes.filter(e => tripVisible.visibleIds.has(e.id)).map(exception => ({ exception, at: exceptionEventTime(exception, evidence.artifactsById) }))}
+          hiddenCount={tripVisible.hiddenCount} phaseId={null} selectedId={selectedExceptionId} highlightedId={highlightedId} onOpen={onOpenException} />
       </section>}
     </div>
   </section>

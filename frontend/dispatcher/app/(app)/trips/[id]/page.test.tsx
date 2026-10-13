@@ -9,8 +9,10 @@ import type { Trip } from '@shared/lib/types/trip'
 import { line } from '@/components/domain/__tests__/textLine'
 
 const push = vi.fn()
+const replace = vi.fn()
 const notify = vi.fn()
 const navigation = vi.hoisted(() => ({ search: new URLSearchParams() }))
+const artifactState = vi.hoisted(() => ({ error: null as string | null, refetch: vi.fn() }))
 const forensicMode = vi.hoisted(() => ({
   canViewForensics: true,
   forensicOn: true,
@@ -19,7 +21,7 @@ const forensicMode = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: TRIP_0040_ID }),
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
   useSearchParams: () => navigation.search,
 }))
 
@@ -42,8 +44,8 @@ vi.mock('@/lib/hooks/useTripArtifacts', () => ({
     byId: new Map(),
     isLoading: false,
     isValidating: false,
-    error: null,
-    refetch: vi.fn(),
+    error: artifactState.error,
+    refetch: artifactState.refetch,
   }),
 }))
 
@@ -78,6 +80,22 @@ vi.mock('@/components/blockchain/VerifyButton', () => ({
 }))
 
 const mockedUseTripDetail = vi.mocked(useTripDetail)
+
+it('shows a plain evidence-refresh error with Retry and logs the diagnostic URL', () => {
+  artifactState.error = 'GET http://localhost:8000/api/v1/trips/x/artifacts failed'
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    render(<TripDetailPage />)
+    expect(screen.getByText('Evidence could not be refreshed.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain(artifactState.error)
+    expect(logged).toHaveBeenCalledWith('Evidence could not be refreshed.', artifactState.error)
+    fireEvent.click(within(screen.getByText('Evidence could not be refreshed.').closest('[role="status"]') as HTMLElement).getByRole('button', { name: 'Retry' }))
+    expect(artifactState.refetch).toHaveBeenCalled()
+  } finally {
+    artifactState.error = null
+    logged.mockRestore()
+  }
+})
 
 describe('parcel search return navigation', () => {
   it('returns to the selected barcode and waybill', () => {
@@ -151,6 +169,7 @@ function tripDriving(): Trip {
 
 beforeEach(() => {
   push.mockReset()
+  replace.mockReset()
   notify.mockReset()
   navigation.search = new URLSearchParams()
   forensicMode.canViewForensics = true
@@ -178,7 +197,7 @@ describe('Trip detail phase timeline', () => {
     // Collapsed, the rows sit under the verdict: an exception is never hidden behind a closed card.
     expect(rows).toHaveLength(2)
     expect(within(loadingGroup).getByRole('button', { name: /Loading/, expanded: false })).toBeInTheDocument()
-    expect(rows[0]).toHaveTextContent('Raised by system')
+    expect(rows[0]).toHaveTextContent('System recorded')
     expect(rows[0]).toHaveTextContent('Info')
     expect(loadingGroup.querySelector('article')).toBeNull()
   })
@@ -367,7 +386,7 @@ describe('Trip detail summary and panels', () => {
   it('keeps the route summary visible and opens the exception panel', () => {
     render(<TripDetailPage />)
     expect(screen.getByRole('heading', { name: 'TRP-2026-0040' })).toBeInTheDocument()
-    expect(screen.getByText('FedEx JHB → FedEx DBN')).toBeInTheDocument()
+    expect(screen.getAllByText('FedEx JHB → FedEx DBN')[0]).toBeInTheDocument()
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Trip sections' })).getByRole('button', { name: /exceptions ·/i }))
     expect(push).toHaveBeenCalledWith(expect.stringContaining('panel=exceptions'), { scroll: false })
   })
@@ -578,6 +597,52 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     }
   })
 
+  it.each([false, true])('deselects on an outside click while keeping the panel and phase filter (docked: %s)', docked => {
+    const restore = docked ? dockedMatchMedia() : () => undefined
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loadingPhaseId()}&exception=${EARLIER_ID}`)
+    try {
+      const { rerender } = render(<TripDetailPage />)
+      fireEvent.click(screen.getByRole('heading', { name: 'Trip timeline' }))
+
+      expect(replace).toHaveBeenCalledOnce()
+      expect(replace).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&phase=${loadingPhaseId()}`, { scroll: false })
+      navigation.search.delete('exception')
+      rerender(<TripDetailPage />)
+      expect(document.querySelector('[aria-current="true"]')).toBeNull()
+      expect(selectedRecord()?.querySelector('article')).not.toHaveClass('ring-2')
+      expect(screen.getByText(line('Selected phase · 2 of 2 trip exceptions'))).toBeInTheDocument()
+    } finally { restore() }
+  })
+
+  it('keeps selection when clicking inside its panel record', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    render(<TripDetailPage />)
+    fireEvent.click(within(selectedRecord()!).getByRole('heading', { name: 'Cargo Damage' }))
+
+    expect(replace).not.toHaveBeenCalled()
+    expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('selects another timeline exception without an intervening deselection', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    render(<TripDetailPage />)
+    const loading = screen.getByRole('group', { name: 'Loading phase and exceptions' })
+    fireEvent.click(within(loading).getByRole('button', { name: /Checkpoint Timeout/ }))
+
+    expect(replace).not.toHaveBeenCalled()
+    expect(push).toHaveBeenCalledOnce()
+    expect(push).toHaveBeenCalledWith(expect.stringContaining('exception='), { scroll: false })
+  })
+
+  it('removes the outside-click listener when leaving the trip', () => {
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    const { unmount } = render(<TripDetailPage />)
+    unmount()
+    fireEvent.click(document.body)
+
+    expect(replace).not.toHaveBeenCalled()
+  })
+
   it('opens on the record from an exception link alone, without a panel parameter', () => {
     navigation.search = new URLSearchParams(`exception=${EARLIER_ID}`)
 
@@ -632,13 +697,13 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
   })
 
-  it('keeps the selected record when only the phase filter is cleared', () => {
+  it('clears the selected record when the phase filter control is clicked', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loadingPhaseId()}&exception=${EARLIER_ID}`)
     render(<TripDetailPage />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
 
-    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&exception=${EARLIER_ID}`, { scroll: false })
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
   })
 
   it('leaves the single-record view when a reader picks a filter', () => {

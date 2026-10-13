@@ -10,6 +10,12 @@ import type { ExceptionContactMethod, ExceptionSeverity, TripException } from '@
 
 /** Rows shown per phase before "+n more" (design note O5: three everywhere). */
 export const EXCEPTION_ROW_CAP = 3
+/** URL phase scope for the Trip record list, distinct from all trip exceptions. */
+export const TRIP_LEVEL_SCOPE = 'trip-level'
+
+export function isTripLevelException(exception: TripException, phaseIds: ReadonlySet<string>): boolean {
+  return !exception.phase_event_id || !phaseIds.has(exception.phase_event_id)
+}
 
 const SEVERITY_RANK: Record<ExceptionSeverity, number> = { critical: 0, warning: 1, info: 2 }
 const NEEDS_REVIEW_RANK = 0

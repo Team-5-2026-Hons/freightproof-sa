@@ -15,7 +15,7 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { BlockchainReceipt } from '@shared/lib/types/blockchain'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
-import { buildPhaseActs, type PhaseAct } from './acts'
+import { buildExceptionActs, buildPhaseActs, type PhaseAct } from './acts'
 import { buildPhaseChecks, type PhaseCheck } from './checks'
 import { phaseVerdict, type PhaseVerdict } from './verdict'
 import { isResolved, legDepartureAt, originScannedCount } from './derive'
@@ -87,7 +87,10 @@ function legOf(trip: Trip, phase: PhaseDescriptor): { departedAt: string | null;
 
 export function buildPhaseCardModel(input: PhaseCardInput): PhaseCardModel {
   const { trip, phase, exceptions, receipt, nowMs } = input
-  if (phase.phase_type === 'trip_creation') return EMPTY_MODEL
+  if (phase.phase_type === 'trip_creation') {
+    const byId = new Map(input.artifacts.map(artifact => [artifact.id as string, artifact]))
+    return { ...EMPTY_MODEL, acts: buildExceptionActs(phase, exceptions, byId) }
+  }
 
   const resolved = isResolved(phase)
   const running = isRunning(trip)

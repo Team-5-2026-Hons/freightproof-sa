@@ -12,6 +12,7 @@ import { withReturnTo } from '@/lib/navigation/returnTo'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { TripException } from '@shared/lib/types/exception'
+import { EXCEPTION_SELECTED_SURFACE, EXCEPTION_SELECTION_OUTLINE } from './ExceptionRow'
 
 interface Props {
   exception: TripException; phaseLabel?: string; returnTo?: string
@@ -27,8 +28,9 @@ interface Props {
    *  already makes for its own blocks in that exact panel — or the card is
    *  indistinguishable from its own background but for a faint border. */
   tone?: 'low' | 'lowest'
+  selected?: boolean
 }
-export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone = 'low' }: Props) {
+export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone = 'low', selected = false }: Props) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const target = ROUTES.exceptionDetail(exception.id)
   const { user } = useAuth()
@@ -39,7 +41,7 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
     : state.kind === 'claimed_by_me' || state.kind === 'claimed_by_other' ? exception.claimed_at
     : null
   return (
-    <article className={`min-w-0 rounded-lg border border-outline-v/30 px-4 py-3 ${tone === 'lowest' ? 'bg-surf-lowest' : 'bg-surf-low'}`}>
+    <article className={`relative min-w-0 rounded-lg border border-outline-v/30 px-4 py-3 ${selected ? `${EXCEPTION_SELECTED_SURFACE} ${EXCEPTION_SELECTION_OUTLINE}` : tone === 'lowest' ? 'bg-surf-lowest' : 'bg-surf-low'}`}>
       {phaseLabel && <p className="mb-2 text-xs font-semibold text-on-surf-v">{phaseLabel} · Exception</p>}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">

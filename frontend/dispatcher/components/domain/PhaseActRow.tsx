@@ -4,15 +4,19 @@ import type { ReactNode } from 'react'
 import { Ic, type IconName } from '@/components/ui/Ic'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
+import { EVIDENCE_ROLE_NOUN } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException } from '@shared/lib/types/exception'
 import {
   absentLabel, anchorLabel, completionTimeLine, completionTitle, completionValueLines, expectedLabel,
+  evidenceStateLabel, evidenceTimes, completionTimes, evidenceTitle, SERVER_CLOCK, type RecordedTime,
 } from '@/lib/phase/act-wording'
 import type { AbsentAct, AnchorAct, CompletionAct, ExpectedAct, MilestoneAct } from '@/lib/phase/acts'
 import type { ActItem } from '@/lib/phase/act-groups'
 import { EvidenceGroupRow, type EvidenceLookup } from './EvidenceGroupRow'
+import type { EvidenceGroup } from '@/lib/phase/act-groups'
 import { NumericText } from './NumericText'
+import { CompactActLine, COMPACT_CONNECTOR } from './CompactActLine'
 import { ExceptionRow, type OpenException } from './ExceptionRow'
 
 type RailKind = 'evidence' | 'milestone' | 'completion' | 'exception' | 'absent' | 'anchor' | 'expected' | 'more'
@@ -74,7 +78,7 @@ function MilestoneBody({ act, stopName }: { act: MilestoneAct; stopName: string 
     <div>
       <p className={HEADLINE}>Departed {stopName}</p>
       {act.sealNumber !== null && <p className={DETAIL}><NumericText text={`Sealed ${act.sealNumber} at departure`} /></p>}
-      <p className={TIME}>Recorded {fmtDateTime(act.at)} (server clock)</p>
+      <p className={TIME}>Recorded {fmtDateTime(act.at)} {SERVER_CLOCK}</p>
     </div>
   )
 }
@@ -107,12 +111,58 @@ interface ItemProps {
   item: ActItem
   context: ActRowContext
   highlighted: boolean
+  density?: 'compact' | 'full'
+  nested?: boolean
+  connectToNext?: boolean
+}
+
+interface CompactRecord { times: RecordedTime[]; detail: string }
+
+/** Keep clock and state/provenance even when images and the value grid are collapsed. */
+function compactEvidence(group: EvidenceGroup, context: ActRowContext): CompactRecord {
+  const titles = [...new Set(group.acts.map(act => evidenceTitle(act, context.phase.phase_type)))].join(' · ')
+  const count = group.acts.length > 1 ? ` · ${group.acts.length} ${group.role === 'pod_signature' ? 'files' : 'photos'} uploaded` : ''
+  const states = [...new Set(group.acts.map(evidenceStateLabel))].join(' · ')
+  const times = new Map(group.acts.flatMap(act => evidenceTimes(act).map(time => [`${time.source}:${time.at}`, time] as const)))
+  return { times: [...times.values()], detail: `${titles}${count} · ${states}` }
+}
+
+function compactRecord(item: Exclude<ActItem, { kind: 'exception' }>, context: ActRowContext): CompactRecord | null {
+  switch (item.kind) {
+    case 'evidence_group': return compactEvidence(item, context)
+    case 'completion': return {
+      times: completionTimes(item),
+      detail: [completionTitle(item, context.phase.phase_type, context.stopName, context.destinationName), ...completionValueLines({ ...item, override: null }, context.phase.phase_type)].join(' · '),
+    }
+    case 'milestone': return { times: [{ at: item.at, source: 'server' }], detail: `Departed ${context.stopName}${item.sealNumber ? ` · Seal ${item.sealNumber}` : ''}` }
+    case 'absent': return { times: [{ at: null, source: null }], detail: `${EVIDENCE_ROLE_NOUN[item.role]} · Not submitted at completion` }
+    case 'expected': return { times: [], detail: expectedLabel(item, context.phase.phase_type, context.destinationName, context.expectedArrivalAt) }
+    case 'anchor': return null
+  }
+}
+
+function CompactRow({ item, context, connectToNext = false }: ItemProps) {
+  const connector = connectToNext ? <span aria-hidden="true" data-compact-connector className={COMPACT_CONNECTOR} /> : null
+  if (item.kind === 'exception') {
+    const exception = context.exceptionsById.get(item.exceptionId)
+    return exception ? <li data-row-kind="exception" className="relative">{connector}<ExceptionRow exception={exception} at={item.at} phaseId={context.phase.phase_event_id}
+      selected={exception.id === context.selectedExceptionId} highlighted={exception.id === context.highlightedExceptionId}
+      onOpen={context.onOpenException} density="compact" /></li> : null
+  }
+  const record = compactRecord(item, context)
+  if (record === null) return null
+  const kind = item.kind === 'evidence_group' ? 'evidence' : item.kind
+  return <li data-row-kind={kind} className="relative">{connector}
+    <CompactActLine times={record.times} icon={KIND_ICON[kind]}><NumericText text={record.detail} /></CompactActLine>
+  </li>
 }
 
 /** One rail entry for one item, or null when there is nothing to draw (a row for an exception
  *  the page no longer has). The anchor row is wrapped whole in `ForensicOnly`, so with forensic
  *  mode off not even its icon is drawn (D32). */
-export function ActRow({ item, context, highlighted }: ItemProps) {
+export function ActRow({ item, context, highlighted, density = 'full', nested = false, connectToNext = false }: ItemProps) {
+  if (density === 'compact') return <CompactRow item={item} context={context} highlighted={false} connectToNext={connectToNext} />
+  if (nested && item.kind === 'evidence_group') return <li data-row-kind="evidence" className="pb-3"><EvidenceGroupRow group={item} phaseType={context.phase.phase_type} lookup={context.lookup} /></li>
   switch (item.kind) {
     case 'evidence_group':
       return <RailRow kind="evidence" highlighted={highlighted}><EvidenceGroupRow group={item} phaseType={context.phase.phase_type} lookup={context.lookup} /></RailRow>
@@ -129,9 +179,7 @@ export function ActRow({ item, context, highlighted }: ItemProps) {
     case 'exception': {
       const exception = context.exceptionsById.get(item.exceptionId)
       if (!exception) return null
-      return (
-        <RailRow kind="exception" highlighted={false}>
-          <ExceptionRow
+      const row = <ExceptionRow
             exception={exception}
             at={item.at}
             phaseId={context.phase.phase_event_id}
@@ -139,8 +187,7 @@ export function ActRow({ item, context, highlighted }: ItemProps) {
             highlighted={exception.id === context.highlightedExceptionId}
             onOpen={context.onOpenException}
           />
-        </RailRow>
-      )
+      return <RailRow kind="exception" highlighted={false}>{row}</RailRow>
     }
   }
 }

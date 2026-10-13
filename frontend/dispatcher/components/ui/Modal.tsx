@@ -148,14 +148,14 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
           scrolls inside itself. A wrapper rather than flex on the <dialog>: `display: flex` there
           would override the browser's `display: none` for a dialog that is not open yet. */}
       <div className={cn(isZoom && 'flex h-full flex-col')}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
-          <h2 id={titleId} className="text-lg font-bold text-surface-on">{title}</h2>
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-outline-variant/20">
+          <h2 id={titleId} className="min-w-0 break-words text-lg font-bold text-surface-on">{title}</h2>
           <button
             type="button"
             disabled={closeDisabled}
             onClick={onClose}
             aria-label="Close modal"
-            className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
           >
             <X className="w-4 h-4" />
           </button>

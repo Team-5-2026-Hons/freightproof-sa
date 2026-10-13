@@ -4,6 +4,7 @@
 
 import type { EvidenceRole } from '@shared/lib/types/evidence'
 import type { EvidenceAct, PhaseAct } from './acts'
+import { evidenceTimes } from './act-wording'
 
 export interface EvidenceGroup {
   kind: 'evidence_group'
@@ -14,6 +15,12 @@ export interface EvidenceGroup {
 }
 
 export type ActItem = EvidenceGroup | Exclude<PhaseAct, EvidenceAct>
+
+/** Only an entirely untimed submitted group belongs with the completion. A late upload
+ * or a known-time retake keeps its own position and must not inherit submission status. */
+export function isUntimedSubmittedEvidence(item: ActItem): boolean {
+  return item.kind === 'evidence_group' && item.acts.every(act => act.state === 'submitted' && evidenceTimes(act).every(time => time.at === null))
+}
 
 const SUBMITTED_FIRST = (a: EvidenceAct, b: EvidenceAct): number =>
   Number(b.state === 'submitted') - Number(a.state === 'submitted')

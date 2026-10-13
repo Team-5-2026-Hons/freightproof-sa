@@ -35,7 +35,7 @@ const CARD_STYLE: Record<PhaseNodeType, string> = {
   active:  'bg-sec-c border border-sec/20',
   // A light outline (vs. `active`'s solid fill) says "waiting on", not "in progress".
   next:    'bg-surf-low border border-sec/30',
-  warn:    'bg-warn-c/40 border border-warn/20',
+  warn:    'bg-surf-low',
   pending: 'border border-dashed border-outline-v/40',
 }
 
@@ -88,7 +88,7 @@ export function PhaseTimelineItem({
   const status = verdict ? null : statusChip(nodeType, cancelled, overridden)
 
   const summaryContent = <>
-    <div className="mb-[5px] flex items-start justify-between gap-3">
+    <div className="mb-[5px] flex flex-wrap items-start justify-between gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-[8px]">
         <h3 className={`text-title ${nodeType === 'pending' ? 'text-on-surf-v' : 'text-on-surf'}`}>{label}</h3>
         {status && <Chip type={nodeType === 'warn' ? 'exception' : 'pending'} label={status} />}

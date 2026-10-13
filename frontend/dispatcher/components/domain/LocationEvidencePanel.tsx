@@ -35,6 +35,8 @@ interface Props {
    *  the trip timeline's exception footer, which renders `ExceptionMapButton` once per
    *  exception already. Defaults to false: every other consumer keeps its button. */
   hideMapButton?: boolean
+  /** The timeline keeps coordinates in the map; other surfaces retain their field grid. */
+  showCoordinates?: boolean
 }
 
 const NO_FIX_RECORDED = 'No fix recorded'
@@ -193,7 +195,7 @@ export function LocationComparisonModal({ open, onClose, evidence, contextLabel 
   )
 }
 
-export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = false }: Props) {
+export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = false, showCoordinates = true }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const closeModal = () => setModalOpen(false)
   const { driverFix, trackerFix, separationMetres, verdict, boundary } = evidence
@@ -202,8 +204,8 @@ export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = 
   const separationText = separationMetres === null ? COMPARISON_UNAVAILABLE : formatSeparation(separationMetres)
   return (
     <>
-      <Field label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />
-      <Field label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />
+      {showCoordinates && <Field label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />}
+      {showCoordinates && <Field label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />}
       {driverFix && <Field label={`${FIX_LABELS.driver_phone} capture time`} value={captureValue(driverFix)} />}
       {trackerFix && <Field label={`${FIX_LABELS.horse_tracker} capture time`} value={captureValue(trackerFix)} />}
 

@@ -20,6 +20,38 @@ function exception(id: string, overrides: Partial<TripException> = {}): TripExce
 const AT = '2026-01-01T08:42:00Z'
 
 describe('ExceptionRow', () => {
+  it.each(['compact', 'full'] as const)('outlines the brief landing highlight too (%s)', density => {
+    render(<ExceptionRow exception={exception('landing')} at={AT} phaseId="p" selected={false} highlighted onOpen={vi.fn()} density={density} />)
+
+    expect(screen.getByRole('button')).toHaveClass('ring-2', 'ring-sec', 'bg-sec-c/70')
+    expect(screen.getByRole('button')).not.toHaveAttribute('aria-current')
+  })
+  it('keeps the soft selected surface with a complete outline and separate keyboard focus', () => {
+    render(<ExceptionRow exception={exception('selected')} at={AT} phaseId="p" selected highlighted={false} onOpen={vi.fn()} />)
+
+    const row = screen.getByRole('button')
+    expect(row).toHaveClass('bg-sec-c/25')
+    expect(row).toHaveClass('ring-2', 'ring-sec')
+    expect(row.className).not.toContain('before:')
+    expect(row).toHaveClass('focus-visible:outline-2')
+    expect(row).toHaveTextContent('Critical')
+    expect(row).toHaveAttribute('aria-current', 'true')
+  })
+  it('gives compact exceptions visible hover feedback without shifting their columns', () => {
+    render(<ExceptionRow exception={exception('hover')} at={AT} phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} density="compact" />)
+
+    const row = screen.getByRole('button')
+    expect(row).toHaveClass('hover:bg-sec-c/40', 'hover:duration-150')
+    expect(row.querySelector('[data-compact-act]')).not.toBeNull()
+  })
+
+  it('clamps the description without a competing display:block', () => {
+    render(<ExceptionRow exception={exception('e')} at={AT} phaseId={null} selected={false} highlighted={false} onOpen={vi.fn()} />)
+    const description = screen.getByText('Trailer tracker reads 840 m from the horse tracker.')
+
+    expect(description).toHaveClass('line-clamp-2')
+    expect(description).not.toHaveClass('block')
+  })
   it('shows type, severity, time, source, review state and the description', () => {
     render(<ExceptionRow exception={exception('e1')} at={AT} phaseId="phase-1" selected={false} highlighted={false} onOpen={vi.fn()} />)
 
@@ -77,10 +109,10 @@ describe('ExceptionRow', () => {
 
   it('labels the clock: the phone\'s when the time is the evidence capture, the server\'s otherwise', () => {
     const { rerender } = render(<ExceptionRow exception={exception('e1')} at={AT} phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} />)
-    expect(screen.getByRole('button')).toHaveTextContent('(server clock)')
+    expect(screen.getByRole('button')).toHaveTextContent('(system recorded)')
 
     rerender(<ExceptionRow exception={exception('e1')} at="2026-01-01T08:30:00Z" phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} />)
-    expect(screen.getByRole('button')).toHaveTextContent('(device clock)')
+    expect(screen.getByRole('button')).toHaveTextContent('(driver’s phone)')
   })
 
   it('marks the selected row for assistive tech and the highlighted row for the eye', () => {

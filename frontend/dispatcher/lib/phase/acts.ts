@@ -39,7 +39,20 @@ export interface CompletionAct {
   confirmedAt: string | null; recordedAt: string; values: CompletionValues
   override: { note: string | null; authorisedBy: string | null } | null
 }
-export interface ExceptionAct { kind: 'exception'; key: string; exceptionId: string; at: string }
+export interface ExceptionAct { kind: 'exception'; key: string; exceptionId: string; at: string; trigger: 'handshake' | 'override' | 'event' }
+
+// System findings emitted by phases/completion.py (_finish_phase) and phases/findings.py.
+// override.py also emits seal_unverified when inspection was bypassed, so it is not a check.
+const HANDSHAKE_FINDING_TYPES: readonly TripException['exception_type'][] = [
+  'driver_vehicle_separation', 'driver_location_mismatch', 'gps_mismatch', 'trailer_location_mismatch',
+  'seal_mismatch', 'seal_unverified', 'seal_compromised', 'parcel_count_mismatch',
+]
+
+export function exceptionTrigger(exception: TripException, phase: PhaseDescriptor): ExceptionAct['trigger'] {
+  if (!phase.completed_at || exception.source !== 'system' || exception.checkpoint_id !== null
+    || exception.phase_event_id !== phase.phase_event_id || !HANDSHAKE_FINDING_TYPES.includes(exception.exception_type)) return 'event'
+  return phase.status === 'overridden' ? 'override' : 'handshake'
+}
 /** Resolved phases only (D35). */
 export interface AbsentAct { kind: 'absent'; key: string; role: EvidenceRole }
 /** Produced for every phase that owes a receipt; the component shows it in forensic mode only (D32). */
@@ -79,7 +92,7 @@ const ALL_ROLES = Object.keys(EVIDENCE_ROLE_FIELD) as EvidenceRole[]
  *  it has an artifact carrying one, rather than the millisecond the system persisted the
  *  row; the recorded time for an exception with no artifact. TripException carries no
  *  capture timestamp of its own, so this is the only place that time can come from. */
-export function exceptionEventTime(exception: TripException, artifactsById: Map<string, EvidenceArtifactWithUrl>): string {
+export function exceptionEventTime(exception: TripException, artifactsById: ReadonlyMap<string, EvidenceArtifactWithUrl>): string {
   const artifact = exception.supporting_artifact_id ? artifactsById.get(exception.supporting_artifact_id) : undefined
   return artifact?.captured_at ?? exception.created_at
 }
@@ -266,13 +279,27 @@ function completionActs(ctx: Ctx): CompletionAct[] {
   }]
 }
 
-function exceptionActs(ctx: Ctx): ExceptionAct[] {
-  return ctx.exceptions.map(exception => ({
+function toExceptionActs(
+  phase: PhaseDescriptor, exceptions: readonly TripException[], artifactsById: ReadonlyMap<string, EvidenceArtifactWithUrl>,
+): ExceptionAct[] {
+  return exceptions.map(exception => ({
     kind: 'exception',
-    key: `${ctx.phase.phase_event_id}:exception:${exception.id}`,
+    key: `${phase.phase_event_id}:exception:${exception.id}`,
     exceptionId: exception.id,
-    at: exceptionEventTime(exception, ctx.artifactsById),
+    at: exceptionEventTime(exception, artifactsById),
+    trigger: exceptionTrigger(exception, phase),
   }))
+}
+
+function exceptionActs(ctx: Ctx): ExceptionAct[] {
+  return toExceptionActs(ctx.phase, ctx.exceptions, ctx.artifactsById)
+}
+
+/** A phase's exceptions as acts in time order, for a card that has no other acts (trip creation). */
+export function buildExceptionActs(
+  phase: PhaseDescriptor, exceptions: readonly TripException[], artifactsById: ReadonlyMap<string, EvidenceArtifactWithUrl>,
+): ExceptionAct[] {
+  return toExceptionActs(phase, exceptions, artifactsById).sort(compareByEventTime)
 }
 
 // ── Absent, anchor, expected ─────────────────────────────────────────────────
@@ -362,9 +389,13 @@ export function buildPhaseActs(input: PhaseActsInput): PhaseAct[] {
   const ctx = buildContext(input)
   if (!rowsAreVisible(ctx)) return []
 
-  const timed = [
+  const allTimed = [
     ...evidenceActs(ctx), ...milestoneActs(ctx), ...completionActs(ctx), ...exceptionActs(ctx),
   ].sort(compareByEventTime)
+  // Confirmation findings are attached to the tap, not fabricated road events a moment later.
+  const attached = allTimed.filter((act): act is ExceptionAct => act.kind === 'exception' && act.trigger !== 'event')
+  const timed = allTimed.filter(act => act.kind !== 'exception' || act.trigger === 'event')
+    .flatMap<PhaseAct>(act => act.kind === 'completion' ? [act, ...attached] : [act])
 
   return [
     ...insertBeforeCompletion(timed, absentActs(ctx)),

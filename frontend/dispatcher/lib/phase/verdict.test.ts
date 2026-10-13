@@ -42,6 +42,24 @@ function verdictFor(over: Partial<PhaseVerdictInput> & { phase: PhaseDescriptor 
 
 const PASSES: PhaseCheck[] = [check('truck_geofence', 'pass', 'Truck within precinct tolerance')]
 
+describe('transit confirmation and duration (D47)', () => {
+  it('counts arrival findings separately from road events and keeps departure on a finished leg', () => {
+    const p = phase(SEQ.transit, COMPLETED)
+    const finding = { ...exception('needs_review', 'driver_vehicle_separation'), source: 'system' as const, checkpoint_id: null, phase_event_id: p.phase_event_id }
+    const v = verdictFor({ phase: p, exceptions: [finding], leg: { departedAt: DEPARTED_AT, arrivedAt: p.completed_at } })
+
+    expect(v?.reasons.join(' · ')).toContain('1 at arrival check')
+    expect(v?.reasons.join(' · ')).not.toContain('en route')
+    expect(v?.reasons.join(' · ')).toContain('Departed')
+  })
+
+  it('keeps only the duration together using non-breaking spaces', () => {
+    const v = verdictFor({ phase: phase(SEQ.transit, { ...COMPLETED, completed_at: '2026-10-13T08:35:00Z' }), leg: { departedAt: DEPARTED_AT, arrivedAt: '2026-10-13T08:35:00Z' } })
+
+    expect(v?.reasons).toContain('1\u00a0h\u00a035\u00a0m on the road')
+  })
+})
+
 describe('outcome precedence', () => {
   it('overridden outranks everything', () => {
     const v = verdictFor({
@@ -322,14 +340,14 @@ describe('in_transit leg (D29, D41)', () => {
     const v = active()
 
     expect(v?.outcome).toBe('in_progress')
-    expect(v?.reasons).toEqual(['Departed 09:00 SAST', '3 h 12 m on the road'])
+    expect(v?.reasons).toEqual(['Departed 09:00 SAST', '3\u00a0h\u00a012\u00a0m on the road'])
   })
 
   it('an active leg with one unreviewed exception needs attention', () => {
     const v = active({ exceptions: [exception('needs_review', 'route_deviation'), exception('reviewed', 'tracker_silent', 'info', 'exc-2')] })
 
     expect(v?.outcome).toBe('attention')
-    expect(v?.reasons).toEqual(['2 exceptions en route, 1 needs review', 'Departed 09:00 SAST', '3 h 12 m on the road'])
+    expect(v?.reasons).toEqual(['2 exceptions en route, 1 needs review', 'Departed 09:00 SAST', '3\u00a0h\u00a012\u00a0m on the road'])
     expect(v?.nodeType).toBe('warn')
   })
 
@@ -348,7 +366,7 @@ describe('in_transit leg (D29, D41)', () => {
 
     expect(v?.outcome).toBe('unverified')
     expect(v?.headline).toBe('No exceptions recorded')
-    expect(v?.reasons).toEqual(['40 min on the road'])
+    expect(v?.reasons).toEqual(['Departed 09:00 SAST', '40\u00a0min on the road'])
   })
 
   it('stays unverified even if a caller hands it passing checks', () => {
@@ -361,20 +379,20 @@ describe('in_transit leg (D29, D41)', () => {
     const v = resolved({ exceptions: [exception('reviewed')] }, '2026-10-13T07:55:00Z')
 
     expect(v?.outcome).toBe('reviewed')
-    expect(v?.reasons).toEqual(['Route Deviation (warning)', '55 min on the road'])
+    expect(v?.reasons).toEqual(['1 exception en route, 0 need review', 'Departed 09:00 SAST', '55\u00a0min on the road'])
   })
 
   it('a finished leg with an unreviewed exception needs attention', () => {
     const v = resolved({ exceptions: [exception('needs_review')] })
 
     expect(v?.outcome).toBe('attention')
-    expect(v?.reasons).toEqual(['1 exception en route, 1 needs review', '40 min on the road'])
+    expect(v?.reasons).toEqual(['1 exception en route, 1 needs review', 'Departed 09:00 SAST', '40\u00a0min on the road'])
   })
 
   it('stops the clock at arrival: a resolved leg uses completed_at, not now', () => {
     const v = resolved({ nowMs: NOW_MS + 5 * 60 * 60 * 1000 }, '2026-10-13T09:12:00Z')
 
-    expect(v?.reasons.join(' ')).toContain('2 h 12 m on the road')
+    expect(v?.reasons.join(' ')).toContain('2\u00a0h\u00a012\u00a0m on the road')
   })
 
   it('omits the duration of a finished leg that has no arrival time instead of ticking on', () => {
@@ -412,7 +430,7 @@ describe('in_transit leg (D29, D41)', () => {
   ])('formats %i ms on the road as %s', (elapsedMs, expected) => {
     const v = active({ nowMs: Date.parse(DEPARTED_AT) + elapsedMs })
 
-    expect(v?.reasons).toContain(`${expected} on the road`)
+    expect(v?.reasons).toContain(`${expected.replaceAll(' ', '\u00a0')} on the road`)
   })
 
   it('an overridden leg is overridden without a duration', () => {
