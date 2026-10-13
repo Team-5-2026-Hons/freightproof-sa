@@ -30,6 +30,12 @@ describe('toastForEvent', () => {
     expect(toastForEvent(event('trip_closed'))).toBeNull()
   })
 
+  it('evidence_uploaded raises no toast', () => {
+    // An upload is a live-view refresh, not an alert; it must stay silent at any severity.
+    expect(toastForEvent(event('evidence_uploaded'))).toBeNull()
+    expect(toastForEvent(event('evidence_uploaded', 'critical'))).toBeNull()
+  })
+
   it('does not raise an alert for progress even when it arrives as critical', () => {
     // Severity ranks exceptions; it does not turn a completion into an alarm. Guards
     // against a future emitter setting a band on a lifecycle event and unexpectedly

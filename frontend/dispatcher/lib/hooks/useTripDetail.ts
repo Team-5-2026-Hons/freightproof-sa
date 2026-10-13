@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
+import { TRIP_RECORD_KINDS } from '@/lib/realtime/types'
 import { useTripResource } from './useTripResource'
 
 const ANCHOR_REFRESH_INTERVAL_MS = 10_000
@@ -21,7 +22,7 @@ export interface UseTripDetailResult {
 }
 
 export function useTripDetail(tripId: string): UseTripDetailResult {
-  const { data, ...resource } = useTripResource<Trip | null>(tripId, '', null)
+  const { data, ...resource } = useTripResource<Trip | null>(tripId, '', null, TRIP_RECORD_KINDS)
   const receiptOwed = data?.phases?.some(phase =>
     phase.completed_at !== null && phase.event_hash !== null
     && !phase.blockchain_receipt_id

@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api, ApiError } from '@/lib/api/client'
 import { useRealtimeChannel } from '@/lib/realtime/RealtimeProvider'
-import type { RealtimeEvent } from '@/lib/realtime/types'
+import type { RealtimeEvent, RealtimeKind } from '@/lib/realtime/types'
 import { useManifest } from './useManifest'
 import { useTripDetail } from './useTripDetail'
 import { useTripArtifacts } from './useTripArtifacts'
@@ -24,8 +24,8 @@ function deferred(): { promise: Promise<unknown>; resolve: (value: unknown) => v
   return { promise: new Promise<unknown>(done => { resolve = done }), resolve: value => resolve(value) }
 }
 async function flush(): Promise<void> { await act(async () => { await Promise.resolve() }) }
-function emit(id: string): void {
-  const event: RealtimeEvent = { resource: 'trip', id, kind: 'phase_completed', severity: 'info', ts: new Date().toISOString() }
+function emit(id: string, kind: RealtimeKind = 'phase_completed'): void {
+  const event: RealtimeEvent = { resource: 'trip', id, kind, severity: 'info', ts: new Date().toISOString() }
   listeners.forEach(listener => listener(event))
 }
 beforeEach(() => {
@@ -128,6 +128,61 @@ describe('trip resource recovery', () => {
     await act(async () => vi.advanceTimersByTime(200))
     expect(api.get).toHaveBeenCalledTimes(9)
     expect(listeners.size).toBe(0)
+  })
+})
+
+describe('refreshing only the resources an event changes', () => {
+  // Counts requests per resource, so a test can say which of the three refetched.
+  function callsTo(suffix: string): number {
+    return vi.mocked(api.get).mock.calls.filter(([path]) => path.endsWith(suffix)).length
+  }
+  const RECORD = '/api/v1/trips/a'
+  function mountAllThree() {
+    vi.mocked(api.get).mockImplementation(async path => path.endsWith('/artifacts') ? [] : { id: 'a' })
+    return renderHook(() => ({ trip: useTripDetail('a'), artifacts: useTripArtifacts('a'), manifest: useManifest('a') }))
+  }
+
+  it('evidence_uploaded refreshes artifacts but not the trip record', async () => {
+    const { unmount } = mountAllThree()
+    await flush()
+    expect(callsTo('/artifacts')).toBe(1)
+
+    act(() => emit('a', 'evidence_uploaded'))
+    await act(async () => vi.advanceTimersByTime(200))
+
+    expect(callsTo('/artifacts')).toBe(2)
+    expect(callsTo('/manifest')).toBe(1)
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === RECORD)).toHaveLength(1)
+    unmount()
+  })
+
+  it('phase_completed refreshes both', async () => {
+    const { unmount } = mountAllThree()
+    await flush()
+
+    act(() => emit('a', 'phase_completed'))
+    await act(async () => vi.advanceTimersByTime(200))
+
+    expect(callsTo('/artifacts')).toBe(2)
+    expect(callsTo('/manifest')).toBe(2)
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === RECORD)).toHaveLength(2)
+    unmount()
+  })
+
+  it('reconnect refreshes every filtered resource', async () => {
+    const { rerender, unmount } = mountAllThree()
+    await flush()
+
+    // The filter must not stop the reconnect refetch: it is the only recovery for an
+    // evidence_uploaded (or any other) event missed while the stream was down.
+    vi.mocked(useRealtimeChannel).mockReturnValue({ status: 'live', subscribe, reconnectNonce: 1 })
+    rerender()
+    await act(async () => vi.advanceTimersByTime(200))
+
+    expect(callsTo('/artifacts')).toBe(2)
+    expect(callsTo('/manifest')).toBe(2)
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === RECORD)).toHaveLength(2)
+    unmount()
   })
 })
 
