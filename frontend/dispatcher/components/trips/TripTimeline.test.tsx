@@ -390,9 +390,21 @@ describe('TripTimeline: the header verdict answers "did this phase go cleanly?" 
 
     const row = phaseGroup('Departure')
     expect(within(row).getByText('Checks passed')).toBeInTheDocument()
-    expect(within(row).getByText(/No exceptions/)).toBeInTheDocument()
+    // Clean is short (Batch 3): a count, with each passing check left to the Checked zone.
+    expect(row.textContent).toMatch(/Checks passed · \d+ checks?/)
+    expect(within(row).queryByText(/No exceptions/)).toBeNull()
     expect(toggleOf('Departure')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText(/^Clean$/)).not.toBeInTheDocument()
+  })
+
+  it('keeps every passing check in the Checked zone once a clean card is opened', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-1', pulsit_geofence_confirmed: true } }))
+
+    fireEvent.click(toggleOf('Departure')!)
+
+    const checked = within(phaseGroup('Departure')).getByRole('region', { name: 'Checked' })
+    expect(within(checked).getAllByText('Truck within precinct tolerance').length).toBeGreaterThan(0)
+    expect(phaseGroup('Departure').textContent).not.toMatch(/Checks passed · [^\d]/)
   })
 
   it('says "Not fully verified" when a check could not run, never "Checks passed"', () => {
@@ -1586,5 +1598,70 @@ describe('TripTimeline: "Show in timeline" reveals the row', () => {
     rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} onRevealHandled={onRevealHandled} revealRequest={request(2)} />)
 
     await waitFor(() => expect(onRevealHandled).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('TripTimeline: refresh trouble is one status in the toolbar', () => {
+  function toolbar(): HTMLElement {
+    return document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+  }
+
+  it('says nothing when every resource is fresh', () => {
+    renderTimeline(closedTrip())
+
+    expect(within(toolbar()).queryByRole('status')).toBeNull()
+  })
+
+  it('names a single stale resource beside the refresh time, with its own Retry', () => {
+    const onRetry = vi.fn()
+    renderTimeline(closedTrip(), { lastUpdated: Date.now(), warnings: [{ message: 'Evidence could not be refreshed.', onRetry }] })
+
+    const status = within(toolbar()).getByRole('status')
+    expect(status).toHaveTextContent('Evidence could not be refreshed.')
+    expect(status.previousElementSibling).toHaveTextContent(/^Record refreshed/)
+    fireEvent.click(within(status).getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('counts several stale resources in one status, and one Retry tries them all', () => {
+    const evidenceRetry = vi.fn()
+    const placesRetry = vi.fn()
+    renderTimeline(closedTrip(), { warnings: [
+      { message: 'Evidence could not be refreshed.', onRetry: evidenceRetry },
+      { message: 'Location names could not be refreshed.', onRetry: placesRetry },
+    ] })
+
+    const statuses = within(toolbar()).getAllByRole('status')
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toHaveTextContent('2 sources could not be refreshed')
+    // The words for each stay available to a screen reader.
+    expect(statuses[0]).toHaveTextContent('Location names could not be refreshed.')
+    fireEvent.click(within(statuses[0]!).getByRole('button', { name: 'Retry' }))
+    expect(evidenceRetry).toHaveBeenCalledOnce()
+    expect(placesRetry).toHaveBeenCalledOnce()
+  })
+})
+
+describe('TripTimeline: the toolbar keeps its controls together', () => {
+  it('places the view switch and the view buttons in fixed areas, and lets only the freshness status move', () => {
+    renderTimeline(closedTrip(), { lastUpdated: Date.now(), onToggleExpanded: vi.fn(), warnings: [{ message: 'Evidence could not be refreshed.', onRetry: vi.fn() }] })
+
+    const toolbar = document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+    expect(toolbar.className).toContain("[grid-template-areas:'view_controls'_'status_status']")
+    expect(toolbar.className).toContain("lg:[grid-template-areas:'view_status_controls']")
+    const controls = toolbar.querySelector('[data-toolbar-controls]')!
+    expect(controls.className).toContain('[grid-area:controls]')
+    expect(within(controls as HTMLElement).getByRole('button', { name: /expand/i })).toBeInTheDocument()
+    const freshness = toolbar.querySelector('[data-toolbar-freshness]')!
+    expect(freshness.className).toContain('[grid-area:status]')
+    expect(freshness).toContainElement(within(toolbar).getByRole('status'))
+  })
+
+  it('reserves no status row when there is nothing to say about freshness', () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+
+    const toolbar = document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+    expect(toolbar.querySelector('[data-toolbar-freshness]')).toBeNull()
+    expect(toolbar.className).not.toContain('status_status')
   })
 })

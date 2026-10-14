@@ -64,7 +64,9 @@ export const VERDICT_WORDING = {
   },
   // In transit nothing can pass: an empty list is absence of reports, not a safe route.
   transitUnverified: 'No exceptions recorded',
-  clean: { headline: 'Checks passed', noExceptions: 'No exceptions' },
+  // A clean phase says how much was checked, not what: the Checked zone lists each passing check,
+  // so the header stays short and the phases that need reading stand out (distil, Batch 3).
+  clean: { headline: 'Checks passed', noExceptions: 'No exceptions', checked: (n: number): string => countLabel(n, 'check') },
   inProgress: 'In progress',
   current: { headline: 'Current phase', reason: 'Waiting for the driver' },
   warehouseScan: 'Waiting for the warehouse scan to finish',
@@ -233,7 +235,7 @@ function settledBody(input: PhaseVerdictInput): VerdictBody | null {
     return {
       outcome: 'clean',
       headline: VERDICT_WORDING.clean.headline,
-      reasons: [VERDICT_WORDING.clean.noExceptions, ...passed.map(check => check.title)],
+      reasons: [VERDICT_WORDING.clean.checked(passed.length)],
     }
   }
   const reasons = checks.filter(check => check.result === 'pass' || check.result === 'not_checked').map(check => check.title)

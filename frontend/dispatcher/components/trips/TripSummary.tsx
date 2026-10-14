@@ -29,9 +29,12 @@ interface Props {
   onPanel: (panel: TripPanel) => void
   /** Collapses the header to its title row; the facts below it stay mounted. */
   compact?: boolean
+  /** Makes the "N need review" chip a control that lands on the first unreviewed row in the
+   *  timeline. Absent before the record loads, when there is no row to land on. */
+  onShowFirstUnreviewed?: () => void
 }
 
-export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false }: Props): React.JSX.Element {
+export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false, onShowFirstUnreviewed }: Props): React.JSX.Element {
   const [driverOpen, setDriverOpen] = useState(false)
   // One shared modal instance for the horse and however many trailers there are, holding
   // which one is currently open rather than a boolean per vehicle.
@@ -53,7 +56,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Chip type={status.chipType} label={status.label} />
-          {facts.needsReviewCount > 0 && <Chip type="exception" label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} />}
+          {facts.needsReviewCount > 0 && <NeedsReviewChip label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} onShow={onShowFirstUnreviewed} />}
           <ForensicControls />
         </div>
       </div>
@@ -149,4 +152,17 @@ function SummaryFact({ fact, pendingLabel }: { fact: HeaderFact | null; pendingL
       {fact.note && <p className="mt-0.5 text-xs text-on-surf-v">{fact.note}</p>}
     </SummaryCell>
   )
+}
+
+const SHOW_FIRST_ACTION = 'Show the first in the timeline'
+
+/** The header's review count. With somewhere to go it is the shortest way to the work: one press
+ *  lands on the first unreviewed row, opened and focused, through the same path as "Show in
+ *  timeline". The down chevron is the only visual change; the words stay the count. */
+function NeedsReviewChip({ label, onShow }: { label: string; onShow?: () => void }) {
+  if (!onShow) return <Chip type="exception" label={label} />
+  return <button type="button" onClick={onShow} aria-label={`${label}. ${SHOW_FIRST_ACTION}`}
+    className="rounded-md transition-[filter] duration-150 hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sec motion-reduce:transition-none">
+    <Chip type="exception">{label}<Ic n="chev" s={10} className="ml-1 rotate-90" /></Chip>
+  </button>
 }

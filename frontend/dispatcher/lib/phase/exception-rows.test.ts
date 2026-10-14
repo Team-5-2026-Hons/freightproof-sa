@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TripException } from '@shared/lib/types/exception'
-import { EXCEPTION_ROW_CAP, exceptionCountLabel, exceptionReviewLabel, visibleExceptions } from './exception-rows'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import { EXCEPTION_ROW_CAP, exceptionCountLabel, exceptionReviewLabel, firstUnreviewedException, visibleExceptions } from './exception-rows'
 
 function exception(id: string, overrides: Partial<TripException> = {}): TripException {
   return {
@@ -98,5 +99,46 @@ describe('exceptionCountLabel', () => {
 
   it('still counts reviewed records without saying any await review', () => {
     expect(exceptionCountLabel([exception('a'), exception('b')])).toBe('2 exceptions')
+  })
+})
+
+describe('firstUnreviewedException', () => {
+  // Only the plan position matters here; the rest of a phase is irrelevant to the ordering.
+  const phases = [
+    { phase_event_id: 'phase-2', sequence_number: 2 },
+    { phase_event_id: 'phase-1', sequence_number: 1 },
+  ] as unknown as PhaseDescriptor[]
+  const timeOf = (row: TripException): string => row.created_at
+
+  it('picks the unreviewed record in the earliest phase of the plan, whatever the array order', () => {
+    const rows = [
+      exception('later-phase', { phase_event_id: 'phase-2', review_status: 'needs_review', created_at: '2026-01-01T08:00:00Z' }),
+      exception('earlier-phase', { phase_event_id: 'phase-1', review_status: 'needs_review', created_at: '2026-01-01T12:00:00Z' }),
+    ]
+
+    expect(firstUnreviewedException(phases, rows, timeOf)?.id).toBe('earlier-phase')
+  })
+
+  it('orders records within a phase by the rail instant, and skips reviewed ones', () => {
+    const rows = [
+      exception('reviewed-first', { review_status: 'reviewed', created_at: '2026-01-01T07:00:00Z' }),
+      exception('second', { review_status: 'needs_review', created_at: '2026-01-01T09:00:00Z' }),
+      exception('first', { review_status: 'needs_review', created_at: '2026-01-01T08:00:00Z' }),
+    ]
+
+    expect(firstUnreviewedException(phases, rows, timeOf)?.id).toBe('first')
+  })
+
+  it('puts trip-level records after every phase, as the timeline does', () => {
+    const rows = [
+      exception('trip-level', { phase_event_id: null, review_status: 'needs_review', created_at: '2026-01-01T06:00:00Z' }),
+      exception('phased', { phase_event_id: 'phase-2', review_status: 'needs_review', created_at: '2026-01-01T09:00:00Z' }),
+    ]
+
+    expect(firstUnreviewedException(phases, rows, timeOf)?.id).toBe('phased')
+  })
+
+  it('is null when nothing waits on review', () => {
+    expect(firstUnreviewedException(phases, [exception('done', { review_status: 'reviewed' })], timeOf)).toBeNull()
   })
 })

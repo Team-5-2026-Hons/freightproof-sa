@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { TripSummary, TRIP_PANELS, type TripPanel } from '@/components/trips/TripSummary'
 import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
-import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView } from '@/components/trips/TripTimeline'
+import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView, type TimelineWarning } from '@/components/trips/TripTimeline'
 import { useDocked } from '@/components/ui/DetailPanel'
 import { TripDetailPanel, LEGACY_AUDIT_PANEL } from '@/components/trips/TripDetailPanel'
 import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
@@ -25,7 +25,8 @@ import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { buildTripPanelQuery } from '@/lib/trips/panel-query'
-import { TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
+import { firstUnreviewedException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
+import { exceptionEventTime } from '@/lib/phase/acts'
 
 const PANELS: readonly string[] = Object.values(TRIP_PANELS)
 
@@ -104,6 +105,18 @@ function TripDetail({ tripId }: { tripId: string }) {
   useEffect(() => {
     if (artifacts.error) console.error('Evidence could not be refreshed.', artifacts.error)
   }, [artifacts.error])
+  // The toolbar says what is stale in plain words; the transport detail is for the console.
+  useEffect(() => {
+    if (error) console.error('Trip updates unavailable.', error)
+  }, [error])
+  useEffect(() => {
+    if (precinctsError) console.error('Location names could not be refreshed.', precinctsError)
+  }, [precinctsError])
+  const warnings: TimelineWarning[] = [
+    ...(error ? [{ message: 'Trip updates unavailable · showing the last loaded record', onRetry: refetchSilent }] : []),
+    ...(precinctsError ? [{ message: 'Location names could not be refreshed.', onRetry: retryPrecincts }] : []),
+    ...(artifacts.error ? [{ message: 'Evidence could not be refreshed.', onRetry: artifacts.refetch }] : []),
+  ]
   // What the list that led here already knew. Lets the header name the trip immediately
   // instead of holding the whole page behind one slow record fetch.
   const seed = getTripSeed(tripId)
@@ -160,6 +173,17 @@ function TripDetail({ tripId }: { tripId: string }) {
     if (!docked) setPanel(null)
   }
 
+  /** The header's "N need review" chip: the same landing as "Show in timeline", aimed at the
+   *  first unreviewed row in the order the timeline draws them. */
+  function showFirstUnreviewed(): void {
+    if (!trip) return
+    const first = firstUnreviewedException(trip.phases, trip.exceptions, exception => exceptionEventTime(exception, artifacts.byId))
+    if (!first) return
+    // A record whose phase is not in this plan is drawn in the trip-level list, as the panel treats it.
+    const phaseId = trip.phases.some(phase => phase.phase_event_id === first.phase_event_id) ? first.phase_event_id : null
+    showInTimeline(first.id, phaseId)
+  }
+
   useEffect(() => {
     if (!pendingTimelineReveal || overlayOpen) return
     const frame = window.requestAnimationFrame(() => {
@@ -203,15 +227,12 @@ function TripDetail({ tripId }: { tripId: string }) {
         runs top to bottom beside it. */}
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        {facts && <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} />}
-        {error && <ResourceWarning message={`Trip updates unavailable. Showing the last loaded record. ${error}`} onRetry={refetchSilent} />}
-        {precinctsError && <ResourceWarning message={`Location names could not be refreshed. ${precinctsError}`} onRetry={retryPrecincts} />}
-        {artifacts.error && <ResourceWarning message="Evidence could not be refreshed." onRetry={artifacts.refetch} />}
+        {facts && <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} onShowFirstUnreviewed={showFirstUnreviewed} />}
         <div ref={timelineRef} data-timeline-scroller className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
             view={timelineView} onViewChange={changeTimelineView}
             expanded={timelineExpanded} onToggleExpanded={toggleExpanded}
-            onOpenException={openException} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest}
+            onOpenException={openException} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
             onRevealHandled={targetId => scrollIntoTimeline(timelineRef, document.getElementById(targetId))} />
           <IntegritySummary trip={trip} />
         </div>
@@ -224,8 +245,4 @@ function TripDetail({ tripId }: { tripId: string }) {
         onChanged={refetchSilent} returnTo={returnTo} />
     </div>
   </div>
-}
-
-function ResourceWarning({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div role="status" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-warn/20 bg-warn-c/40 px-4 py-2 text-sm text-on-surf"><p>{message}</p><Button variant="secondary" size="sm" onClick={onRetry}>Retry</Button></div>
 }

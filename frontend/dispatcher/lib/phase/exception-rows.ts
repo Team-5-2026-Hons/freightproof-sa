@@ -7,6 +7,7 @@
 // the cap would otherwise hide (D42).
 
 import type { ExceptionContactMethod, ExceptionSeverity, TripException } from '@shared/lib/types/exception'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { countLabel } from '@/lib/format/count'
 
 /** Rows shown per phase before "+n more" (design note O5: three everywhere). */
@@ -79,4 +80,20 @@ export function exceptionReviewLabel(exception: TripException): string {
     exception.review_outcome?.replaceAll('_', ' '),
     exception.contact_method ? CONTACT_WORDING[exception.contact_method] : undefined,
   ].filter((part): part is string => Boolean(part)).join(' · ')
+}
+
+/** The unreviewed record the timeline draws first: the earliest phase in plan order that holds
+ *  one, then the earliest by the row's own event time; trip-level records come last, as their
+ *  list follows the phases. `timeOf` is the rail's ordering instant (`exceptionEventTime`),
+ *  passed in so this stays free of the artifacts resource. Null when nothing waits on review. */
+export function firstUnreviewedException(
+  phases: readonly PhaseDescriptor[],
+  exceptions: readonly TripException[],
+  timeOf: (exception: TripException) => string,
+): TripException | null {
+  const sequenceOf = new Map(phases.map(phase => [phase.phase_event_id as string, phase.sequence_number]))
+  const position = (exception: TripException): number =>
+    (exception.phase_event_id ? sequenceOf.get(exception.phase_event_id) : undefined) ?? Number.POSITIVE_INFINITY
+  const waiting = exceptions.filter(exception => exception.review_status === 'needs_review')
+  return [...waiting].sort((a, b) => position(a) - position(b) || timeOf(a).localeCompare(timeOf(b)))[0] ?? null
 }

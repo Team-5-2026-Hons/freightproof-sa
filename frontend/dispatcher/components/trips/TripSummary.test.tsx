@@ -81,3 +81,30 @@ describe('TripSummary vehicle and driver previews', () => {
     )
   })
 })
+
+describe('TripSummary: the "need review" chip', () => {
+  const owed = { ...facts, needsReviewCount: 3 }
+  function renderChip(onShowFirstUnreviewed?: () => void) {
+    return render(
+      <ForensicModeProvider>
+        <TripSummary facts={owed} precincts={mockPrecincts} driver={null} returnTo="/trips/trip-1" onBack={vi.fn()} onPanel={vi.fn()} onShowFirstUnreviewed={onShowFirstUnreviewed} />
+      </ForensicModeProvider>,
+    )
+  }
+
+  it('is a control that lands on the first unreviewed row when the page can reveal one', async () => {
+    const onShow = vi.fn()
+    renderChip(onShow)
+
+    await userEvent.click(screen.getByRole('button', { name: '3 exceptions need review. Show the first in the timeline' }))
+
+    expect(onShow).toHaveBeenCalledOnce()
+  })
+
+  it('stays a plain count while there is nothing to land on', () => {
+    renderChip()
+
+    expect(screen.getByText('3 exceptions need review')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /need review\. Show the first/ })).toBeNull()
+  })
+})

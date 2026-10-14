@@ -132,7 +132,15 @@ describe('outcome precedence', () => {
 
     expect(v?.outcome).toBe('clean')
     expect(v?.headline).toBe('Checks passed')
-    expect(v?.reasons).toEqual(['No exceptions', 'All parcels scanned', 'Truck within precinct tolerance'])
+    // Short on purpose: the passing checks themselves are listed in the Checked zone.
+    expect(v?.reasons).toEqual(['2 checks'])
+  })
+
+  it('clean counts a single passing check in the singular', () => {
+    const v = verdictFor({ phase: phase(SEQ.loading, COMPLETED), checks: [check('parcels', 'pass', 'All parcels scanned')] })
+
+    expect(v?.outcome).toBe('clean')
+    expect(v?.reasons).toEqual(['1 check'])
   })
 
   it('in_progress when unresolved, active, with uploads', () => {

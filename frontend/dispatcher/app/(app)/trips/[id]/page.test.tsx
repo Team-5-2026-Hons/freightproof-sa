@@ -285,6 +285,27 @@ describe('Trip detail Evidence and Minimised navigation', () => {
   })
 })
 
+it('shows refresh trouble in the timeline toolbar, not as a full-width banner, and keeps transport detail in the console', () => {
+  artifactState.error = 'GET http://localhost:8000/api/v1/trips/x/artifacts failed'
+  const tripError = 'GET http://localhost:8000/api/v1/trips/x failed'
+  const state = mockedUseTripDetail.mock.results.at(-1)?.value as ReturnType<typeof useTripDetail> | undefined
+  mockedUseTripDetail.mockReturnValue({ ...(state ?? { trip: tripWithLoadingExceptionsOutOfOrder(), isLoading: false, isValidating: false, errorStatus: null, refetch: vi.fn(), refetchSilent: vi.fn(), lastUpdated: null }), error: tripError })
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  try {
+    render(<TripDetailPage />)
+
+    const toolbar = document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+    const status = within(toolbar).getByRole('status')
+    expect(status).toHaveTextContent('2 sources could not be refreshed')
+    expect(screen.getAllByRole('status').filter(element => !toolbar.contains(element) && /refreshed|unavailable/.test(element.textContent ?? ''))).toHaveLength(0)
+    expect(document.body.textContent).not.toContain(tripError)
+    expect(logged).toHaveBeenCalledWith('Trip updates unavailable.', tripError)
+  } finally {
+    artifactState.error = null
+    logged.mockRestore()
+  }
+})
+
 it('shows a plain evidence-refresh error with Retry and logs the diagnostic URL', () => {
   artifactState.error = 'GET http://localhost:8000/api/v1/trips/x/artifacts failed'
   const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -1052,5 +1073,27 @@ describe('Trip detail exceptions panel opened on one exception', () => {
       expect(replace).toHaveBeenCalledOnce()
       expect(document.activeElement).toHaveAttribute('id', `exception-row-${EARLIER_ID}`)
     } finally { restore() }
+  })
+})
+
+describe('Trip detail header: "N need review" lands on the first unreviewed row', () => {
+  beforeEach(() => { Element.prototype.scrollIntoView = vi.fn() })
+
+  it('opens the card, un-caps the row and focuses the first unreviewed exception', async () => {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const loading = base.phases.find(phase => phase.phase_type === 'loading')!
+    // Five unreviewed on Loading: the earliest sits under the cap only because it is pinned.
+    const exceptions = Array.from({ length: 5 }, (_, index) => ({ ...base.exceptions[0]!,
+      id: `owed-${index}` as TripException['id'], review_status: 'needs_review' as const, phase_event_id: loading.phase_event_id,
+      severity: index === 0 ? 'info' as const : 'critical' as const, created_at: `2026-05-09T1${index}:00:00Z`,
+    }))
+    mockedUseTripDetail.mockReturnValue({ trip: { ...base, exceptions }, isLoading: false, isValidating: false, error: null, errorStatus: null, refetch: vi.fn(), refetchSilent: vi.fn(), lastUpdated: null })
+    navigation.search = new URLSearchParams()
+    render(<TripDetailPage />)
+
+    fireEvent.click(screen.getByRole('button', { name: /exceptions need review\. Show the first in the timeline/ }))
+
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('id', 'exception-row-owed-0'))
+    expect(document.activeElement).toHaveAttribute('data-highlighted', 'true')
   })
 })
