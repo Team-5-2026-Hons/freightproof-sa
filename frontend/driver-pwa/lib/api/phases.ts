@@ -10,7 +10,7 @@ import type {
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import type { ActionLocationAssessment, DriverLocationCapture } from '@shared/lib/types/action-location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { uploadArtifact, type ArtifactType } from './artifacts'
+import { uploadArtifact, type ArtifactAttribution, type ArtifactType } from './artifacts'
 
 // idempotency_key lets a resubmitted completion return the current state instead of
 // duplicating evidence. driver_captured_at is stamped once at submit time and reused on
@@ -168,14 +168,28 @@ function locationWarningAcknowledgement(
   }
 }
 
+interface ArtifactIdRequest {
+  tripId: string
+  artifactType: ArtifactType
+  readyId: string | null
+  dataUrl: string
+  capturedAt: string
+  attribution: ArtifactAttribution
+}
+
 // Uses the artifact id an early upload already produced (lib/hooks/useArtifactUpload.ts),
-// or uploads now if that never landed — offline at capture, or a failed request.
-async function artifactIdFor(
-  tripId: string, artifactType: ArtifactType, readyId: string | null,
-  dataUrl: string, capturedAt: string,
-): Promise<string> {
-  if (readyId !== null) return readyId
-  const uploaded = await uploadArtifact({ tripId, artifactType, dataUrl, capturedAt })
+// or uploads now if that never landed — offline at capture, or a failed request. The
+// fallback carries the same attribution the early upload would have, so a queued replay
+// is attributed too; the server de-duplicates identical bytes for the same phase and role.
+async function artifactIdFor(request: ArtifactIdRequest): Promise<string> {
+  if (request.readyId !== null) return request.readyId
+  const uploaded = await uploadArtifact({
+    tripId: request.tripId,
+    artifactType: request.artifactType,
+    dataUrl: request.dataUrl,
+    capturedAt: request.capturedAt,
+    attribution: request.attribution,
+  })
   return uploaded.id
 }
 
@@ -243,7 +257,11 @@ export async function submitPhase(
       // linehaulPhotoId falls back to a submit-time upload if the early upload never landed.
       const e = evidence as LoadingEvidence
       const linehaulPhotoId = e.linehaulPhotoDataUrl !== null
-        ? await artifactIdFor(tripId, 'photo', e.linehaulPhotoArtifactId, e.linehaulPhotoDataUrl, capturedAt)
+        ? await artifactIdFor({
+            tripId, artifactType: 'photo', readyId: e.linehaulPhotoArtifactId,
+            dataUrl: e.linehaulPhotoDataUrl, capturedAt,
+            attribution: { phaseEventId, role: 'linehaul_photo' },
+          })
         : null
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'loading',
@@ -266,9 +284,17 @@ export async function submitPhase(
       const legacyWaybillDataUrl = legacy.waybillPhotoDataUrl ?? null
       const [waybillPhotoId, sealPhotoId] = await Promise.all([
         legacyWaybillDataUrl !== null
-          ? artifactIdFor(tripId, 'photo', legacy.waybillPhotoArtifactId ?? null, legacyWaybillDataUrl, capturedAt)
+          ? artifactIdFor({
+              tripId, artifactType: 'photo', readyId: legacy.waybillPhotoArtifactId ?? null,
+              dataUrl: legacyWaybillDataUrl, capturedAt,
+              attribution: { phaseEventId, role: 'waybill_photo' },
+            })
           : Promise.resolve(null),
-        artifactIdFor(tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt),
+        artifactIdFor({
+          tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
+          dataUrl: e.sealPhotoDataUrl, capturedAt,
+          attribution: { phaseEventId, role: 'seal_photo' },
+        }),
       ])
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'departure',
@@ -294,9 +320,11 @@ export async function submitPhase(
       if (e.sealCondition !== 'missing' && e.sealNumberAtArrival === null) {
         throw new Error('Arrival evidence incomplete — seal number is required unless the seal is missing.')
       }
-      const sealPhotoId = await artifactIdFor(
-        tripId, 'photo', e.sealPhotoArtifactId, e.sealPhotoDataUrl, capturedAt,
-      )
+      const sealPhotoId = await artifactIdFor({
+        tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
+        dataUrl: e.sealPhotoDataUrl, capturedAt,
+        attribution: { phaseEventId, role: 'seal_photo' },
+      })
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'arrival',
         ...driverPosition(position),
@@ -331,9 +359,11 @@ export async function submitPhase(
       if (e.podPhotoDataUrl === null || !e.podSignatureArtifactId) {
         throw new Error('Confirmation evidence incomplete — POD photo and receiver confirmation are required.')
       }
-      const podPhotoId = await artifactIdFor(
-        tripId, 'photo', e.podPhotoArtifactId, e.podPhotoDataUrl, capturedAt,
-      )
+      const podPhotoId = await artifactIdFor({
+        tripId, artifactType: 'photo', readyId: e.podPhotoArtifactId,
+        dataUrl: e.podPhotoDataUrl, capturedAt,
+        attribution: { phaseEventId, role: 'pod_photo' },
+      })
       const podSignatureId = e.podSignatureArtifactId
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'confirmation',

@@ -35,7 +35,7 @@ interface Props {
 /** One content surface for a subject's supporting detail. Docked it is a permanent
  *  full-height column that owns its own view switcher; below the dock width it falls
  *  back to the overlay the caller raises. */
-export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpen, ariaLabel, children }: Props) {
+export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpen, ariaLabel, children }: Props): React.JSX.Element | null {
   const docked = useDocked()
   const panelId = 'detail-panel-content'
 
@@ -49,7 +49,10 @@ export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpe
       <div className="shrink-0 border-b border-outline-v/30 p-4">
         <Tabs tabs={tabs} active={active} onChange={onSelect} panelId={panelId} ariaLabel={ariaLabel} size="sm" />
       </div>
-      <div id={panelId} role="tabpanel" aria-labelledby={`tab-${active}`} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-5">
+      {/* Not a tab stop, and no focus ring: every tab's content has focusable controls, so keyboard scrolling
+          already works. A closing modal can still hand focus back to this scroller (it was the active element
+          when the modal opened), and the global :focus-visible ring would then outline the whole panel. */}
+      <div id={panelId} role="tabpanel" aria-labelledby={`tab-${active}`} className="min-h-0 flex-1 overflow-y-auto p-5 focus-visible:outline-none">
         {children}
       </div>
     </aside>

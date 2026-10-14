@@ -12,6 +12,7 @@ import { withReturnTo } from '@/lib/navigation/returnTo'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { TripException } from '@shared/lib/types/exception'
+import { EXCEPTION_SELECTED_SURFACE, EXCEPTION_SELECTION_OUTLINE } from './ExceptionRow'
 
 interface Props {
   exception: TripException; phaseLabel?: string; returnTo?: string
@@ -20,12 +21,6 @@ interface Props {
    *  reads as one bordered block instead of a card with unrelated controls floating
    *  below it. */
   footer?: ReactNode
-  /** When provided, replaces the "View exception"/"Review exception" link (a full page
-   *  navigation) with an "Open in exceptions panel" trigger. The trip timeline passes
-   *  this: review and full detail both belong to the exceptions panel, not a second,
-   *  competing route out of the timeline card. TripExceptionsPanel never passes it — it
-   *  IS that panel, so its own cards keep the real link through to the exception's page. */
-  onOpenPanel?: () => void
   /** Card surface tone. 'low' (default) reads correctly against a 'lowest'-toned
    *  container — the trip timeline's scroller and the overlay Modal both are. The
    *  docked exceptions panel is itself 'low' (DetailPanel's `<aside>`), so a card
@@ -33,8 +28,14 @@ interface Props {
    *  already makes for its own blocks in that exact panel — or the card is
    *  indistinguishable from its own background but for a faint border. */
   tone?: 'low' | 'lowest'
+  selected?: boolean
 }
-export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOpenPanel, tone = 'low' }: Props) {
+/** The id of an exception's title, so a container can be named by its exception type. */
+export function exceptionSummaryTitleId(exceptionId: string): string {
+  return `exception-summary-title-${exceptionId}`
+}
+
+export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone = 'low', selected = false }: Props) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const target = ROUTES.exceptionDetail(exception.id)
   const { user } = useAuth()
@@ -45,11 +46,11 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOp
     : state.kind === 'claimed_by_me' || state.kind === 'claimed_by_other' ? exception.claimed_at
     : null
   return (
-    <article className={`min-w-0 rounded-lg border border-outline-v/30 px-4 py-3 ${tone === 'lowest' ? 'bg-surf-lowest' : 'bg-surf-low'}`}>
+    <article className={`relative min-w-0 rounded-lg border border-outline-v/30 px-4 py-3 ${selected ? `${EXCEPTION_SELECTED_SURFACE} ${EXCEPTION_SELECTION_OUTLINE}` : tone === 'lowest' ? 'bg-surf-lowest' : 'bg-surf-low'}`}>
       {phaseLabel && <p className="mb-2 text-xs font-semibold text-on-surf-v">{phaseLabel} · Exception</p>}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 className="text-sm font-bold text-on-surf">{fmtExceptionType(exception.exception_type)}</h3>
+          <h3 id={exceptionSummaryTitleId(exception.id)} className="text-sm font-bold text-on-surf">{fmtExceptionType(exception.exception_type)}</h3>
           <Chip type={severity.chipType} label={severity.label} />
         </div>
         {/* Matches PhaseTimelineItem's own <time> exactly (size, weight, colour, clock
@@ -69,13 +70,9 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, onOp
             marker, and the label already says who wrote it. */}
         {exception.review_outcome && exception.review_outcome !== 'dispatcher_authored' && ` · ${exception.review_outcome.replaceAll('_', ' ')}`}
       </p>
-      {onOpenPanel
-        ? <button type="button" onClick={onOpenPanel} className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
-            Open in exceptions panel
-          </button>
-        : <Link className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4" href={withReturnTo(target, returnTo)}>
-            {exception.review_status === 'needs_review' ? 'Review exception' : 'View exception'} →
-          </Link>}
+      <Link className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-sec underline underline-offset-4" href={withReturnTo(target, returnTo)}>
+        {exception.review_status === 'needs_review' ? 'Review exception' : 'View exception'} →
+      </Link>
       {footer && <div className="mt-3 border-t border-outline-v/20 pt-3">{footer}</div>}
     </article>
   )

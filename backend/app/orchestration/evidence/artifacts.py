@@ -1,17 +1,23 @@
 """Evidence artifact creation — uploads to Storage, records the DB row."""
 
+import hashlib
+import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
+from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.enums import ArtifactType
 from app.db.models.trips import Trip
+from app.orchestration.evidence.attribution import EvidenceAttribution, validate_driver_attribution
+from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
 from app.storage.mime_allowlist import resolve_mime_type
 from app.storage.supabase_storage import (
@@ -20,7 +26,12 @@ from app.storage.supabase_storage import (
     upload_evidence_file,
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_FILE_SIZE_BYTES = MAX_EVIDENCE_FILE_SIZE_BYTES
+
+# Declared on EvidenceArtifact; named here to tell a deduplication race from any other conflict.
+_DEDUP_INDEX = "uq_evidence_artifacts_phase_role_hash"
 
 
 async def create_artifact(
@@ -34,9 +45,11 @@ async def create_artifact(
     captured_by_driver_id: uuid.UUID,
     captured_lat: Decimal | None = None,
     captured_lng: Decimal | None = None,
+    attribution: EvidenceAttribution | None = None,
 ) -> EvidenceArtifactRead:
-    """Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if
-    captured_by_driver_id isn't the trip's assigned driver (caller maps to 403).
+    """Raises ResourceNotFoundError if the trip (or the attributed phase) doesn't exist on it,
+    PermissionError if captured_by_driver_id isn't the trip's assigned driver (caller maps to
+    403), EvidenceAttributionError if the role is not one this phase takes from a driver.
 
     `mime_type` arrives as the CLIENT'S claim about the file. It is not trusted and not
     stored — resolve_mime_type re-derives the type from the bytes and that is what lands
@@ -54,10 +67,12 @@ async def create_artifact(
         raise ResourceNotFoundError("Trip", str(trip_id))
     if trip.driver_id != captured_by_driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
+    if attribution is not None:
+        await validate_driver_attribution(db, trip_id=trip_id, attribution=attribution)
 
     return await _persist_artifact(
         db,
-        trip_id=trip_id,
+        trip=trip,
         file_bytes=file_bytes,
         verified_mime_type=verified_mime_type,
         artifact_type=artifact_type,
@@ -65,13 +80,14 @@ async def create_artifact(
         captured_by_driver_id=captured_by_driver_id,
         captured_lat=captured_lat,
         captured_lng=captured_lng,
+        attribution=attribution,
     )
 
 
 async def _persist_artifact(
     db: AsyncSession,
     *,
-    trip_id: uuid.UUID,
+    trip: Trip,
     file_bytes: bytes,
     verified_mime_type: str,
     artifact_type: ArtifactType,
@@ -79,6 +95,7 @@ async def _persist_artifact(
     captured_by_driver_id: uuid.UUID | None,
     captured_lat: Decimal | None,
     captured_lng: Decimal | None,
+    attribution: EvidenceAttribution | None,
 ) -> EvidenceArtifactRead:
     """Upload the bytes and write the row.
 
@@ -86,14 +103,25 @@ async def _persist_artifact(
     differs per caller — the assigned driver for create_artifact, a redeemed capability
     token for create_receiver_artifact — and deliberately does not live here, so neither
     check can be skipped by routing around this function.
+
+    An attributed upload whose bytes already exist for the same phase and role returns the
+    stored row untouched (no Storage object, no row, no event). The hash is taken from the
+    bytes before the upload so a repeat costs nothing.
     """
+    if attribution is not None:
+        existing = await _find_attributed_duplicate(
+            db, attribution=attribution, file_hash=hashlib.sha256(file_bytes).hexdigest(),
+        )
+        if existing is not None:
+            return _duplicate_result(existing, captured_at)
+
     upload = await upload_evidence_file(
-        trip_id=str(trip_id), file_bytes=file_bytes, mime_type=verified_mime_type,
+        trip_id=str(trip.id), file_bytes=file_bytes, mime_type=verified_mime_type,
     )
 
     artifact = EvidenceArtifact(
         id=uuid.uuid4(),
-        trip_id=trip_id,
+        trip_id=trip.id,
         artifact_type=artifact_type,
         s3_key=upload.s3_key,
         s3_bucket=upload.s3_bucket,
@@ -103,11 +131,83 @@ async def _persist_artifact(
         captured_lat=captured_lat,
         captured_lng=captured_lng,
         captured_at=captured_at,
+        # The column default is now(), which Postgres fixes at the transaction's start: before
+        # this upload began. Stamped here, after Storage returned, so "received" means the file
+        # was stored and the record created (not commit time), on the same API-server clock that
+        # stamps completed_at and trips.closed_at. Rows from other writers keep the default.
+        created_at=datetime.now(UTC),
+        phase_event_id=attribution.phase_event_id if attribution else None,
+        evidence_role=attribution.role if attribution else None,
     )
-    db.add(artifact)
-    await db.flush()
+    if attribution is None:
+        db.add(artifact)
+        await db.flush()
+    else:
+        winner = await _insert_attributed(db, artifact, attribution)
+        if winner is not None:
+            logger.warning(
+                "Storage object %s/%s orphaned: lost the deduplication race to artifact %s",
+                upload.s3_bucket, upload.s3_key, winner.id,
+            )
+            return _duplicate_result(winner, captured_at)
+
     await db.refresh(artifact)
+    enqueue_event(
+        db, trip.operator_organization_id,
+        TripEvent(id=trip.id, kind=RealtimeKind.EVIDENCE_UPLOADED),
+    )
     return EvidenceArtifactRead.model_validate(artifact)
+
+
+async def _find_attributed_duplicate(
+    db: AsyncSession, *, attribution: EvidenceAttribution, file_hash: str,
+) -> EvidenceArtifact | None:
+    return (
+        await db.execute(
+            select(EvidenceArtifact).where(
+                EvidenceArtifact.phase_event_id == attribution.phase_event_id,
+                EvidenceArtifact.evidence_role == attribution.role,
+                EvidenceArtifact.file_hash == file_hash,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _insert_attributed(
+    db: AsyncSession, artifact: EvidenceArtifact, attribution: EvidenceAttribution,
+) -> EvidenceArtifact | None:
+    """Insert, or return the row that won a concurrent identical upload (None = inserted).
+
+    The savepoint keeps a lost race from poisoning the caller's transaction. Any other
+    integrity failure is a real error and propagates.
+    """
+    try:
+        async with db.begin_nested():
+            db.add(artifact)
+            await db.flush()
+    except IntegrityError as exc:
+        if not is_unique_violation(exc) or violated_constraint(exc) != _DEDUP_INDEX:
+            raise
+        winner = await _find_attributed_duplicate(
+            db, attribution=attribution, file_hash=artifact.file_hash,
+        )
+        if winner is None:
+            raise
+        return winner
+    return None
+
+
+def _duplicate_result(existing: EvidenceArtifact, incoming_captured_at: datetime) -> EvidenceArtifactRead:
+    """The stored row, exactly as it was. A differing capture time is logged, never written:
+    the original record is the evidence, and the mismatch points at a client defect."""
+    if existing.captured_at != incoming_captured_at:
+        logger.warning(
+            "Identical upload for artifact %s arrived with captured_at %s; keeping stored %s",
+            existing.id, incoming_captured_at.isoformat(), existing.captured_at.isoformat(),
+        )
+    else:
+        logger.info("Identical upload returned existing artifact %s", existing.id)
+    return EvidenceArtifactRead.model_validate(existing)
 
 
 async def create_receiver_artifact(
@@ -120,6 +220,7 @@ async def create_receiver_artifact(
     captured_at: datetime,
     captured_lat: Decimal | None = None,
     captured_lng: Decimal | None = None,
+    attribution: EvidenceAttribution | None = None,
 ) -> EvidenceArtifactRead:
     """Store an artifact produced by a receiver holding a redeemed capability token.
 
@@ -130,10 +231,11 @@ async def create_receiver_artifact(
     entirely — a single-use capability token the caller has already redeemed — and it
     belongs to the caller, not to this function.
 
-    Both attribution columns are left NULL, which is the honest record: nobody with an
-    account on this system captured this. The evidence that it came from the receiver is
-    the HandoverConfirmation row referencing it, not a column here pointing at a driver
-    who was standing on the other side of the transaction.
+    Both capturer columns (driver and user) are left NULL, which is the honest record:
+    nobody with an account on this system captured this. The evidence that it came from the
+    receiver is the HandoverConfirmation row referencing it, not a column here pointing at a
+    driver who was standing on the other side of the transaction. `attribution` is the phase
+    and role the caller derived from the redeemed token; it is never taken from the receiver.
     """
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File exceeds the {MAX_FILE_SIZE_BYTES} byte limit.")
@@ -147,7 +249,7 @@ async def create_receiver_artifact(
 
     return await _persist_artifact(
         db,
-        trip_id=trip_id,
+        trip=trip,
         file_bytes=file_bytes,
         verified_mime_type=verified_mime_type,
         artifact_type=artifact_type,
@@ -155,6 +257,7 @@ async def create_receiver_artifact(
         captured_by_driver_id=None,
         captured_lat=captured_lat,
         captured_lng=captured_lng,
+        attribution=attribution,
     )
 
 

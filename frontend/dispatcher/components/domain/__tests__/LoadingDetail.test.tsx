@@ -114,6 +114,8 @@ describe('LoadingDetail', () => {
       captured_lat: null,
       captured_lng: null,
       created_at: '2026-01-01T00:00:00Z',
+      phase_event_id: null,
+      evidence_role: null,
       signed_url: 'https://example.test/artifact-1',
     }
     render(

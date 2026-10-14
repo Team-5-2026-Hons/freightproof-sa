@@ -171,6 +171,17 @@ class ArtifactType(str, enum.Enum):
     DOCUMENT = "document"
 
 
+class EvidenceRole(str, enum.Enum):
+    """What a capture was taken for. Each value is the stem of the phase column that
+    records the submitted copy (<value>_artifact_id) and of its anchored hash key
+    (<value>_sha256), so it is frozen like those names."""
+    LINEHAUL_PHOTO = "linehaul_photo"
+    SEAL_PHOTO     = "seal_photo"
+    WAYBILL_PHOTO  = "waybill_photo"
+    POD_PHOTO      = "pod_photo"
+    POD_SIGNATURE  = "pod_signature"
+
+
 class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"

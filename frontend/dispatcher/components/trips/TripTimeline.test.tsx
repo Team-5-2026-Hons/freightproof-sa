@@ -1,597 +1,1667 @@
-import { act, render, screen, within, fireEvent } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import { TripTimeline } from './TripTimeline'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
+import { TripTimeline, type TimelineView } from './TripTimeline'
+import { exceptionRowId } from '@/components/domain/ExceptionRow'
 import { VIEW_ON_MAP_LABEL } from '@/components/domain/LocationEvidencePanel'
-import { makePhase } from '@/components/domain/__tests__/testFixtures'
-import { mockPrecincts, mockTrips, PRECINCT_FEDEX_JHB_ID, PRECINCT_FEDEX_DBN_ID, TRIP_0035_ID, TRIP_0041_ID, TRIP_0043_ID } from '@shared/lib/mocks'
+import { CHECK_WORDING } from '@/lib/phase/checks'
+import { mockPrecincts, mockTrips, TRIP_0035_ID, TRIP_0040_ID, TRIP_0041_ID } from '@shared/lib/mocks'
+import { fmtDateTime } from '@shared/lib/utils/datetime'
+import type { BlockchainReceipt } from '@shared/lib/types/blockchain'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { ExceptionId, TripException } from '@shared/lib/types/exception'
-import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
-import type { Trip, TripStop } from '@shared/lib/types/trip'
+import type { PhaseDescriptor, PhaseEventId, PhaseType } from '@shared/lib/types/phase'
+import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
+import { line } from '@/components/domain/__tests__/textLine'
 
-// PhaseEvidence's collapsed-content chain eventually reaches PhaseOverrideAction, which
-// imports lib/api/client -> lib/supabase/client, and that module calls createClient() at
-// import time; it throws without a real Supabase URL. Mocked the same way
-// app/(app)/trips/[id]/page.test.tsx isolates itself, since these tests never open a row
-// (the summary chip is asserted collapsed) but the import still resolves eagerly.
+// PhaseOverrideAction imports lib/api/client -> lib/supabase/client, which calls createClient()
+// at import time and throws without a real Supabase URL.
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
 
-// ForensicOnly needs a real ForensicModeProvider (itself gated on useAuth) to render at
-// all: mocked at the module boundary the same way every other domain detail-panel suite
-// isolates itself, since this file is about the summary chip, not forensic-mode plumbing.
-vi.mock('@/lib/context/ForensicModeContext', () => ({
-  useForensicMode: () => ({ canViewForensics: false, forensicOn: false, toggle: vi.fn() }),
-}))
+// ForensicOnly is gated on a real provider (itself gated on useAuth); the gate is what is
+// under test, so its two inputs are set directly.
+const forensic = vi.hoisted(() => ({ canViewForensics: true, forensicOn: false, toggle: vi.fn() }))
+vi.mock('@/lib/context/ForensicModeContext', () => ({ useForensicMode: () => forensic }))
 
-// ExceptionSummary reads the signed-in user to word a claim as mine or a colleague's.
-// Nothing this file asserts depends on who that is, so the identity is stubbed.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'user-me' } }) }))
-
-// The `driving` (alwaysOpen) in-transit row renders PhaseEvidence unconditionally —
-// including PhaseOverrideAction, which calls useToast() — even though this suite never
-// opens the override modal. Mocked the same way the trip detail page's own test suite
-// isolates it, since a real ToastProvider is not what this file is about.
-vi.mock('@/lib/hooks/useToast', () => ({
-  useToast: () => ({ notify: vi.fn() }),
+vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: vi.fn() }) }))
+vi.mock('@/components/map/LocationComparisonMap', () => ({ LocationComparisonMap: () => null }))
+vi.mock('@/components/blockchain/VerifyButton', () => ({
+  VerifyButton: ({ subjectId, ariaLabel }: { subjectId: string; ariaLabel?: string }) => (
+    <button type="button" aria-label={ariaLabel} data-testid="verify-subject">{subjectId}</button>
+  ),
 }))
 
 const NO_ARTIFACTS = new Map<string, EvidenceArtifactWithUrl>()
+const SERVER_TIME = '2026-05-03T19:45:00Z'
+const ADDRESS_LINE = '1 Test Road'
 
 const evidence = {
   artifactsById: NO_ARTIFACTS,
   artifactLoading: false,
-  artifactError: null,
+  artifactError: null as string | null,
   onRetryArtifacts: vi.fn(),
   onChanged: vi.fn(),
 }
 
-function tripFor(id: typeof TRIP_0035_ID | typeof TRIP_0041_ID | typeof TRIP_0043_ID): Trip {
+type Overrides = Partial<React.ComponentProps<typeof TripTimeline>>
+
+function ViewTimeline({ trip, ...overrides }: { trip: Trip } & Overrides): React.JSX.Element {
+  const [view, setView] = useState<TimelineView>('evidence')
+  return <TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} {...overrides}
+    view={view} onViewChange={setView} />
+}
+
+describe('TripTimeline Evidence and Minimised views', () => {
+  it('uses the small segmented tabs and keeps keyboard switching local to each timeline', async () => {
+    render(<><ViewTimeline trip={closedTrip()} /><ViewTimeline trip={closedTrip()} /></>)
+    const selectors = screen.getAllByRole('tablist', { name: 'Timeline view' })
+    const secondEvidence = within(selectors[1]).getByRole('tab', { name: 'Evidence' })
+    const secondMinimised = within(selectors[1]).getByRole('tab', { name: 'Minimised' })
+    expect(secondEvidence).toHaveClass('text-[10px]')
+    secondEvidence.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(secondMinimised).toHaveFocus()
+    expect(secondMinimised).toHaveAttribute('aria-selected', 'true')
+    expect(within(selectors[0]).getByRole('tab', { name: 'Evidence' })).toHaveAttribute('aria-selected', 'true')
+    expect(secondMinimised.id).not.toBe(within(selectors[0]).getByRole('tab', { name: 'Minimised' }).id)
+  })
+
+  it('defaults to Evidence and exposes a view selector', () => {
+    renderTimeline(closedTrip())
+    expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Minimised' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('table', { name: 'Minimised phase outcomes' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the same ordered cards in Minimised, each collapsed to its headline and exception count', async () => {
+    const trip = closedTrip()
+    const loading = phaseOf(trip, 'loading')
+    const item = exception('selected', { phase_event_id: loading.phase_event_id })
+    render(<ViewTimeline trip={{ ...trip, phases: [...trip.phases].reverse(), exceptions: [item, { ...item }] }} selectedExceptionId={item.id} />)
+    const evidenceOrder = trip.phases.map(phase => document.getElementById(`phase-${phase.phase_event_id}`))
+    expect(within(phaseGroup('Loading')).getAllByRole('listitem').length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+
+    // Same cards, same anchors: Minimised only changes what a collapsed card shows.
+    expect(trip.phases.map(phase => document.getElementById(`phase-${phase.phase_event_id}`))).toEqual(evidenceOrder)
+    const card = phaseGroup('Loading')
+    expect(card).toHaveTextContent('Needs attention')
+    expect(card).toHaveTextContent('1 exception · 1 needs review')
+    expect(within(card).queryByRole('listitem')).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /Route Deviation/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const ids = [...document.querySelectorAll('[id]')].map(element => element.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('opens a minimised card to the same full detail as in Evidence', async () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', parcel_count_origin: 16 } })
+    const phase = phaseOf(trip, 'loading')
+    trip.exceptions = [exception('loading-event', { phase_event_id: phase.phase_event_id })]
+    const artifacts = artifactMap(artifact('sheet', phase.phase_event_id, 'linehaul_photo', { captured_at: '2026-05-03T19:46:00Z' }))
+    render(<ViewTimeline trip={trip} artifactsById={artifacts} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+
+    openCard('Loading')
+
+    const card = phaseGroup('Loading')
+    expect(within(card).getByRole('img')).toBeInTheDocument()
+    expect(within(card).getByText('Description of loading-event')).toBeInTheDocument()
+    expect(card).toHaveTextContent('Needs attention')
+  })
+
+  it('keeps open cards and nested photo groups open across a view round trip, and closed cards closed', async () => {
+    const base = tripFor(TRIP_0040_ID)
+    const departure = phaseOf(base, 'departure')
+    const trip = { ...base, phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+      ? { ...phase, status: 'pending' as const, completed_at: null } : phase) }
+    const uploads = ['u1', 'u2', 'u3'].map(id => artifact(id, departure.phase_event_id, 'seal_photo'))
+    render(<ViewTimeline trip={trip} artifactsById={artifactMap(...uploads)} />)
+    const recorded = zone('Departure', 'Recorded')
+    await userEvent.click(within(recorded).getByRole('button', { name: '+2 more' }))
+    const photoGroup = within(recorded).getByRole('button', { name: 'Show fewer' })
+    const activationToggle = toggleOf('Activation')
+    expect(activationToggle).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+
+    expect(zone('Departure', 'Recorded')).toBe(recorded)
+    expect(within(recorded).getByRole('button', { name: 'Show fewer' })).toBe(photoGroup)
+    expect(within(recorded).getAllByRole('img')).toHaveLength(3)
+    expect(activationToggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('keeps In Transit open with no toggle in Evidence, and collapses it like any other card in Minimised', async () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('transit-event', { phase_event_id: phaseOf(trip, 'in_transit').phase_event_id })]
+    render(<ViewTimeline trip={trip} />)
+    expect(toggleOf('In Transit')).toBeNull()
+    expect(within(phaseGroup('In Transit')).getByText('Reached FedEx DBN')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+
+    const card = phaseGroup('In Transit')
+    expect(toggleOf('In Transit')).toHaveAttribute('aria-expanded', 'false')
+    expect(within(card).queryByText('Reached FedEx DBN')).not.toBeInTheDocument()
+    // Collapsing must not hide the signal: the headline and the count stay on the card.
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('1 exception')
+    openCard('In Transit')
+    expect(within(card).getByText('Reached FedEx DBN')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+    expect(toggleOf('In Transit')).toBeNull()
+    expect(within(card).getByText('Reached FedEx DBN')).toBeInTheDocument()
+  })
+
+  it('swaps the minimised count for the full verdict line once the card is opened', async () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('loading-event', { phase_event_id: phaseOf(trip, 'loading').phase_event_id })]
+    render(<ViewTimeline trip={trip} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    const card = phaseGroup('Loading')
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('1 exception · 1 needs review')
+
+    openCard('Loading')
+
+    expect(card.querySelector('[data-outcome]')).not.toHaveTextContent('1 exception · 1 needs review')
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('Needs attention')
+  })
+
+  it('keeps trip-level records visible in Minimised, with the same cap and panel link', async () => {
+    const item = exception('trip-note')
+    render(<ViewTimeline trip={closedTrip({}, { exceptions: [item, { ...item }] })} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    expect(within(screen.getByRole('region', { name: 'Trip-level events' })).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('does not reopen a previously revealed card that the reader closed before a view round trip', async () => {
+    const trip = closedTrip()
+    const loading = phaseOf(trip, 'loading')
+    const record = exception('once-revealed', { phase_event_id: loading.phase_event_id })
+    trip.exceptions = [record]
+    const request = { exceptionId: record.id, phaseId: loading.phase_event_id, requestId: 1 }
+    const onRevealHandled = vi.fn()
+    const { rerender } = renderTimeline(trip, { revealRequest: request, onRevealHandled })
+    await waitFor(() => expect(onRevealHandled).toHaveBeenCalledOnce())
+    fireEvent.click(toggleOf('Loading')!)
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} view="minimised" revealRequest={request} onRevealHandled={onRevealHandled} />)
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} view="evidence" revealRequest={request} onRevealHandled={onRevealHandled} />)
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    expect(onRevealHandled).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Task 10b timeline regressions', () => {
+  it('collapses loading to ordered compact acts, expanding to full rows once', () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', parcel_count_origin: 16 } })
+    const phase = phaseOf(trip, 'loading')
+    trip.exceptions = [exception('loading-event', { phase_event_id: phase.phase_event_id, created_at: '2026-05-03T20:00:00Z' })]
+    renderTimeline(trip, { artifactsById: artifactMap(artifact('sheet', phase.phase_event_id, 'linehaul_photo', { captured_at: '2026-05-03T19:46:00Z' })) })
+
+    const card = phaseGroup('Loading')
+    const rows = within(card).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Driver confirmed loading')
+    expect(rows[0]).toHaveTextContent('16 parcels')
+    expect(rows[1]).toHaveTextContent('Linehaul sheet photographed')
+    expect(rows[2]).toHaveTextContent('Route Deviation')
+    expect(within(card).queryByText('Description of loading-event')).not.toBeInTheDocument()
+    expect(within(card).queryByRole('img')).not.toBeInTheDocument()
+    openCard('Loading')
+    expect(within(card).getByText('Description of loading-event')).toBeInTheDocument()
+    expect(within(card).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+    expect(within(card).getByRole('img')).toBeInTheDocument()
+  })
+
+  it('keeps trip_creation exceptions on the Trip Created card collapsed and open', () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('creation-event', { phase_event_id: phaseOf(trip, 'trip_creation').phase_event_id })]
+    renderTimeline(trip)
+
+    const card = phaseGroup('Trip Created')
+    expect(within(card).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+    openCard('Trip Created')
+    expect(within(card).getByText('Description of creation-event')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('keeps warning nodes and verdicts amber on a neutral card', () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('e', { phase_event_id: phaseOf(trip, 'loading').phase_event_id })]
+    renderTimeline(trip)
+
+    const card = phaseGroup('Loading')
+    expect(card.querySelector('[data-node-type="warn"]')).toHaveClass('bg-warn-c')
+    expect(card.querySelector('[data-outcome="attention"] .text-warn')).not.toBeNull()
+    expect(card.querySelector('.bg-warn-c\\/40')).toBeNull()
+  })
+
+  it('names the transit leg with an arrow and records Reached and Departed', () => {
+    renderTimeline(closedTrip())
+    const card = phaseGroup('In Transit')
+
+    expect(card.textContent).toContain('FedEx JHB → FedEx DBN')
+    expect(card.textContent).toContain('Reached FedEx DBN')
+    expect(card.querySelector('[data-outcome]')?.textContent).toContain('Departed')
+  })
+
+  it('caps trip-level records and opens all trip-level records from more', async () => {
+    const trip = closedTrip({}, { exceptions: Array.from({ length: 5 }, (_, i) => exception(`trip-${i}`)) })
+    const onOpenException = vi.fn()
+    const { rerender } = renderTimeline(trip, { onOpenException })
+    const list = screen.getByRole('region', { name: 'Trip-level events' })
+
+    expect(within(list).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(3)
+    await userEvent.click(within(list).getByRole('button', { name: /\+2 more/ }))
+    expect(onOpenException).toHaveBeenCalledWith(null, null)
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} revealRequest={{ exceptionId: 'trip-4', phaseId: null, requestId: 1 }} />)
+    await waitFor(() => expect(document.getElementById(exceptionRowId('trip-4'))).toHaveAttribute('data-highlighted', 'true'))
+  })
+})
+
+function renderTimeline(trip: Trip, overrides: Overrides = {}) {
+  return render(
+    <TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} {...overrides} />,
+  )
+}
+
+function tripFor(id: typeof TRIP_0035_ID | typeof TRIP_0040_ID | typeof TRIP_0041_ID): Trip {
   const trip = mockTrips.find(candidate => candidate.id === id)
   if (!trip) throw new Error(`fixture ${id} is missing`)
   return trip
 }
 
-function phaseRow(phaseName: string) {
-  return within(screen.getByRole('group', { name: `${phaseName} phase` }))
-}
-
-// Matches the row whether or not it currently carries an "and exceptions" suffix —
-// several tests below deliberately attach a phase-scoped exception to a row whose
-// other tests assert on it bare.
-function phaseGroupElement(phaseName: string): HTMLElement {
+function phaseGroup(phaseName: string): HTMLElement {
   return screen.getByRole('group', { name: new RegExp(`^${phaseName} phase`) })
 }
 
-function makeTransitException(overrides: Partial<TripException> & Pick<TripException, 'id' | 'phase_event_id' | 'severity'>): TripException {
+/** The card's own toggle, found by its name (it opens with the phase title) so the "+n more"
+ *  disclosures inside an opened card are never mistaken for it. */
+function toggleOf(phaseName: string): HTMLElement | null {
+  return within(phaseGroup(phaseName)).queryByRole('button', { name: new RegExp(`^${phaseName}`) })
+}
+
+/** Opens a collapsed card; a card that is already open (no toggle) is returned as is. */
+function openCard(phaseName: string): HTMLElement {
+  const toggle = toggleOf(phaseName)
+  if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle)
+  return phaseGroup(phaseName)
+}
+
+function zone(phaseName: string, name: 'Recorded' | 'Checked' | 'Audit trail'): HTMLElement {
+  return within(openCard(phaseName)).getByRole('region', { name })
+}
+
+/** The titles of the check lines in a Checked zone: the verdict a dispatcher reads, not the raw
+ *  location fields behind "Location details", which repeat the same words. */
+function checkLines(checked: HTMLElement): string[] {
+  return [...checked.querySelectorAll('[data-check-result] p:first-child')].map(line => line.textContent ?? '')
+}
+
+function phaseOf(trip: Trip, type: PhaseType, nth = 0): PhaseDescriptor {
+  const phase = trip.phases.filter(candidate => candidate.phase_type === type)[nth]
+  if (!phase) throw new Error(`${type} phase is missing`)
+  return phase
+}
+
+/** TRIP_0035 (closed, every phase completed) with its fixture exceptions cleared, so each test
+ *  states exactly the evidence it needs. */
+function closedTrip(patches: Partial<Record<PhaseType, Partial<PhaseDescriptor>>> = {}, extra: Partial<Trip> = {}): Trip {
+  const base = tripFor(TRIP_0035_ID)
   return {
-    trip_id: 'trip-1',
-    exception_type: 'route_deviation',
-    source: 'system',
-    description: 'Vehicle deviated from the planned route.',
-    checkpoint_id: null,
-    supporting_artifact_id: null,
-    review_status: 'recorded',
-    review_outcome: null,
-    reviewed_by_user_id: null,
-    reviewed_at: null,
-    review_note: null,
-    contact_method: null,
-    vehicle_id: null,
-    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
-    created_at: '2026-01-01T10:00:00Z',
-    updated_at: '2026-01-01T10:00:00Z',
+    ...base,
+    exceptions: [],
+    ...extra,
+    phases: base.phases.map(phase => ({
+      ...phase,
+      completed_at: SERVER_TIME,
+      seal_number: null, parcel_count_origin: null, parcel_count_destination: null, driver_visual_count: null,
+      ...patches[phase.phase_type],
+    })),
+  }
+}
+
+function consignment(overrides: Partial<ConsignmentRead>): ConsignmentRead {
+  return {
+    id: 'c1', trip_id: 'trip-1', parcel_perfect_reference: 'PP-1', client_organization_id: null, origin_precinct_id: null,
+    destination_precinct_id: null, declared_value: null, parcel_count_expected: 7, slot_time_origin: null,
+    slot_time_destination: null, pp_raw_json: null, pickup_stop_id: null, delivery_stop_id: null, load_priority: null,
+    unit_count_expected: null, pp_manifest_number: null, scanned_out_count: 0, scanned_in_count: 0,
+    created_at: SERVER_TIME, updated_at: SERVER_TIME, ...overrides,
+  }
+}
+
+function exception(id: string, overrides: Partial<TripException> = {}): TripException {
+  return {
+    id: id as ExceptionId, trip_id: 'trip-1', exception_type: 'route_deviation', source: 'system', severity: 'warning',
+    description: `Description of ${id}`, phase_event_id: null, checkpoint_id: null, supporting_artifact_id: null,
+    review_status: 'needs_review', review_outcome: null, reviewed_by_user_id: null, reviewed_at: null, review_note: null,
+    contact_method: null, vehicle_id: null, merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null,
+    claimed_by_name: null, reviewed_by_name: null, created_at: '2026-05-03T10:00:00Z', updated_at: '2026-05-03T10:00:00Z',
     ...overrides,
   }
 }
 
-/** A synthetic 3-stop cross-dock trip: two in_transit legs, the second leg landing
- *  back at the SAME precinct the first leg departed from (a repeated stop). Exists to
- *  prove legs are told apart by phase_event_id, never by name — the house rule this
- *  task's brief calls out explicitly. */
-function crossDockTrip(): Trip {
-  const base = tripFor(TRIP_0035_ID)
-  const originStopId = 'cd-stop-origin'
-  const midStopId = 'cd-stop-mid'
-  const backStopId = 'cd-stop-back'
-  const stops: TripStop[] = [
-    { id: originStopId, trip_id: base.id, precinct_id: PRECINCT_FEDEX_JHB_ID, sequence: 0, slot_time: null, notes: null, created_at: base.created_at, updated_at: base.created_at },
-    { id: midStopId, trip_id: base.id, precinct_id: PRECINCT_FEDEX_DBN_ID, sequence: 1, slot_time: null, notes: null, created_at: base.created_at, updated_at: base.created_at },
-    { id: backStopId, trip_id: base.id, precinct_id: PRECINCT_FEDEX_JHB_ID, sequence: 2, slot_time: null, notes: null, created_at: base.created_at, updated_at: base.created_at },
-  ]
-
-  const leg1Id = 'cd-leg-1' as PhaseEventId
-  const leg2Id = 'cd-leg-2' as PhaseEventId
-  const at = '2026-01-01T00:00:00Z'
-  const completed = (phaseType: PhaseDescriptor['phase_type'], phaseEventId: PhaseEventId, sequence: number, stopId: string, completedAt: string): PhaseDescriptor =>
-    makePhase(phaseType, { phase_event_id: phaseEventId, sequence_number: sequence, trip_stop_id: stopId, status: 'completed', completed_at: completedAt })
-
-  const phases: PhaseDescriptor[] = [
-    completed('trip_creation', 'cd-p0' as PhaseEventId, 0, originStopId, at),
-    completed('activation', 'cd-p1' as PhaseEventId, 1, originStopId, at),
-    completed('loading', 'cd-p2' as PhaseEventId, 2, originStopId, at),
-    completed('departure', 'cd-p3' as PhaseEventId, 3, originStopId, at),
-    completed('in_transit', leg1Id, 4, originStopId, at),
-    completed('unloading', 'cd-p5' as PhaseEventId, 5, midStopId, at),
-    completed('loading', 'cd-p6' as PhaseEventId, 6, midStopId, at),
-    completed('departure', 'cd-p7' as PhaseEventId, 7, midStopId, at),
-    completed('in_transit', leg2Id, 8, midStopId, at),
-    completed('unloading', 'cd-p9' as PhaseEventId, 9, backStopId, at),
-    completed('confirmation', 'cd-p10' as PhaseEventId, 10, backStopId, at),
-  ]
-
-  const leg1Exception = makeTransitException({ id: 'exc-leg1' as ExceptionId, phase_event_id: leg1Id, severity: 'critical' })
-  const leg2Exception = makeTransitException({ id: 'exc-leg2' as ExceptionId, phase_event_id: leg2Id, severity: 'warning' })
-
+function artifact(id: string, phaseId: string | null, role: EvidenceArtifactWithUrl['evidence_role'], overrides: Partial<EvidenceArtifactWithUrl> = {}): EvidenceArtifactWithUrl {
   return {
-    ...base,
-    stops,
-    phases,
-    status: 'closed',
-    exceptions: [leg1Exception, leg2Exception],
+    id: id as EvidenceArtifactWithUrl['id'], trip_id: 'trip-1', artifact_type: 'photo', s3_key: 'k', s3_bucket: 'b',
+    file_hash: 'f'.repeat(64), mime_type: 'image/jpeg', captured_at: '2026-05-03T10:00:00Z', captured_by_driver_id: 'driver-1',
+    captured_by_user_id: null, captured_lat: null, captured_lng: null, created_at: '2026-05-03T10:00:30Z',
+    phase_event_id: phaseId, evidence_role: role, signed_url: `https://example.test/${id}.jpg`, ...overrides,
   }
 }
 
-describe('TripTimeline: compact location verdict', () => {
-  // TRP-2026-0035 is closed with every phase walked through to completed: a stable base
-  // for asserting on a `done` node's summary row without any card being expanded (closed
-  // trips never auto-open a row: initialOpen requires an active phase, and a terminal
-  // trip has none).
-  it('shows the stored-verdict chip on a completed activation row, visible WITHOUT expanding the card', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const trip: Trip = {
-      ...base,
-      phases: base.phases.map(p => p.phase_type === 'activation' ? { ...p, pulsit_geofence_confirmed: true } : p),
-    }
+function artifactMap(...artifacts: EvidenceArtifactWithUrl[]): Map<string, EvidenceArtifactWithUrl> {
+  return new Map(artifacts.map(a => [a.id, a]))
+}
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
+function receiptFor(phase: PhaseDescriptor): BlockchainReceipt {
+  return {
+    id: `receipt-${phase.phase_event_id}`, subject_type: 'phase_event', subject_id: phase.phase_event_id, receipt_type: 'pickup',
+    data_hash: 'a'.repeat(64), hedera_topic_id: '0.0.12345', hedera_sequence_number: 7,
+    hedera_consensus_timestamp: '2026-05-03T19:50:00Z', hedera_tx_id: null, created_at: SERVER_TIME,
+  }
+}
 
-    // Asserted before any click: the chip must already be in the document as rendered.
-    expect(phaseRow('Activation').getByText('Truck within precinct tolerance')).toBeInTheDocument()
+beforeEach(() => {
+  forensic.canViewForensics = true
+  forensic.forensicOn = false
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('TripTimeline: the header verdict answers "did this phase go cleanly?" with the card collapsed', () => {
+  it('says "Checks passed" on a phase whose checks all agree, and keeps the card collapsed', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-1', pulsit_geofence_confirmed: true } }))
+
+    const row = phaseGroup('Departure')
+    expect(within(row).getByText('Checks passed')).toBeInTheDocument()
+    // Clean is short (Batch 3): a count, with each passing check left to the Checked zone.
+    expect(row.textContent).toMatch(/Checks passed · (\d+) of \1(?!\d)/)
+    expect(within(row).queryByText(/No exceptions/)).toBeNull()
+    expect(toggleOf('Departure')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText(/^Clean$/)).not.toBeInTheDocument()
   })
 
-  it('shows no location chip on a completed loading row with no fix and no stored verdict (LoadingDetail gates its own section on the exact same hasLocationEvidence check, so the chip must never advertise a section the opened card does not have)', () => {
-    const trip = tripFor(TRIP_0035_ID)
+  it('keeps every passing check in the Checked zone once a clean card is opened', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-1', pulsit_geofence_confirmed: true } }))
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
+    fireEvent.click(toggleOf('Departure')!)
 
-    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
-    for (const label of verdictLabels) {
-      expect(phaseRow('Loading').queryByText(label)).not.toBeInTheDocument()
-    }
+    const checked = within(phaseGroup('Departure')).getByRole('region', { name: 'Checked' })
+    expect(within(checked).getAllByText('Truck within precinct tolerance').length).toBeGreaterThan(0)
+    expect(phaseGroup('Departure').textContent).not.toMatch(/Checks passed · [^\d]/)
   })
 
-  it('shows the stored outside-tolerance chip on a loading row once a verdict is actually recorded', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const trip: Trip = {
-      ...base,
-      phases: base.phases.map(p => p.phase_type === 'loading' ? { ...p, pulsit_geofence_confirmed: false } : p),
-    }
+  it('says "Not fully verified" when a check could not run, never "Checks passed"', () => {
+    renderTimeline(closedTrip())
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    expect(phaseRow('Loading').getByText('Truck outside precinct tolerance')).toBeInTheDocument()
+    const row = phaseGroup('Loading')
+    expect(within(row).getByText('Not fully verified')).toBeInTheDocument()
+    expect(within(row).queryByText('Checks passed')).not.toBeInTheDocument()
   })
 
-  it('shows no location chip on trip_creation or in_transit rows, even when they are done', () => {
-    const trip = tripFor(TRIP_0035_ID)
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
+  it('turns the node amber and says "Needs attention" for a failed parcel count that raised no exception', () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = closedTrip(
+      { loading: { parcel_count_origin: 7 }, confirmation: { parcel_count_destination: 6 } },
+      { consignments: [consignment({ pickup_stop_id: loading.trip_stop_id })] },
     )
 
-    // Every verdict label this summary could ever render: none may appear in either row.
-    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
-    for (const label of verdictLabels) {
-      expect(phaseRow('Trip Created').queryByText(label)).not.toBeInTheDocument()
-      expect(phaseRow('In Transit').queryByText(label)).not.toBeInTheDocument()
-    }
+    renderTimeline(trip)
+
+    const row = phaseGroup('Confirmation')
+    expect(within(row).getByText('Needs attention')).toBeInTheDocument()
+    expect(within(row).getByText(line(/1 parcel unaccounted for/))).toBeInTheDocument()
+    expect(row.querySelector('[data-node-type]')).toHaveAttribute('data-node-type', 'warn')
   })
 
-  it('shows no location chip on a pending phase', () => {
-    const trip = tripFor(TRIP_0043_ID)
+  it('keeps the node green for a phase that went cleanly', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-1', pulsit_geofence_confirmed: true } }))
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
+    expect(phaseGroup('Departure').querySelector('[data-node-type]')).toHaveAttribute('data-node-type', 'done')
+  })
 
-    const verdictLabels = ['Truck within precinct tolerance', 'Truck outside precinct tolerance', 'Truck precinct check unavailable', 'Truck precinct check unavailable for transit legs']
-    for (const label of verdictLabels) {
-      expect(phaseRow('Activation').queryByText(label)).not.toBeInTheDocument()
-    }
+  it('says an exception was reviewed, and shows no reviewed tick for one that was only recorded', () => {
+    const loading = phaseOf(closedTrip(), 'loading')
+    const reviewed = exception('r1', { phase_event_id: loading.phase_event_id, review_status: 'reviewed', review_outcome: 'no_action_required' })
+    const recorded = exception('r2', { phase_event_id: phaseOf(closedTrip(), 'departure').phase_event_id, review_status: 'recorded', severity: 'info' })
+
+    renderTimeline(closedTrip({}, { exceptions: [reviewed, recorded] }))
+
+    expect(within(phaseGroup('Loading')).getByText('Exception reviewed')).toBeInTheDocument()
+    expect(within(phaseGroup('Departure')).getByText('Exception recorded')).toBeInTheDocument()
+  })
+
+  it('says a dispatcher override closed the phase, and that its checks did not run', () => {
+    renderTimeline(closedTrip({ departure: { status: 'overridden', dispatcher_override_note: 'Phone lost', dispatcher_override_user_id: 'user-9' } }))
+
+    const row = phaseGroup('Departure')
+    expect(within(row).getAllByText('Closed by dispatcher override')[0]).toBeInTheDocument()
+    expect(within(row).getByText(/Checks did not run/)).toBeInTheDocument()
+  })
+
+  it('says "Current phase" for the live phase of a running trip with nothing yet, and "Not started" for later ones', () => {
+    renderTimeline(tripFor(TRIP_0040_ID))
+
+    const verdict = phaseGroup('Arrival').querySelector('[data-outcome]')
+    expect(verdict).toHaveTextContent('Current phase · Waiting for the driver')
+    const confirmation = phaseGroup('Confirmation')
+    expect(within(confirmation).getByText('Not started')).toBeInTheDocument()
+    expect(toggleOf('Confirmation')).toBeNull()
+  })
+
+  it('shows trip_creation exactly as before: its own detail, and no verdict', () => {
+    renderTimeline(closedTrip())
+
+    const row = phaseGroup('Trip Created')
+    expect(within(row).queryByText(/Needs attention|Checks passed|Not fully verified|In progress/)).not.toBeInTheDocument()
+    fireEvent.click(toggleOf('Trip Created')!)
+    expect(within(row).getByText('Full name')).toBeInTheDocument()
   })
 })
 
-describe('TripTimeline: gps_mismatch exception evidence', () => {
-  it('renders the honest trigger text inside a linked activation exception\'s supporting evidence', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const activation = base.phases.find(p => p.phase_type === 'activation')
-    if (!activation) throw new Error('TRIP_0035 activation phase is missing')
+describe('TripTimeline: card structure', () => {
+  it('opens a resolved card to Recorded, then Checked, then (in forensic mode) Audit trail, in that order', () => {
+    forensic.forensicOn = true
+    const departure = phaseOf(closedTrip(), 'departure')
+    const trip = closedTrip({ departure: { seal_number: 'FP-1', event_hash: 'b'.repeat(64), blockchain_receipt_id: `receipt-${departure.phase_event_id}` } },
+      { blockchain_receipts: [receiptFor(departure)] })
 
-    const gpsMismatch: TripException = {
-      id: 'gps-mismatch-activation' as TripException['id'],
-      trip_id: base.id,
-      exception_type: 'gps_mismatch',
-      source: 'system',
-      severity: 'warning',
-      description: 'Vehicle tracker placed the vehicle outside the activation geofence.',
-      phase_event_id: activation.phase_event_id,
-      checkpoint_id: null,
-      supporting_artifact_id: null,
-      review_status: 'recorded',
-      review_outcome: null,
-      reviewed_by_user_id: null,
-      reviewed_at: null,
-      review_note: null,
-      contact_method: null,
-      // A gps_mismatch is not a breakdown, so it names no vehicle (trailer analytics, dev).
-      vehicle_id: null,
-      merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
-      created_at: '2026-05-01T00:00:00Z',
-      updated_at: '2026-05-01T00:00:00Z',
-    }
-    const trip: Trip = { ...base, exceptions: [...base.exceptions, gpsMismatch] }
+    renderTimeline(trip)
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    // The row's own aria-label gains " and exceptions" once it carries one (see
-    // TripTimeline's own group label logic), so it is looked up by that full name here,
-    // unlike the plain "Activation phase" rows in the describe block above.
-    const activationRow = within(screen.getByRole('group', { name: 'Activation phase and exceptions' }))
-    fireEvent.click(activationRow.getByRole('button', { name: /1 exception · 0 need review/ }))
-    expect(activationRow.getByTestId('gps-mismatch-trigger')).toHaveTextContent('Vehicle tracker outside the facility boundary')
+    const row = openCard('Departure')
+    const regions = within(row).getAllByRole('region').map(region => region.getAttribute('aria-label'))
+    expect(regions).toEqual(['Recorded', 'Checked', 'Audit trail'])
   })
 
-  it('shows exactly one "View on map" button, nested inside the exception card, for a system-raised gps_mismatch with recorded fixes', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const activation = base.phases.find(p => p.phase_type === 'activation')
-    if (!activation) throw new Error('TRIP_0035 activation phase is missing')
+  it('collapses every resolved phase by default, and opens only the current one', () => {
+    renderTimeline(tripFor(TRIP_0040_ID))
 
-    // Gives ExceptionMapButton (assessment-less path) and the "Supporting evidence"
-    // panel's own PositionDisagreement the same phase-based fixes to compare, matching
-    // the browser-observed regression: both used to render their own "View on map".
-    const activationWithFixes: PhaseDescriptor = {
-      ...activation,
-      driver_phone_lat: -33.9249,
-      driver_phone_lng: 18.4241,
-      horse_gps_lat: -33.9351,
-      horse_gps_lng: 18.4241,
-    }
-    const gpsMismatch: TripException = {
-      id: 'gps-mismatch-activation-2' as TripException['id'],
-      trip_id: base.id,
-      exception_type: 'gps_mismatch',
-      source: 'system',
-      severity: 'warning',
-      description: 'Vehicle tracker placed the vehicle outside the activation geofence.',
-      phase_event_id: activation.phase_event_id,
-      checkpoint_id: null,
-      supporting_artifact_id: null,
-      review_status: 'recorded',
-      review_outcome: null,
-      reviewed_by_user_id: null,
-      reviewed_at: null,
-      review_note: null,
-      contact_method: null,
-      vehicle_id: null,
-      merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
-      created_at: '2026-05-01T00:00:00Z',
-      updated_at: '2026-05-01T00:00:00Z',
-    }
-    const trip: Trip = {
-      ...base,
-      phases: base.phases.map(p => p.phase_event_id === activation.phase_event_id ? activationWithFixes : p),
-      exceptions: [...base.exceptions, gpsMismatch],
-    }
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const activationRow = within(screen.getByRole('group', { name: 'Activation phase and exceptions' }))
-    fireEvent.click(activationRow.getByRole('button', { name: /1 exception · 0 need review/ }))
-    // Opens the "Supporting evidence" disclosure too, so a still-hidden duplicate inside
-    // it cannot pass this assertion by staying collapsed.
-    fireEvent.click(activationRow.getByText('Supporting evidence'))
-
-    const mapButtons = activationRow.getAllByRole('button', { name: VIEW_ON_MAP_LABEL })
-    expect(mapButtons).toHaveLength(1)
-    // Proves the button now lives inside the exception's own card, not as a sibling
-    // element floating below it.
-    expect(mapButtons[0]!.closest('article')).not.toBeNull()
-  })
-})
-
-describe('TripTimeline: transit journey summary stays outside disclosure', () => {
-  it('shows the compact journey summary for a completed leg while its card is still collapsed', () => {
-    const trip = tripFor(TRIP_0035_ID)
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    // Closed trip, no active phase: this row is an ordinary collapsible card, not the
-    // always-open "driving" state — proving the summary needs no expansion to show.
-    expect(within(row).getByRole('button', { expanded: false })).toBeInTheDocument()
-    expect(within(row).getByText(/FedEx DBN/)).toBeInTheDocument()
-    const time = row.querySelector('time')
-    expect(time).toBeInTheDocument()
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    expect(toggleOf('Arrival')).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('shows "En route to <destination>" for the currently driving leg', () => {
-    const trip = tripFor(TRIP_0041_ID)
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    // Exactly once: InTransitTimeline (the always-open full detail while driving) no
-    // longer renders its own departure/arrival wording at all — that fact lives
-    // entirely in the persistent summary now (review round 1 caught this rendering
-    // twice, once here and once in InTransitTimeline's own node).
-    expect(within(row).getAllByText(/En route to FedEx DBN/)).toHaveLength(1)
-  })
-
-  it('offers a current-leg strip only after its active row leaves the timeline scroller', () => {
-    const observe = vi.fn()
-    const disconnect = vi.fn()
-    let notify: ((entries: IntersectionObserverEntry[]) => void) | undefined
-    let observerRoot: Element | Document | null | undefined
-    vi.stubGlobal('IntersectionObserver', class {
-      constructor(callback: (entries: IntersectionObserverEntry[]) => void, options?: IntersectionObserverInit) {
-        notify = callback
-        observerRoot = options?.root ?? null
-      }
-      observe = observe
-      disconnect = disconnect
-      unobserve = vi.fn()
-      takeRecords = () => []
-      root = null
-      rootMargin = ''
-      thresholds = []
-    })
-    const onJump = vi.fn()
-    const rendered = render(<div data-timeline-scroller><TripTimeline trip={tripFor(TRIP_0041_ID)} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={onJump} {...evidence} /></div>)
-
-    expect(screen.queryByRole('button', { name: 'Show current leg' })).not.toBeInTheDocument()
-    act(() => notify?.([{ isIntersecting: false } as IntersectionObserverEntry]))
-    expect(screen.getByRole('button', { name: 'Show current leg' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Show current leg' }))
-    expect(onJump).toHaveBeenCalledOnce()
-    expect(observe).toHaveBeenCalledOnce()
-    expect(observerRoot).toBe(rendered.container.querySelector('[data-timeline-scroller]'))
-    rendered.unmount()
-    expect(disconnect).toHaveBeenCalledOnce()
-    vi.unstubAllGlobals()
-  })
-
-  it('shows no journey summary or invented status on a cancelled trip\'s in-transit leg', () => {
+  it('renders one current card on a 13-phase cross-dock', () => {
     const base = tripFor(TRIP_0041_ID)
+    const plan: PhaseType[] = [
+      'trip_creation', 'activation', 'loading', 'departure', 'in_transit', 'arrival', 'unloading',
+      'loading', 'departure', 'in_transit', 'arrival', 'unloading', 'confirmation',
+    ]
+    const firstOpen = plan.lastIndexOf('in_transit')
+    const template = (type: PhaseType): PhaseDescriptor => base.phases.find(phase => phase.phase_type === type)!
+    const phases: PhaseDescriptor[] = plan.map((type, index) => ({
+      ...template(type),
+      phase_event_id: `cd-${index}` as PhaseEventId,
+      sequence_number: index,
+      status: index < firstOpen ? 'completed' : 'pending',
+      completed_at: index < firstOpen ? SERVER_TIME : null,
+    }))
+
+    const { container } = renderTimeline({ ...base, phases, exceptions: [] })
+
+    expect(phases).toHaveLength(13)
+    expect(container.querySelectorAll('[data-node-type="next"]')).toHaveLength(1)
+    expect(screen.getAllByRole('group', { name: /^In Transit phase/ })).toHaveLength(2)
+  })
+
+  it('keeps a card\'s open or closed state across a background refresh with a new trip object', () => {
+    const trip = closedTrip()
+    const { rerender } = renderTimeline(trip)
+
+    fireEvent.click(toggleOf('Loading')!)
+    rerender(<TripTimeline trip={{ ...trip }} precincts={mockPrecincts} lastUpdated={2} onJump={vi.fn()} {...evidence} />)
+
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'true')
+  })
+})
+
+describe('TripTimeline: nothing lost when the detail panels are unmounted (design note §2)', () => {
+  it('activation: precinct, address and slot time sit behind "Location details", and "Arrived" is gone', () => {
+    const base = closedTrip()
+    const activation = phaseOf(base, 'activation')
+    const precinct = mockPrecincts.find(p => p.id === base.stops.find(s => s.id === activation.trip_stop_id)?.precinct_id)!
+    const slot = '2026-05-03T07:00:00Z'
+    const trip = { ...base, stops: base.stops.map(stop => stop.id === activation.trip_stop_id ? { ...stop, slot_time: slot } : stop) }
+    const patchedPrecincts = mockPrecincts.map(p => p.id === precinct.id ? { ...p, address: ADDRESS_LINE } : p)
+
+    render(<TripTimeline trip={trip} precincts={patchedPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} />)
+
+    const checked = zone('Activation', 'Checked')
+    fireEvent.click(within(checked).getByText('Location details'))
+    expect(within(checked).getByText(precinct.name)).toBeInTheDocument()
+    expect(within(checked).getByText(ADDRESS_LINE)).toBeInTheDocument()
+    expect(within(checked).getByText(fmtDateTime(slot))).toBeInTheDocument()
+    expect(within(phaseGroup('Activation')).queryByText('Arrived')).not.toBeInTheDocument()
+  })
+
+  it('loading: the expected and scanned figures, in Checked', () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = closedTrip({ loading: { parcel_count_origin: 7 } }, { consignments: [consignment({ pickup_stop_id: loading.trip_stop_id, parcel_count_expected: 7 })] })
+
+    renderTimeline(trip)
+
+    const checked = zone('Loading', 'Checked')
+    expect(within(checked).getByText('All parcels scanned')).toBeInTheDocument()
+    expect(within(checked).getByText(line('7 scanned of 7 expected'))).toBeInTheDocument()
+    expect(within(zone('Loading', 'Recorded')).getByText(line('7 parcels scanned onto truck'))).toBeInTheDocument()
+  })
+
+  it('departure: the seal number on the completion row', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-7204' } }))
+
+    expect(within(zone('Departure', 'Recorded')).getByText(line('Seal FP-7204'))).toBeInTheDocument()
+  })
+
+  it('arrival: the seal read, its condition, and this leg\'s departure seal', () => {
+    const trip = closedTrip({ departure: { seal_number: 'FP-1234' }, arrival: { seal_number: 'FP-9999', seal_condition: 'damaged' } })
+
+    renderTimeline(trip)
+
+    const recorded = zone('Arrival', 'Recorded')
+    expect(within(recorded).getByText(line('Seal read FP-9999'))).toBeInTheDocument()
+    expect(within(recorded).getByText('Seal found damaged')).toBeInTheDocument()
+    const checked = zone('Arrival', 'Checked')
+    expect(within(checked).getByText('Seal number differs from departure')).toBeInTheDocument()
+    expect(within(checked).getByText(line('Recorded FP-1234 at departure and FP-9999 at arrival.'))).toBeInTheDocument()
+    expect(within(checked).getByText('Seal found damaged')).toBeInTheDocument()
+  })
+
+  it('unloading: scanned off the truck against expected at the stop', () => {
+    const base = closedTrip()
+    const unloading = phaseOf(base, 'unloading')
+    const trip = closedTrip({}, { consignments: [consignment({ delivery_stop_id: unloading.trip_stop_id, parcel_count_expected: 7, scanned_in_count: 6 })] })
+
+    renderTimeline(trip)
+
+    const checked = zone('Unloading', 'Checked')
+    expect(within(checked).getByText(line('1 parcel not scanned'))).toBeInTheDocument()
+    expect(within(checked).getByText(line('6 scanned of 7 expected'))).toBeInTheDocument()
+  })
+
+  it('unloading while unresolved: the live count is "in progress" with its "may still change" note, never pass or fail', () => {
+    const base = tripFor(TRIP_0040_ID)
+    const arrival = phaseOf(base, 'arrival')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number <= arrival.sequence_number ? { ...phase, status: 'completed' as const, completed_at: SERVER_TIME } : phase),
+      consignments: [consignment({ delivery_stop_id: phaseOf(base, 'unloading').trip_stop_id, parcel_count_expected: 7, scanned_in_count: 3 })],
+    }
+
+    renderTimeline(trip)
+
+    const checked = zone('Unloading', 'Checked')
+    expect(within(checked).getByText('Scan in progress')).toBeInTheDocument()
+    expect(within(checked).getByText(/This count may still change/)).toBeInTheDocument()
+    expect(within(checked).queryByText(/not scanned|All parcels scanned/)).not.toBeInTheDocument()
+    expect(within(checked).getByText('Checks appear when the driver confirms unloading')).toBeInTheDocument()
+  })
+
+  it('confirmation: scanned out and in, the counts line, the driver\'s blind count and its note', () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = closedTrip(
+      { loading: { parcel_count_origin: 7 }, confirmation: { parcel_count_destination: 6, driver_visual_count: 6 } },
+      { consignments: [consignment({ pickup_stop_id: loading.trip_stop_id })] },
+    )
+
+    renderTimeline(trip)
+
+    const checked = zone('Confirmation', 'Checked')
+    expect(within(checked).getByText(line('1 parcel unaccounted for'))).toBeInTheDocument()
+    expect(within(checked).getByText(line('7 scanned out at origin, 6 scanned in at destination'))).toBeInTheDocument()
+    expect(within(checked).getByText(CHECK_WORDING.counts.blindCountNote)).toBeInTheDocument()
+    expect(within(zone('Confirmation', 'Recorded')).getByText(line('Driver counted 6 parcels'))).toBeInTheDocument()
+  })
+
+  it('location: the verdict as two lines in Checked, and the fixes, capture times, separation, boundary and map behind "Location details"', () => {
+    const fixes = { driver_phone_lat: -33.9249, driver_phone_lng: 18.4241, horse_gps_lat: -33.9251, horse_gps_lng: 18.4243, pulsit_geofence_confirmed: true }
+
+    renderTimeline(closedTrip({ departure: fixes }))
+
+    const checked = zone('Departure', 'Checked')
+    expect(checkLines(checked)).toEqual(['Truck within precinct tolerance'])
+    fireEvent.click(within(checked).getByText('Location details'))
+    for (const label of ['Driver phone capture time', 'Horse tracker capture time', 'Driver–truck separation', 'Boundary']) {
+      expect(within(checked).getByText(label)).toBeInTheDocument()
+    }
+    expect(within(checked).getByRole('button', { name: VIEW_ON_MAP_LABEL })).toBeInTheDocument()
+  })
+
+  it('shows the truck geofence and the driver proximity as separate lines, and no "Location verified"', () => {
+    const assessment = {
+      proximity: 'separated', proximity_reasons: [], boundary: null, driver_fix: null, horse_fix: null,
+    } as unknown as PhaseDescriptor['action_location_assessment']
+    const trip = closedTrip({ departure: { pulsit_geofence_confirmed: true, action_location_assessment: assessment } })
+
+    renderTimeline(trip)
+
+    const checked = zone('Departure', 'Checked')
+    expect(checkLines(checked)).toEqual(['Truck within precinct tolerance', 'Driver separated from truck'])
+    expect(screen.queryByText(/Location verified/)).not.toBeInTheDocument()
+  })
+
+  it('override: the note and who authorised it are visible to everyone', () => {
+    renderTimeline(closedTrip({ departure: { status: 'overridden', dispatcher_override_note: 'Driver phone lost', dispatcher_override_user_id: 'user-42' } }))
+
+    const recorded = zone('Departure', 'Recorded')
+    expect(within(recorded).getByText('Closed by dispatcher override')).toBeInTheDocument()
+    expect(within(recorded).getByText('Driver phone lost')).toBeInTheDocument()
+    expect(within(recorded).getByText(line('Authorised by user-42'))).toBeInTheDocument()
+    expect(within(zone('Departure', 'Checked')).getByText('Checks bypassed')).toBeInTheDocument()
+  })
+
+  it('in transit: the named absence, and the recorded arrival location behind "Location details"', () => {
+    const arrival = { driver_phone_lat: -33.9, driver_phone_lng: 18.4, horse_gps_lat: -33.9, horse_gps_lng: 18.4 }
+
+    renderTimeline(closedTrip({ in_transit: arrival }))
+
+    const checked = zone('In Transit', 'Checked')
+    expect(within(checked).getByText(/Only recorded journey events are shown\./)).toBeInTheDocument()
+    expect(within(checked).getByText('No location verdict is recorded for transit legs')).toBeInTheDocument()
+    fireEvent.click(within(checked).getByText('Location details'))
+    expect(within(checked).getByText('Recorded location at arrival')).toBeInTheDocument()
+  })
+
+  it('forensic mode: the receipt tag, the event hash and Verify', () => {
+    forensic.forensicOn = true
+    const departure = phaseOf(closedTrip(), 'departure')
+    const trip = closedTrip(
+      { departure: { event_hash: 'c'.repeat(64), blockchain_receipt_id: `receipt-${departure.phase_event_id}` } },
+      { blockchain_receipts: [receiptFor(departure)] },
+    )
+
+    renderTimeline(trip)
+
+    const audit = zone('Departure', 'Audit trail')
+    expect(audit).toHaveTextContent('Pickup receipt anchored')
+    expect(audit).toHaveTextContent('c'.repeat(64))
+    expect(within(audit).getByTestId('verify-subject')).toHaveTextContent(departure.phase_event_id)
+  })
+
+  it('drops "No seal present" from an unresolved arrival: nothing is asserted absent before the driver records it', () => {
+    renderTimeline(tripFor(TRIP_0040_ID))
+
+    const row = phaseGroup('Arrival')
+    expect(within(row).queryByText(/No seal present/)).not.toBeInTheDocument()
+    expect(within(row).queryByText(/Condition as found/)).not.toBeInTheDocument()
+    expect(within(row).getByText('Checks appear when the driver confirms arrival')).toBeInTheDocument()
+  })
+})
+
+describe('TripTimeline: the override action', () => {
+  it('stays below the zones on an unresolved phase, and is absent from a resolved one', () => {
+    renderTimeline(tripFor(TRIP_0040_ID))
+
+    const action = within(phaseGroup('Arrival')).getByRole('button', { name: 'Record as unable to complete' })
+    const checked = zone('Arrival', 'Checked')
+    // Document order: the action comes after the last zone, never between zones.
+    expect(checked.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(phaseGroup('Loading')).queryByRole('button', { name: 'Record as unable to complete' })).not.toBeInTheDocument()
+    fireEvent.click(toggleOf('Loading')!)
+    expect(within(phaseGroup('Loading')).queryByRole('button', { name: 'Record as unable to complete' })).not.toBeInTheDocument()
+  })
+})
+
+describe('TripTimeline: who sees the anchor', () => {
+  function trippedAnchor(status: PhaseDescriptor['anchor_status']): { trip: Trip; departure: PhaseDescriptor } {
+    const departure = phaseOf(closedTrip(), 'departure')
+    const trip = closedTrip(
+      { departure: { anchor_status: status, event_hash: 'd'.repeat(64), blockchain_receipt_id: `receipt-${departure.phase_event_id}` } },
+      { blockchain_receipts: [receiptFor(departure)] },
+    )
+    return { trip, departure }
+  }
+
+  it('shows no anchor row, no Audit trail, no receipt, hash or Verify with forensic mode off', () => {
+    forensic.forensicOn = false
+    renderTimeline(trippedAnchor('anchored').trip)
+
+    const row = openCard('Departure')
+    expect(within(row).queryByRole('region', { name: 'Audit trail' })).not.toBeInTheDocument()
+    expect(within(row).queryByText(/Anchored|Anchoring/)).not.toBeInTheDocument()
+    expect(row).not.toHaveTextContent('Pickup receipt anchored')
+    expect(row).not.toHaveTextContent('d'.repeat(64))
+    expect(within(row).queryByTestId('verify-subject')).not.toBeInTheDocument()
+  })
+
+  it('shows the anchor row and the Audit trail with forensic mode on', () => {
+    forensic.forensicOn = true
+    renderTimeline(trippedAnchor('anchored').trip)
+
+    const row = openCard('Departure')
+    expect(within(row).getByRole('region', { name: 'Audit trail' })).toBeInTheDocument()
+    expect(within(zone('Departure', 'Recorded')).getByText(/^Anchored /)).toBeInTheDocument()
+  })
+
+  it('keeps "Anchor failed — receipt still owed" visible to everyone, outside the verdict', () => {
+    forensic.forensicOn = false
+    renderTimeline(trippedAnchor('failed').trip)
+
+    const row = phaseGroup('Departure')
+    expect(within(row).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(row).queryByText(/Needs attention/)).not.toBeInTheDocument()
+  })
+})
+
+const ANCHORED_PHASES: readonly string[] = ['Activation', 'Loading', 'Departure', 'In Transit', 'Arrival', 'Unloading', 'Confirmation']
+
+/** Every phase resolved and anchored, each with its own receipt, event hash and (for departure)
+ *  a cited seal photo carrying a capture position and a file hash. */
+function anchoredTrip(): { trip: Trip; artifacts: Map<string, EvidenceArtifactWithUrl> } {
+  const base = closedTrip()
+  const withEvidence = base.phases.map(phase => phase.phase_type === 'trip_creation' ? phase : {
+    ...phase,
+    anchor_status: 'anchored' as const,
+    event_hash: `${phase.sequence_number}`.repeat(64).slice(0, 64),
+    blockchain_receipt_id: `receipt-${phase.phase_event_id}`,
+    seal_photo_artifact_id: phase.phase_type === 'departure' ? 'seal-1' : phase.seal_photo_artifact_id,
+  })
+  const trip: Trip = {
+    ...base,
+    phases: withEvidence,
+    blockchain_receipts: withEvidence.filter(phase => phase.phase_type !== 'trip_creation').map(receiptFor),
+  }
+  const seal = artifact('seal-1', phaseOf(base, 'departure').phase_event_id, 'seal_photo', { captured_lat: -33.92491, captured_lng: 18.42411, file_hash: 'e'.repeat(64) })
+  return { trip, artifacts: artifactMap(seal) }
+}
+
+describe('TripTimeline: forensic gating (D32)', () => {
+  it.each([
+    ['forensic mode is off', true, false],
+    ['the dispatcher is not an admin', false, true],
+  ] as const)('shows no anchor row, Audit trail, receipt, hash, Verify or photo provenance on any phase when %s', (_case, canView, on) => {
+    forensic.canViewForensics = canView
+    forensic.forensicOn = on
+    const { trip, artifacts } = anchoredTrip()
+    renderTimeline(trip, { artifactsById: artifacts })
+
+    for (const name of ANCHORED_PHASES) {
+      const row = openCard(name)
+      expect(within(row).queryByRole('region', { name: 'Audit trail' })).not.toBeInTheDocument()
+      expect(within(row).queryByText(/Anchored|Anchoring/)).not.toBeInTheDocument()
+      expect(within(row).queryByTestId('verify-subject')).not.toBeInTheDocument()
+      expect(row).not.toHaveTextContent(/receipt anchored/i)
+    }
+    expect(document.body.textContent).not.toMatch(/SHA-256|Event hash/)
+    expect(document.body.textContent).not.toContain('-33.92491')
+    expect(document.body.textContent).not.toContain('e'.repeat(64))
+  })
+
+  it('shows the anchor row, Audit trail, receipt, event hash and Verify on every anchored phase with forensic mode on', () => {
+    forensic.forensicOn = true
+    const { trip, artifacts } = anchoredTrip()
+    renderTimeline(trip, { artifactsById: artifacts })
+
+    for (const name of ANCHORED_PHASES) {
+      const row = openCard(name)
+      const audit = within(row).getByRole('region', { name: 'Audit trail' })
+      expect(audit).toHaveTextContent('Pickup receipt anchored')
+      expect(audit).toHaveTextContent('Event hash')
+      expect(within(audit).getByTestId('verify-subject')).toBeInTheDocument()
+      expect(within(zone(name, 'Recorded')).getByText(/^Anchored /)).toBeInTheDocument()
+    }
+    expect(document.body.textContent).toContain('SHA-256')
+    expect(document.body.textContent).toContain('-33.92491')
+  })
+
+  it('keeps the override note and who authorised it visible with forensic mode off', () => {
+    forensic.forensicOn = false
+    renderTimeline(closedTrip({ departure: { status: 'overridden', dispatcher_override_note: 'Driver phone lost', dispatcher_override_user_id: 'user-42' } }))
+
+    const recorded = zone('Departure', 'Recorded')
+    expect(within(recorded).getByText('Driver phone lost')).toBeInTheDocument()
+    expect(within(recorded).getByText(line('Authorised by user-42'))).toBeInTheDocument()
+    expect(within(phaseGroup('Departure')).queryByRole('region', { name: 'Audit trail' })).not.toBeInTheDocument()
+  })
+
+  it('keeps "Anchor failed — receipt still owed" visible with forensic mode off, on every phase that failed', () => {
+    forensic.forensicOn = false
+    renderTimeline(closedTrip({ departure: { anchor_status: 'failed' }, loading: { anchor_status: 'failed' } }))
+
+    expect(within(phaseGroup('Departure')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(phaseGroup('Loading')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+  })
+
+  it('gates by wrapping in ForensicOnly, never by a prop a caller could forget', () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+    const read = (file: string): string => readFileSync(resolve(root, file), 'utf8')
+    // A prop, parameter or variable named after forensic mode would be a gate that can be passed wrongly.
+    const FLAG = /\bforensic\w*\s*[?:=]/i
+    for (const file of ['domain/PhaseActs.tsx', 'domain/PhaseActRow.tsx', 'domain/PhaseAudit.tsx', 'trips/PhaseCardBody.tsx', 'trips/TimelinePhase.tsx']) {
+      expect(read(file), file).not.toMatch(FLAG)
+    }
+    expect(read('domain/PhaseAudit.tsx')).toMatch(/<ForensicOnly>[\s\S]*<\/ForensicOnly>/)
+    expect(read('domain/PhaseActRow.tsx')).toMatch(/<ForensicOnly><RailRow kind="anchor"/)
+  })
+})
+
+describe('TripTimeline: what each phase type can show (design note §7.2)', () => {
+  it.each(['Activation', 'In Transit', 'Unloading'] as const)('never shows a photo or an "Expected: photo" row on %s', name => {
+    renderTimeline(closedTrip())
+
+    const row = openCard(name)
+    expect(within(row).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(row).queryByText(/Expected: .*photo/)).not.toBeInTheDocument()
+    expect(within(row).queryByText(/photographed|photo taken/)).not.toBeInTheDocument()
+  })
+
+  it('records an absent row on a resolved departure with no cited seal photo', () => {
+    renderTimeline(closedTrip({ departure: { seal_number: 'FP-1' } }))
+
+    expect(within(zone('Departure', 'Recorded')).getByText('No seal photo submitted at completion')).toBeInTheDocument()
+  })
+
+  it('records no absent row, and an expected row instead, on an active departure', () => {
+    const base = tripFor(TRIP_0040_ID)
+    const departure = phaseOf(base, 'departure')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null, seal_number: null } : phase),
+    }
+
+    renderTimeline(trip)
+
+    const recorded = zone('Departure', 'Recorded')
+    expect(within(recorded).queryByText(/submitted at completion/)).not.toBeInTheDocument()
+    expect(within(recorded).getByText('Expected: seal photo')).toBeInTheDocument()
+    expect(within(recorded).getByText('Waiting for the driver to confirm departure')).toBeInTheDocument()
+  })
+
+  it('words the receiver row by provenance and never writes Ed25519', () => {
+    const base = closedTrip()
+    const confirmation = phaseOf(base, 'confirmation')
+    const signature = artifact('sig', confirmation.phase_event_id, 'pod_signature', { artifact_type: 'document', mime_type: 'image/png', captured_by_driver_id: null })
+    const photo = artifact('pod', confirmation.phase_event_id, 'pod_photo')
+    const trip = closedTrip({ confirmation: { pod_signature_artifact_id: 'sig', pod_photo_artifact_id: 'pod' } })
+
+    renderTimeline(trip, { artifactsById: artifactMap(signature, photo) })
+
+    const recorded = zone('Confirmation', 'Recorded')
+    expect(within(recorded).getByText('Receiver confirmed delivery · Attestation image')).toBeInTheDocument()
+    expect(within(recorded).getByText('Proof-of-delivery photo taken')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/ed25519/i)
+  })
+
+  it('words an unattributed receiver artifact as "Submitted as receiver confirmation"', () => {
+    const signature = artifact('sig', null, null, { artifact_type: 'document', mime_type: 'image/png' })
+    const trip = closedTrip({ confirmation: { pod_signature_artifact_id: 'sig' } })
+
+    renderTimeline(trip, { artifactsById: artifactMap(signature) })
+
+    expect(within(zone('Confirmation', 'Recorded')).getByText('Submitted as receiver confirmation')).toBeInTheDocument()
+    expect(screen.queryByText(/Receiver confirmed delivery/)).not.toBeInTheDocument()
+  })
+
+  it('groups several uploads for one role under "{n} photos uploaded" with "+n more"', () => {
+    const base = tripFor(TRIP_0040_ID)
+    const departure = phaseOf(base, 'departure')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null } : phase),
+    }
+    const uploads = ['u1', 'u2', 'u3'].map(id => artifact(id, departure.phase_event_id, 'seal_photo'))
+
+    renderTimeline(trip, { artifactsById: artifactMap(...uploads) })
+
+    const recorded = zone('Departure', 'Recorded')
+    expect(within(recorded).getByText(line('3 photos uploaded'))).toBeInTheDocument()
+    expect(within(recorded).getByRole('button', { name: '+2 more' })).toBeInTheDocument()
+    expect(within(recorded).getAllByRole('img')).toHaveLength(1)
+  })
+
+  it('still names a submitted photo whose metadata failed to load, as "Recorded artifact unavailable"', () => {
+    const trip = closedTrip({ departure: { seal_number: 'FP-1', seal_photo_artifact_id: 'gone' } })
+
+    renderTimeline(trip, { artifactsById: NO_ARTIFACTS })
+
+    const recorded = zone('Departure', 'Recorded')
+    expect(within(recorded).getByText('Seal photographed')).toBeInTheDocument()
+    expect(within(recorded).getByText('Submitted at completion')).toBeInTheDocument()
+    expect(within(recorded).getByText('Recorded artifact unavailable')).toBeInTheDocument()
+    expect(within(recorded).queryByText('No seal photo submitted at completion')).not.toBeInTheDocument()
+  })
+
+  it('updates silently when a late upload lands on a resolved phase', () => {
+    const trip = closedTrip({ departure: { seal_number: 'FP-1' } })
+    const departure = phaseOf(trip, 'departure')
+    const { rerender } = renderTimeline(trip)
+    openCard('Departure')
+
+    const late = artifact('late', departure.phase_event_id, 'seal_photo', { created_at: '2026-05-04T08:00:00Z' })
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} artifactsById={artifactMap(late)} />)
+
+    expect(within(zone('Departure', 'Recorded')).getByText('Received after the phase closed')).toBeInTheDocument()
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
+  })
+})
+
+describe('TripTimeline: a cancelled trip', () => {
+  function cancelledTrip(): { trip: Trip; departure: PhaseDescriptor } {
+    const base = tripFor(TRIP_0041_ID)
+    const departure = phaseOf(base, 'departure')
     const trip: Trip = {
       ...base,
       status: 'cancelled',
-      // cancel_trip leaves every phase row PENDING — the honest record of an
-      // abandoned plan (see lib/phase/derive.ts and PhaseOverrideAction's own note).
-      phases: base.phases.map(p => ({ ...p, status: 'pending' as const, completed_at: null })),
+      closed_at: '2026-05-09T09:00:00Z',
+      phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null } : phase),
+      exceptions: [exception('cx', { phase_event_id: departure.phase_event_id, description: 'Cancelled-trip exception' })],
     }
+    return { trip, departure }
+  }
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
+  it('keeps the unfinished phase\'s uploads and exceptions, with no waiting rows, no verdict and no highlight', () => {
+    const { trip, departure } = cancelledTrip()
+    const upload = artifact('up', departure.phase_event_id, 'seal_photo', { created_at: '2026-05-09T08:30:00Z' })
 
-    const row = phaseGroupElement('In Transit')
-    expect(within(row).queryByText(/Awaiting departure/)).not.toBeInTheDocument()
-    expect(within(row).queryByText(/En route/)).not.toBeInTheDocument()
-    expect(within(row).queryByText(/Arrived/)).not.toBeInTheDocument()
+    renderTimeline(trip, { artifactsById: artifactMap(upload) })
+
+    const row = openCard('Departure')
+    expect(within(row).getByText('Seal photographed')).toBeInTheDocument()
+    expect(within(row).getByText('Not submitted — trip cancelled')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
+    expect(within(row).queryByText(/Expected:|Waiting for the/)).not.toBeInTheDocument()
+    expect(within(row).getByText('Not reached')).toBeInTheDocument()
+    expect(document.querySelector('[data-highlighted="true"]')).toBeNull()
   })
 
-  it('does not fabricate an arrival time for an overridden transit leg', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const trip: Trip = {
+  // The phase is the first unresolved one, carrying an exception so that a cancelled trip still has
+  // a card to open (a cancelled phase with nothing recorded has no body at all).
+  function stalledTrip(type: 'loading' | 'unloading', status: Trip['status']): Trip {
+    const base = tripFor(TRIP_0040_ID)
+    const target = phaseOf(base, type)
+    const counts = type === 'loading'
+      ? consignment({ pickup_stop_id: target.trip_stop_id, parcel_count_expected: 7, scanned_out_count: 3 })
+      : consignment({ delivery_stop_id: target.trip_stop_id, parcel_count_expected: 7, scanned_in_count: 3 })
+    return {
       ...base,
-      phases: base.phases.map(p => p.phase_type === 'in_transit'
-        ? { ...p, status: 'overridden' as const, completed_at: '2099-01-01T00:00:00Z', dispatcher_override_note: 'Driver phone lost' }
-        : p),
+      status,
+      closed_at: status === 'cancelled' ? '2026-05-09T09:00:00Z' : null,
+      consignments: [counts],
+      exceptions: [exception('stalled', { phase_event_id: target.phase_event_id })],
+      // Everything before the target is done, so the target is the plan's first unresolved phase.
+      phases: base.phases.map(phase => phase.sequence_number >= target.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null }
+        : { ...phase, status: 'completed' as const, completed_at: phase.completed_at ?? SERVER_TIME }),
+    }
+  }
+
+  it.each([['loading', 'Loading'], ['unloading', 'Unloading']] as const)(
+    'shows no live scan line and no "Checks appear" note on a cancelled trip\'s unfinished %s, once its card is open',
+    (type, name) => {
+      renderTimeline(stalledTrip(type, 'cancelled'))
+
+      const row = openCard(name)
+      expect(within(row).getByRole('region', { name: 'Recorded' })).toBeInTheDocument()
+      expect(within(row).queryByText('Scan in progress')).not.toBeInTheDocument()
+      expect(within(row).queryByText(/Checks appear when/)).not.toBeInTheDocument()
+      expect(within(row).queryByRole('region', { name: 'Checked' })).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([['loading', 'Loading'], ['unloading', 'Unloading']] as const)(
+    'control: the same %s on a running trip does show the live scan line',
+    (type, name) => {
+      renderTimeline(stalledTrip(type, 'active'))
+
+      const checked = zone(name, 'Checked')
+      expect(within(checked).getByText('Scan in progress')).toBeInTheDocument()
+      expect(within(checked).getByText(/Checks appear when/)).toBeInTheDocument()
+    },
+  )
+
+  it('shows no "Seal not inspected" line on a cancelled trip\'s unreached leg, once its card is open; a running leg shows it', () => {
+    const base = tripFor(TRIP_0041_ID)
+    const transit = phaseOf(base, 'in_transit')
+    const withException = (status: Trip['status']): Trip => ({
+      ...base, status, closed_at: status === 'cancelled' ? '2026-05-09T09:00:00Z' : null,
+      exceptions: [exception('leg', { phase_event_id: transit.phase_event_id })],
+    })
+
+    const cancelled = renderTimeline(withException('cancelled'))
+    const row = openCard('In Transit')
+    expect(within(row).getByRole('region', { name: 'Recorded' })).toBeInTheDocument()
+    expect(within(row).queryByText(/Seal not inspected/)).not.toBeInTheDocument()
+    cancelled.unmount()
+
+    renderTimeline(withException('active'))
+    expect(within(zone('In Transit', 'Checked')).getByText('Seal not inspected yet')).toBeInTheDocument()
+  })
+
+  it('shows an en-route leg\'s exceptions on a cancelled trip', () => {
+    const base = tripFor(TRIP_0041_ID)
+    const transit = phaseOf(base, 'in_transit')
+    const trip: Trip = {
+      ...base, status: 'cancelled', closed_at: '2026-05-09T09:00:00Z',
+      exceptions: [exception('en-route', { phase_event_id: transit.phase_event_id, description: 'Left the corridor' })],
     }
 
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
+    renderTimeline(trip)
 
-    const row = phaseGroupElement('In Transit')
-    // "Arrived" only ever appears as the journey mini-timeline's own completed-leg
-    // node (see InTransitTimeline) — its absence here, alongside the "En route"
-    // wording below, proves the summary read this as a leg that departed but never
-    // arrived, not as a completed leg dated by the override timestamp. (The row's own
-    // unrelated header still prints phase.completed_at for every phase type — that is
-    // pre-existing PhaseTimelineItem behaviour, out of this task's scope.)
-    expect(within(row).queryByText(/Arrived/)).not.toBeInTheDocument()
-    expect(within(row).getByText(/En route to FedEx DBN/)).toBeInTheDocument()
-  })
-
-  it('shows severity counts scoped to this leg\'s own exceptions, not the trip\'s other exceptions, without a duplicate full card', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const transitPhase = base.phases.find(p => p.phase_type === 'in_transit')
-    if (!transitPhase) throw new Error('TRIP_0035 in_transit phase is missing')
-
-    const scoped = makeTransitException({ id: 'exc-scoped' as ExceptionId, phase_event_id: transitPhase.phase_event_id, severity: 'critical' })
-    const unrelated = makeTransitException({ id: 'exc-other' as ExceptionId, phase_event_id: null, severity: 'critical', exception_type: 'dispatcher_note' })
-    const trip: Trip = { ...base, exceptions: [...base.exceptions, scoped, unrelated] }
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    // One journey marker for the leg's own exception; the trip-level record is not
-    // this leg's and must not appear on it.
-    expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
-    expect(within(row).getByRole('button', { name: /1 exception · 0 need review/ })).toHaveTextContent('Critical')
-    // The full card is behind the branch toggle, never an unconditional stack below.
-    expect(screen.queryAllByRole('group', { name: 'Exception linked to In Transit phase' })).toHaveLength(0)
-  })
-
-  it('scopes each of two transit legs to its own exceptions by phase id, even when a later leg returns to the same precinct', () => {
-    const trip = crossDockTrip()
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const rows = screen.getAllByRole('group', { name: /^In Transit phase/ })
-    expect(rows).toHaveLength(2)
-    const [leg1Row, leg2Row] = rows.map(row => within(row))
-
-    // Leg 1 departs FedEx JHB and arrives FedEx DBN.
-    expect(leg1Row.getByText(/FedEx DBN/)).toBeInTheDocument()
-    expect(leg1Row.getByRole('button', { name: /1 exception/ })).toHaveTextContent('Critical')
-    expect(leg1Row.getByRole('button', { name: /1 exception/ })).not.toHaveTextContent('Warning')
-
-    // Leg 2 departs FedEx DBN and arrives back at FedEx JHB — the repeated stop.
-    // Its exception must not leak from, or into, leg 1's row.
-    expect(leg2Row.getByText(/FedEx JHB/)).toBeInTheDocument()
-    expect(leg2Row.getByRole('button', { name: /1 exception/ })).toHaveTextContent('Warning')
-    expect(leg2Row.getByRole('button', { name: /1 exception/ })).not.toHaveTextContent('Critical')
-
-    expect(screen.queryAllByRole('group', { name: /^Exception linked to In Transit phase/ })).toHaveLength(0)
-  })
-
-  it('keeps a phase card\'s open/closed state across a background rerender with fresh trip data', () => {
-    const trip = tripFor(TRIP_0035_ID)
-
-    const { rerender } = render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={1} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    fireEvent.click(within(row).getByRole('button', { expanded: false }))
-    expect(within(row).getByRole('button', { expanded: true })).toBeInTheDocument()
-
-    // A silent background refetch hands TripTimeline a new trip object (same data,
-    // different reference) — the row must not silently re-collapse underneath the
-    // dispatcher because of it.
-    rerender(
-      <TripTimeline trip={{ ...trip }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={2} onJump={vi.fn()} {...evidence} />,
-    )
-
-    expect(within(phaseGroupElement('In Transit')).getByRole('button', { expanded: true })).toBeInTheDocument()
-  })
-
-  it('still shows the full journey detail, including the honest-absence line, once a collapsed card is expanded', () => {
-    const trip = tripFor(TRIP_0035_ID)
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    fireEvent.click(within(row).getByRole('button', { expanded: false }))
-
-    expect(within(row).getByText('Only recorded journey events are shown.')).toBeInTheDocument()
-  })
-
-  it('shows a completed leg\'s departure/arrival fact exactly once, even once its card is expanded', () => {
-    // Review round 1: expanding a completed leg used to show "Arrived FedEx DBN"
-    // twice — once from the persistent summary (always visible) and once from
-    // InTransitTimeline's own now-removed arrival node. Guards against that
-    // regression at the composed-row level, not just inside InTransitTimeline itself.
-    const trip = tripFor(TRIP_0035_ID)
-
-    render(
-      <TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />,
-    )
-
-    const row = phaseGroupElement('In Transit')
-    fireEvent.click(within(row).getByRole('button', { expanded: false }))
-
-    expect(within(row).getAllByText(/Arrived FedEx DBN/)).toHaveLength(1)
-  })
-
-  it('keeps compact transit markers visible while its full exception cards disclose independently', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const transit = base.phases.find(phase => phase.phase_type === 'in_transit')
-    if (!transit) throw new Error('TRIP_0035 in_transit phase is missing')
-    const finding = makeTransitException({ id: 'transit-detail' as ExceptionId, phase_event_id: transit.phase_event_id, severity: 'warning' })
-
-    render(<TripTimeline trip={{ ...base, exceptions: [...base.exceptions, finding] }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />)
-
-    const row = phaseGroupElement('In Transit')
-    expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
-    fireEvent.click(within(row).getByRole('button', { name: /1 exception · 0 need review/ }))
-    expect(within(row).getByText('Vehicle deviated from the planned route.')).toBeInTheDocument()
-    expect(within(row).getAllByTestId('transit-exception-marker')).toHaveLength(1)
+    expect(within(phaseGroup('In Transit')).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
+    expect(within(openCard('In Transit')).queryByText(/Seal not inspected/)).not.toBeInTheDocument()
   })
 })
 
-describe('TripTimeline: phase exception disclosure', () => {
-  it('deduplicates the full collection before phase and trip-level records are derived', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const loading = base.phases.find(phase => phase.phase_type === 'loading')
-    if (!loading) throw new Error('TRIP_0035 loading phase is missing')
-    const tripRecord = makeTransitException({ id: 'conflicting-poll-record' as ExceptionId, phase_event_id: null, severity: 'warning' })
-    const conflictingPhaseCopy = { ...tripRecord, phase_event_id: loading.phase_event_id, description: 'Conflicting phase payload' }
+describe('TripTimeline: the in-transit leg', () => {
+  const NOW = '2026-05-09T11:22:00Z'
 
-    render(<TripTimeline trip={{ ...base, exceptions: [...base.exceptions, tripRecord, conflictingPhaseCopy] }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} {...evidence} />)
+  it('ticks "time on the road" once a minute on the live leg, and labels where it left from', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(NOW))
 
-    expect(phaseGroupElement('Loading')).toHaveAccessibleName('Loading phase')
-    const tripEvents = screen.getByRole('region', { name: 'Trip-level events' })
-    expect(within(tripEvents).getAllByRole('heading', { name: 'Route Deviation' })).toHaveLength(1)
+    renderTimeline(tripFor(TRIP_0041_ID))
+
+    const row = phaseGroup('In Transit')
+    expect(within(row).getByText(line(/Departed 10:10 SAST/))).toBeInTheDocument()
+    expect(within(row).getByText(line(/3\s+h\s+12\s+m on the road/))).toBeInTheDocument()
+
+    act(() => { vi.advanceTimersByTime(60_000) })
+
+    expect(within(row).getByText(line(/3\s+h\s+13\s+m on the road/))).toBeInTheDocument()
   })
 
-  it('keeps phase and exception disclosure independent, deduplicates cards, and opens the matching panel filter', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const loading = base.phases.find(phase => phase.phase_type === 'loading')
-    if (!loading) throw new Error('TRIP_0035 loading phase is missing')
-    const first = makeTransitException({ id: 'loading-exception-1' as ExceptionId, phase_event_id: loading.phase_event_id, severity: 'critical', review_status: 'needs_review' })
-    const duplicate = { ...first, description: 'Duplicate payload' }
-    const second = makeTransitException({ id: 'loading-exception-2' as ExceptionId, phase_event_id: loading.phase_event_id, severity: 'warning' })
-    const onOpenExceptions = vi.fn()
-    const trip: Trip = { ...base, exceptions: [...base.exceptions, first, duplicate, second] }
+  it('records the departure with its seal, the dashed en-route rows, and the standing seal line', () => {
+    renderTimeline(tripFor(TRIP_0041_ID))
 
-    render(<TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={null} onJump={vi.fn()} onOpenExceptions={onOpenExceptions} {...evidence} />)
-
-    const row = phaseGroupElement('Loading')
-    const phaseToggle = within(row).getAllByRole('button', { expanded: false })[0]!
-    const exceptionToggle = within(row).getByRole('button', { name: /2 exceptions · 1 needs review/ })
-    expect(exceptionToggle).toHaveAttribute('aria-expanded', 'false')
-
-    fireEvent.click(exceptionToggle)
-    expect(exceptionToggle).toHaveAttribute('aria-expanded', 'true')
-    expect(phaseToggle).toHaveAttribute('aria-expanded', 'false')
-    expect(within(row).getAllByText('Route Deviation')).toHaveLength(2)
-
-    // One trigger per card now, not one shared link below the group — both exceptions
-    // in this phase carry it, and either opens the same phase-scoped panel.
-    const panelButtons = within(row).getAllByRole('button', { name: 'Open in exceptions panel' })
-    expect(panelButtons).toHaveLength(2)
-    fireEvent.click(panelButtons[0]!)
-    expect(onOpenExceptions).toHaveBeenCalledWith(loading.phase_event_id)
+    const recorded = zone('In Transit', 'Recorded')
+    expect(within(recorded).getByText(/^Departed /)).toBeInTheDocument()
+    expect(within(recorded).getByText(line('Sealed FP-3456 at departure'))).toBeInTheDocument()
+    expect(within(recorded).getByText(/^En route to /)).toBeInTheDocument()
+    expect(within(recorded).getByText('Waiting for the driver to confirm arrival')).toBeInTheDocument()
+    const checked = zone('In Transit', 'Checked')
+    expect(within(checked).getByText('Seal not inspected yet')).toBeInTheDocument()
   })
 
-  it('keeps an opened exception disclosure across a refetch with a new trip object', () => {
-    const base = tripFor(TRIP_0035_ID)
-    const loading = base.phases.find(phase => phase.phase_type === 'loading')
-    if (!loading) throw new Error('TRIP_0035 loading phase is missing')
-    const finding = makeTransitException({ id: 'loading-persisted' as ExceptionId, phase_event_id: loading.phase_event_id, severity: 'warning' })
-    const trip: Trip = { ...base, exceptions: [...base.exceptions, finding] }
+  it('keeps the live leg open with no toggle, as before', () => {
+    renderTimeline(tripFor(TRIP_0041_ID))
 
-    const { rerender } = render(<TripTimeline trip={trip} precincts={mockPrecincts} returnTo="/trips" lastUpdated={1} onJump={vi.fn()} onOpenExceptions={vi.fn()} {...evidence} />)
-    const toggle = within(phaseGroupElement('Loading')).getByRole('button', { name: /1 exception · 0 need review/ })
-    fireEvent.click(toggle)
+    expect(toggleOf('In Transit')).toBeNull()
+  })
 
-    rerender(<TripTimeline trip={{ ...trip }} precincts={mockPrecincts} returnTo="/trips" lastUpdated={2} onJump={vi.fn()} onOpenExceptions={vi.fn()} {...evidence} />)
-    expect(within(phaseGroupElement('Loading')).getByRole('button', { name: /1 exception · 0 need review/ })).toHaveAttribute('aria-expanded', 'true')
+  it('offers a current-leg strip only after its active row leaves the timeline scroller', () => {
+    let notify: ((entries: IntersectionObserverEntry[]) => void) | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: (entries: IntersectionObserverEntry[]) => void) { notify = callback }
+      observe = vi.fn(); disconnect = vi.fn(); unobserve = vi.fn(); takeRecords = () => []
+      root = null; rootMargin = ''; thresholds = []
+    })
+    const onJump = vi.fn()
+    render(<div data-timeline-scroller><TripTimeline trip={tripFor(TRIP_0041_ID)} precincts={mockPrecincts} lastUpdated={null} onJump={onJump} {...evidence} /></div>)
+
+    expect(screen.queryByRole('button', { name: 'Show current leg' })).not.toBeInTheDocument()
+    act(() => notify?.([{ isIntersecting: false } as IntersectionObserverEntry]))
+    fireEvent.click(screen.getByRole('button', { name: 'Show current leg' }))
+
+    expect(onJump).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
+
+  it('scopes each transit leg\'s exceptions to that leg by phase id', () => {
+    const base = closedTrip()
+    const only = phaseOf(base, 'in_transit')
+    renderTimeline({ ...base, exceptions: [exception('leg', { phase_event_id: only.phase_event_id, severity: 'critical', exception_type: 'tracker_silent' }), exception('other', { phase_event_id: null, exception_type: 'dispatcher_note' })] })
+
+    const row = openCard('In Transit')
+    expect(within(row).getAllByRole('button', { name: /Tracker silent/ })).toHaveLength(1)
+    expect(within(row).queryByRole('button', { name: /Dispatcher Note/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('TripTimeline: the in-transit card is always open once the leg has started (D31)', () => {
+  const noToggle = (name: string): void => {
+    const row = phaseGroup(name)
+    expect(toggleOf(name)).toBeNull()
+    expect(within(row).queryAllByRole('button', { expanded: false })).toHaveLength(0)
+    expect(within(row).queryAllByRole('button', { expanded: true })).toHaveLength(0)
+    expect(within(row).getByRole('region', { name: 'Recorded' })).toBeInTheDocument()
+  }
+
+  it.each([
+    ['completed', 'completed'],
+    ['exception', 'exception'],
+    ['overridden', 'overridden'],
+  ] as const)('is open with no toggle and no chevron on a %s leg', (_label, status) => {
+    renderTimeline(closedTrip({ in_transit: { status, dispatcher_override_note: status === 'overridden' ? 'Phone lost' : null } }))
+
+    noToggle('In Transit')
+  })
+
+  it('is open with no toggle on the active leg', () => {
+    renderTimeline(tripFor(TRIP_0041_ID))
+
+    noToggle('In Transit')
+  })
+
+  it('shows a finished leg\'s exception rows once, in the rail, and its Checked zone', () => {
+    const base = closedTrip()
+    const leg = phaseOf(base, 'in_transit')
+    renderTimeline({ ...base, exceptions: [exception('leg-1', { phase_event_id: leg.phase_event_id, exception_type: 'tracker_silent' })] })
+
+    expect(within(phaseGroup('In Transit')).getAllByRole('button', { name: /Tracker silent/ })).toHaveLength(1)
+    expect(within(phaseGroup('In Transit')).getByRole('region', { name: 'Recorded' })).toContainElement(
+      within(phaseGroup('In Transit')).getByRole('button', { name: /Tracker silent/ }),
+    )
+    expect(within(phaseGroup('In Transit')).getByRole('region', { name: 'Checked' })).toBeInTheDocument()
+  })
+
+  it('keeps every other resolved phase collapsed by default', () => {
+    renderTimeline(closedTrip())
+
+    for (const name of ['Activation', 'Loading', 'Departure', 'Arrival', 'Unloading', 'Confirmation']) {
+      expect(toggleOf(name)).toHaveAttribute('aria-expanded', 'false')
+    }
+  })
+
+  it('leaves a leg that has not started as a collapsed "Not started" card with nothing in it', () => {
+    const base = tripFor(TRIP_0041_ID)
+    const departure = phaseOf(base, 'departure')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null } : phase),
+    }
+
+    renderTimeline(trip)
+
+    const row = phaseGroup('In Transit')
+    expect(within(row).getByText('Not started')).toBeInTheDocument()
+    expect(toggleOf('In Transit')).toBeNull()
+    expect(within(row).queryByRole('region')).not.toBeInTheDocument()
+  })
+
+  it('leaves a leg a cancelled trip never reached as a collapsed "Not reached" card', () => {
+    const base = tripFor(TRIP_0041_ID)
+    const trip: Trip = { ...base, status: 'cancelled', closed_at: '2026-05-09T09:00:00Z', exceptions: [] }
+
+    renderTimeline(trip)
+
+    const row = phaseGroup('In Transit')
+    expect(within(row).getByText('Not reached')).toBeInTheDocument()
+    expect(within(row).queryByRole('region')).not.toBeInTheDocument()
+  })
+
+  it('opens every in_transit leg of a 13-phase cross-dock, and renders one current card', () => {
+    const base = tripFor(TRIP_0041_ID)
+    const plan: PhaseType[] = [
+      'trip_creation', 'activation', 'loading', 'departure', 'in_transit', 'arrival', 'unloading',
+      'loading', 'departure', 'in_transit', 'arrival', 'unloading', 'confirmation',
+    ]
+    const firstOpen = plan.lastIndexOf('in_transit')
+    const template = (type: PhaseType): PhaseDescriptor => base.phases.find(phase => phase.phase_type === type)!
+    const phases: PhaseDescriptor[] = plan.map((type, index) => ({
+      ...template(type), phase_event_id: `cd-${index}` as PhaseEventId, sequence_number: index,
+      status: index < firstOpen ? 'completed' : 'pending', completed_at: index < firstOpen ? SERVER_TIME : null,
+    }))
+
+    const { container } = renderTimeline({ ...base, phases, exceptions: [] })
+
+    expect(container.querySelectorAll('[data-node-type="next"]')).toHaveLength(1)
+    const legs = screen.getAllByRole('group', { name: /^In Transit phase/ })
+    expect(legs).toHaveLength(2)
+    for (const leg of legs) {
+      expect(within(leg).queryAllByRole('button', { expanded: false })).toHaveLength(0)
+      expect(within(leg).getByRole('region', { name: 'Recorded' })).toBeInTheDocument()
+    }
+  })
+})
+
+describe('TripTimeline: the side-by-side split (D30)', () => {
+  // A ResizeObserver on the card body is the only thing that may decide the layout: these tests
+  // drive it by hand and never touch the viewport.
+  const observers: Array<{ callback: ResizeObserverCallback }> = []
+
+  beforeEach(() => {
+    observers.length = 0
+    vi.stubGlobal('ResizeObserver', class {
+      callback: ResizeObserverCallback
+      constructor(callback: ResizeObserverCallback) { this.callback = callback; observers.push(this) }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function resizeTo(width: number): void {
+    act(() => {
+      for (const observer of observers) observer.callback([{ contentRect: { width } } as ResizeObserverEntry], observer as unknown as ResizeObserver)
+    })
+  }
+
+  const layoutOf = (name: string): string | null => phaseGroup(name).querySelector('[data-layout]')?.getAttribute('data-layout') ?? null
+  const withCheck = (): Trip => closedTrip({ departure: { pulsit_geofence_confirmed: true } })
+
+  it.each([[772, 'split'], [676, 'stacked'], [564, 'stacked']] as const)('lays a card with a check out %s px wide as %s', (width, layout) => {
+    renderTimeline(withCheck())
+    openCard('Departure')
+
+    resizeTo(width)
+
+    expect(layoutOf('Departure')).toBe(layout)
+  })
+
+  it('stacks before it has measured anything', () => {
+    renderTimeline(withCheck())
+    openCard('Departure')
+
+    expect(layoutOf('Departure')).toBe('stacked')
+  })
+
+  it('splits at exactly 740 px and not at 739', () => {
+    renderTimeline(withCheck())
+    openCard('Departure')
+
+    resizeTo(740)
+    expect(layoutOf('Departure')).toBe('split')
+    resizeTo(739)
+    expect(layoutOf('Departure')).toBe('stacked')
+  })
+
+  it('puts Recorded and Checked in one row when split, with Audit trail below both', () => {
+    forensic.forensicOn = true
+    const departure = phaseOf(closedTrip(), 'departure')
+    renderTimeline(closedTrip({ departure: { pulsit_geofence_confirmed: true, event_hash: 'c'.repeat(64), blockchain_receipt_id: `receipt-${departure.phase_event_id}` } },
+      { blockchain_receipts: [receiptFor(departure)] }))
+    const row = openCard('Departure')
+
+    resizeTo(772)
+
+    const recorded = within(row).getByRole('region', { name: 'Recorded' })
+    const checked = within(row).getByRole('region', { name: 'Checked' })
+    const audit = within(row).getByRole('region', { name: 'Audit trail' })
+    expect(recorded.parentElement).toBe(checked.parentElement?.parentElement)
+    expect(recorded.parentElement).toHaveClass('grid')
+    expect(recorded.parentElement).not.toContainElement(audit)
+    expect(recorded.compareDocumentPosition(audit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('does not count a live scan line as a check: an unloading still scanning stacks at any width', () => {
+    const base = tripFor(TRIP_0040_ID)
+    const arrival = phaseOf(base, 'arrival')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number <= arrival.sequence_number ? { ...phase, status: 'completed' as const, completed_at: SERVER_TIME } : phase),
+      consignments: [consignment({ delivery_stop_id: phaseOf(base, 'unloading').trip_stop_id, parcel_count_expected: 7, scanned_in_count: 3 })],
+    }
+    renderTimeline(trip)
+    expect(within(zone('Unloading', 'Checked')).getByText('Scan in progress')).toBeInTheDocument()
+
+    resizeTo(1200)
+
+    expect(layoutOf('Unloading')).toBe('stacked')
+  })
+
+  it('never splits a card with nothing in Checked yet, however wide', () => {
+    renderTimeline(tripFor(TRIP_0040_ID))
+
+    resizeTo(1200)
+
+    expect(layoutOf('Arrival')).toBe('stacked')
+  })
+
+  it('stacks an in_transit card at any width', () => {
+    renderTimeline(closedTrip())
+
+    resizeTo(1200)
+
+    expect(layoutOf('In Transit')).toBe('stacked')
+  })
+
+  it('does not read the viewport: a wide window with a narrow card still stacks', () => {
+    const originalWidth = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1920 })
+    try {
+      renderTimeline(withCheck())
+      openCard('Departure')
+
+      resizeTo(564)
+
+      expect(layoutOf('Departure')).toBe('stacked')
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    }
+  })
+})
+
+describe('TripTimeline: facts shown once, and cards that stay put', () => {
+  it('does not invent an arrival for an overridden leg: no "Arrived", the override says what happened', () => {
+    renderTimeline(closedTrip({ in_transit: { status: 'overridden', dispatcher_override_note: 'Driver phone lost', dispatcher_override_user_id: 'user-9' } }))
+
+    const row = phaseGroup('In Transit')
+    expect(within(row).queryByText(/Arrived/)).not.toBeInTheDocument()
+    expect(within(row).getAllByText('Closed by dispatcher override').length).toBeGreaterThan(0)
+    expect(within(row).getByText('Driver phone lost')).toBeInTheDocument()
+  })
+
+  it('shows a completed leg\'s departure and arrival once each across the whole timeline', () => {
+    renderTimeline(closedTrip())
+
+    expect(screen.getAllByText(/^Departed /)).toHaveLength(1)
+    expect(screen.getAllByText(/^Reached /)).toHaveLength(1)
+  })
+
+  it('leaves a card collapsed and unhighlighted when the reveal request is addressed to another phase', async () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const departure = phaseOf(base, 'departure')
+    const trip = { ...base, exceptions: [
+      exception('on-loading', { phase_event_id: loading.phase_event_id }),
+      exception('on-departure', { phase_event_id: departure.phase_event_id }),
+    ] }
+    const onRevealHandled = vi.fn()
+
+    renderTimeline(trip, { revealRequest: { exceptionId: 'on-departure', phaseId: departure.phase_event_id, requestId: 1 }, onRevealHandled })
+
+    await waitFor(() => expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('on-departure')))
+    expect(toggleOf('Departure')).toHaveAttribute('aria-expanded', 'true')
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    const loadingRow = within(phaseGroup('Loading')).getByRole('button', { name: /Route Deviation/ })
+    expect(loadingRow).not.toHaveAttribute('data-highlighted')
+    expect(loadingRow).not.toHaveFocus()
+  })
+
+  it('keeps an opened card, and its exception rows, across a refetch with a new trip object', () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = { ...base, exceptions: [exception('a', { phase_event_id: loading.phase_event_id }), exception('b', { phase_event_id: loading.phase_event_id })] }
+    const { rerender } = renderTimeline(trip, { lastUpdated: 1 })
+    fireEvent.click(toggleOf('Loading')!)
+    expect(within(zone('Loading', 'Recorded')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(2)
+
+    rerender(<TripTimeline trip={{ ...trip, exceptions: [...trip.exceptions] }} precincts={mockPrecincts} lastUpdated={2} onJump={vi.fn()} {...evidence} />)
+
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'true')
+    expect(within(zone('Loading', 'Recorded')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(2)
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(2)
+  })
+})
+
+describe('TripTimeline: exception rows', () => {
+  function tripWithLoadingExceptions(count: number): { trip: Trip; ids: string[] } {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const ids = Array.from({ length: count }, (_unused, index) => `ex-${index + 1}`)
+    const exceptions = ids.map((id, index) => exception(id, {
+      phase_event_id: loading.phase_event_id, created_at: `2026-05-03T0${index + 1}:00:00Z`, description: `Row ${id}`,
+    }))
+    return { trip: { ...base, exceptions }, ids }
+  }
+
+  const rowButtons = (): HTMLElement[] => within(phaseGroup('Loading')).queryAllByRole('button', { name: /Route Deviation/ })
+
+  it('shows a collapsed card\'s exception rows under its verdict, and the same rows in the rail once opened, never both', () => {
+    renderTimeline(tripWithLoadingExceptions(2).trip)
+
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    expect(rowButtons()).toHaveLength(2)
+
+    fireEvent.click(toggleOf('Loading')!)
+
+    expect(rowButtons()).toHaveLength(2)
+    const recorded = within(phaseGroup('Loading')).getByRole('region', { name: 'Recorded' })
+    expect(within(recorded).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(2)
+  })
+
+  it('caps a card at three rows plus one "+n more" row, collapsed and open', () => {
+    renderTimeline(tripWithLoadingExceptions(5).trip)
+
+    expect(rowButtons()).toHaveLength(3)
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /\+2 more/ })).toHaveLength(1)
+
+    fireEvent.click(toggleOf('Loading')!)
+
+    expect(rowButtons()).toHaveLength(3)
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /\+2 more/ })).toHaveLength(1)
+  })
+
+  it('opens the exception, with its phase, from a click and from Enter and Space', async () => {
+    const onOpenException = vi.fn()
+    const { trip } = tripWithLoadingExceptions(1)
+    const loading = phaseOf(trip, 'loading')
+    renderTimeline(trip, { onOpenException })
+
+    const row = rowButtons()[0]!
+    await userEvent.click(row)
+    expect(onOpenException).toHaveBeenLastCalledWith('ex-1', loading.phase_event_id)
+
+    row.focus()
+    await userEvent.keyboard('{Enter}')
+    await userEvent.keyboard(' ')
+    expect(onOpenException).toHaveBeenCalledTimes(3)
+  })
+
+  it('opens the phase\'s records in the panel from "+n more", with no single exception selected', async () => {
+    const onOpenException = vi.fn()
+    const { trip } = tripWithLoadingExceptions(5)
+    renderTimeline(trip, { onOpenException })
+
+    await userEvent.click(within(phaseGroup('Loading')).getByRole('button', { name: /\+2 more/ }))
+
+    expect(onOpenException).toHaveBeenCalledWith(null, phaseOf(trip, 'loading').phase_event_id)
+  })
+
+  it('never renders the full exception card on the timeline, and PhaseExceptionGroup is gone', () => {
+    renderTimeline(tripWithLoadingExceptions(2).trip)
+
+    expect(document.querySelector('article')).toBeNull()
+    expect(screen.queryByRole('group', { name: /Exceptions? linked to/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /exceptions? · \d+ need/ })).not.toBeInTheDocument()
+    const here = dirname(fileURLToPath(import.meta.url))
+    expect(existsSync(resolve(here, 'PhaseExceptionGroup.tsx'))).toBe(false)
+    expect(existsSync(resolve(here, 'PhaseExceptionGroup.test.tsx'))).toBe(false)
+  })
+
+  it('marks the exception the panel is open on as selected', () => {
+    renderTimeline(tripWithLoadingExceptions(2).trip, { selectedExceptionId: 'ex-2' })
+
+    const pressed = rowButtons().filter(row => row.getAttribute('aria-current') === 'true')
+    expect(pressed).toHaveLength(1)
+    expect(pressed[0]).toHaveAttribute('id', exceptionRowId('ex-2'))
+  })
+
+  it('renders trip-level exceptions in a "Trip record" list with the same row, exactly once each', async () => {
+    const onOpenException = vi.fn()
+    const base = closedTrip()
+    const trip = { ...base, exceptions: [exception('tl', { phase_event_id: null, description: 'No phase' })] }
+    renderTimeline(trip, { onOpenException })
+
+    const record = screen.getByRole('region', { name: 'Trip-level events' })
+    expect(within(record).getByRole('heading', { name: 'Trip record' })).toBeInTheDocument()
+    expect(within(record).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+
+    await userEvent.click(within(record).getByRole('button', { name: /Route Deviation/ }))
+    expect(onOpenException).toHaveBeenCalledWith('tl', null)
+  })
+
+  it('de-duplicates conflicting copies of one record before assigning it to a phase or the trip list', () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const tripRecord = exception('dup', { phase_event_id: null })
+    const conflicting = { ...tripRecord, phase_event_id: loading.phase_event_id, description: 'Conflicting phase payload' }
+
+    renderTimeline({ ...base, exceptions: [tripRecord, conflicting] })
+
+    expect(screen.getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+    expect(within(screen.getByRole('region', { name: 'Trip-level events' })).getAllByRole('button')).toHaveLength(1)
+  })
+})
+
+describe('TripTimeline: "Show in timeline" reveals the row', () => {
+  it('opens a collapsed card, scrolls to the row, focuses it and highlights it', async () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = { ...base, exceptions: [exception('ex-1', { phase_event_id: loading.phase_event_id })] }
+    const onRevealHandled = vi.fn()
+
+    renderTimeline(trip, { revealRequest: { exceptionId: 'ex-1', phaseId: loading.phase_event_id, requestId: 1 }, onRevealHandled })
+
+    await waitFor(() => expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'true'))
+    const row = await waitFor(() => {
+      const found = document.getElementById(exceptionRowId('ex-1'))
+      expect(found).toHaveFocus()
+      return found!
+    })
+    expect(row).toHaveAttribute('data-highlighted', 'true')
+    expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('ex-1'))
+    // Rendered once: in the opened rail, not also under the header.
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('keeps the landing highlight visible long enough to find the row, then clears it', () => {
+    vi.useFakeTimers()
+    try {
+      const base = closedTrip()
+      const loading = phaseOf(base, 'loading')
+      const trip = { ...base, exceptions: [exception('landing', { phase_event_id: loading.phase_event_id })] }
+      renderTimeline(trip, { revealRequest: { exceptionId: 'landing', phaseId: loading.phase_event_id, requestId: 1 } })
+
+      act(() => { vi.advanceTimersByTime(100) })
+      const row = document.getElementById(exceptionRowId('landing'))!
+      expect(row).toHaveAttribute('data-highlighted', 'true')
+      act(() => { vi.advanceTimersByTime(1500) })
+      expect(row).toHaveAttribute('data-highlighted', 'true')
+      act(() => { vi.advanceTimersByTime(1000) })
+      expect(row).not.toHaveAttribute('data-highlighted')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reveals the 5th of 6 exceptions, which the cap of three hides, then scrolls to and highlights it', async () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    // Priority is unreviewed, then severity, then newest: ex-1..ex-3 are critical and unreviewed,
+    // so they fill the cap, and the reviewed info-level ex-5 is the 5th and hidden.
+    const exceptions = Array.from({ length: 6 }, (_unused, index) => exception(`ex-${index + 1}`, {
+      phase_event_id: loading.phase_event_id, created_at: `2026-05-03T0${index + 1}:00:00Z`,
+      severity: index < 3 ? 'critical' : index === 4 ? 'info' : 'warning',
+      review_status: index === 4 ? 'reviewed' : 'needs_review',
+    }))
+    const trip = { ...base, exceptions }
+    const onRevealHandled = vi.fn()
+    const { rerender } = renderTimeline(trip, { onRevealHandled })
+    expect(document.getElementById(exceptionRowId('ex-5'))).toBeNull()
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(3)
+
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} onRevealHandled={onRevealHandled}
+      revealRequest={{ exceptionId: 'ex-5', phaseId: loading.phase_event_id, requestId: 1 }} />)
+
+    await waitFor(() => expect(document.getElementById(exceptionRowId('ex-5'))).toHaveFocus())
+    expect(document.getElementById(exceptionRowId('ex-5'))).toHaveAttribute('data-highlighted', 'true')
+    expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('ex-5'))
+    expect(within(phaseGroup('Loading')).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(3)
+  })
+
+  it('targets the "Trip record" row for a trip-level exception', async () => {
+    const trip = { ...closedTrip(), exceptions: [exception('tl', { phase_event_id: null })] }
+    const onRevealHandled = vi.fn()
+
+    renderTimeline(trip, { revealRequest: { exceptionId: 'tl', phaseId: null, requestId: 1 }, onRevealHandled })
+
+    await waitFor(() => expect(document.getElementById(exceptionRowId('tl'))).toHaveFocus())
+    expect(onRevealHandled).toHaveBeenCalledWith(exceptionRowId('tl'))
+    expect(screen.getByRole('region', { name: 'Trip-level events' })).toContainElement(document.getElementById(exceptionRowId('tl')))
+  })
+
+  it('can be asked again for the same row after the reader has scrolled away', async () => {
+    const base = closedTrip()
+    const loading = phaseOf(base, 'loading')
+    const trip = { ...base, exceptions: [exception('ex-1', { phase_event_id: loading.phase_event_id })] }
+    const onRevealHandled = vi.fn()
+    const request = (requestId: number) => ({ exceptionId: 'ex-1', phaseId: loading.phase_event_id, requestId })
+    const { rerender } = renderTimeline(trip, { revealRequest: request(1), onRevealHandled })
+    await waitFor(() => expect(onRevealHandled).toHaveBeenCalledTimes(1))
+
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} onRevealHandled={onRevealHandled} revealRequest={request(2)} />)
+
+    await waitFor(() => expect(onRevealHandled).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('TripTimeline: refresh trouble is one status in the toolbar', () => {
+  function toolbar(): HTMLElement {
+    return document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+  }
+
+  it('says nothing when every resource is fresh', () => {
+    renderTimeline(closedTrip())
+
+    expect(within(toolbar()).queryByRole('status')).toBeNull()
+  })
+
+  it('names a single stale resource beside the refresh time, with its own Retry', () => {
+    const onRetry = vi.fn()
+    renderTimeline(closedTrip(), { lastUpdated: Date.now(), warnings: [{ message: 'Evidence could not be refreshed.', onRetry }] })
+
+    const status = within(toolbar()).getByRole('status')
+    expect(status).toHaveTextContent('Evidence could not be refreshed.')
+    expect(status.previousElementSibling).toHaveTextContent(/^Record refreshed/)
+    fireEvent.click(within(status).getByRole('button', { name: 'Retry' }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('counts several stale resources in one status, and one Retry tries them all', () => {
+    const evidenceRetry = vi.fn()
+    const placesRetry = vi.fn()
+    renderTimeline(closedTrip(), { warnings: [
+      { message: 'Evidence could not be refreshed.', onRetry: evidenceRetry },
+      { message: 'Location names could not be refreshed.', onRetry: placesRetry },
+    ] })
+
+    const statuses = within(toolbar()).getAllByRole('status')
+    expect(statuses).toHaveLength(1)
+    expect(statuses[0]).toHaveTextContent('2 sources could not be refreshed')
+    // The words for each stay available to a screen reader.
+    expect(statuses[0]).toHaveTextContent('Location names could not be refreshed.')
+    fireEvent.click(within(statuses[0]!).getByRole('button', { name: 'Retry' }))
+    expect(evidenceRetry).toHaveBeenCalledOnce()
+    expect(placesRetry).toHaveBeenCalledOnce()
+  })
+})
+
+describe('TripTimeline: the toolbar keeps its controls together', () => {
+  it('places the view switch and the view buttons in fixed areas, and lets only the freshness status move', () => {
+    renderTimeline(closedTrip(), { lastUpdated: Date.now(), onToggleExpanded: vi.fn(), warnings: [{ message: 'Evidence could not be refreshed.', onRetry: vi.fn() }] })
+
+    const toolbar = document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+    expect(toolbar.className).toContain("[grid-template-areas:'view_controls'_'status_status']")
+    expect(toolbar.className).toContain("lg:[grid-template-areas:'view_status_controls']")
+    const controls = toolbar.querySelector('[data-toolbar-controls]')!
+    expect(controls.className).toContain('[grid-area:controls]')
+    expect(within(controls as HTMLElement).getByRole('button', { name: /expand/i })).toBeInTheDocument()
+    const freshness = toolbar.querySelector('[data-toolbar-freshness]')!
+    expect(freshness.className).toContain('[grid-area:status]')
+    expect(freshness).toContainElement(within(toolbar).getByRole('status'))
+  })
+
+  it('reserves no status row when there is nothing to say about freshness', () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+
+    const toolbar = document.querySelector<HTMLElement>('[data-timeline-toolbar]')!
+    expect(toolbar.querySelector('[data-toolbar-freshness]')).toBeNull()
+    expect(toolbar.className).not.toContain('status_status')
   })
 })

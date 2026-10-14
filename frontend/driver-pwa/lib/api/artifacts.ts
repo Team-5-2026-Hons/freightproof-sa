@@ -1,5 +1,6 @@
 // frontend/driver-pwa/lib/api/artifacts.ts
 import { api, ApiError } from './client'
+import type { EvidenceRole } from '@shared/lib/types/evidence'
 
 export interface UploadedArtifact {
   id: string
@@ -10,6 +11,13 @@ export interface UploadedArtifact {
 // type their own arguments against the same union.
 export type ArtifactType = 'photo' | 'document'
 
+// Which phase and slot a capture is for. One object, not two optional fields, so a caller
+// cannot send half a pair: the backend 422s a lone phase_event_id or evidence_role.
+export interface ArtifactAttribution {
+  phaseEventId: string
+  role: EvidenceRole
+}
+
 interface UploadArtifactParams {
   tripId: string
   artifactType: ArtifactType
@@ -17,6 +25,9 @@ interface UploadArtifactParams {
   capturedAt: string
   capturedLat?: number | null
   capturedLng?: number | null
+  // Omitted by callers that have no phase slot (checkpoint and exception photos) and by
+  // older app builds; the backend stores those unattributed, exactly as before.
+  attribution?: ArtifactAttribution
 }
 
 // Captured photos live in evidence drafts as base64 data URLs (see lib/types/evidence-draft.ts);
@@ -57,6 +68,10 @@ export async function uploadArtifact(params: UploadArtifactParams): Promise<Uplo
   form.append('captured_at', params.capturedAt)
   if (params.capturedLat != null) form.append('captured_lat', String(params.capturedLat))
   if (params.capturedLng != null) form.append('captured_lng', String(params.capturedLng))
+  if (params.attribution !== undefined) {
+    form.append('phase_event_id', params.attribution.phaseEventId)
+    form.append('evidence_role', params.attribution.role)
+  }
   form.append('file', blob, `${params.artifactType}.jpg`)
 
   return api.postForm<UploadedArtifact>('/api/v1/artifacts', form, { timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS })

@@ -1355,10 +1355,32 @@
             ],
             "title": "Captured Lng"
           },
+          "evidence_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "file": {
             "format": "binary",
             "title": "File",
             "type": "string"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
           },
           "trip_id": {
             "format": "uuid",
@@ -3930,6 +3952,16 @@
             "title": "Created At",
             "type": "string"
           },
+          "evidence_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "file_hash": {
             "title": "File Hash",
             "type": "string"
@@ -3942,6 +3974,18 @@
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
           },
           "s3_bucket": {
             "title": "S3 Bucket",
@@ -4033,6 +4077,16 @@
             "title": "Created At",
             "type": "string"
           },
+          "evidence_role": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceRole"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "file_hash": {
             "title": "File Hash",
             "type": "string"
@@ -4045,6 +4099,18 @@
           "mime_type": {
             "title": "Mime Type",
             "type": "string"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
           },
           "s3_bucket": {
             "title": "S3 Bucket",
@@ -4182,6 +4248,18 @@
         ],
         "title": "EvidenceResponse",
         "type": "object"
+      },
+      "EvidenceRole": {
+        "description": "What a capture was taken for. Each value is the stem of the phase column that\nrecords the submitted copy (<value>_artifact_id) and of its anchored hash key\n(<value>_sha256), so it is frozen like those names.",
+        "enum": [
+          "linehaul_photo",
+          "seal_photo",
+          "waybill_photo",
+          "pod_photo",
+          "pod_signature"
+        ],
+        "title": "EvidenceRole",
+        "type": "string"
       },
       "ExceptionClaimRequest": {
         "description": "Claim an exception. take_over must be explicit: replacing a colleague's claim is a\ndeliberate act, so the default can only ever claim something nobody holds.",

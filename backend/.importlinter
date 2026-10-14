@@ -155,6 +155,7 @@ layers =
     checkpoints
     corroboration | action_location | road_check
     geofence | proximity | location | artifacts
+    attribution
 
 # ---------------------------------------------------------------------------
 # 14. drivers, vehicles and precincts share no code today and must stay that way (audit 5).

@@ -3,9 +3,9 @@
 import { useId, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Ic } from '@/components/ui/Ic'
-import { Spinner } from '@/components/ui/Spinner'
 import { useManifest } from '@/lib/hooks/useManifest'
 import { ManifestSnapshot } from './ManifestSnapshot'
+import { ManifestContentSkeleton } from './ManifestContentSkeleton'
 import { ManifestStat } from './PPManifestParts'
 import { fmtFull, fmtTime } from '@shared/lib/utils/datetime'
 import type { ConsignmentManifest, Parcel } from '@shared/lib/types/manifest'
@@ -24,7 +24,7 @@ export function ManifestContent({ tripId }: ManifestContentProps): React.JSX.Ele
   const recordHeadingId = useId()
 
   if (!manifest) {
-    if (isLoading) return <div role="status" className="flex items-center justify-center gap-2 py-8"><Spinner size="md" /> Loading manifest…</div>
+    if (isLoading) return <ManifestContentSkeleton />
     return (
       <div className="rounded-md bg-surf-lowest p-3 text-sm text-on-surf-v">
         <p role={error && errorStatus !== 404 ? 'alert' : 'status'}>
