@@ -391,7 +391,7 @@ describe('TripTimeline: the header verdict answers "did this phase go cleanly?" 
     const row = phaseGroup('Departure')
     expect(within(row).getByText('Checks passed')).toBeInTheDocument()
     // Clean is short (Batch 3): a count, with each passing check left to the Checked zone.
-    expect(row.textContent).toMatch(/Checks passed · \d+ checks?/)
+    expect(row.textContent).toMatch(/Checks passed · (\d+) of \1(?!\d)/)
     expect(within(row).queryByText(/No exceptions/)).toBeNull()
     expect(toggleOf('Departure')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText(/^Clean$/)).not.toBeInTheDocument()

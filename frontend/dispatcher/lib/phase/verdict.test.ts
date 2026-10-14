@@ -133,14 +133,14 @@ describe('outcome precedence', () => {
     expect(v?.outcome).toBe('clean')
     expect(v?.headline).toBe('Checks passed')
     // Short on purpose: the passing checks themselves are listed in the Checked zone.
-    expect(v?.reasons).toEqual(['2 checks'])
+    expect(v?.reasons).toEqual(['2 of 2'])
   })
 
-  it('clean counts a single passing check in the singular', () => {
+  it('clean states a single passing check as complete too', () => {
     const v = verdictFor({ phase: phase(SEQ.loading, COMPLETED), checks: [check('parcels', 'pass', 'All parcels scanned')] })
 
     expect(v?.outcome).toBe('clean')
-    expect(v?.reasons).toEqual(['1 check'])
+    expect(v?.reasons).toEqual(['1 of 1'])
   })
 
   it('in_progress when unresolved, active, with uploads', () => {

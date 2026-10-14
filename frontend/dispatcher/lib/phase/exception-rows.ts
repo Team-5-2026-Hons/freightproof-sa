@@ -83,9 +83,12 @@ export function exceptionReviewLabel(exception: TripException): string {
 }
 
 /** The unreviewed record the timeline draws first: the earliest phase in plan order that holds
- *  one, then the earliest by the row's own event time; trip-level records come last, as their
- *  list follows the phases. `timeOf` is the rail's ordering instant (`exceptionEventTime`),
- *  passed in so this stays free of the artifacts resource. Null when nothing waits on review. */
+ *  one, then the earliest by the row's own event time, ties broken by id; trip-level records come
+ *  last, as their list follows the phases. Times are compared as instants, not text, exactly as
+ *  the timeline sorts its rows, so fractional seconds and mixed offsets cannot make the chip land
+ *  on a different row from the one drawn first. `timeOf` is the rail's ordering instant
+ *  (`exceptionEventTime`), passed in so this stays free of the artifacts resource. Null when
+ *  nothing waits on review. */
 export function firstUnreviewedException(
   phases: readonly PhaseDescriptor[],
   exceptions: readonly TripException[],
@@ -95,5 +98,6 @@ export function firstUnreviewedException(
   const position = (exception: TripException): number =>
     (exception.phase_event_id ? sequenceOf.get(exception.phase_event_id) : undefined) ?? Number.POSITIVE_INFINITY
   const waiting = exceptions.filter(exception => exception.review_status === 'needs_review')
-  return [...waiting].sort((a, b) => position(a) - position(b) || timeOf(a).localeCompare(timeOf(b)))[0] ?? null
+  return [...waiting].sort((a, b) =>
+    position(a) - position(b) || Date.parse(timeOf(a)) - Date.parse(timeOf(b)) || a.id.localeCompare(b.id))[0] ?? null
 }

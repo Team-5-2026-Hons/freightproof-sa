@@ -43,6 +43,25 @@ function scrollIntoTimeline(timelineRef: RefObject<HTMLDivElement | null>, item:
   }
 }
 
+// Breathing room between the toolbar and whatever a landing puts at the top of the reader.
+const LANDING_GAP_PX = 16
+
+/** Where "Show in timeline" and the review chip put a row (L2). A row alone does not say which
+ *  phase it belongs to, so land on its card's header when the header and the row both fit in
+ *  view; otherwise put the row just below the toolbar with a gap, never flush against it. */
+function landRowInTimeline(timelineRef: RefObject<HTMLDivElement | null>, row: HTMLElement | null): void {
+  const scroller = timelineRef.current
+  if (!row || !scroller) return
+  const top = scroller.getBoundingClientRect().top + timelineToolbarHeight(scroller)
+  const readerHeight = scroller.getBoundingClientRect().bottom - top
+  // A phase row's card is its phase anchor; a trip-level row's is the nearest section, its own list.
+  const card = row.closest<HTMLElement>(`[id^="${PHASE_ANCHOR_PREFIX}"]`) ?? row.closest<HTMLElement>('section')
+  const rowBox = row.getBoundingClientRect()
+  const cardTop = card?.getBoundingClientRect().top
+  const target = cardTop !== undefined && rowBox.bottom - cardTop + 2 * LANDING_GAP_PX <= readerHeight ? cardTop : rowBox.top
+  scroller.scrollTop += target - top - LANDING_GAP_PX
+}
+
 export default function TripDetailPage() {
   return <Suspense fallback={<Spinner size="lg" />}><TripDetailRoute /></Suspense>
 }
@@ -233,7 +252,7 @@ function TripDetail({ tripId }: { tripId: string }) {
             view={timelineView} onViewChange={changeTimelineView}
             expanded={timelineExpanded} onToggleExpanded={toggleExpanded}
             onOpenException={openException} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
-            onRevealHandled={targetId => scrollIntoTimeline(timelineRef, document.getElementById(targetId))} />
+            onRevealHandled={targetId => landRowInTimeline(timelineRef, document.getElementById(targetId))} />
           <IntegritySummary trip={trip} />
         </div>
       </div>

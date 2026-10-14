@@ -66,7 +66,9 @@ export const VERDICT_WORDING = {
   transitUnverified: 'No exceptions recorded',
   // A clean phase says how much was checked, not what: the Checked zone lists each passing check,
   // so the header stays short and the phases that need reading stand out (distil, Batch 3).
-  clean: { headline: 'Checks passed', noExceptions: 'No exceptions', checked: (n: number): string => countLabel(n, 'check') },
+  // "3 of 3": clean is reached only when every check ran and passed, so the reason states that
+  // completeness without saying "checks" twice.
+  clean: { headline: 'Checks passed', noExceptions: 'No exceptions', checked: (n: number): string => `${n} of ${n}` },
   inProgress: 'In progress',
   current: { headline: 'Current phase', reason: 'Waiting for the driver' },
   warehouseScan: 'Waiting for the warehouse scan to finish',

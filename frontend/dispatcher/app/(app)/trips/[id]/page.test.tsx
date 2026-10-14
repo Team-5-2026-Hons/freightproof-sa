@@ -1097,3 +1097,66 @@ describe('Trip detail header: "N need review" lands on the first unreviewed row'
     expect(document.activeElement).toHaveAttribute('data-highlighted', 'true')
   })
 })
+
+describe('Trip detail: a revealed row lands with its phase in view (L2)', () => {
+  const SCROLLER_HEIGHT = 700
+  const TOOLBAR_HEIGHT = 50
+  const CARD_TOP = 300
+  const GAP = 16
+
+  /** jsdom has no layout: the Loading card starts CARD_TOP below the scroller top, its first
+   *  unreviewed row `rowOffset` below the card's top, both moving with scrollTop. */
+  function layout(rowOffset: number, rowId: string, cardId: string): () => void {
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const scroll = document.querySelector('[data-timeline-scroller]')?.scrollTop ?? 0
+      let top = 0; let height = 0
+      if (this.hasAttribute('data-timeline-scroller')) height = SCROLLER_HEIGHT
+      else if (this.hasAttribute('data-timeline-toolbar')) height = TOOLBAR_HEIGHT
+      else if (this.id === cardId) { top = CARD_TOP - scroll; height = rowOffset + 200 }
+      else if (this.id === rowId) { top = CARD_TOP + rowOffset - scroll; height = 44 }
+      return { top, bottom: top + height, left: 0, right: 800, width: 800, height, x: 0, y: top, toJSON: () => ({}) }
+    })
+    return () => spy.mockRestore()
+  }
+  function owedTrip(): { loadingId: string; firstId: string } {
+    const base = tripWithLoadingExceptionsOutOfOrder()
+    const loading = base.phases.find(phase => phase.phase_type === 'loading')!
+    const exceptions = base.exceptions.map(exception => ({ ...exception, review_status: 'needs_review' as const }))
+    mockedUseTripDetail.mockReturnValue({ trip: { ...base, exceptions }, isLoading: false, isValidating: false, error: null, errorStatus: null, refetch: vi.fn(), refetchSilent: vi.fn(), lastUpdated: null })
+    const first = [...exceptions].filter(e => e.phase_event_id === loading.phase_event_id).sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))[0]!
+    return { loadingId: loading.phase_event_id, firstId: first.id }
+  }
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+    navigation.search = new URLSearchParams()
+  })
+
+  it('shows the card header above the row when both fit, a gap below the toolbar', async () => {
+    const { loadingId, firstId } = owedTrip()
+    const restore = layout(200, `exception-row-${firstId}`, `phase-${loadingId}`)
+    try {
+      render(<TripDetailPage />)
+      const scroller = document.querySelector('[data-timeline-scroller]')!
+
+      fireEvent.click(screen.getByRole('button', { name: /exceptions? need review\. Show the first in the timeline/ }))
+
+      await waitFor(() => expect(document.activeElement).toHaveAttribute('id', `exception-row-${firstId}`))
+      expect(scroller.scrollTop).toBe(CARD_TOP - TOOLBAR_HEIGHT - GAP)
+    } finally { restore() }
+  })
+
+  it('falls back to the row, with the same gap, when its card is taller than the reader', async () => {
+    const { loadingId, firstId } = owedTrip()
+    const rowOffset = 900
+    const restore = layout(rowOffset, `exception-row-${firstId}`, `phase-${loadingId}`)
+    try {
+      render(<TripDetailPage />)
+      const scroller = document.querySelector('[data-timeline-scroller]')!
+
+      fireEvent.click(screen.getByRole('button', { name: /exceptions? need review\. Show the first in the timeline/ }))
+
+      await waitFor(() => expect(document.activeElement).toHaveAttribute('id', `exception-row-${firstId}`))
+      expect(scroller.scrollTop).toBe(CARD_TOP + rowOffset - TOOLBAR_HEIGHT - GAP)
+    } finally { restore() }
+  })
+})
