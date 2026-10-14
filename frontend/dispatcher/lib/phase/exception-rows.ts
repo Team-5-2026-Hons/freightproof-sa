@@ -6,9 +6,10 @@
 // burying the rail, and the "pinned" row is what keeps "Show in timeline" honest for a row
 // the cap would otherwise hide (D42).
 
-import type { ExceptionContactMethod, ExceptionSeverity, TripException } from '@shared/lib/types/exception'
+import type { ExceptionContactMethod, TripException } from '@shared/lib/types/exception'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { countLabel } from '@/lib/format/count'
+import { SEVERITY_RANK } from '@/lib/exceptions/severity'
 
 /** Rows shown per phase before "+n more" (design note O5: three everywhere). */
 export const EXCEPTION_ROW_CAP = 3
@@ -27,7 +28,6 @@ export function exceptionCountLabel(exceptions: readonly TripException[]): strin
   return `${countLabel(exceptions.length, 'exception')}${review}`
 }
 
-const SEVERITY_RANK: Record<ExceptionSeverity, number> = { critical: 0, warning: 1, info: 2 }
 const NEEDS_REVIEW_RANK = 0
 const OTHER_RANK = 1
 

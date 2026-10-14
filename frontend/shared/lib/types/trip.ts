@@ -37,6 +37,15 @@ export interface TripStop {
 // Structural row contract shared by the active-trip list and terminal-trip history.
 // Includes only what ChecklistRow renders, so the history endpoint need not disclose a
 // driver's contact/licence details or a vehicle's full record to paint one row.
+// A trip's unreviewed exceptions split by severity and by claim (GET /trips). A claimed
+// exception still needs review, so critical + warning + info === needs_review_count.
+export interface TripAttention {
+  critical: number
+  warning: number
+  info: number
+  claimed: number
+}
+
 export interface TripChecklistItem {
   id: TripId
   trip_reference: string
@@ -52,6 +61,9 @@ export interface TripChecklistItem {
   origin_precinct_id: string | null
   destination_precinct_id: string | null
   needs_review_count: number
+  // Sent on active-list rows (TripSummary) only, like trip_type. History rows have no use for
+  // the split: a closed trip is not ranked against the live ones.
+  attention?: TripAttention
   created_at: string
   current_phase: PhaseType | null
   current_stop: number | null

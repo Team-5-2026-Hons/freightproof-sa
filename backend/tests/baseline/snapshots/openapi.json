@@ -10019,6 +10019,35 @@
         "title": "TrackerBucket",
         "type": "object"
       },
+      "TripAttentionResponse": {
+        "description": "A trip's unreviewed exceptions split the two ways the dashboard ranks them: by\nseverity, so a critical outranks any number of warnings, and by claim, so a dispatcher\ncan see which ones nobody has taken on. A claimed exception is still unreviewed (FP-280),\nso critical + warning + info always equals needs_review_count, claimed or not.",
+        "properties": {
+          "claimed": {
+            "title": "Claimed",
+            "type": "integer"
+          },
+          "critical": {
+            "title": "Critical",
+            "type": "integer"
+          },
+          "info": {
+            "title": "Info",
+            "type": "integer"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "warning",
+          "info",
+          "claimed"
+        ],
+        "title": "TripAttentionResponse",
+        "type": "object"
+      },
       "TripConsignmentInput": {
         "description": "One waybill on the trip. pp_reference is the PP waybill number (string[24], v28\nspec); unit_count_expected is dispatcher-entered — PP has no pallet grain.",
         "properties": {
@@ -11535,6 +11564,9 @@
             ],
             "title": "Actual Departure At"
           },
+          "attention": {
+            "$ref": "#/components/schemas/TripAttentionResponse"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -11663,6 +11695,7 @@
           "origin_precinct_id",
           "destination_precinct_id",
           "needs_review_count",
+          "attention",
           "phase_total",
           "phase_completed",
           "created_at",

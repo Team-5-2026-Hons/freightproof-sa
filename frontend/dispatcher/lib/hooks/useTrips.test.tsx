@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api/client'
 import { useRealtimeChannel } from '@/lib/realtime/RealtimeProvider'
 import type { RealtimeEvent, RealtimeKind } from '@/lib/realtime/types'
-import { useTrips } from './useTrips'
+import { RECONCILE_INTERVAL_MS, useTrips } from './useTrips'
 
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() } }))
 vi.mock('@/lib/realtime/RealtimeProvider', () => ({ useRealtimeChannel: vi.fn() }))
@@ -61,6 +61,38 @@ describe('live trip list', () => {
     await flush()
 
     expect(api.get).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+})
+
+describe('reconciliation', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+  })
+
+  it('refetches on an interval, so a dropped event cannot leave the list stale for long', async () => {
+    vi.useFakeTimers()
+    const { unmount } = renderHook(() => useTrips())
+    await flush()
+
+    act(() => { vi.advanceTimersByTime(RECONCILE_INTERVAL_MS) })
+    await flush()
+
+    expect(api.get).toHaveBeenCalledTimes(2)
+    unmount()
+  })
+
+  it('does not refetch on the interval while the tab is hidden', async () => {
+    vi.useFakeTimers()
+    const { unmount } = renderHook(() => useTrips())
+    await flush()
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+
+    act(() => { vi.advanceTimersByTime(RECONCILE_INTERVAL_MS) })
+    await flush()
+
+    expect(api.get).toHaveBeenCalledTimes(1)
     unmount()
   })
 })

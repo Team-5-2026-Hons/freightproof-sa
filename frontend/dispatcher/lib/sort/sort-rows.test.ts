@@ -46,6 +46,28 @@ describe('sortRows', () => {
     expect(ids(sortRows(rows, { key: 'name', dir: 'asc' }, valueOf))).toEqual(['z', 'y', 'x'])
   })
 
+  it('compares a list value element by element, and flips the whole list with the direction', () => {
+    interface Ranked { id: string; rank: readonly (string | number)[] }
+    const rows: Ranked[] = [
+      { id: 'second', rank: [0, 'beta'] },
+      { id: 'third', rank: [1, 'alpha'] },
+      { id: 'first', rank: [0, 'alpha'] },
+    ]
+    const rankOf = (r: Ranked): SortValue => r.rank
+
+    expect(sortRows(rows, { key: 'rank', dir: 'asc' }, rankOf).map(r => r.id)).toEqual(['first', 'second', 'third'])
+    expect(sortRows(rows, { key: 'rank', dir: 'desc' }, rankOf).map(r => r.id)).toEqual(['third', 'second', 'first'])
+  })
+
+  it('puts a shorter list that matches a longer one first, and keeps a null list last', () => {
+    interface Ranked { id: string; rank: readonly number[] | null }
+    const rows: Ranked[] = [{ id: 'none', rank: null }, { id: 'long', rank: [1, 2] }, { id: 'short', rank: [1] }]
+    const rankOf = (r: Ranked): SortValue => r.rank
+
+    expect(sortRows(rows, { key: 'rank', dir: 'asc' }, rankOf).map(r => r.id)).toEqual(['short', 'long', 'none'])
+    expect(sortRows(rows, { key: 'rank', dir: 'desc' }, rankOf).map(r => r.id)).toEqual(['long', 'short', 'none'])
+  })
+
   it('returns a new array and leaves the input untouched', () => {
     const rows = [row('b', 'b', 2), row('a', 'a', 1)]
     const before = ids(rows)

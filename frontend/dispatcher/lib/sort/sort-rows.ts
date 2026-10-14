@@ -1,6 +1,9 @@
 export type SortDir = 'asc' | 'desc'
-/** What a column orders by. `null` means "no data": it sorts last, in both directions. */
-export type SortValue = string | number | null
+type SortScalar = string | number
+/** What a column orders by. `null` means "no data": it sorts last, in both directions. A list is
+ *  compared element by element, for a column that ranks by several things at once (severity, then
+ *  title); the whole list flips with the direction, unlike the tie-break. */
+export type SortValue = SortScalar | readonly SortScalar[] | null
 export interface Sort<K extends string> { key: K; dir: SortDir }
 
 // Natural order, so "FP-9" comes before "FP-10", and case never splits "aisha" from "Aisha".
@@ -9,6 +12,23 @@ const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
 // A number that is not a real number (an unparseable date is NaN) is "no data", not a value that
 // poisons every comparison it meets.
 const normalise = (value: SortValue): SortValue => (typeof value === 'number' && !Number.isFinite(value) ? null : value)
+
+const isList = (value: SortScalar | readonly SortScalar[]): value is readonly SortScalar[] => Array.isArray(value)
+
+function compareScalars(left: SortScalar, right: SortScalar): number {
+  return typeof left === 'number' && typeof right === 'number' ? left - right : collator.compare(String(left), String(right))
+}
+
+// A single value is a list of one, so a column compares the same way whichever it returns.
+function compareValues(left: SortScalar | readonly SortScalar[], right: SortScalar | readonly SortScalar[]): number {
+  const a = isList(left) ? left : [left]
+  const b = isList(right) ? right : [right]
+  for (let i = 0; i < Math.min(a.length, b.length); i++) {
+    const order = compareScalars(a[i], b[i])
+    if (order !== 0) return order
+  }
+  return a.length - b.length
+}
 
 /** A sorted copy of `rows`: the one ordering every table list uses.
  *
@@ -30,8 +50,8 @@ export function sortRows<T, K extends string>(
     const right = normalise(valueOf(b, sort.key))
     if (left === null || right === null) {
       if (left !== right) return left === null ? 1 : -1
-    } else if (left !== right) {
-      const order = typeof left === 'number' && typeof right === 'number' ? left - right : collator.compare(String(left), String(right))
+    } else {
+      const order = compareValues(left, right)
       if (order !== 0) return order * sign
     }
     return tieBreak ? tieBreak(a, b) : 0
