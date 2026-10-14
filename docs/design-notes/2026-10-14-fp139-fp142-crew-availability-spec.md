@@ -1,6 +1,6 @@
 # FP-139 + FP-142 — One horse cannot be on two live trips, and the dispatcher sees it before picking
 
-**Status: NOT STARTED — spec agreed 2026-10-14.**
+**Status: COMPLETE — built and checked 2026-10-14, awaiting Tom's commits and PR into `dev`.** Decisions taken during the build are in §15; findings in §14.1–14.4.
 Written 2026-10-14 from Tom's branch `feature/fp-139-vehicle-concurrency-guard` at `71d7fd3`
 (= `dev` `b7b07da` plus a local merge commit adding `.codex/agents/executor.toml` and 7 lines of
 `globals.css`; neither touches this work). Every path below was checked against that commit.
@@ -366,14 +366,122 @@ exactly one trip. A driver can't start a trip whose horse is underway on another
 
 | Stage | Status | Tests (backend / dispatcher) | Notes |
 |---|---|---|---|
-| 0 Baseline | NOT STARTED | | |
-| 1 Arrival required | NOT STARTED | | |
-| 2 Busy rule + creation + race | NOT STARTED | | |
-| 3 Activation guard | NOT STARTED | | |
-| 4 Availability endpoint | NOT STARTED | | |
-| 5 Wizard | NOT STARTED | | |
-| 6 Full checks | NOT STARTED | | |
+| 0 Baseline | **DONE** (14 Oct 2026) | backend 2622 pass, 4 skipped · dispatcher 1541 pass / 147 files | ruff, check_structure, lint-imports, mypy clean; dispatcher lint 0 errors (2 old warnings), type-check clean. `npm run build` not run (rule 9). Churn measured in 14.1. |
+| 1 Arrival required | **DONE** (14 Oct 2026) | backend 2625 pass, 4 skipped (+4 new, −1 replaced) | ruff, check_structure, lint-imports (17 kept), mypy clean. `schemas/trips.py` 425 → 424 lines. 60 failing tests fixed by adding an arrival to 12 files' payload builders (no assertion weakened). `test_trip_without_arrival_is_unaffected` replaced by `…_is_rejected`: it asserted the old contract. |
+| 2 Busy rule + creation + race | **DONE** (14 Oct 2026) | backend 2662 pass, 4 skipped, 1 pre-existing flake (14.2) | ruff, check_structure, lint-imports (17 kept), mypy clean. `persist_trip` 260 → 255 lines. +24 unit, +12 creation, +1 manifest-path, +1 race test. **Race test proven both ways:** with `lock_crew` disabled by a scratch plugin it fails `[201, 201]` (two trips on one horse); with the lock, `[201, 409]`. Decisions B4–B9. |
+| 3 Activation guard | **DONE** (14 Oct 2026) | backend 2669 pass, 4 skipped | ruff, check_structure, lint-imports (17 kept), mypy clean. +5 activation cases in `test_phase_service.py` (horse, trailer, closed, D10, unrelated). **Activation race proven both ways:** with `scheduling.lock_crew` disabled by a scratch plugin it fails `[200, 200]`; with the lock, `[200, 409]`. All 13 existing activation tests unchanged. Decisions B10–B11. |
+| 4 Availability endpoint | **DONE** (14 Oct 2026) | backend 2681 pass, 4 skipped | ruff, check_structure, lint-imports (17 kept), mypy clean. +12 tests in `test_trip_availability_endpoint.py`. B1/B2 contract snapshots regenerated **on purpose**: additions only (+175/−0): one route, three schemas, one dispatcher-only access entry. Decisions B12–B14. |
+| 5 Wizard | **DONE** (14 Oct 2026). Tom checked it in the browser after restarting the backend (14.3) | dispatcher 1572 pass / 150 files (+31) · lint 0 errors · type-check clean | Arrival required in the form and the field. Busy driver/horse/trailer greyed out with "On TRP-x · free after …". A busy pick shows its error at once. A lost race (409) shows the server's message and refetches. Decisions B15–B19. |
+| 6 Full checks | **DONE** (14 Oct 2026) | backend 2681 pass, 4 skipped · dispatcher 1572 pass / 150 files · build OK | See 14.4. R3 (deadlock) tripwire checked: `fleet/vehicles.py` and `fleet/drivers.py` only read trips, with no locks. |
+
+### 14.1 Stage 0 findings (14 Oct 2026)
+
+**`git fetch origin` fails in the agent sandbox** (no SSH key). The last-fetched `origin/dev` is `b7b07da` (13 Oct),
+with 0 commits ahead of this branch. Tom should fetch before Stage 1 to confirm nothing landed on the §7 files.
+
+**Test churn, measured exactly, not estimated.** A pytest plugin kept in the agent's scratchpad (never in the repo)
+patched `validate_declared_schedule` to require an arrival and wrapped `persist_trip` to record each test's crew
+and window. Two full runs:
+
+- **D1 (arrival required): 61 failing tests in 12 files.** test_trips.py 24, test_create_trip_multistop.py 9,
+  test_trip_verification.py 8, test_trip_schemas.py 6, test_trip_service.py 5, test_trip_stops.py 2,
+  test_creation_concurrency.py 2, and 1 each in test_schema_validators.py, test_trips_anchor.py,
+  test_trip_pp_manifest_reads.py, test_phases.py, test_blockchain_verify.py. Nearly all are payload fixtures that
+  leave arrival out, so the fix is to add one. Under R1's 40-file threshold.
+- **D6 (crew overlap): 6 tests create two overlapping trips on one driver + horse + trailer.** 3 are false positives
+  (the first trip is cancelled before the second is made: `test_cancel_and_recreate_before_scanning`,
+  `test_cancel_after_scanning_refuses_recreation`, `test_cancelled_trip_keeps_its_cargo_record_after_its_waybills_move`).
+  3 are real: `test_creation_concurrency.py::test_concurrent_trip_creation_anchors_one_journey_lock`,
+  `::test_concurrent_creation_from_one_manifest_creates_one_trip` and
+  `test_trips.py::test_create_trip_409_on_waybill_already_assigned_to_another_trip`. All three race or collide on a
+  *waybill/manifest* and reuse one crew only for convenience. Give the second caller its own crew so each still
+  proves its original guard.
+- Not measurable by the probe: trips fixtures write directly as rows (they skip `persist_trip`). Those only meet
+  the Stage 3 activation rule, and Stage 3's run will show them.
+
+**Seeds are safe for D9.** `seed_trips.py` has one live trip (`FP-DEMO-ACTIVE-0001`, horse index 2 of 3). The trip that
+reuses horse 0 is `FP-DEMO-CLOSED-0001`. `seed_audit_pack_demo.py` makes its own horse on a CLOSED trip.
+
+**Design point surfaced for Stage 2 (open question, Tom).** With D7's lock taken in step 1, a dispatcher who loses a
+**manifest race** waits, then sees the winner's trip and gets **409 `CREW_UNAVAILABLE`** (when both picked the same
+crew) instead of today's **409 `MANIFEST_ALREADY_ON_TRIP`**, which the wizard handles specially ("already on TRP-x",
+with a link). Both are correct refusals, but the manifest one is the more useful message. See §15.
+
+### 14.2 Stage 2 findings (14 Oct 2026)
+
+- **Pre-existing flaky test, not FP-139:** `test_trip_pp_manifest_reads.py::test_history_search_matches_manifest_number_exactly`
+  failed once in a full run and passed 3/3 alone. It searches history for `"69"`, and history search also matches
+  `trip_reference`. The fixture's references are `FP-TEST-` + 8 random hex characters, so about 1 run in 40 the
+  *other* trip's reference contains "69". It inserts trips directly; nothing FP-139 touched runs in it. Raised as a
+  separate task; not fixed here.
+- The manifest race test (`test_concurrent_creation_from_one_manifest_creates_one_trip`) kept its shared crew and
+  passes unchanged. It now also proves B1: the loser still gets `MANIFEST_ALREADY_ON_TRIP`, not `CREW_UNAVAILABLE`.
+
+### 14.3 Stage 5 browser check: blocked (14 Oct 2026)
+
+The running dev backend (port 8000) had the new route loaded, but `GET /health` reported
+`database: unavailable (TimeoutError)` three times in a row, so neither sign-in nor trip creation could work.
+The test suites use a separate local test database and were unaffected. Not fixed by the agent: the backend
+is Tom's process, and its database settings are in `.env`, which the agent never reads. **Closed the same day:** Tom
+restarted the backend (`/health` then reported the database `ok`), ran the Stage 5 check in the browser and
+confirmed it works. Drivers stay greyed out as well as vehicles (D12): Tom did not ask to drop them.
+
+**Unrelated local finding:** `frontend/driver-pwa` type-check reports `Cannot find module 'qrcode'`. The package is
+in its `package.json` but missing from local `node_modules`, so `npm install` there fixes it. The shared types this
+stage changed compile cleanly in the driver app.
+
+### 14.4 Final check run (Stage 6, 14 Oct 2026)
+
+| Check | Stage 0 baseline | Final | |
+|---|---|---|---|
+| backend `ruff check .` | passed | passed | |
+| backend `scripts/check_structure.py` | OK | OK | `persist_trip` 260 → 255 lines; `schemas/trips.py` 425 → 424 |
+| backend `lint-imports` | 17 kept | 17 kept | `availability` added to the lowest trips tier |
+| backend `mypy .` | 505 files clean | 509 files clean | +4 files |
+| backend `pytest -m "not slow"` | 2622 pass, 4 skipped | **2681 pass, 4 skipped** | +59 net. One pre-existing flaky test seen once (14.2) |
+| B1/B2 contract snapshots | — | regenerated on purpose | additions only (B14) |
+| dispatcher `npm run lint` | 0 errors, 2 warnings | 0 errors, 2 warnings | warnings pre-date this work (`EvidencePhoto.tsx`) |
+| dispatcher `npm run type-check` | clean | clean | |
+| dispatcher `npm test` | 1541 pass / 147 files | **1572 pass / 150 files** | +31 |
+| dispatcher `npm run build` | not run | **passed** | dev server stopped first by Tom; `/trips/new` 19.9 kB |
+| race tests, lock disabled | — | fail `[201, 201]` and `[200, 200]` | each proven to catch the lock's absence |
+
+No migration, no new `.env` key, no new dependency, no file moved or renamed. Files used by teammates, all
+additive: `backend/.importlinter`, `frontend/dispatcher/components/ui/SearchSelect.tsx`,
+`frontend/shared/lib/types/availability.ts` (new) and `pp-manifest.ts`. None of CLAUDE.md's
+coordinate-first files were touched (`main.py`, `config.py`, `models/__init__.py`, `requirements.txt`,
+`package.json`, docker-compose, `CLAUDE.md`).
+
+### 15.1 Still open after this work
+
+1. **Commit and PR** (Tom).
+2. **Jira:** FP-139 and its subtasks FP-173/174/175, and FP-142, can move once merged. Nothing was posted by the agent.
+3. **Flaky test** `test_history_search_matches_manifest_number_exactly` (14.2), handed to a separate session.
+4. **Overridden activation leaves a trip CREATED** (§12): an override of activation never sets ACTIVE, so this guard treats
+   such a trip as planned, not underway. Worth its own ticket.
+5. **`driver-pwa` local `node_modules` lacks `qrcode`** (14.3). Run `npm install` there; not a code issue.
+6. After the 19 Oct freeze: fold `scheduling._scheduled_departure` into `trips.availability` (§12).
 
 ## 15. Decisions taken during the build
 
-(empty; record each with Why and Who, as in the FP-296 spec §15)
+| # | Decision | Why | Who |
+|---|---|---|---|
+| B1 | **On the manifest path, "manifest already on a trip" wins over a crew clash.** Once `_claim_crew` holds the crew locks, a manifest trip re-runs `find_live_trip_for_manifest` and raises `PPManifestAlreadyOnTripError` before the crew check. | Without it, the loser of a manifest race who also picked the same horse would get `CREW_UNAVAILABLE` instead of `MANIFEST_ALREADY_ON_TRIP`, which the wizard handles specially (names and links the winning trip). Both are correct; the manifest one tells the dispatcher what actually happened. Found in Stage 0 (§14.1). | Tom |
+| B2 | **The arrival rule lives in `validate_declared_schedule`**, which both creation paths call. A missing departure keeps each caller's own error, so the new `if planned_departure_at is None: return` is only for the type checker. | One rule, two paths, no drift. The departure-required message in `validate_request` was reflowed (same text) to keep the file inside the structure ratchet. | Claude |
+| B3 | **The manifest path checks `NO_PLANNED_ARRIVAL` before `SCHEDULE_INVALID`**, mirroring `NO_PLANNED_DEPARTURE`. | The wizard can then point at the missing field rather than show a generic schedule error. | Claude |
+| B4 | **A live trip past its planned end, or any trip with no end, is busy until closed: `busy_until = None`**, not `max(planned end, now)` as D5's wording had it. | Ending the window at "now" would let a dispatcher book an overrunning truck for tomorrow. Tom's rule is "available only when the trip is officially closed or cancelled". `planned_until` is still returned, so the screen can say "was due …". | Claude, per Tom's D5 intent |
+| B5 | **`CrewFilter` and `TimeWindow` frozen dataclasses** instead of long argument lists. | Ruff's PLR0913 (max 5 arguments) is enforced on `app/`. Grouping is clearer than a per-file ignore. | Claude |
+| B6 | **`CrewUnavailableError` carries JSON-ready clash dicts**, built in orchestration. | `core/` sits below `schemas/` in the import layers and may not import `BusyEntry`. The endpoint passes the dicts straight through. | Claude |
+| B7 | **A CREATED trip with no schedule occupies nothing; a live trip with no schedule is busy from `created_at`.** | An unscheduled CREATED trip can never be activated (`_reject_if_not_due`), so letting it block crew would only strand them. A live one predates that rule and is plainly in use. | Claude |
+| B8 | **Status sets are tuples, not frozensets.** | A row's status can read back as a plain `str`, and a str-Enum member hashes by its *name*, so `"active" in {TripStatus.ACTIVE}` is `False`. Tuple membership compares by equality (as `scheduling.py` already does). Pinned by a unit test. | Claude |
+| B9 | **Race tests: the journey-lock (waybill) race gets a second crew; the new horse race uses a barrier before `lock_crew` and a non-blocking PP client.** The 4 mocked-DB creation tests in `test_trip_service.py` stub `lock_crew` and `busy_crew_in_window`, as they already stub `_fetch_driver` and `_fetch_vehicle`. | A barrier placed after the crew lock would hang rather than fail (the file's own docstring). A waybill race must stay a waybill race. The mocked `db.execute` cannot answer the new queries. | Claude |
+| B10 | **All of activation's crew rules sit behind one call, `scheduling._claim_crew_for_activation`:** load the trailers, lock the crew (after `_gate_and_load`'s trip lock), find the other trips sharing it, then run "underway" (driver, horse, trailers) and start-in-order (the same driver's trips only, D10). `_other_trips_for_driver` is gone. | `advance_activation` stays a readable sequence of gates, and the lock order (trip, then crew) is enforced in one place. The "underway" check names the driver first, so every existing reason text and test is unchanged. | Claude |
+| B11 | **The racing fixture's teardown also deletes `exceptions` and `driver_sessions` rows.** | The activation race is the first test in that file to start a trip. Activation can raise an exception row (a phone/tracker mismatch against the mock Pulsit), and a driver's authentication writes a `DriverSession`. Both hold foreign keys that blocked the cleanup. | Claude |
+| B12 | **The endpoint takes `CrewAvailabilityQuery` as a FastAPI query model** (`Annotated[..., Query()]`, as `endpoints/parcels.py` does). Times must carry a zone (`AwareDatetime`), and `end <= start` is a 422. | The validation lives in the schema, so the endpoint stays thin and the rules show up in OpenAPI. A zone-less time can't be compared honestly with the stored, zone-aware trip times. | Claude |
+| B13 | **A request with no token gets 403, not 401** as §8 assumed. | That is `get_current_dispatcher`'s existing rule for every dispatcher route (missing credentials → 403). The test pins the real behaviour rather than the spec's guess (rule 6). | Claude |
+| B14 | **The B1 (OpenAPI) and B2 (auth map) baseline snapshots were regenerated** with `UPDATE_SNAPSHOTS=1`. | A new route is an intended contract change. The diff was read before accepting it: additions only, the new path, `BusyEntry`, `CrewAvailabilityResponse`, `CrewResourceType`, and one `dispatcher` access entry. Reviewers should still look at it. | Claude, flagged to Tom |
+| B15 | **The availability wording and pure helpers live in a new `lib/trips/crew-availability.ts`**, not a copy module, and busy-pick errors come from a separate `validateCrewAvailability` that the page merges, rather than a third argument to `validateCrew`. | The wizard keeps its wording inline beside its rules (`manifest-form.ts`, `page.tsx`); there is no wizard copy module to add to. A separate validator avoids an import cycle (`crew-availability` needs `manifest-form`'s types and `sastInputToIso`). | Claude |
+| B16 | **`useCrewAvailability` derives `loading/ready/error/idle` from an answer tagged with its window**, instead of resetting state in an effect. | The project's React lint (`react-hooks/set-state-in-effect`) forbids synchronous `setState` in an effect. Tagging each answer with its window also means an answer for old times can never grey out options for new ones. A ticket counter still drops slow replies. | Claude |
+| B17 | **A busy pick's field error shows immediately**, not only after a Create attempt as other field errors do. | It is news, not a typo: the times changed under crew already picked. Holding it back would let the dispatcher press Create into a predictable refusal. | Claude |
+| B18 | **A busy trailer that is already ticked stays enabled**, so it can be unticked. Only unticked busy trailers are disabled. | Otherwise changing the times could leave a ticked, busy trailer that the dispatcher could not remove. | Claude |
+| B19 | **`SearchSelect` gains optional `disabled` and `note` on options** (UI-kit file, additive). A disabled option uses the native `disabled` attribute plus `aria-disabled`, and the note wraps instead of truncating. The availability line in `CrewFields` uses `aria-live`, not `role="status"`. | Native `disabled` keeps it out of clicks and Tab order. The note must be fully readable because "how much longer is it busy" is the point (Tom's design). The trailer card's combination verdict already owns `role="status"`. | Claude |
