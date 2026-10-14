@@ -78,3 +78,23 @@ describe('GeofenceSchematic', () => {
     },
   )
 })
+
+describe('GeofenceSchematic outline', () => {
+  const PIN: [number, number] = [-29.7942, 30.982]
+  const BOX: [number, number][] = [[-29.7937, 30.9815], [-29.7937, 30.9825], [-29.7947, 30.9825], [-29.7947, 30.9815]]
+
+  it('test_draws_the_outline_instead_of_the_circle', () => {
+    render(<GeofenceSchematic radiusMetres={200} polygon={BOX} centre={PIN} />)
+
+    const outline = screen.getByTestId('schematic-fence-outline')
+    expect(outline.getAttribute('points')?.split(' ')).toHaveLength(4)
+    expect(screen.queryByTestId('schematic-fence-circle')).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /property outline with 4 corners/ })).toBeInTheDocument()
+  })
+
+  it('test_falls_back_to_the_circle_without_a_centre', () => {
+    render(<GeofenceSchematic radiusMetres={200} polygon={BOX} />)
+
+    expect(screen.getByTestId('schematic-fence-circle')).toBeInTheDocument()
+  })
+})

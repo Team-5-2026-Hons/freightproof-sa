@@ -43,7 +43,7 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFixStatus, get_pulsit_client
 from app.orchestration.exceptions.review_policy import initial_review_status
-from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
+from app.orchestration.evidence.geofence import GeofenceShape, TrackerFix, evaluate_geofence
 from app.orchestration.phases.queries import current_phase_event
 
 logger = logging.getLogger(__name__)
@@ -158,6 +158,13 @@ def evaluate_road_readings(
         )
         # distance_metres is None when nothing was measured; only a measured "outside" counts.
         if not verdict.confirmed and verdict.distance_metres is not None:
+            # A circle verdict measures from the centre, an outline verdict from the edge;
+            # the sentence says which so the number is never misread.
+            where = (
+                f"outside the {stage.stop_precinct.name} property outline"
+                if verdict.shape is GeofenceShape.POLYGON
+                else f"from {stage.stop_precinct.name}"
+            )
             findings.append(RoadFinding(
                 exception_type=ExceptionType.MOVED_BEFORE_DEPARTURE,
                 severity=ExceptionSeverity.CRITICAL,
@@ -166,7 +173,7 @@ def evaluate_road_readings(
                 vehicle_id=horse.vehicle_id,
                 description=(
                     f"Horse {horse.registration} is {format_distance(verdict.distance_metres)} "
-                    f"from {stage.stop_precinct.name}, but departure has not been recorded. "
+                    f"{where}, but departure has not been recorded. "
                     f"The truck moved without a recorded seal."
                 ),
                 lat=horse_position[0], lng=horse_position[1],

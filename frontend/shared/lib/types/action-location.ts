@@ -52,6 +52,10 @@ export interface ActionLocationAssessment {
   precinct_lat: number | null
   precinct_lng: number | null
   precinct_radius_metres: number | null
+  // The outline as it stood at evaluation time. Set = the verdicts were judged against it
+  // and precinct_radius_metres is null. Optional only for fixtures predating policy
+  // 2026-10-14.1; the server always sends it.
+  precinct_geofence_polygon?: [number, number][] | null
   precinct_tolerance_metres: number | null
   driver_in_precinct: boolean | null
   truck_in_precinct: boolean | null

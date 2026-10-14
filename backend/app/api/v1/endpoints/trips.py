@@ -5,6 +5,7 @@ GET  /trips             — list trips for the dispatcher's organisation.
 GET  /trips/me          — the authenticated driver's own trips (all statuses).
 GET  /trips/me/active   — the trip that driver is currently working.
 GET  /trips/me/{trip_id} — full detail for one of that driver's own trips.
+GET  /trips/me/{trip_id}/route — that trip's planned truck route (map + ETA aid).
 GET  /trips/{trip_id}   — get full trip detail by ID (dispatcher).
 GET  /trips/pp-manifest-preview — preview a PP manifest (FP-281).
 POST /trips/from-pp-manifest — create a loaded trip from a PP manifest (FP-281).
@@ -49,6 +50,7 @@ from app.orchestration.trips.queries import (
     get_own_trip_detail_for_driver,
     list_trips_for_driver,
 )
+from app.orchestration.trips.route import get_trip_route_for_driver
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.pagination import CursorPage
 from app.schemas.pp_manifest import (
@@ -57,6 +59,7 @@ from app.schemas.pp_manifest import (
     PPManifestWarningCode,
     TripFromPPManifestRequest,
 )
+from app.schemas.trip_routes import TripRouteResponse
 from app.schemas.trips import (
     DriverTripListItemResponse,
     TripCreateRequest,
@@ -316,6 +319,29 @@ async def get_my_trip_detail_endpoint(
         return await get_own_trip_detail_for_driver(
             db, driver_id=current_driver.id, trip_id=trip_id
         )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    "/me/{trip_id}/route",
+    response_model=TripRouteResponse | None,
+    summary="Planned truck route for one of the driver's own trips",
+)
+async def get_my_trip_route_endpoint(
+    trip_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> TripRouteResponse | None:
+    """null, not an error, when no route can be planned (no ORS key, provider down,
+    fewer than two stops): the PWA then shows the trip's planned arrival time instead.
+    404 rule as /me/{trip_id}.
+    """
+    try:
+        return await get_trip_route_for_driver(db, driver_id=current_driver.id, trip_id=trip_id)
     except ResourceNotFoundError as exc:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,

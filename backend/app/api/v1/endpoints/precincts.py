@@ -21,6 +21,7 @@ from app.core.exceptions import (
     DuplicateResourceError,
     HederaServiceError,
     HederaTimeoutError,
+    InvalidGeofenceError,
     ResourceNotFoundError,
 )
 from app.core.limits import PRECINCT_MUTATION
@@ -99,6 +100,10 @@ async def update_precinct_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except InvalidGeofenceError as exc:
+        # 422, not 409: same class of failure as a schema error, just only detectable
+        # once the PATCH is merged with the stored row.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
     except DuplicateResourceError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except HederaTimeoutError as exc:

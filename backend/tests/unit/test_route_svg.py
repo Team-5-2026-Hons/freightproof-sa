@@ -156,3 +156,23 @@ def test_render_route_svg_escapes_stop_names():
     # Assert
     assert "<script>" not in svg
     assert "&lt;script&gt;&amp;" in svg
+
+
+def test_render_route_svg_draws_an_outline_precinct_as_its_polygon():
+    # Arrange
+    box = [(-26.2036, 28.0468), (-26.2036, 28.0478), (-26.2046, 28.0478), (-26.2046, 28.0468)]
+    outline = StopRecord(
+        trip_stop_id=uuid.uuid4(), sequence=1, precinct_id=uuid.uuid4(), precinct_name="Outline",
+        address=None, lat=JHB[0], lng=JHB[1], geofence_radius_metres=300,
+        geofence_polygon=box, slot_time=None,
+    )
+    manifest = make_manifest(phases=[], stops=[outline, _stop(2, DBN, "Circle")])
+
+    # Act
+    svg = render_route_svg(manifest)
+
+    # Assert
+    polygon = re.search(r'<polygon class="stop" points="([^"]+)" data-name="Outline"', svg)
+    assert polygon is not None
+    assert len(polygon.group(1).split(" ")) == 4
+    assert re.search(r'<circle class="stop"[^>]*data-name="Circle"', svg)

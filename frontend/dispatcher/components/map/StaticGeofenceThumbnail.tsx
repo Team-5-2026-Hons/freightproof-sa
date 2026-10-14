@@ -11,7 +11,13 @@ import {
   zoomForRadius,
 } from '@/lib/map/tiles'
 
+import { enclosingRadiusMetres } from '@/lib/map/polygon'
+import type { LatLngPair } from '@shared/lib/types/precinct'
+
 import { GeofenceSchematic, SCALE_BAR_TARGET_FRACTION, niceScaleMetres } from './GeofenceSchematic'
+
+// Flat metres-per-degree for placing outline corners over the tiles (see lib/map/polygon.ts).
+const METRES_PER_DEGREE = (Math.PI * 6_371_008.8) / 180
 
 // Assumed width until the element is actually measured (server render, first paint, or
 // no ResizeObserver). Sized to a typical precinct card so the thumbnail doesn't visibly re-frame on mount.
@@ -28,6 +34,8 @@ interface StaticGeofenceThumbnailProps {
   latitude: number
   longitude: number
   radiusMetres: number
+  /** The property outline; drawn instead of the circle when it has 3+ corners. */
+  polygon?: readonly LatLngPair[] | null
   name: string
   className?: string
 }
@@ -43,9 +51,11 @@ export function StaticGeofenceThumbnail({
   latitude,
   longitude,
   radiusMetres,
+  polygon = null,
   name,
   className,
 }: StaticGeofenceThumbnailProps) {
+  const outline = polygon !== null && polygon.length >= 3 ? polygon : null
   // A single flag, not per-tile tracking: one broken tile already breaks the illusion
   // of a continuous map. Counted, not latched — only a RUN of failures with nothing
   // loading between them means the server is unreachable; reset by any success. Same
@@ -76,7 +86,9 @@ export function StaticGeofenceThumbnail({
 
   // Framed on the smaller dimension so the fence circle can't clip the fixed-height
   // band. tiles.test.ts pins this invariant across realistic width/radius combos.
-  const zoom = zoomForRadius(radiusMetres, latitude, Math.min(widthPx, THUMBNAIL_HEIGHT_PX))
+  // An outline frames exactly like the circle that encloses it, so it never clips either.
+  const frameRadiusMetres = outline !== null ? enclosingRadiusMetres(outline, [latitude, longitude]) : radiusMetres
+  const zoom = zoomForRadius(frameRadiusMetres, latitude, Math.min(widthPx, THUMBNAIL_HEIGHT_PX))
   const tiles = tileGrid(latitude, longitude, zoom, widthPx, THUMBNAIL_HEIGHT_PX)
 
   const metresPerPx = metresPerPixel(latitude, zoom)
@@ -86,6 +98,17 @@ export function StaticGeofenceThumbnail({
 
   const centreX = widthPx / 2
   const centreY = THUMBNAIL_HEIGHT_PX / 2
+
+  const outlinePoints =
+    outline === null
+      ? null
+      : outline
+          .map(([lat, lng]) => {
+            const eastMetres = (lng - longitude) * METRES_PER_DEGREE * Math.cos((latitude * Math.PI) / 180)
+            const northMetres = (lat - latitude) * METRES_PER_DEGREE
+            return `${(centreX + eastMetres / metresPerPx).toFixed(1)},${(centreY - northMetres / metresPerPx).toFixed(1)}`
+          })
+          .join(' ')
 
   return (
     <div
@@ -98,7 +121,12 @@ export function StaticGeofenceThumbnail({
       style={{ height: THUMBNAIL_HEIGHT_PX }}
     >
       {hasFailed ? (
-        <GeofenceSchematic radiusMetres={radiusMetres} className="w-full h-full" />
+        <GeofenceSchematic
+          radiusMetres={radiusMetres}
+          polygon={outline}
+          centre={[latitude, longitude]}
+          className="w-full h-full"
+        />
       ) : (
         <>
           {tiles.map((tile) => (
@@ -123,15 +151,25 @@ export function StaticGeofenceThumbnail({
             aria-hidden="true"
           >
             {/* Fence, matching GeofenceSchematic's fill/stroke convention so both surfaces agree visually. */}
-            <circle
-              data-testid="thumbnail-fence-circle"
-              cx={centreX}
-              cy={centreY}
-              r={fenceRadiusPx}
-              className="fill-sec stroke-sec"
-              fillOpacity={0.1}
-              strokeWidth={1.5}
-            />
+            {outlinePoints !== null ? (
+              <polygon
+                data-testid="thumbnail-fence-outline"
+                points={outlinePoints}
+                className="fill-sec stroke-sec"
+                fillOpacity={0.1}
+                strokeWidth={1.5}
+              />
+            ) : (
+              <circle
+                data-testid="thumbnail-fence-circle"
+                cx={centreX}
+                cy={centreY}
+                r={fenceRadiusPx}
+                className="fill-sec stroke-sec"
+                fillOpacity={0.1}
+                strokeWidth={1.5}
+              />
+            )}
 
             {/* Centre pin marking the precinct itself. */}
             <circle cx={centreX} cy={centreY} r={4} className="fill-sec" />

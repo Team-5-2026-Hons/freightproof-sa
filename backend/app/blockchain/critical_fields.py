@@ -44,6 +44,8 @@ PRECINCT_CRITICAL_FIELDS: frozenset[str] = frozenset({
     "latitude",
     "longitude",
     "geofence_radius_metres",
+    # The outline, when set, IS the fence — every corner is as critical as the radius.
+    "geofence_polygon",
     "is_shared",
 })
 

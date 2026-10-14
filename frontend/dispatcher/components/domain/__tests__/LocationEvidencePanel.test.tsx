@@ -289,3 +289,24 @@ describe('LocationEvidenceSummary', () => {
     expect(screen.queryByText('Comparison unavailable')).not.toBeInTheDocument()
   })
 })
+
+describe('LocationEvidencePanel outline boundary', () => {
+  it('test_names_an_outline_fence_by_its_corners_not_a_radius', () => {
+    const evidence = makeEvidence({
+      boundary: {
+        coords: { lat: -33.9255, lng: 18.4241 },
+        radiusMetres: 80,
+        polygon: [[-33.925, 18.4236], [-33.925, 18.4246], [-33.926, 18.4246], [-33.926, 18.4236], [-33.9255, 18.4232]],
+        precinctName: 'Cape Town DC',
+        provenance: 'recorded_snapshot',
+        policyVersion: '2026-10-14.1',
+        toleranceMetres: 50,
+      },
+    })
+
+    render(<LocationEvidencePanel evidence={evidence} contextLabel="Activation at Cape Town DC" />)
+
+    expect(screen.getByText(/Cape Town DC, property outline \(5 corners\), 50 m tolerance/)).toBeInTheDocument()
+    expect(screen.queryByText(/80 m radius/)).not.toBeInTheDocument()
+  })
+})

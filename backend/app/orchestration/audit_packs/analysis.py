@@ -13,6 +13,7 @@ from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
 from uuid import UUID
 
+from app.core import polygon as geo_polygon
 from app.core.display import format_sast
 from app.core.geo import haversine_metres
 from app.schemas.audit_pack import (
@@ -94,11 +95,15 @@ def find_coverage_gaps(
     return gaps
 
 
+def _inside_stop(lat: float, lng: float, stop: StopRecord) -> bool:
+    # Same shape rule as evidence.geofence: an outline, when present, replaces the circle.
+    if stop.geofence_polygon:
+        return geo_polygon.contains(stop.geofence_polygon, (lat, lng))
+    return haversine_metres(lat, lng, stop.lat, stop.lng) <= stop.geofence_radius_metres
+
+
 def _inside_any_stop(lat: float, lng: float, stops: Sequence[StopRecord]) -> bool:
-    return any(
-        haversine_metres(lat, lng, stop.lat, stop.lng) <= stop.geofence_radius_metres
-        for stop in stops
-    )
+    return any(_inside_stop(lat, lng, stop) for stop in stops)
 
 
 def _timed(fixes: Iterable[PositionFix]) -> list[tuple[datetime, PositionFix]]:

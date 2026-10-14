@@ -58,6 +58,8 @@ class _FakePrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
+        # A circle precinct: evaluate_geofence reads this to choose the shape.
+        self.geofence_polygon = None
 
 
 def _anchor_precinct() -> Precinct:

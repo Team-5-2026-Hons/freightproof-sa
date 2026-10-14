@@ -308,3 +308,57 @@ describe('DriverMap — theme and handoff', () => {
     expect(container.firstElementChild).toHaveClass('w-full')
   })
 })
+
+describe('DriverMap planned route line', () => {
+  const polylineCtor = vi.fn()
+  const polylineSetMap = vi.fn()
+
+  class FakePolyline {
+    constructor(options: { path: Array<{ lat: number; lng: number }>; zIndex: number }) {
+      polylineCtor(options)
+    }
+    setMap = polylineSetMap
+  }
+
+  const LEG: Array<[number, number]> = [[-26.09, 28.13], [-26.2, 28.2], [-26.3, 28.3]]
+
+  beforeEach(() => {
+    polylineCtor.mockClear()
+    polylineSetMap.mockClear()
+    mockApiKey = 'a-real-key'
+    mockImportLibrary.mockResolvedValue({ Map: FakeMap, Circle: FakeCircle, Polyline: FakePolyline })
+  })
+
+  it('draws the leg lat-first into the Maps {lat, lng} shape, under the driver dot', async () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG} />)
+
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledOnce())
+    const options = polylineCtor.mock.calls[0][0]
+    expect(options.path).toEqual([
+      { lat: -26.09, lng: 28.13 }, { lat: -26.2, lng: 28.2 }, { lat: -26.3, lng: 28.3 },
+    ])
+    const dotOptions = circleCtor.mock.calls.at(-1)?.[0] as { zIndex: number }
+    expect(options.zIndex).toBeLessThan(dotOptions.zIndex)
+  })
+
+  it('draws no line without a route', async () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    await screen.findByRole('region', { name: /map/i })
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    expect(polylineCtor).not.toHaveBeenCalled()
+  })
+
+  it('replaces the line when the leg changes and removes it on unmount', async () => {
+    const { rerender, unmount } = render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG} />)
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledOnce())
+
+    rerender(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG.slice(1)} />)
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledTimes(2))
+    expect(polylineSetMap).toHaveBeenCalledWith(null)
+
+    polylineSetMap.mockClear()
+    unmount()
+    expect(polylineSetMap).toHaveBeenCalledWith(null)
+  })
+})

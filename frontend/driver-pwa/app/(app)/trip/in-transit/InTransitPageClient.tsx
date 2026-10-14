@@ -46,6 +46,8 @@ import type { TripException } from '@shared/lib/types/exception'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
 import { useBack } from '@/lib/navigation/useBack'
 import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { useTripRoute } from '@/lib/hooks/useTripRoute'
+import { estimateArrival, legForPhase, type RouteEstimate } from '@/lib/route/eta'
 import { directionsUrl } from '@/lib/utils/directions'
 import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 import type { Trip } from '@shared/lib/types/trip'
@@ -84,6 +86,8 @@ export default function InTransitPageClient() {
   const [arrivalOffline, setArrivalOffline] = useState(false)
 
   const tripIsOpen = trip !== null
+  // Called above the early returns, with a nullable id, so hook order never changes.
+  const route = useTripRoute(trip === null ? null : String(trip.id))
 
   const refreshFix = useCallback(async (): Promise<void> => {
     const position = await capturePosition()
@@ -149,6 +153,13 @@ export default function InTransitPageClient() {
   // actionablePhase deliberately skips stepless rows and would hand back `unloading`,
   // which is the row the driver has NOT reached yet.
   const arrivalPhase = currentPhase(phases)
+
+  // The leg being driven and the ETA along it. Recomputed on every render, which is every
+  // fresh fix (POSITION_REFRESH_MS) — cheap: one pass over a few thousand points.
+  const leg = legForPhase(route, arrivalPhase)
+  const estimate = leg !== null && fix !== null
+    ? estimateArrival({ leg, position: fix.position, departedAt: trip.actual_departure_at, now: new Date() })
+    : null
 
   // Runs from wherever the driver has since navigated to (background submitter model —
   // see PhaseStepPageClient's identical handleOutcome for the reference implementation).
@@ -356,6 +367,7 @@ export default function InTransitPageClient() {
           position={fix?.position ?? null}
           capturedAt={fix?.capturedAt ?? null}
           onRetry={() => { void refreshFix() }}
+          route={leg?.coordinates ?? null}
           className="h-[calc(100%-1.75rem)] w-full rounded-none"
           // Bottom left, 3rem up: clear of the floating Back button and of Google's logo.
           // Hidden at accessibility text sizes: the map is short there and a chip in its
@@ -406,7 +418,7 @@ export default function InTransitPageClient() {
 
       {/* Everything the driver can do, on a sheet that never scrolls away. */}
       <div className="relative z-10 shrink-0 rounded-t-[28px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-5 shadow-[0_-6px_24px_rgb(0_0_0/0.10)]">
-        <HeadingTo trip={trip} phase={arrivalPhase} />
+        <HeadingTo trip={trip} phase={arrivalPhase} estimate={estimate} />
 
         {openExceptions.length > 0 && (
           // No count eyebrow: each card names its own kind.
@@ -483,17 +495,28 @@ export default function InTransitPageClient() {
   )
 }
 
+/** "640 km", "8.4 km", "350 m" — coarser as the number grows, since precision past that is noise. */
+function formatRemaining(metres: number): string {
+  if (metres < 1000) return `${Math.round(metres / 10) * 10} m`
+  const km = metres / 1000
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`
+}
+
 /**
  * Where this leg ends and when it is due (overhaul 6.1) — the two facts a driver checks
  * most, at the top of the sheet. The leg's end comes from the plan: the destination, or
  * on a cross-dock plan the next stop, named by position when no name is known.
+ *
+ * The ETA is the on-device route estimate when there is one. Off the planned route, or
+ * with no route at all, it falls back to the trip's planned arrival — and says which.
  */
-function HeadingTo({ trip, phase }: { trip: Trip; phase: PhaseDescriptor | null }) {
+function HeadingTo({ trip, phase, estimate }: { trip: Trip; phase: PhaseDescriptor | null; estimate: RouteEstimate | null }) {
   const places = useTripPlaces(trip)
   const where = phase === null ? null : phaseLocation(trip.phases, phase)
   const place = where === null || where === 'To Destination'
     ? places.destination
     : { name: where.replace(/^To /, ''), detail: null }
+  const onRoute = estimate?.kind === 'on_route' ? estimate : null
   return (
     <div className="flex items-end justify-between gap-4 px-1">
       <div className="min-w-0">
@@ -503,9 +526,18 @@ function HeadingTo({ trip, phase }: { trip: Trip; phase: PhaseDescriptor | null 
       </div>
       <div className="shrink-0 text-right">
         <p className="text-subhead text-surface-on-variant">ETA</p>
-        {trip.planned_arrival_at !== null
-          ? <p className="text-title-1 tabular-nums text-surface-on">{formatTime(trip.planned_arrival_at)}</p>
-          : <p className="text-headline text-surface-on-variant">Not set</p>}
+        {onRoute !== null
+          ? <p className="text-title-1 tabular-nums text-surface-on">{formatTime(onRoute.arrivalAt)}</p>
+          : trip.planned_arrival_at !== null
+            ? <p className="text-title-1 tabular-nums text-surface-on">{formatTime(trip.planned_arrival_at)}</p>
+            : <p className="text-headline text-surface-on-variant">Not set</p>}
+        {onRoute !== null && (
+          <p className="text-footnote tabular-nums text-surface-on-variant">{formatRemaining(onRoute.remainingMetres)} to go</p>
+        )}
+        {estimate?.kind === 'off_route' && (
+          // Not a warning: detours are normal. It explains why the ETA went back to the plan.
+          <p className="text-footnote text-surface-on-variant">Off planned route</p>
+        )}
       </div>
     </div>
   )

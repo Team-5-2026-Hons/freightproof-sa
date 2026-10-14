@@ -1,6 +1,7 @@
 'use client'
 
-// Evidence, not operations: shows a position, never routes or navigates.
+// Evidence, not operations: shows a position and, when given one, the planned route line.
+// It never routes or navigates — the line is drawn from data the caller already holds.
 //
 // Core rule: must never render a plausible-looking wrong position. Every failure degrades
 // to something explicitly labelled instead:
@@ -21,6 +22,7 @@ import { MAP_STYLES_DARK, MAP_STYLES_QUIET } from '@/lib/tokens'
 import { formatTime } from '@/lib/utils/format-time'
 import { Button } from '@/components/ui/Button'
 import type { DriverPosition } from '@/lib/types/location'
+import type { RouteCoordinate } from '@/lib/types/route'
 
 // Street level: about a kilometre across on a phone.
 const MAP_ZOOM = 15
@@ -33,6 +35,12 @@ const DRIVER_DOT_RADIUS_M = 12
 const FALLBACK_ACCURACY_RADIUS_M = 50
 
 const ACCURACY_FILL_OPACITY = 0.15
+
+// Under the driver dot, not over it: the dot is the fact, the line is the plan.
+const ROUTE_STROKE_WEIGHT = 5
+const ROUTE_STROKE_OPACITY = 0.55
+const ROUTE_Z_INDEX = 0
+const DRIVER_Z_INDEX = 1
 const ACCURACY_STROKE_OPACITY = 0.4
 
 // ~1.1m of ground resolution at the equator — finer than any consumer GPS fix.
@@ -219,17 +227,23 @@ export interface DriverMapProps {
    * Defaults to `className`.
    */
   fallbackClassName?: string
+  /** The planned leg being driven, [lat, lng] in driving order. Omit or null for no line. */
+  route?: readonly RouteCoordinate[] | null
 }
 
 /** Whether the Maps JS API is usable right now. */
 type MapState = 'loading' | 'ready' | 'unavailable'
 
-export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className }: DriverMapProps) {
+export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className, route = null }: DriverMapProps) {
   const [mapState, setMapState] = useState<MapState>('loading')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const driverDotRef = useRef<google.maps.Circle | null>(null)
   const accuracyRef = useRef<google.maps.Circle | null>(null)
+  const routeLineRef = useRef<google.maps.Polyline | null>(null)
+  // Kept from the one library load so the route effect can build a Polyline without a
+  // second importLibrary round trip (and without reaching for the global `google`).
+  const mapsLibraryRef = useRef<google.maps.MapsLibrary | null>(null)
 
   const hasKey = GOOGLE_MAPS_API_KEY !== ''
 
@@ -247,8 +261,10 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
 
     applyMapsOptions(GOOGLE_MAPS_API_KEY)
     importLibrary('maps')
-      .then(({ Map, Circle }) => {
+      .then((library) => {
         if (cancelled) return
+        const { Map, Circle } = library
+        mapsLibraryRef.current = library
 
         const map = new Map(container, {
           center: centre,
@@ -283,6 +299,7 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
           fillColor: driverColour,
           fillOpacity: 1,
           clickable: false,
+          zIndex: DRIVER_Z_INDEX,
         })
 
         mapRef.current = map
@@ -311,6 +328,27 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
     accuracyRef.current?.setRadius(position.accuracyM ?? FALLBACK_ACCURACY_RADIUS_M)
   }, [position, mapState])
 
+  // Drawn (or redrawn) whenever the map becomes ready or the leg changes. The map stays
+  // centred on the driver, not fitted to the route: this is a driving screen, and a
+  // 600 km leg fitted to a phone would shrink the driver's own position to a pixel.
+  useEffect(() => {
+    const map = mapRef.current
+    const Polyline = mapsLibraryRef.current?.Polyline
+    routeLineRef.current?.setMap(null)
+    routeLineRef.current = null
+    if (mapState !== 'ready' || map === null || Polyline === undefined || route === null || route.length < 2) return
+
+    routeLineRef.current = new Polyline({
+      map,
+      path: route.map(([lat, lng]) => ({ lat, lng })),
+      strokeColor: tokenColour(DRIVER_COLOUR_VAR, DRIVER_COLOUR_FALLBACK),
+      strokeOpacity: ROUTE_STROKE_OPACITY,
+      strokeWeight: ROUTE_STROKE_WEIGHT,
+      clickable: false,
+      zIndex: ROUTE_Z_INDEX,
+    })
+  }, [route, mapState])
+
   // Follow the app theme live: the theme class lands on <html> (lib/theme.ts), including
   // the automatic switch at sunset under "System", so watch that one attribute rather than
   // re-deriving the preference here.
@@ -327,8 +365,11 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
   useEffect(() => () => {
     driverDotRef.current?.setMap(null)
     accuracyRef.current?.setMap(null)
+    routeLineRef.current?.setMap(null)
     driverDotRef.current = null
     accuracyRef.current = null
+    routeLineRef.current = null
+    mapsLibraryRef.current = null
     mapRef.current = null
   }, [])
 

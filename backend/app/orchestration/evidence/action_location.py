@@ -209,6 +209,7 @@ async def build_phase_assessment(
     precinct_lat: Optional[float] = None
     precinct_lng: Optional[float] = None
     precinct_radius_metres: Optional[float] = None
+    precinct_geofence_polygon: Optional[list[tuple[float, float]]] = None
     precinct_tolerance_metres: Optional[float] = None
     driver_in_precinct: Optional[bool] = None
     truck_in_precinct: Optional[bool] = None
@@ -222,11 +223,17 @@ async def build_phase_assessment(
             precinct_id = precinct.id
             precinct_lat = float(precinct.latitude)
             precinct_lng = float(precinct.longitude)
-            precinct_radius_metres = float(
-                DEFAULT_GEOFENCE_RADIUS_METRES
-                if precinct.geofence_radius_metres is None
-                else precinct.geofence_radius_metres
-            )
+            # Exactly one of the two shapes is recorded: the one evaluate_geofence used.
+            if precinct.geofence_polygon:
+                precinct_geofence_polygon = [
+                    (float(corner[0]), float(corner[1])) for corner in precinct.geofence_polygon
+                ]
+            else:
+                precinct_radius_metres = float(
+                    DEFAULT_GEOFENCE_RADIUS_METRES
+                    if precinct.geofence_radius_metres is None
+                    else precinct.geofence_radius_metres
+                )
             precinct_tolerance_metres = float(settings.GPS_TOLERANCE_METRES)
 
             driver_verdict = evaluate_geofence(_tracker_fix(driver_lat, driver_lng), precinct)
@@ -260,6 +267,7 @@ async def build_phase_assessment(
         precinct_lat=precinct_lat,
         precinct_lng=precinct_lng,
         precinct_radius_metres=precinct_radius_metres,
+        precinct_geofence_polygon=precinct_geofence_polygon,
         precinct_tolerance_metres=precinct_tolerance_metres,
         driver_in_precinct=driver_in_precinct,
         truck_in_precinct=truck_in_precinct,
@@ -623,15 +631,18 @@ async def record_driver_location_finding(
             )
             return
 
-        # radius/tolerance are never None here: driver_in_precinct is only ever set
-        # to True/False (never left None) once build_phase_assessment resolved a
+        # The fence and tolerance are never None here: driver_in_precinct is only ever
+        # set to True/False (never left None) once build_phase_assessment resolved a
         # precinct with usable coordinates and called evaluate_geofence — the same
-        # branch that populates these two fields.
-        radius_metres = assessment.precinct_radius_metres or 0.0
+        # branch that populates these fields (a radius OR an outline, never neither).
         tolerance_metres = assessment.precinct_tolerance_metres or 0.0
+        if assessment.precinct_geofence_polygon is not None:
+            fence = f"property outline of {len(assessment.precinct_geofence_polygon)} corners"
+        else:
+            fence = f"geofence radius {format_distance(assessment.precinct_radius_metres or 0.0)}"
         description = (
             "Driver's phone was recorded outside the expected precinct for this stop "
-            f"(geofence radius {format_distance(radius_metres)}, tolerance {format_distance(tolerance_metres)})."
+            f"({fence}, tolerance {format_distance(tolerance_metres)})."
             f"{_describe_driver_reason(driver_reason)}"
         )
 

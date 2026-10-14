@@ -22,6 +22,7 @@ PRECINCT_CRITICAL_FIELDS additionally anchor to Hedera.
 """
 
 import uuid
+from typing import Any
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -32,7 +33,7 @@ from app.blockchain.anchor_service import anchor_subject
 from app.blockchain.critical_fields import (
     PRECINCT_COSMETIC_FIELDS, PRECINCT_CRITICAL_FIELDS, diff_critical_fields,
 )
-from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
+from app.core.exceptions import DuplicateResourceError, InvalidGeofenceError, ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import BlockchainReceiptType, PrecinctEventType, SubjectType
 from app.db.models.events import PrecinctEvent
@@ -42,10 +43,11 @@ from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import PrecinctEventRead
 from app.schemas.organisations import (
     PrecinctCreateBody, PrecinctDetailResponse, PrecinctRead, PrecinctUpdateBody,
+    check_pin_fits_polygon,
 )
 
 
-def _geofence_snapshot(precinct: Precinct) -> dict:
+def _geofence_snapshot(precinct: Precinct) -> dict[str, Any]:
     """The precinct's state as plain JSON-safe values.
 
     latitude/longitude are Numeric columns, so a loaded row holds Decimal — which is
@@ -53,7 +55,7 @@ def _geofence_snapshot(precinct: Precinct) -> dict:
     the same reason PrecinctRead declares float: a GPS coordinate is at most 10
     significant digits and float64 carries ~15.65.
     """
-    return {
+    snapshot: dict[str, Any] = {
         "name": precinct.name,
         "address": precinct.address,
         "latitude": float(precinct.latitude),
@@ -61,6 +63,14 @@ def _geofence_snapshot(precinct: Precinct) -> dict:
         "geofence_radius_metres": precinct.geofence_radius_metres,
         "is_shared": precinct.is_shared,
     }
+    # Only present when an outline exists, so a circle precinct's anchored payload stays
+    # byte-identical to the one anchored before outlines existed (its hash is pinned in
+    # test_fleet_anchor_payload_pins). diff_critical_fields reads a missing key as None,
+    # so drawing or removing an outline still shows up as a change.
+    if precinct.geofence_polygon is not None:
+        # Already JSON-safe [lat, lng] lists (see schemas.organisations._normalise_polygon).
+        snapshot["geofence_polygon"] = precinct.geofence_polygon
+    return snapshot
 
 
 async def _assert_name_free(
@@ -130,6 +140,7 @@ async def create_precinct(
         latitude=data.latitude,
         longitude=data.longitude,
         geofence_radius_metres=data.geofence_radius_metres,
+        geofence_polygon=data.geofence_polygon,
         is_shared=data.is_shared,
     )
     db.add(precinct)
@@ -190,6 +201,8 @@ def _classify(changed: set[str]) -> PrecinctEventType:
     """
     if {"latitude", "longitude"} & changed:
         return PrecinctEventType.RELOCATED
+    if "geofence_polygon" in changed:
+        return PrecinctEventType.GEOFENCE_RESHAPED
     if "geofence_radius_metres" in changed:
         return PrecinctEventType.GEOFENCE_RESIZED
     if "is_shared" in changed:
@@ -232,6 +245,19 @@ async def update_precinct(
             name=patched["name"],
             exclude_precinct_id=precinct_id,
         )
+
+    # The schema checks pin-vs-outline only when both arrive in one body. A PATCH may move
+    # just one of them, so the check is repeated here on the merged result, before any write.
+    merged_polygon = patched.get("geofence_polygon", precinct.geofence_polygon)
+    if merged_polygon is not None:
+        try:
+            check_pin_fits_polygon(
+                patched.get("latitude", precinct.latitude),
+                patched.get("longitude", precinct.longitude),
+                merged_polygon,
+            )
+        except ValueError as exc:
+            raise InvalidGeofenceError(str(exc)) from exc
 
     old = _geofence_snapshot(precinct)
     for field, value in patched.items():

@@ -22,6 +22,7 @@ const mockNotify = vi.fn()
 const mockStartPhaseSubmission = vi.fn()
 const mockLocationCapture = vi.fn()
 const mockPreviewPhaseLocation = vi.fn()
+const mockUseTripRoute = vi.fn()
 
 const ARRIVAL_CAPTURE = {
   latitude: -26.09421,
@@ -58,6 +59,11 @@ vi.mock('@/lib/hooks/useLocationTrail', () => ({
 vi.mock('@/lib/hooks/useLocation', () => ({
   useLocation: () => ({ capture: () => mockLocationCapture() }),
 }))
+// The fetch has nothing to test here beyond "null or a route" — the ETA maths has its own
+// suite (lib/route/__tests__/eta.test.ts).
+vi.mock('@/lib/hooks/useTripRoute', () => ({
+  useTripRoute: () => mockUseTripRoute(),
+}))
 vi.mock('@/lib/api/phases', () => ({
   previewPhaseLocation: (...args: unknown[]) => mockPreviewPhaseLocation(...args),
 }))
@@ -89,8 +95,10 @@ vi.mock('@/lib/hooks/useMyTrips', () => ({
 }))
 
 vi.mock('@/components/map/DriverMap', () => ({
-  DriverMap: ({ position }: { position: { lat: number; lng: number } | null }) => (
-    <div data-testid="driver-map">{position === null ? 'no-fix' : `${position.lat},${position.lng}`}</div>
+  DriverMap: ({ position, route }: { position: { lat: number; lng: number } | null; route?: readonly unknown[] | null }) => (
+    <div data-testid="driver-map" data-route-points={route?.length ?? 0}>
+      {position === null ? 'no-fix' : `${position.lat},${position.lng}`}
+    </div>
   ),
 }))
 
@@ -205,6 +213,7 @@ beforeEach(() => {
   mockRefetchTrip.mockResolvedValue(null)
   mockLocationCapture.mockResolvedValue(ARRIVAL_CAPTURE)
   mockPreviewPhaseLocation.mockResolvedValue(ARRIVAL_PASS)
+  mockUseTripRoute.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -730,5 +739,61 @@ describe('InTransitPageClient at accessibility text sizes', () => {
 
     const navigate = screen.getByRole('link', { name: /navigate/i })
     expect(navigate.closest('section[aria-label="Your position"]')).not.toBeNull()
+  })
+})
+
+describe('InTransitPageClient planned route ETA', () => {
+  // A straight 100 km leg due south from the fix's latitude, leaving the stop the
+  // in_transit row is anchored to.
+  const LEG = {
+    from_stop_sequence: IN_TRANSIT_PHASE.stop_sequence!,
+    to_stop_sequence: IN_TRANSIT_PHASE.stop_sequence! + 1,
+    distance_metres: 100_000,
+    duration_seconds: 4000,
+    coordinates: Array.from({ length: 11 }, (_, i) => [-26 - i / 10, 28] as [number, number]),
+  }
+  const ROUTE = {
+    trip_id: 'trip-1', provider: 'openrouteservice', profile: 'driving-hgv',
+    distance_metres: 100_000, duration_seconds: 4000, legs: [LEG], computed_at: '2026-10-14T08:00:00Z',
+  }
+
+  beforeEach(() => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, planned_arrival_at: '2026-05-09T17:30:00Z', actual_departure_at: null },
+      isLoading: false, exceptions: [], ...tripStateFields,
+    })
+    mockUseTripRoute.mockReturnValue(ROUTE)
+  })
+
+  it('test_shows_distance_left_and_draws_the_leg_when_on_the_planned_route', async () => {
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    expect(await screen.findByText('50 km to go')).toBeInTheDocument()
+    expect(screen.getByTestId('driver-map')).toHaveAttribute('data-route-points', '11')
+    expect(screen.queryByText('Off planned route')).not.toBeInTheDocument()
+  })
+
+  it('test_falls_back_to_the_planned_arrival_when_off_the_route', async () => {
+    // ~1 km east of the line, with a tight fix.
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28.01, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    expect(await screen.findByText('Off planned route')).toBeInTheDocument()
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument()
+    expect(screen.queryByText(/to go$/)).not.toBeInTheDocument()
+  })
+
+  it('test_draws_no_line_and_keeps_the_planned_eta_without_a_route', async () => {
+    mockUseTripRoute.mockReturnValue(null)
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    await screen.findByText('-26.5,28')
+    expect(screen.getByTestId('driver-map')).toHaveAttribute('data-route-points', '0')
+    expect(screen.queryByText(/to go$/)).not.toBeInTheDocument()
   })
 })
