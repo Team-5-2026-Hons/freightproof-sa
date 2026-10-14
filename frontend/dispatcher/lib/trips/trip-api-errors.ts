@@ -5,6 +5,7 @@
 
 import { ApiError } from '@/lib/api/client'
 import { isRecord } from '@/lib/api/json'
+import type { BusyEntry } from '@shared/lib/types/availability'
 import type { PPManifestPreview } from '@shared/lib/types/pp-manifest'
 
 // ApiError status 0: the client gave up and no HTTP response arrived (client.ts).
@@ -17,6 +18,8 @@ const HTTP_GATEWAY_TIMEOUT = 504
 
 const CODE_MANIFEST_CHANGED = 'MANIFEST_CHANGED'
 const CODE_MANIFEST_ALREADY_ON_TRIP = 'MANIFEST_ALREADY_ON_TRIP'
+// The driver, horse or a trailer is busy in the new trip's window (FP-139).
+const CODE_CREW_UNAVAILABLE = 'CREW_UNAVAILABLE'
 
 const UNEXPECTED = 'Something went wrong. Please try again.'
 const LOOKUP_NO_RESPONSE = 'The manifest system did not answer in time. Try again.'
@@ -51,6 +54,7 @@ export type CreateFailure =
   | { kind: 'no_response' }
   | { kind: 'manifest_changed'; message: string; preview: PPManifestPreview }
   | { kind: 'already_on_trip'; message: string; tripId: string | null; tripReference: string | null }
+  | { kind: 'crew_unavailable'; message: string; clashes: BusyEntry[] }
   | { kind: 'rejected'; message: string }
 
 export function classifyCreateError(err: unknown): CreateFailure {
@@ -70,7 +74,20 @@ export function classifyCreateError(err: unknown): CreateFailure {
       tripReference: stringOrNull(detail.trip_reference),
     }
   }
+  if (err.status === HTTP_CONFLICT && detail?.code === CODE_CREW_UNAVAILABLE) {
+    const clashes = Array.isArray(detail.clashes) ? detail.clashes.filter(isBusyEntry) : []
+    return { kind: 'crew_unavailable', message: err.message, clashes }
+  }
   return { kind: 'rejected', message: err.message }
+}
+
+/** Identity, not every field, for the same reason as isPreview below: the server builds each
+ *  clash with the BusyEntry model the availability read uses. */
+function isBusyEntry(value: unknown): value is BusyEntry {
+  return isRecord(value)
+    && typeof value.resource_id === 'string'
+    && typeof value.trip_reference === 'string'
+    && typeof value.resource_type === 'string'
 }
 
 function stringOrNull(value: unknown): string | null {

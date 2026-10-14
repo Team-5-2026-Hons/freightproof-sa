@@ -14,8 +14,9 @@ export interface ScheduleFieldsProps {
   errors: FieldErrors
 }
 
-/** Planned times, pre-filled from the manifest and editable (spec §11 step 2). They become
- *  required only where the manifest has none. */
+/** Planned times, pre-filled from the manifest and editable (spec §11 step 2). Departure is
+ *  required only where the manifest has none; arrival always is (FP-139), since the
+ *  availability check needs an end. */
 export function ScheduleFields({ overrides, source, onChange, errors }: ScheduleFieldsProps): React.JSX.Element {
   return (
     <div className="mt-[14px] flex flex-col gap-3 sm:flex-row">
@@ -29,7 +30,7 @@ export function ScheduleFields({ overrides, source, onChange, errors }: Schedule
       />
       <TimeField
         label="Expected arrival (SAST)"
-        required={false}
+        required
         override={overrides.arrival}
         source={source.arrival}
         onChange={arrival => onChange({ ...overrides, arrival })}

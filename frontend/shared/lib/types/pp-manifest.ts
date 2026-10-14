@@ -29,6 +29,7 @@ export type PPManifestErrorCode =
   | 'PRECINCT_NOT_AVAILABLE'
   | 'SAME_PRECINCT'
   | 'NO_PLANNED_DEPARTURE'
+  | 'NO_PLANNED_ARRIVAL'
   | 'SCHEDULE_INVALID'
 
 export interface PPManifestWarning {

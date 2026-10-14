@@ -65,6 +65,18 @@ describe('classifyCreateError', () => {
     })
   })
 
+  it('carries every crew clash of a 409 CREW_UNAVAILABLE, and drops a malformed one', () => {
+    const clash = {
+      resource_type: 'horse', resource_id: 'h-1', label: 'CA 441 892', trip_id: 't-1', trip_reference: 'TRP-0038',
+      trip_status: 'created', busy_from: '2026-10-16T06:00:00Z', busy_until: '2026-10-16T14:00:00Z',
+      planned_until: '2026-10-16T14:00:00Z',
+    }
+    const message = 'Horse CA 441 892 is on TRP-0038 until Fri 16 Oct, 16:00. Pick another horse, or move this departure.'
+    const err = new ApiError(409, message, { code: 'CREW_UNAVAILABLE', message, clashes: [clash, { nonsense: true }] })
+
+    expect(classifyCreateError(err)).toEqual({ kind: 'crew_unavailable', message, clashes: [clash] })
+  })
+
   it('keeps a lost race whose winner rolled back as already_on_trip with no trip', () => {
     const err = new ApiError(409, 'This manifest is already on trip.', {
       code: 'MANIFEST_ALREADY_ON_TRIP', message: 'This manifest is already on trip.', trip_id: null, trip_reference: null,

@@ -21,11 +21,12 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
   createTripFromPPManifest: vi.fn(),
   createTrip: vi.fn(),
   findLiveTripForManifest: vi.fn(),
+  getCrewAvailability: vi.fn(),
 }))
 
 import TripNewPage from './page'
 import {
-  ApiError, createTrip, createTripFromPPManifest, findLiveTripForManifest, previewPPManifest,
+  ApiError, createTrip, createTripFromPPManifest, findLiveTripForManifest, getCrewAvailability, previewPPManifest,
 } from '@/lib/api/client'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { useDrivers } from '@/lib/hooks/useDrivers'
@@ -54,6 +55,8 @@ beforeEach(() => {
     horses: mockHorses, trailers: [], all: mockHorses, isLoading: false, error: null, refetch: vi.fn(),
   })
   vi.mocked(usePrecincts).mockReturnValue({ precincts: mockPrecincts, isLoading: false, error: null, refetch: vi.fn() })
+  // Nobody busy unless a test says otherwise (FP-142).
+  vi.mocked(getCrewAvailability).mockImplementation(async (start, end) => ({ start, end, busy: [] }))
 })
 
 function renderPage(): void {
@@ -129,12 +132,15 @@ describe('Create Trip: from a manifest', () => {
 
     expect(await screen.findByText('Choose the precinct for hub DUR.')).toBeInTheDocument()
     expect(screen.getByText('Enter a planned departure.')).toBeInTheDocument()
+    // Required even when the manifest has none (FP-139): the availability check needs an end.
+    expect(screen.getByText('Enter a planned arrival.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: CONFIRM })).not.toBeInTheDocument()
     // The CTA is in the sticky summary: the dispatcher is taken to the first field to fix.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Destination precinct' })).toHaveFocus())
 
     pick('Destination precinct', /Courier Guy JHB/)
     fireEvent.change(screen.getByLabelText(/Planned departure/), { target: { value: '2026-10-02T18:00' } })
+    fireEvent.change(screen.getByLabelText(/Expected arrival/), { target: { value: '2026-10-03T06:00' } })
     await create()
 
     await waitFor(() => expect(createTripFromPPManifest).toHaveBeenCalled())
@@ -142,6 +148,7 @@ describe('Create Trip: from a manifest', () => {
     expect(payload.destination_precinct_id).toBe(PRECINCT_CGY_JHB_ID)
     expect(payload.origin_precinct_id).toBeNull()
     expect(payload.planned_departure_at).toBe('2026-10-02T16:00:00.000Z')
+    expect(payload.planned_arrival_at).toBe('2026-10-03T04:00:00.000Z')
   })
 
   it('refuses a blocked manifest and asks for nothing else', async () => {
@@ -392,6 +399,7 @@ describe('Create Trip: empty leg', () => {
     pick('Origin precinct', /FedEx JHB/)
     pick('Destination precinct', /FedEx DBN/)
     fireEvent.change(screen.getByLabelText(/Planned departure/), { target: { value: '2026-10-02T18:00' } })
+    fireEvent.change(screen.getByLabelText(/Expected arrival/), { target: { value: '2026-10-03T06:00' } })
     chooseCrew()
     await create()
 
@@ -404,7 +412,7 @@ describe('Create Trip: empty leg', () => {
       destination_precinct_id: PRECINCT_FEDEX_DBN_ID,
       consignments: [],
       planned_departure_at: '2026-10-02T16:00:00.000Z',
-      planned_arrival_at: null,
+      planned_arrival_at: '2026-10-03T04:00:00.000Z',
     }))
     expect(nav.push).toHaveBeenCalledWith(ROUTES.tripDetail('trip-empty'))
   })
@@ -416,6 +424,7 @@ describe('Create Trip: empty leg', () => {
     pick('Origin precinct', /FedEx JHB/)
     pick('Destination precinct', /FedEx DBN/)
     fireEvent.change(screen.getByLabelText(/Planned departure/), { target: { value: '2026-10-02T18:00' } })
+    fireEvent.change(screen.getByLabelText(/Expected arrival/), { target: { value: '2026-10-03T06:00' } })
     chooseCrew()
 
     await create()
@@ -423,5 +432,50 @@ describe('Create Trip: empty leg', () => {
     expect(await screen.findByText(/not known whether the empty leg was created/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open Active trips/ })).toHaveAttribute('href', ROUTES.home)
     expect(findLiveTripForManifest).not.toHaveBeenCalled()
+  })
+})
+
+describe('Create Trip: who is free (FP-142)', () => {
+  function startEmptyLeg(): void {
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Empty leg (no manifest)' }))
+    pick('Origin precinct', /FedEx JHB/)
+    pick('Destination precinct', /FedEx DBN/)
+    fireEvent.change(screen.getByLabelText(/Planned departure/), { target: { value: '2026-10-02T18:00' } })
+    fireEvent.change(screen.getByLabelText(/Expected arrival/), { target: { value: '2026-10-03T06:00' } })
+  }
+
+  it('asks who is busy in the entered window and greys out a busy horse', async () => {
+    vi.mocked(getCrewAvailability).mockImplementation(async (start, end) => ({
+      start, end,
+      busy: [{
+        resource_type: 'horse', resource_id: HORSE_ID, label: mockHorses[0].registration, trip_id: 't-1',
+        trip_reference: 'TRP-0038', trip_status: 'created', busy_from: '2026-10-02T14:00:00Z',
+        busy_until: '2026-10-03T14:00:00Z', planned_until: '2026-10-03T14:00:00Z',
+      }],
+    }))
+    startEmptyLeg()
+
+    await waitFor(() => expect(getCrewAvailability).toHaveBeenCalledWith(
+      '2026-10-02T16:00:00.000Z', '2026-10-03T04:00:00.000Z',
+    ))
+    fireEvent.click(screen.getByRole('button', { name: 'Horse' }))
+
+    const option = await screen.findByRole('button', { name: /GP 12-34 ZX/ })
+    await waitFor(() => expect(option).toBeDisabled())
+    expect(option).toHaveTextContent('On TRP-0038 · free after Sat 3 Oct, 16:00')
+  })
+
+  it('shows the server\'s refusal when a create loses a crew race, and asks again who is busy', async () => {
+    const message = 'Horse GP 12-34 ZX is on TRP-0041 until Sat 3 Oct, 16:00. Pick another horse, or move this departure.'
+    vi.mocked(createTrip).mockRejectedValue(new ApiError(409, message, { code: 'CREW_UNAVAILABLE', message, clashes: [] }))
+    startEmptyLeg()
+    chooseCrew()
+    await waitFor(() => expect(getCrewAvailability).toHaveBeenCalledTimes(1))
+
+    await create()
+
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    await waitFor(() => expect(getCrewAvailability).toHaveBeenCalledTimes(2))
   })
 })

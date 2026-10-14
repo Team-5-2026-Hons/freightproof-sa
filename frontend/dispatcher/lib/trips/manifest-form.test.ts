@@ -77,8 +77,15 @@ describe('validation', () => {
     expect(validateCrew(CREW, true)).toEqual({})
   })
 
-  it('always needs a planned departure', () => {
-    expect(validateSchedule(NO_TIMES, NO_TIMES)).toEqual({ departure: 'Enter a planned departure.' })
+  it('always needs a planned departure and a planned arrival', () => {
+    expect(validateSchedule(NO_TIMES, NO_TIMES)).toEqual({
+      departure: 'Enter a planned departure.', arrival: 'Enter a planned arrival.',
+    })
+  })
+
+  it('needs an arrival even when the departure is entered (FP-139)', () => {
+    expect(validateSchedule({ departure: '2026-10-02T18:00', arrival: '' }, NO_TIMES))
+      .toEqual({ arrival: 'Enter a planned arrival.' })
   })
 
   it('refuses to drop an arrival the manifest supplies', () => {

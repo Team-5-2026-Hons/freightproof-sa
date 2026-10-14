@@ -5,6 +5,7 @@
 import { supabase, getAccessToken } from '@/lib/supabase/client'
 import { isRecord } from '@/lib/api/json'
 import type { Trip, TripCreatePayload, TripStatus } from '@shared/lib/types/trip'
+import type { CrewAvailability } from '@shared/lib/types/availability'
 import type { PPManifestPreview, PPManifestRef, TripFromPPManifestPayload } from '@shared/lib/types/pp-manifest'
 import type { TripException, DispatcherReviewOutcome, ExceptionContactMethod } from '@shared/lib/types/exception'
 
@@ -302,6 +303,13 @@ export function createTripFromPPManifest(payload: TripFromPPManifestPayload): Pr
 /** POST /trips: the explicit path, which the screen uses for empty legs (spec §10.3). */
 export function createTrip(payload: TripCreatePayload): Promise<Trip> {
   return api.post<Trip>('/api/v1/trips', payload, { timeoutMs: TRIP_CREATE_TIMEOUT_MS })
+}
+
+/** GET /trips/availability: every driver, horse and trailer busy in [start, end), with the trip
+ *  holding it and until when (FP-142). Read-only; the same rule trip creation refuses with. */
+export function getCrewAvailability(startIso: string, endIso: string): Promise<CrewAvailability> {
+  const query = new URLSearchParams({ start: startIso, end: endIso })
+  return api.get<CrewAvailability>(`/api/v1/trips/availability?${query.toString()}`)
 }
 
 // Only what the retry lookup reads; the full row is TripSummary.
