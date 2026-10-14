@@ -16,21 +16,24 @@ const CONFLICT_TOAST_TITLE = 'A colleague got there first'
 
 interface Props {
   tripId: string
-  tripReference?: string
   /** The rows eligible when the form opens. The caller decides eligibility; the form
    *  snapshots them on mount and sends exactly those ids, so a warning raised while the
    *  dispatcher is typing is never swept into a review they did not see. */
   exceptions: TripException[]
+  /** Other unreviewed records in view that this batch leaves out (critical, or a colleague's claim),
+   *  so the dispatcher knows why "16 need review" became "Review 15". */
+  excludedCount?: number
   onDone: () => void
   onCancel: () => void
 }
 
 /** One note and outcome applied to a trip's non-critical, unreviewed exceptions. */
-export function BatchReviewForm({ tripId, tripReference, exceptions: liveExceptions, onDone, onCancel }: Props) {
+export function BatchReviewForm({ tripId, exceptions: liveExceptions, excludedCount: liveExcludedCount = 0, onDone, onCancel }: Props) {
   const { notify } = useToast()
   // Frozen at mount: the parent's list is live (realtime refetches), but what the
   // dispatcher confirms must be the list they read when they opened the form.
   const [exceptions] = useState(liveExceptions)
+  const [excludedCount] = useState(liveExcludedCount)
   const [note, setNote] = useState('')
   const [outcome, setOutcome] = useState<DispatcherReviewOutcome | typeof NO_OUTCOME_CHOSEN>(NO_OUTCOME_CHOSEN)
   const [contact, setContact] = useState<ExceptionContactMethod | typeof NO_CONTACT_CHOSEN>(NO_CONTACT_CHOSEN)
@@ -38,6 +41,11 @@ export function BatchReviewForm({ tripId, tripReference, exceptions: liveExcepti
 
   const count = exceptions.length
   const noun = count === 1 ? 'exception' : 'exceptions'
+  // "Driver–vehicle separation × 6 · GPS mismatch × 3": what the dispatcher is signing for, at a
+  // glance. A Map keeps the types in the order the list arrived (the panel's sort).
+  const typeCounts = new Map<string, number>()
+  for (const x of exceptions) typeCounts.set(fmtExceptionType(x.exception_type), (typeCounts.get(fmtExceptionType(x.exception_type)) ?? 0) + 1)
+  const summary = [...typeCounts].map(([label, n]) => `${label} × ${n}`).join(' · ')
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -75,12 +83,19 @@ export function BatchReviewForm({ tripId, tripReference, exceptions: liveExcepti
   return (
     <form onSubmit={handleSubmit} className="mb-4 flex flex-col gap-4 rounded-lg border border-outline-v/30 bg-surf-lowest p-4">
       <div>
-        <p className="text-sm font-semibold text-on-surf">Review {count} {noun} with one note</p><p className="mt-2 text-xs text-on-surf-v break-all">Trip {tripReference ?? exceptions[0]?.trip_reference ?? tripId} · These {count} listed records only. New arrivals are excluded. Limit {EXCEPTION_BATCH_LIMIT}.</p>
-        <ul className="mt-2 space-y-1 text-xs text-on-surf-v">
-          {exceptions.map(x => (
-            <li key={x.id}>{fmtExceptionType(x.exception_type)} · {fmtExceptionRaised(x.created_at)}<span className="block break-all tabular-nums">Record {x.id}</span></li>
-          ))}
-        </ul>
+        <p className="text-sm font-semibold text-on-surf">Review {count} {noun} with one note</p>
+        <p className="mt-1 text-xs text-on-surf-v">These {count} {noun} get the same outcome and note. Anything raised after you opened this is not included.</p>
+        <p className="mt-2 text-sm text-on-surf">{summary}</p>
+        {/* The full list stays one click away: what is sent is exactly this snapshot, so it must be inspectable. */}
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer font-semibold text-sec">Show all {count}</summary>
+          <ul className="mt-2 space-y-1 text-on-surf-v">
+            {exceptions.map(x => <li key={x.id}>{fmtExceptionType(x.exception_type)} · {fmtExceptionRaised(x.created_at)}</li>)}
+          </ul>
+        </details>
+        {excludedCount > 0 && <p className="mt-2 text-xs text-on-surf-v">
+          {excludedCount} other unreviewed {excludedCount === 1 ? 'record is' : 'records are'} not included: critical, or claimed by a colleague.
+        </p>}
       </div>
       <ReviewFields idPrefix={`batch-${tripId}`}
         note={note}       onNote={setNote}

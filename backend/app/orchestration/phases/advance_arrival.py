@@ -4,7 +4,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.enums import ExceptionSeverity, ExceptionType, PhaseStatus, SealCondition
+from app.db.models.enums import EvidenceRole, ExceptionSeverity, ExceptionType, PhaseStatus, SealCondition
 from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.artifacts import _assert_artifacts_belong_to_trip
@@ -54,7 +54,7 @@ async def advance_arrival(
     )
 
     artifact_hashes = await _assert_artifacts_belong_to_trip(
-        db, trip_id=trip_id, artifact_ids=(payload.seal_photo_artifact_id,),
+        db, trip_id=trip_id, phase_event_id=event.id, cited={EvidenceRole.SEAL_PHOTO: payload.seal_photo_artifact_id},
     )
 
     # None only when the seal is MISSING (the schema requires a number otherwise).

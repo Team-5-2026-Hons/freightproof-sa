@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import compute_payload_hash
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    BlockchainReceiptType, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
+    BlockchainReceiptType, EvidenceRole, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
 )
 from app.db.models.transit import TripException
 from app.orchestration.evidence import corroboration
@@ -46,8 +46,8 @@ async def advance_departure(
     # DepartureCompleteRequest); the helper skips None entries, so a replayed offline
     # entry that still carries one is checked exactly as before.
     artifact_hashes = await _assert_artifacts_belong_to_trip(
-        db, trip_id=trip_id,
-        artifact_ids=(payload.waybill_photo_artifact_id, payload.seal_photo_artifact_id),
+        db, trip_id=trip_id, phase_event_id=event.id,
+        cited={EvidenceRole.WAYBILL_PHOTO: payload.waybill_photo_artifact_id, EvidenceRole.SEAL_PHOTO: payload.seal_photo_artifact_id},
     )
 
     # The seal is applied HERE now, not at loading.

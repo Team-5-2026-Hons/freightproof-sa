@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { api, ApiError } from '@/lib/api/client'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
+import type { RealtimeKind } from '@/lib/realtime/types'
 import { registerSessionCache } from '@/lib/cache/sessionCache'
 
 const REQUEST_TIMEOUT_MS = 25_000
@@ -162,8 +163,17 @@ function load<T>(key: string, entry: Entry<T>, force: boolean): Promise<void> {
   return request
 }
 
-/** Trip-only loading policy: keep evidence visible and never apply obsolete responses. */
-export function useTripResource<T>(tripId: string, suffix: string, initial: T): TripResourceState<T> {
+/**
+ * Trip-only loading policy: keep evidence visible and never apply obsolete responses.
+ * `kinds` limits which live events refresh this resource (all kinds when omitted); a
+ * reconnect refetches regardless, because it is the only recovery for a missed event.
+ */
+export function useTripResource<T>(
+  tripId: string,
+  suffix: string,
+  initial: T,
+  kinds?: readonly RealtimeKind[],
+): TripResourceState<T> {
   const key = `/api/v1/trips/${tripId}${suffix}`
   // Every callback below closes over an entry, so all need rebuilding when the cache empties.
   const cacheGeneration = useSyncExternalStore(subscribeGeneration, getGeneration, getGeneration)
@@ -203,7 +213,7 @@ export function useTripResource<T>(tripId: string, suffix: string, initial: T): 
       void load(key, current, true)
     }, LIVE_REFRESH_DELAY_MS)
   }, [key, resolveEntry])
-  useLiveResource('trip', tripId, scheduleRefresh)
+  useLiveResource('trip', tripId, scheduleRefresh, { kinds })
 
   return { ...state, refetch, refetchSilent: refetch }
 }

@@ -10,6 +10,7 @@ interface Props {
   // Undefined when the stop or precinct cannot be resolved — distances are then omitted.
   precinct: Precinct | undefined
   title?: string
+  showCoordinates?: boolean
 }
 
 /**
@@ -17,7 +18,7 @@ interface Props {
  * geofence verdict stored by the backend rather than recomputing it against the
  * current precinct boundary — see `locationEvidenceForPhase`.
  */
-export function PhaseLocationSection({ phase, precinct, title = 'Observed location' }: Props) {
+export function PhaseLocationSection({ phase, precinct, title = 'Observed location', showCoordinates = true }: Props) {
   const evidence = locationEvidenceForPhase(phase, precinct)
   const contextLabel = precinct
     ? `${PHASE_NAMES[phase.phase_type]} at ${precinct.name}`
@@ -25,7 +26,7 @@ export function PhaseLocationSection({ phase, precinct, title = 'Observed locati
 
   return (
     <Section title={title}>
-      <LocationEvidencePanel evidence={evidence} contextLabel={contextLabel} />
+      <LocationEvidencePanel evidence={evidence} contextLabel={contextLabel} showCoordinates={showCoordinates} />
     </Section>
   )
 }

@@ -586,6 +586,80 @@ describe('submitPhase — photos uploaded at capture', () => {
   })
 })
 
+describe('submitPhase — attribution', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('fallback upload carries the phase and role', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockResolvedValue({ id: 'late-artifact', file_hash: 'h' })
+
+    await submitPhase('trip-1', 'phase-loading', 'loading', {
+      ...LOADING_EVIDENCE,
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,GGGG',
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+    await submitPhase('trip-1', 'phase-departure', 'departure', DEPARTURE_EVIDENCE,
+      IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+    await submitPhase('trip-1', 'phase-arrival', 'arrival', ARRIVAL_EVIDENCE,
+      IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+    await submitPhase('trip-1', 'phase-confirmation', 'confirmation', CONFIRMATION_EVIDENCE,
+      IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    const attributions = mockUploadArtifact.mock.calls.map(
+      ([params]) => (params as { attribution: unknown }).attribution,
+    )
+    expect(attributions).toEqual([
+      { phaseEventId: 'phase-loading', role: 'linehaul_photo' },
+      { phaseEventId: 'phase-departure', role: 'seal_photo' },
+      { phaseEventId: 'phase-arrival', role: 'seal_photo' },
+      { phaseEventId: 'phase-confirmation', role: 'pod_photo' },
+    ])
+  })
+
+  it('ready id skips the upload', async () => {
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    await submitPhase('trip-1', 'phase-confirmation', 'confirmation', {
+      ...CONFIRMATION_EVIDENCE,
+      podPhotoArtifactId: 'ready-pod-photo',
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        pod_photo_artifact_id: 'ready-pod-photo',
+        // Passed through unchanged: it is the receiver's artifact, never re-uploaded.
+        pod_signature_artifact_id: 'receiver-signature-artifact',
+      }),
+      expect.anything(),
+    )
+  })
+
+  it('queued replay uploads with attribution', async () => {
+    // A queue entry stores the phase event id beside its draft, and flush passes it to
+    // submitPhase; a legacy waybill photo must be attributed with its own role.
+    const { submitPhase } = await import('../phases')
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact
+      .mockResolvedValueOnce({ id: 'legacy-waybill', file_hash: 'h1' })
+      .mockResolvedValueOnce({ id: 'late-seal', file_hash: 'h2' })
+
+    await submitPhase(
+      'trip-1', 'queued-phase', 'departure',
+      LEGACY_QUEUED_DEPARTURE_EVIDENCE, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT,
+    )
+
+    expect(mockUploadArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      attribution: { phaseEventId: 'queued-phase', role: 'waybill_photo' },
+    }))
+    expect(mockUploadArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      attribution: { phaseEventId: 'queued-phase', role: 'seal_photo' },
+    }))
+  })
+})
+
 describe('submitPhase — in_transit (arrival attestation)', () => {
   beforeEach(() => {
     vi.clearAllMocks()

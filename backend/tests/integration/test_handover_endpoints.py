@@ -21,15 +21,18 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import realtime
 from app.core.config import settings
 from app.db.models.enums import (
     AnchorStatus,
+    EvidenceRole,
     HandoverTokenRejectionReason,
     IdvsStatus,
     PhaseStatus,
     PhaseType,
     TripStatus,
 )
+from app.db.models.evidence import EvidenceArtifact
 from app.db.models.handover import HandoverCapabilityToken, HandoverTokenAttempt
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Consignment, Trip, TripStop
@@ -592,3 +595,43 @@ async def test_confirming_when_the_commit_fails_is_a_500_after_a_rollback(
     assert res.json()["detail"] == "Could not record the confirmation."
     assert (spy.commits, spy.rollbacks) == (1, 1)
     assert "Failed to record a handover confirmation" in caplog.text
+
+
+async def test_receiver_confirmation_image_is_attributed_to_its_phase(
+    client, db_session, handover_trip, driver_auth,
+):
+    """The server stamps the phase and role from the redeemed token, so "Receiver confirmed
+    delivery" can only ever be said of an image this route stored."""
+    event = handover_trip["event"]
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    assert confirmed.status_code == 201
+    status = await client.get(
+        f"/api/v1/trips/{handover_trip['trip'].id}/phases/{event.id}/handover", headers=driver_auth,
+    )
+    artifact = await db_session.get(EvidenceArtifact, uuid.UUID(status.json()["signature_artifact_id"]))
+    assert artifact is not None
+    assert artifact.phase_event_id == event.id
+    assert artifact.evidence_role == EvidenceRole.POD_SIGNATURE
+    assert artifact.captured_by_driver_id is None
+
+
+async def test_receiver_confirmation_enqueues_evidence_event(
+    client, handover_trip, driver_auth, monkeypatch,
+):
+    published: list[tuple[uuid.UUID, realtime.TripEvent]] = []
+    monkeypatch.setattr(realtime, "_schedule_publish", lambda org_id, event: published.append((org_id, event)))
+    trip = handover_trip["trip"]
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    uploaded = [
+        (org_id, event) for org_id, event in published
+        if event.kind == realtime.RealtimeKind.EVIDENCE_UPLOADED
+    ]
+    assert [(org_id, event.id) for org_id, event in uploaded] == [(trip.operator_organization_id, trip.id)]

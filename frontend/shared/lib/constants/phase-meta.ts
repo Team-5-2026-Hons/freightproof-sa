@@ -2,6 +2,7 @@
 // times a type occurs in a trip is DATA (generated at trip creation), only the recipe is
 // static. Keying by type lets one plan contain `loading` twice (cross-dock case).
 
+import type { EvidenceRole } from '@shared/lib/types/evidence'
 import type { PhaseType } from '@shared/lib/types/phase'
 
 export const PHASE_NAMES: Record<PhaseType, string> = {
@@ -55,3 +56,41 @@ export const STEP_NAMES: Record<PhaseType, readonly string[]> = {
 // that a receipt is still owed. Derived from PHASE_NAMES (a Record over every PhaseType) so a
 // new phase type is anchored by default rather than silently left out.
 export const ANCHORED_PHASES: readonly PhaseType[] = Object.keys(PHASE_NAMES) as PhaseType[]
+
+// Evidence roles a capture may be attributed to, per phase TYPE. Mirrored by
+// backend/app/core/phase_meta.py; tests/unit/test_phase_meta_contract.py parses this block.
+export const EVIDENCE_ROLES: Record<PhaseType, readonly EvidenceRole[]> = {
+  trip_creation: [],
+  activation: [],
+  loading: ['linehaul_photo'],
+  departure: ['seal_photo', 'waybill_photo'],
+  in_transit: [],
+  arrival: ['seal_photo'],
+  unloading: [],
+  confirmation: ['pod_photo', 'pod_signature'],
+}
+
+// The phase column that records each role's submitted copy.
+export const EVIDENCE_ROLE_FIELD: Record<
+  EvidenceRole,
+  | 'linehaul_photo_artifact_id'
+  | 'seal_photo_artifact_id'
+  | 'waybill_photo_artifact_id'
+  | 'pod_photo_artifact_id'
+  | 'pod_signature_artifact_id'
+> = {
+  linehaul_photo: 'linehaul_photo_artifact_id',
+  seal_photo: 'seal_photo_artifact_id',
+  waybill_photo: 'waybill_photo_artifact_id',
+  pod_photo: 'pod_photo_artifact_id',
+  pod_signature: 'pod_signature_artifact_id',
+}
+
+// Singular noun for "Expected: …" rows; never claims anything is missing.
+export const EVIDENCE_ROLE_NOUN: Record<EvidenceRole, string> = {
+  linehaul_photo: 'linehaul sheet photo',
+  seal_photo: 'seal photo',
+  waybill_photo: 'waybill photo',
+  pod_photo: 'proof-of-delivery photo',
+  pod_signature: 'receiver confirmation',
+}

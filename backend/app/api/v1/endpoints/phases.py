@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
 from app.core.exceptions import (
+    EvidenceAttributionError,
     PhaseBlockedError,
     PhaseSequenceError,
     PhaseTooEarlyError,
@@ -159,6 +160,10 @@ async def complete_phase_endpoint(
         # verbatim, so the date reaches the person who needs it. TripActivationBlockedError
         # is here for the same reason, and names the trip standing in the way.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except EvidenceAttributionError as exc:
+        # A cited artifact contradicts its field: a request fault, unlike the sequence
+        # conflicts above, so 422. Raised before any evidence is written.
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except SQLAlchemyError as exc:
         # Matches trips.py's create_trip_endpoint exactly — same status constant,
         # same generic detail string, same logger.exception (not .error) so the

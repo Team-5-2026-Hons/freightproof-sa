@@ -35,7 +35,7 @@ function pack(overrides: Partial<AuditPack> = {}): AuditPack {
 }
 
 function renderPanel(onIssue = vi.fn(), onDeclare = vi.fn()) {
-  render(<ToastProvider><AuditPacksPanel tripId="trip-1" tripReference="TRP-0042" onIssue={onIssue} onDeclare={onDeclare} /></ToastProvider>)
+  render(<ToastProvider><AuditPacksPanel tripId="trip-1" tripReference="TRP-0042" headingId="audit-heading" onIssue={onIssue} onDeclare={onDeclare} /></ToastProvider>)
   return { onIssue, onDeclare }
 }
 
@@ -59,7 +59,18 @@ describe('AuditPacksPanel', () => {
     expect(await screen.findByText('TRP-0042-AP1')).toBeInTheDocument()
     expect(screen.getByText(/Jane Adjuster, Santam Claims · Insurance claim · ref CLM-88123/)).toBeInTheDocument()
     expect(screen.getByText(/Sealed on Hedera/)).toBeInTheDocument()
-    expect(screen.getByText(/opened 2×/)).toBeInTheDocument()
+    expect(screen.getByText(/Opened 2×/)).toBeInTheDocument()
+  })
+
+  it('heads the section with its own actions and keeps the label legend behind a disclosure', async () => {
+    vi.mocked(listAuditPacks).mockResolvedValue([])
+    renderPanel()
+
+    const heading = await screen.findByRole('heading', { name: 'Audit packs' })
+    expect(heading).toHaveAttribute('id', 'audit-heading')
+    // The loud black primary is gone: issuing is a secondary action next to the heading.
+    expect(screen.getByRole('button', { name: 'Issue audit pack' })).toHaveClass('bg-surf-high')
+    expect(screen.getByText('How facts are labelled').closest('details')).not.toHaveAttribute('open')
   })
 
   it('says when no packs exist yet', async () => {
@@ -140,6 +151,16 @@ describe('AuditPacksPanel — police & notifications', () => {
     const section = await screen.findByRole('region', { name: 'Police and notifications' })
     expect(await within(section).findByText('CAS 123/09/2026')).toBeInTheDocument()
     expect(within(section).getByText(/Harrismith SAPS/)).toBeInTheDocument()
+  })
+
+  it('shows the missing case number as a row, not a nested card', async () => {
+    vi.mocked(listAuditPacks).mockResolvedValue([])
+    renderPanel()
+
+    const section = await screen.findByRole('region', { name: 'Police and notifications' })
+    expect(within(section).getByText('SAPS case no.')).toBeInTheDocument()
+    expect(within(section).getByText('Not recorded')).toBeInTheDocument()
+    expect(within(section).getByText(/Insurers will ask/)).toBeInTheDocument()
   })
 
   it('opens the declaration dialog through its callback', async () => {

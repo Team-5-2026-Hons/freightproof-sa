@@ -436,6 +436,12 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
             assert receiver_artifact.file_hash == hashlib.sha256(signature_bytes).hexdigest()
         else:
             signature_id = await upload("signature")
+            # Completion rejects a driver's own upload as the receiver confirmation (D8b), so
+            # this case models an image with no driver id, as a pre-attribution receiver image
+            # is. What it exercises is anchoring and verification, not who produced the image.
+            legacy_signature = await db_session.get(EvidenceArtifact, uuid.UUID(signature_id))
+            legacy_signature.captured_by_driver_id = None
+            await db_session.flush()
         event_id = await complete("confirmation", {
             "pod_photo_artifact_id": selected_artifact_id,
             "pod_signature_artifact_id": signature_id,

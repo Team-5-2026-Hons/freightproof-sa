@@ -64,3 +64,38 @@ describe('uploadArtifact pre-upload size check (audit fix)', () => {
     expect(result).toEqual({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
   })
 })
+
+describe('uploadArtifact attribution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    stubFetchedBlobOfSize(1024)
+    mockPostForm.mockResolvedValue({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function sentForm(): FormData {
+    return mockPostForm.mock.calls[0][1] as FormData
+  }
+
+  it('sends both attribution fields or neither', async () => {
+    await uploadArtifact({
+      ...PARAMS,
+      attribution: { phaseEventId: 'phase-1', role: 'seal_photo' },
+    })
+    const attributed = sentForm()
+
+    mockPostForm.mockClear()
+    await uploadArtifact(PARAMS)
+    const unattributed = sentForm()
+
+    expect(attributed.get('phase_event_id')).toBe('phase-1')
+    expect(attributed.get('evidence_role')).toBe('seal_photo')
+    // An older-style call must stay byte-compatible with what the backend already accepts:
+    // a lone field would 422, so the unattributed form carries neither.
+    expect(unattributed.has('phase_event_id')).toBe(false)
+    expect(unattributed.has('evidence_role')).toBe(false)
+  })
+})

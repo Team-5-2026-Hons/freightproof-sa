@@ -3,6 +3,7 @@
 import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Chip, type ChipType } from '@/components/ui/Chip'
+import { InfoRow } from '@/components/ui/InfoRow'
 import { useToast } from '@/lib/hooks/useToast'
 import { useAuditPacks } from '@/lib/hooks/useAuditPacks'
 import { ApiError } from '@/lib/api/client'
@@ -46,12 +47,14 @@ function purposeLabel(value: string): string {
 interface Props {
   tripId: string
   tripReference: string
+  /** The caller's region is labelled by this heading, so the heading is rendered here, beside the actions. */
+  headingId: string
   onIssue: () => void
   onDeclare: () => void
 }
 
 /** The caller re-keys this panel after an issue so it remounts and refetches the list. */
-export function AuditPacksPanel({ tripId, tripReference, onIssue, onDeclare }: Props) {
+export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onDeclare }: Props) {
   const { notify } = useToast()
   const { data: packs, isLoading, error, refetchSilent } = useAuditPacks(tripId)
   const [busy, setBusy] = useState<string | null>(null)
@@ -86,36 +89,20 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onDeclare }: P
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[13px] leading-relaxed text-on-surf-v">
-        An audit pack is a sealed, shareable record of this trip for an insurer, loss adjuster, client or SAPS. Each fact is
-        labelled Anchored, Corroborated, Recorded or Declared so nothing claims more than the evidence supports.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={onIssue}>Issue audit pack</Button>
-        <Button size="sm" variant="secondary" loading={busy === 'preview'} onClick={preview}>Preview PDF</Button>
-      </div>
-
-      <section aria-label="Police and notifications" className="rounded-lg bg-surf-low p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-[13px] font-extrabold">Police &amp; notifications</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="secondary" onClick={onDeclare}>Record police details</Button>
-            <Button size="sm" variant="ghost" loading={busy === 'sheet'} onClick={sheet}>Incident fact sheet</Button>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id={headingId} className="text-sm font-bold text-on-surf">Audit packs</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="ghost" loading={busy === 'preview'} onClick={preview}>Preview PDF</Button>
+          <Button size="sm" variant="secondary" onClick={onIssue}>Issue audit pack</Button>
         </div>
-        {declarations.data.length === 0 && !declarations.isLoading && (
-          <p className="mt-1 text-[12px] text-on-surf-v">Nothing declared yet. Insurers will ask for the SAPS station and case number.</p>
-        )}
-        <ul className="mt-2 flex flex-col gap-1 text-[12px]">
-          {declarations.data.map(d => (
-            <li key={d.declaration_id}>
-              {d.saps_cas_number ? <span className="font-semibold">CAS {d.saps_cas_number}</span> : <span className="font-semibold">Notification times</span>}
-              {d.saps_station && ` · ${d.saps_station}`}
-              <span className="text-on-surf-v"> · declared {when(d.declared_at)}{d.declared_by_name ? ` by ${d.declared_by_name}` : ''}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      </div>
+      <div className="text-[13px] leading-relaxed text-on-surf-v">
+        <p>A sealed, shareable record of this trip for an insurer, loss adjuster, client or SAPS.</p>
+        <details className="mt-1">
+          <summary className="cursor-pointer font-semibold text-sec">How facts are labelled</summary>
+          <p className="mt-2">Each fact is labelled Anchored, Corroborated, Recorded or Declared so nothing claims more than the evidence supports.</p>
+        </details>
+      </div>
 
       {isLoading && <p className="text-[13px] text-on-surf-v">Loading audit packs…</p>}
       {error && <p role="status" className="text-[13px] text-err">{forbidden ? 'Only admin dispatchers can see and issue audit packs.' : error}</p>}
@@ -137,9 +124,13 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onDeclare }: P
               <p className="mt-0.5 text-[12px] text-on-surf-v">
                 Issued {when(pack.issued_at)} · {pack.revoked_at ? `revoked ${when(pack.revoked_at)}` : `expires ${when(pack.expires_at)}`}
               </p>
+              <p className="mt-0.5 flex min-w-0 gap-1 text-[12px] text-on-surf-v">
+                {pack.anchor_status === 'anchored'
+                  ? <><span className="shrink-0">Sealed on Hedera ·</span><span className="truncate" title={pack.hedera_tx_id ?? undefined}>{pack.hedera_tx_id ?? ''}</span></>
+                  : <span>Not sealed on Hedera</span>}
+              </p>
               <p className="mt-0.5 text-[12px] text-on-surf-v">
-                {pack.anchor_status === 'anchored' ? `Sealed on Hedera · ${pack.hedera_tx_id ?? ''}` : 'Not sealed on Hedera'} ·{' '}
-                {pack.view_count === 0 ? 'not opened yet' : `opened ${pack.view_count}× · last ${when(pack.last_viewed_at)}`}
+                {pack.view_count === 0 ? 'Not opened yet' : `Opened ${pack.view_count}× · last ${when(pack.last_viewed_at)}`}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" loading={busy === `pdf-${pack.id}`} onClick={() => download(pack)}>PDF</Button>
@@ -163,6 +154,27 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onDeclare }: P
           )
         })}
       </ul>
+
+      <section aria-label="Police and notifications" className="border-t border-outline-v/30 pt-4">
+        <h3 className="mb-1 text-[13px] font-bold text-on-surf">Police &amp; notifications</h3>
+        {declarations.data.length === 0 && !declarations.isLoading && (
+          <>
+            <InfoRow label="SAPS case no." value="Not recorded" />
+            <p className="mt-1 text-[12px] text-on-surf-v">Insurers will ask for the SAPS station and case number.</p>
+          </>
+        )}
+        {declarations.data.map(d => (
+          <div key={d.declaration_id}>
+            {d.saps_cas_number ? <InfoRow label="SAPS case no." value={`CAS ${d.saps_cas_number}`} mono /> : <InfoRow label="Notification times" value="Declared" />}
+            {d.saps_station && <InfoRow label="SAPS station" value={d.saps_station} />}
+            <p className="py-1 text-[11px] text-on-surf-v">Declared {when(d.declared_at)}{d.declared_by_name ? ` by ${d.declared_by_name}` : ''}</p>
+          </div>
+        ))}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button size="sm" variant="secondary" onClick={onDeclare}>Record police details</Button>
+          <Button size="sm" variant="ghost" loading={busy === 'sheet'} onClick={sheet}>Incident fact sheet</Button>
+        </div>
+      </section>
     </div>
   )
 }

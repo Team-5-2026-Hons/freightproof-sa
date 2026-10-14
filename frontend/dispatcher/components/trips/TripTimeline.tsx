@@ -1,89 +1,128 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
-import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
-import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { fmtTime } from '@shared/lib/utils/datetime'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { sortedPlan, nodeTypeFor, type PhaseNodeType } from '@/lib/phase/derive'
-import { currentTripPhase, phaseStopLabel, precinctAtPhase, precinctLabel } from '@/lib/phase/trip-detail'
-import { locationEvidenceForPhase, hasLocationEvidence } from '@/lib/phase/location-evidence'
-import { PhaseTimelineItem, PHASE_ANCHOR_PREFIX } from './PhaseTimelineItem'
-import { PhaseEvidence, nextTripStop } from './PhaseEvidence'
-import { InTransitTimeline } from '@/components/domain/InTransitTimeline'
-import { PhaseExceptionGroup } from './PhaseExceptionGroup'
-import { ExceptionMapButton, hasExceptionMapEvidence } from './ExceptionMapButton'
-import { ExceptionSummary } from '@/components/domain/ExceptionSummary'
-import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
-import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
-import { LocationEvidenceSummary } from '@/components/domain/LocationEvidenceSummary'
-import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
-import { ChainReceiptTag } from '@/components/blockchain/ChainReceiptTag'
-import { VerifyButton } from '@/components/blockchain/VerifyButton'
+import { Tabs } from '@/components/ui/Tabs'
+import { Ic } from '@/components/ui/Ic'
+import type { OpenException } from '@/components/domain/ExceptionRow'
+import { ExceptionRowList } from '@/components/domain/ExceptionRowList'
+import { isTripLevelException, visibleExceptions } from '@/lib/phase/exception-rows'
+import { countLabel } from '@/lib/format/count'
+import { useNow } from '@/lib/hooks/useNow'
+import { sortedPlan } from '@/lib/phase/derive'
+import { exceptionEventTime } from '@/lib/phase/acts'
+import { currentTripPhase, precinctAtPhase, precinctLabel } from '@/lib/phase/trip-detail'
+import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR } from './PhaseTimelineItem'
+import { nextTripStop } from './PhaseEvidence'
+import { TimelinePhase } from './TimelinePhase'
 import { uniqueExceptionsById } from './exception-dedupe'
+import { useExceptionReveal, type RevealRequest } from './useExceptionReveal'
+import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
 
-// Phase types the compact location verdict applies to. trip_creation has no fix fields
-// worth reading and in_transit gets its own "Recorded location at arrival" section
-// instead (with an explicit no-verdict line); a chip here would pre-empt that and
-// imply a checked boundary that in-transit never has, see location-evidence.ts. arrival
-// IS a stop-anchored phase (checked against the destination precinct, same as unloading)
-// so it belongs in this list.
-const LOCATION_SUMMARY_PHASE_TYPES: readonly PhaseDescriptor['phase_type'][] =
-  ['activation', 'loading', 'departure', 'arrival', 'unloading', 'confirmation']
+export const TIMELINE_VIEWS = { evidence: 'evidence', minimised: 'minimised' } as const
+export type TimelineView = (typeof TIMELINE_VIEWS)[keyof typeof TIMELINE_VIEWS]
+export const TIMELINE_VIEW_CONTROL_ATTR = 'data-timeline-view-control'
+export const TIMELINE_TOOLBAR_ATTR = 'data-timeline-toolbar'
+const EXPAND_LABELS = { expand: 'Expand timeline', collapse: 'Return to trip layout' } as const
+export const TRIP_RECORD_ANCHOR_ID = 'trip-record'
+const VIEW_TABS = [{ id: TIMELINE_VIEWS.evidence, label: 'Evidence' }, { id: TIMELINE_VIEWS.minimised, label: 'Minimised' }] as const
 
-/** The row's compact verdict chip, or undefined for a phase type/state this summary does
- *  not cover. A `pending` node has not run yet, so there is nothing recorded to show.
- *  Also undefined whenever `hasLocationEvidence` is false: LoadingDetail/UnloadingDetail
- *  gate their own "Location at ..." section on that exact same check, so a row must never
- *  advertise a chip here for a section the opened card does not have. */
-function evidenceSummaryFor(trip: Trip, phase: PhaseDescriptor, precincts: Precinct[], nodeType: PhaseNodeType): ReactNode {
-  if (nodeType === 'pending' || !LOCATION_SUMMARY_PHASE_TYPES.includes(phase.phase_type)) return undefined
-  const evidence = locationEvidenceForPhase(phase, precinctAtPhase(trip, phase, precincts))
-  if (!hasLocationEvidence(evidence)) return undefined
-  return <LocationEvidenceSummary evidence={evidence} />
+export function timelineToolbarHeight(timeline: HTMLElement | null): number {
+  return timeline?.querySelector<HTMLElement>(`[${TIMELINE_TOOLBAR_ATTR}]`)?.getBoundingClientRect().height ?? 0
 }
 
-// Chronological anchor for an exception in the timeline: the
-// instant its own evidence was captured, when it has an artifact carrying one, rather
-// than the millisecond the system happened to persist the row — falling back to the
-// recorded time for an exception with no artifact attached. TripException itself
-// carries no capture timestamp of its own, so this is the only place that time can
-// come from.
-function exceptionEventTime(exception: TripException, artifactsById: Map<string, EvidenceArtifactWithUrl>): string {
-  const artifact = exception.supporting_artifact_id ? artifactsById.get(exception.supporting_artifact_id) : undefined
-  return artifact?.captured_at ?? exception.created_at
+/** Capture one phase for this transition only, using the unobscured top of the reader. */
+export function readingPhaseAnchor(timeline: HTMLElement | null, readingTop?: number): string | null {
+  if (!timeline) return null
+  const top = readingTop ?? timeline.getBoundingClientRect().top + timelineToolbarHeight(timeline)
+  const anchors = [...timeline.querySelectorAll<HTMLElement>(`[id^="${PHASE_ANCHOR_PREFIX}"], [id="${TRIP_RECORD_ANCHOR_ID}"]`)]
+    .filter(anchor => anchor.getBoundingClientRect().height > 0)
+  return (anchors.find(anchor => anchor.getBoundingClientRect().bottom > top) ?? anchors.at(-1))?.id ?? null
 }
 
-/** Chronological, id-tie-broken order shared by a transit leg's journey markers and
- *  every phase's exception branch, so the two can never disagree about which came
- *  first. */
+// "Time on the road" counts whole minutes, so one tick a minute keeps it honest without a
+// timer per card.
+const CLOCK_TICK_MS = 60_000
+// Toolbar layouts. Below 1024 px the status takes its own row under the switch and the buttons;
+// from 1024 px it sits between them and wraps its own text if the column is narrow (docked panel).
+const TOOLBAR_AREAS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls']"
+const TOOLBAR_AREAS_WITH_STATUS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls'_'status_status'] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:[grid-template-areas:'view_status_controls']"
+const NO_OPEN: OpenException = () => undefined
+
+/** Chronological, id-tie-broken order shared by every phase's exception rows, so the rail and the
+ *  rows can never disagree about which came first. */
 function sortExceptionsByEventTime(exceptions: TripException[], artifactsById: Map<string, EvidenceArtifactWithUrl>): TripException[] {
   return [...exceptions].sort((a, b) =>
     Date.parse(exceptionEventTime(a, artifactsById)) - Date.parse(exceptionEventTime(b, artifactsById)) || a.id.localeCompare(b.id))
 }
 
+/** A page resource that failed to refresh, and how to try again. The raw error goes to the console,
+ *  not the screen: the reader needs to know the view may be stale, not the transport detail. */
+export interface TimelineWarning { message: string; onRetry: () => void }
+
 interface Props {
   trip: Trip; precincts: Precinct[]; artifactsById: Map<string, EvidenceArtifactWithUrl>
   artifactLoading: boolean; artifactError: string | null; onRetryArtifacts: () => void
-  onChanged: () => void; returnTo: string
+  onChanged: () => void
   /** When the record on screen was last read from the server, not a trip timestamp. */
   lastUpdated: number | null
   onJump: () => void
-  /** Opens the exception panel scoped to the phase whose compact control was selected. */
-  onOpenExceptions?: (phaseId: string) => void
-  /** A page-originated reveal request; local group state remains inside the group. */
-  revealRequest?: { phaseId: string; requestId: number } | null
-  /** The group reports that it has revealed itself before the page scrolls its container. */
-  onRevealHandled?: (phaseId: string) => void
+  view?: TimelineView
+  onViewChange?: (view: TimelineView) => void
+  expanded?: boolean
+  onToggleExpanded?: () => void
+  /** An exception row was activated. A null id opens the panel on the phase's records ("+n more");
+   *  a null phase is a trip-level exception (D42). */
+  onOpenException?: OpenException
+  /** The exception the panel is open on, so its row can show the same selected state. */
+  selectedExceptionId?: string | null
+  /** A page-originated "Show in timeline": open the card, keep the row visible, land on it. */
+  revealRequest?: RevealRequest | null
+  /** Called with the revealed row's element id once it has focus, so the page can scroll its container. */
+  onRevealHandled?: (targetId: string) => void
+  /** Resources that could not be refreshed. Shown as one status beside "Record refreshed". */
+  warnings?: readonly TimelineWarning[]
 }
-export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, onOpenExceptions, revealRequest, onRevealHandled, ...evidence }: Props) {
+
+export function TripTimeline({
+  trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
+}: Props): React.JSX.Element {
+  const timelineRef = useRef<HTMLElement>(null)
+  const viewControlId = useId()
+  const bodyId = `${viewControlId}-body`
+  const minimised = view === TIMELINE_VIEWS.minimised
+  const keepSelection = { [KEEP_EXCEPTION_SELECTION_ATTR]: true }
+  const hasFreshness = lastUpdated !== null || warnings.length > 0
+  const toolbarRef = useCallback((element: HTMLDivElement | null): (() => void) | undefined => {
+    if (!element) return
+    const measure = (): void => {
+      element.parentElement?.style.setProperty(TIMELINE_TOOLBAR_HEIGHT_VAR, `${element.getBoundingClientRect().height}px`)
+    }
+    // Wrapping and browser zoom change the reading space; never subtract a fixed header height.
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    window.addEventListener('resize', measure)
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure) }
+  }, [])
   const active = currentTripPhase(trip)
   const phases = sortedPlan(trip.phases)
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
+  const now = useNow(CLOCK_TICK_MS)
+  const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
+  const artifacts = useMemo(() => [...evidence.artifactsById.values()], [evidence.artifactsById])
+  const lookup = {
+    artifactsById: evidence.artifactsById,
+    artifactLoading: evidence.artifactLoading,
+    artifactError: evidence.artifactError,
+    onRetryArtifacts: evidence.onRetryArtifacts,
+  }
   // A polling merge can deliver conflicting copies of one record. Resolve that once,
   // before assigning records to a phase or the trip-level stream, so one ID has one
   // destination and cannot appear in both paths.
@@ -96,20 +135,40 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
     : []
   const activeTransitOrigin = activeTransit ? precinctLabel(precinctAtPhase(trip, activeTransit, precincts)) : ''
   const activeTransitDestination = activeTransit ? precinctLabel(precincts.find(precinct => precinct.id === nextTripStop(trip, activeTransit)?.precinct_id)) : ''
-  const tripNotes = exceptionsById.filter(e => !e.phase_event_id || !phaseIds.has(e.phase_event_id as typeof phases[number]['phase_event_id']))
-  return <section aria-label="Trip timeline" className="mx-auto w-full max-w-4xl p-4 md:p-6">
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-on-surf-v">Trip timeline</h2>
+  const tripNotes = sortExceptionsByEventTime(
+    exceptionsById.filter(e => isTripLevelException(e, phaseIds)),
+    evidence.artifactsById,
+  )
+  const tripVisible = visibleExceptions(tripNotes, revealRequest?.phaseId === null ? revealRequest.exceptionId : null)
+  return <section ref={timelineRef} aria-label="Trip timeline" className={`mx-auto w-full px-4 pb-4 md:px-6 md:pb-6 ${expanded ? '' : 'max-w-4xl'}`}>
+    {/* One slim row: the header above already names the trip, so the toolbar only carries controls.
+        The view switch and the view buttons always share the first row; when the width runs out,
+        only the freshness status gives way (to a row of its own below 1024 px, or by wrapping its
+        own text beside a docked panel), so a control never moves because a message got longer. */}
+    <div ref={toolbarRef} {...{ [TIMELINE_TOOLBAR_ATTR]: true }} className={`sticky top-0 z-20 -mx-4 mb-4 grid items-center gap-x-3 gap-y-2 border-b border-outline-v/30 bg-surf-lowest px-4 py-2 md:-mx-6 md:px-6 ${hasFreshness ? TOOLBAR_AREAS_WITH_STATUS : TOOLBAR_AREAS}`}>
+      <h2 className="sr-only">Trip timeline</h2>
+      <div className="[grid-area:view]" {...{ [TIMELINE_VIEW_CONTROL_ATTR]: true }} {...keepSelection}>
+        <Tabs tabs={VIEW_TABS} active={view} onChange={value => {
+          if (value === TIMELINE_VIEWS.evidence || value === TIMELINE_VIEWS.minimised) onViewChange?.(value)
+        }} size="sm" className="w-52 max-w-full" ariaLabel="Timeline view" panelId={bodyId} idPrefix={viewControlId} disabled={!onViewChange} />
+      </div>
+      {hasFreshness && <div data-toolbar-freshness className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 [grid-area:status] lg:justify-end">
         {/* Reads the record's freshness, not a trip fact — an evidence view should always
             be able to say when what you are looking at was last read. */}
-        {lastUpdated !== null && <p className="mt-1 text-[12px] tabular-nums text-on-surf-v">Record refreshed {fmtTime(new Date(lastUpdated).toISOString())}</p>}
+        {lastUpdated !== null && <p className="text-meta tabular-nums text-on-surf-v">Record refreshed {fmtTime(new Date(lastUpdated).toISOString())}</p>}
+        <RefreshStatus warnings={warnings} />
+      </div>}
+      <div data-toolbar-controls className="flex items-center justify-end gap-2 [grid-area:controls]">
+        {active && trip.status !== 'created' && <Button variant="secondary" size="sm" onClick={onJump} {...keepSelection}>Jump to current phase ↓</Button>}
+        {onToggleExpanded && <Button variant="secondary" size="sm" onClick={onToggleExpanded} {...keepSelection}
+          aria-label={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand} title={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand}>
+          {expanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+        </Button>}
       </div>
-      {active && trip.status !== 'created' && <Button variant="secondary" size="sm" onClick={onJump}>Jump to current phase ↓</Button>}
     </div>
     {/* No space-y here: the rail has to run through the gap between rows, so each row
         owns its own bottom margin instead. */}
-    <div>
+    <div id={bodyId} role="tabpanel" aria-labelledby={`${viewControlId}-${view}`}>
       {activeTransit && <CurrentLegStrip
         phaseId={activeTransit.phase_event_id}
         originName={activeTransitOrigin}
@@ -117,110 +176,32 @@ export function TripTimeline({ trip, precincts, returnTo, lastUpdated, onJump, o
         exceptionCount={activeTransitExceptions.length}
         onShow={onJump}
       />}
-      {phases.map((phase, phaseIndex) => {
-        const nodeType = nodeTypeFor(phase, active?.phase_event_id ?? null, trip.status)
-        const exceptions = sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)
-        const receipt = trip.blockchain_receipts.find(r => r.id === phase.blockchain_receipt_id)
-          ?? (phase.phase_type === 'trip_creation' ? trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') : undefined)
-        // Every phase receipt (and an override's) can be rebuilt and verified server-side;
-        // the journey lock is a trip receipt with its own verify path, so key on subject.
-        const verifiesEvidence = receipt?.subject_type === 'phase_event'
-        const summary = [phase.parcel_count_origin !== null ? `${phase.parcel_count_origin} recorded at origin` : null, phase.seal_number ? `Seal ${phase.seal_number}` : null].filter(Boolean).join(' · ')
-        const isLastPhase = phaseIndex === phases.length - 1
-        const isTransit = phase.phase_type === 'in_transit'
-        // The trip's own suppression rule for a phase whose card content should not
-        // render at all: an unreached phase (`pending`), or the active gate on a
-        // cancelled trip (cancel_trip leaves every row PENDING, so this is currently
-        // unreachable via that path in practice, but kept as the same explicit guard
-        // PhaseEvidence itself was gated on previously). The journey summary must
-        // never show for a phase whose full evidence would not show either — showing
-        // one without the other would just be a different way of overclaiming.
-        const showEvidence = nodeType !== 'pending' && !(trip.status === 'cancelled' && nodeType === 'next')
-        // The truck is on the road right now: the arrival evidence is the live part of
-        // this page, so the card stays open with no toggle while driving. Completed legs
-        // stay collapsed — a finished trip reads better compact. The journey itself never
-        // depends on this: it is persistent content, visible either way.
-        const driving = isTransit
-          && active?.phase_event_id === phase.phase_event_id
-          && trip.status !== 'created'
-        const journey = isTransit && showEvidence
-          ? <InTransitTimeline
-              phase={phase}
-              allPhases={trip.phases}
-              originName={precinctLabel(precinctAtPhase(trip, phase, precincts))}
-              destinationName={precinctLabel(precincts.find(p => p.id === nextTripStop(trip, phase)?.precinct_id))}
-              exceptions={exceptions}
-            />
-          : undefined
-        const exceptionBranch = exceptions.length > 0
-          ? <PhaseExceptionGroup
-              phaseId={phase.phase_event_id}
-              phaseLabel={PHASE_NAMES[phase.phase_type]}
-              exceptions={exceptions}
-              isLast={isLastPhase}
-              revealRequest={revealRequest}
-              onRevealHandled={() => onRevealHandled?.(phase.phase_event_id)}
-            >
-              {exceptions.map(exception => {
-                const precinct = precinctAtPhase(trip, phase, precincts)
-                const mapEvidence = hasExceptionMapEvidence(exception, phase, precinct)
-                const hasSupportingEvidence = exceptionHasEvidence(exception) || exception.exception_type === 'gps_mismatch'
-                // A driver-raised gps_mismatch carrying its own action_location_assessment
-                // shows genuinely different evidence in each place (ExceptionMapButton
-                // reads the assessment; the panel below always reads the phase's own
-                // fixes, per PositionDisagreement's "Linked phase locations" contract) —
-                // only suppress the panel's inner button when the two are provably
-                // showing the same phase-based evidence.
-                const footer = (mapEvidence || hasSupportingEvidence) && <>
-                  {mapEvidence && <ExceptionMapButton exception={exception} phase={phase} precinct={precinct} />}
-                  {hasSupportingEvidence && <details className={mapEvidence ? 'mt-3 text-sm' : 'text-sm'}>
-                    <summary className="cursor-pointer font-semibold text-sec">Supporting evidence</summary>
-                    <div className="mt-3">
-                      {exception.exception_type === 'gps_mismatch' && (
-                        <PositionDisagreement phase={phase} precinct={precinct} source={exception.source} hideMapButton={!exception.action_location_assessment} />
-                      )}
-                      <ExceptionEvidence exception={exception} artifactsById={evidence.artifactsById} />
-                    </div>
-                  </details>}
-                </>
-                // The panel is the review surface: it scopes to this phase and keeps
-                // every record, warnings included, whatever filter the reader last used.
-                // Each card carries its own trigger (rather than one shared link below
-                // the group) so "how do I see/review this" is never a second control to
-                // hunt for once you already have the card in front of you.
-                return <div key={exception.id} role="group" aria-label={`Exception linked to ${PHASE_NAMES[phase.phase_type]} phase`}>
-                  <ExceptionSummary
-                    exception={exception}
-                    phaseLabel={PHASE_NAMES[phase.phase_type]}
-                    returnTo={returnTo}
-                    footer={footer || undefined}
-                    onOpenPanel={onOpenExceptions ? () => onOpenExceptions(phase.phase_event_id) : undefined}
-                  />
-                </div>
-              })}
-            </PhaseExceptionGroup>
-          : undefined
-        return <div key={phase.phase_event_id} role="group" aria-label={`${PHASE_NAMES[phase.phase_type]} phase${exceptions.length ? ' and exceptions' : ''}`}>
-          <PhaseTimelineItem id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`} number={phase.sequence_number} label={PHASE_NAMES[phase.phase_type]} meta={phaseStopLabel(trip, phase, precincts)} summary={summary} timestamp={phase.completed_at} nodeType={nodeType}
-            initialOpen={active?.phase_event_id === phase.phase_event_id && trip.status !== 'created'} cancelled={trip.status === 'cancelled'} overridden={phase.status === 'overridden'}
-            isLast={isLastPhase && exceptions.length === 0} alwaysOpen={driving}
-            evidenceSummary={evidenceSummaryFor(trip, phase, precincts, nodeType)}
-            persistentContent={journey}
-            warning={phase.anchor_status === 'failed' ? 'Anchor failed — receipt still owed' : undefined}
-            receipt={receipt ? <ForensicOnly>
-              <ChainReceiptTag receipt={receipt} />
-              {verifiesEvidence && <VerifyButton
-                subjectType="phase_event"
-                subjectId={phase.phase_event_id}
-                ariaLabel={`Verify integrity for ${PHASE_NAMES[phase.phase_type]} receipt, phase ${phase.sequence_number}`}
-              />}
-            </ForensicOnly> : undefined}>
-            {showEvidence && <PhaseEvidence trip={trip} phase={phase} precincts={precincts} {...evidence} />}
-          </PhaseTimelineItem>
-          {exceptionBranch}
-        </div>
-      })}
-      {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-3 border-t border-outline-v/30 pt-4"><h3 className="font-bold text-on-surf">Trip record</h3>{[...tripNotes].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at)).map(exception => <ExceptionSummary key={exception.id} exception={exception} returnTo={returnTo} />)}</section>}
+      {phases.map((phase, phaseIndex) => (
+        <TimelinePhase
+          key={phase.phase_event_id}
+          trip={trip}
+          phase={phase}
+          precincts={precincts}
+          isLast={phaseIndex === phases.length - 1}
+          exceptions={sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)}
+          artifacts={artifacts}
+          lookup={lookup}
+          onChanged={evidence.onChanged}
+          nowMs={now.getTime()}
+          onOpenException={onOpenException}
+          selectedExceptionId={selectedExceptionId}
+          highlightedExceptionId={highlightedId}
+          reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
+          minimised={minimised}
+        />
+      ))}
+      <div id={TRIP_RECORD_ANCHOR_ID} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }}>
+      {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-2 border-t border-outline-v/30 pt-4">
+        <h3 className="text-body font-bold text-on-surf">Trip record</h3>
+        <ExceptionRowList rows={tripNotes.filter(e => tripVisible.visibleIds.has(e.id)).map(exception => ({ exception, at: exceptionEventTime(exception, evidence.artifactsById) }))}
+          hiddenCount={tripVisible.hiddenCount} phaseId={null} selectedId={selectedExceptionId} highlightedId={highlightedId} onOpen={onOpenException} />
+      </section>}
+      </div>
     </div>
   </section>
 }
@@ -243,8 +224,23 @@ function CurrentLegStrip({ phaseId, originName, destinationName, exceptionCount,
   }, [phaseId])
 
   if (!rowOutOfView) return null
-  return <aside aria-label="Current transit leg" className="sticky top-2 z-10 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sec/30 bg-surf-lowest px-3 py-2 shadow-level-1">
-    <p className="min-w-0 text-[14px] font-semibold text-on-surf">{originName} → En route to {destinationName}{exceptionCount ? ` · ${exceptionCount} exception${exceptionCount === 1 ? '' : 's'}` : ''}</p>
-    <Button variant="secondary" size="sm" onClick={onShow}>Show current leg</Button>
+  return <aside aria-label="Current transit leg" style={{ top: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }} className="sticky z-10 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sec/30 bg-surf-lowest px-3 py-2 shadow-level-1">
+    <p className="min-w-0 text-body font-semibold text-on-surf">{originName} → En route to {destinationName}{exceptionCount ? ` · ${exceptionCount} exception${exceptionCount === 1 ? '' : 's'}` : ''}</p>
+    <Button variant="secondary" size="sm" onClick={onShow} {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }}>Show current leg</Button>
   </aside>
+}
+
+/** Freshness trouble, said once and next to the freshness it qualifies, instead of a full-width
+ *  banner per resource pushing the timeline down. One Retry tries every failing source again. */
+function RefreshStatus({ warnings }: { warnings: readonly TimelineWarning[] }) {
+  if (warnings.length === 0) return null
+  const single = warnings.length === 1 ? warnings[0]! : null
+  return <div role="status" className="flex items-center gap-1.5 text-meta text-on-surf">
+    <Ic n="warn" s={13} className="shrink-0 text-warn" />
+    {single ? <span>{single.message}</span> : <span>
+      {countLabel(warnings.length, 'source')} could not be refreshed
+      <span className="sr-only">: {warnings.map(warning => warning.message).join(' ')}</span>
+    </span>}
+    <Button variant="ghost" size="sm" onClick={() => warnings.forEach(warning => warning.onRetry())}>Retry</Button>
+  </div>
 }

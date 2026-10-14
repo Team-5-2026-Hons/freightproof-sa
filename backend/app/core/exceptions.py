@@ -354,3 +354,9 @@ class HandoverAlreadyConfirmedError(Exception):
     def __init__(self, phase_event_id: str) -> None:
         super().__init__(f"Handover for phase event '{phase_event_id}' is already confirmed.")
         self.phase_event_id = phase_event_id
+
+
+class EvidenceAttributionError(Exception):
+    """An artifact's phase/role attribution is not allowed: a role the phase type does not
+    take, a role a driver may not claim, or a cited artifact attributed to something else
+    (422 at the route)."""

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -27,6 +27,91 @@ const MOVED: Manifest = {
   pulled_at: '2026-10-02T09:00:00Z',
   pp_manifest_snapshot: makeSnapshot(),
 }
+
+function loading(): UseManifestResult {
+  return loaded(mockManifest0041, { manifest: null, isLoading: true, isValidating: true, lastUpdated: null })
+}
+
+describe('ManifestContent loading', () => {
+  it('shows one cargo status with content-shaped, non-interactive placeholders', () => {
+    vi.mocked(useManifest).mockReturnValue(loading())
+
+    render(<ManifestContent tripId={mockManifest0041.trip_id} />)
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('Loading cargo…')
+    const skeleton = within(status).getByTestId('manifest-content-skeleton')
+    expect(skeleton).toHaveAttribute('aria-hidden', 'true')
+    expect(skeleton.querySelector('.grid-cols-2')?.children).toHaveLength(4)
+    expect(within(skeleton).getAllByTestId('waybill-placeholder')).toHaveLength(3)
+    expect(skeleton.querySelectorAll('input, select, button, a, summary, [tabindex]')).toHaveLength(0)
+    expect(status.querySelector('.animate-spin')).toBeNull()
+  })
+
+  it('replaces the initial skeleton with the real cargo when the manifest arrives', () => {
+    vi.mocked(useManifest).mockReturnValue(loading())
+    const { rerender } = render(<ManifestContent tripId={mockManifest0041.trip_id} />)
+    expect(screen.getByText('Loading cargo…')).toBeInTheDocument()
+
+    vi.mocked(useManifest).mockReturnValue(loaded(mockManifest0041))
+    rerender(<ManifestContent tripId={mockManifest0041.trip_id} />)
+
+    expect(screen.queryByTestId('manifest-content-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByText('PP-2026-FX-0041')).toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toBeInTheDocument()
+  })
+
+  it('keeps cargo, search, filter and an open waybill during background validation', async () => {
+    const user = userEvent.setup()
+    vi.mocked(useManifest).mockReturnValue(loaded(mockManifest0041))
+    const { rerender } = render(<ManifestContent tripId={mockManifest0041.trip_id} />)
+    await user.type(screen.getByRole('searchbox'), 'FX-0041-001')
+    await user.selectOptions(screen.getByRole('combobox'), 'not-scanned-in')
+    await user.click(screen.getByText('PP-2026-FX-0041'))
+    const waybill = screen.getByText('PP-2026-FX-0041').closest('details')
+    expect(waybill).toHaveAttribute('open')
+
+    vi.mocked(useManifest).mockReturnValue(loaded(mockManifest0041, { isValidating: true }))
+    rerender(<ManifestContent tripId={mockManifest0041.trip_id} />)
+
+    expect(screen.queryByTestId('manifest-content-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('FX-0041-001')
+    expect(screen.getByRole('combobox')).toHaveValue('not-scanned-in')
+    expect(waybill).toHaveAttribute('open')
+    expect(screen.getByText('FX-0041-001')).toBeVisible()
+    expect(screen.queryByText('FX-0041-002')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refreshing…' })).toBeDisabled()
+  })
+
+  it('ends initial loading on failure and allows retry', async () => {
+    vi.mocked(useManifest).mockReturnValue(loading())
+    const { rerender } = render(<ManifestContent tripId={mockManifest0041.trip_id} />)
+    const refetch = vi.fn()
+
+    vi.mocked(useManifest).mockReturnValue(loaded(mockManifest0041, {
+      manifest: null, error: 'Network down', errorStatus: 503, refetch,
+    }))
+    rerender(<ManifestContent tripId={mockManifest0041.trip_id} />)
+
+    expect(screen.queryByTestId('manifest-content-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load manifest. Network down')
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the existing no-manifest message for a 404, without a skeleton or alert', () => {
+    vi.mocked(useManifest).mockReturnValue(loaded(mockManifest0041, {
+      manifest: null, error: 'Not found', errorStatus: 404,
+    }))
+
+    render(<ManifestContent tripId={mockManifest0041.trip_id} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('No manifest pulled yet.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('manifest-content-skeleton')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+})
 
 describe('ManifestContent and the H0 snapshot', () => {
   it('shows the snapshot as the only record when the waybills moved', () => {

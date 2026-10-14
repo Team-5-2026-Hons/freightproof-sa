@@ -28,7 +28,8 @@ interface ModalProps {
 const sizeClasses = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-6xl', zoom: 'max-w-none' }
 // The width and height every size but `zoom` uses. Kept apart, not overridden by class order,
 // so the zoom size never depends on which Tailwind class happens to win.
-const FITTED_BOX = 'w-[calc(100%_-_2rem)] max-h-[90dvh]'
+const FITTED_MAX_HEIGHT = 'max-h-[90dvh]'
+const FITTED_BOX = `w-[calc(100%_-_2rem)] ${FITTED_MAX_HEIGHT}`
 const ZOOM_BOX = 'w-[80vw] h-[80dvh] max-h-[80dvh]'
 const BACKDROP_CLASSES = { dim: 'backdrop:bg-black/40', blur: 'backdrop:bg-black/30 backdrop:backdrop-blur-sm' }
 
@@ -139,34 +140,40 @@ export function Modal({ open, onClose, title, children, footer, size = 'md', clo
       onClick={handleClick}
       className={cn(
         isZoom ? ZOOM_BOX : FITTED_BOX,
-        'overflow-y-auto m-auto rounded-xl bg-surface-container-lowest shadow-ambient p-0',
+        // overflow-hidden, not auto: the body scrolls inside (below), so the scrollbar sits within the
+        // rounded clip. A scrollbar on the <dialog> itself is not clipped by its radius and shows square
+        // corners down the right edge.
+        'overflow-hidden m-auto rounded-xl bg-surface-container-lowest shadow-ambient p-0',
+        // The dialog is a container, not a control. When a modal opened from inside another one closes,
+        // focus returns to this dialog and the global :focus-visible ring would outline the whole box.
+        'focus-visible:outline-none',
         BACKDROP_CLASSES[backdrop],
         sizeClasses[size],
       )}
     >
-      {/* A zoomed modal is a fixed height, so its body takes the room the header leaves and
-          scrolls inside itself. A wrapper rather than flex on the <dialog>: `display: flex` there
-          would override the browser's `display: none` for a dialog that is not open yet. */}
-      <div className={cn(isZoom && 'flex h-full flex-col')}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-outline-variant/20">
-          <h2 id={titleId} className="text-lg font-bold text-surface-on">{title}</h2>
+      {/* The body takes the room the header and footer leave and scrolls inside itself, so the title and
+          close button stay in view on a long form. A wrapper rather than flex on the <dialog>: `display: flex`
+          there would override the browser's `display: none` for a dialog that is not open yet. */}
+      <div className={cn('flex flex-col', isZoom ? 'h-full' : FITTED_MAX_HEIGHT)}>
+        <div className="flex shrink-0 items-center justify-between gap-3 px-6 py-4 border-b border-outline-variant/20">
+          <h2 id={titleId} className="min-w-0 break-words text-lg font-bold text-surface-on">{title}</h2>
           <button
             type="button"
             disabled={closeDisabled}
             onClick={onClose}
             aria-label="Close modal"
-            className="w-8 h-8 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
+            className="w-8 h-8 shrink-0 flex items-center justify-center rounded-xl text-surface-on-variant hover:bg-surface-container-low transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className={cn('px-6 py-5 text-sm text-surface-on leading-relaxed', isZoom && 'min-h-0 flex-1 overflow-y-auto')}>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 text-sm text-surface-on leading-relaxed">
           {children}
         </div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
+          <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-4 border-t border-outline-variant/20">
             {footer}
           </div>
         )}
