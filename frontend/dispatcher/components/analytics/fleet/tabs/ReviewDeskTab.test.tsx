@@ -130,4 +130,16 @@ describe('ReviewDeskTab', () => {
     expect(screen.getByText('No reviews were concluded in this period.')).toBeInTheDocument()
     expect(within(card('Is the pile growing?')).getByRole('button', { name: 'Show table' })).toBeInTheDocument()
   })
+
+  it('names where What reviews concluded comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeReview(true))
+    renderTab()
+    const element = await waitFor(() => card('What reviews concluded'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: What reviews concluded' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Trips of any status, not just closed ones')
+  })
 })

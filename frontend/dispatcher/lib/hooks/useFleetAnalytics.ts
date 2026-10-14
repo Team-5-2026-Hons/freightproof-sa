@@ -27,6 +27,10 @@ export interface FleetQueryResult<T> {
   isRefreshing: boolean
   error: string | null
   refetch: () => void
+  /** Re-asks the same path without dimming the card: `isRefreshing` stays false and the
+   *  previous answer stays on screen until the new one lands. For live updates, where a
+   *  spinner on every event anywhere in the organisation would be worse than no update. */
+  refetchSilent: () => void
 }
 
 interface FleetParams {
@@ -59,6 +63,9 @@ export function fleetPath(endpoint: string, params: FleetParams, allTimeStart: s
  *   - the previous answer stays while a new period loads, so a chart dims instead of
  *     blanking and jumping;
  *   - a failed request clears it, so old numbers are never left on screen under a new period.
+ *
+ * A silent run skips the pending flag only; it still takes a generation, so a live update and
+ * a period change can never land out of order.
  */
 export function useFleetQuery<T>(path: string | null): FleetQueryResult<T> {
   const [data, setData] = useState<T | null>(null)
@@ -66,9 +73,9 @@ export function useFleetQuery<T>(path: string | null): FleetQueryResult<T> {
   const [error, setError] = useState<string | null>(null)
   const generationRef = useRef(0)
 
-  const runFetch = useCallback(() => {
+  const execute = useCallback((silent: boolean) => {
     const generation = ++generationRef.current
-    setIsPending(true)
+    if (!silent) setIsPending(true)
     setError(null)
     if (path === null) return
 
@@ -86,6 +93,9 @@ export function useFleetQuery<T>(path: string | null): FleetQueryResult<T> {
       })
   }, [path])
 
+  const runFetch = useCallback(() => execute(false), [execute])
+  const runSilent = useCallback(() => execute(true), [execute])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     runFetch()
@@ -99,6 +109,7 @@ export function useFleetQuery<T>(path: string | null): FleetQueryResult<T> {
     isRefreshing: isPending && data !== null,
     error,
     refetch: runFetch,
+    refetchSilent: runSilent,
   }
 }
 

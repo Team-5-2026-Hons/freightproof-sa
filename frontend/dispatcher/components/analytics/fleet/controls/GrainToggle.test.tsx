@@ -29,7 +29,7 @@ describe('GrainToggle', () => {
 
     expect(onChange).not.toHaveBeenCalled()
     expect(week).toHaveAttribute('aria-disabled', 'true')
-    expect(week).toHaveAttribute('title', 'Too many weeks for this period — choose Month')
+    expect(week).toHaveAttribute('title', 'Too many weeks for this period: choose Month')
   })
 
   it('moves with the arrow keys and skips disabled grains', () => {

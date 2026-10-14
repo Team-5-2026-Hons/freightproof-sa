@@ -96,7 +96,7 @@ describe('FleetTiles', () => {
 
     const tile = tileLink('Unused vehicles')
     expect(within(tile).getByText('4')).toBeInTheDocument()
-    expect(within(tile).getByText('2 trucks · 2 trailers — H1, H2, T1, +1 more')).toBeInTheDocument()
+    expect(within(tile).getByText('2 trucks · 2 trailers: H1, H2, T1, +1 more')).toBeInTheDocument()
   })
 
   it('says every vehicle ran when none is unused', () => {
@@ -119,5 +119,21 @@ describe('FleetTiles', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Server unavailable')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('says where the headline numbers come from, loaded, loading or errored', () => {
+    const line = /Counted live from this system.s trips/
+
+    const { unmount } = renderTiles(makeTiles())
+    expect(screen.getByText(line)).toBeInTheDocument()
+    unmount()
+
+    // The source does not depend on the data arriving, so it survives both other states.
+    const loading = renderTiles(null, { isLoading: true })
+    expect(screen.getByText(line)).toBeInTheDocument()
+    loading.unmount()
+
+    renderTiles(null, { error: 'Server unavailable' })
+    expect(screen.getByText(line)).toBeInTheDocument()
   })
 })

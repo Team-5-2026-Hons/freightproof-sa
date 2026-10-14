@@ -15,6 +15,18 @@ export const ANALYTICS_COPY = {
   facilityRateNote:
     'Corroboration rate is confirmed ÷ (confirmed + mismatch). Unwitnessed phases had no Pulsit reading: a coverage gap at the precinct, not counted as a failure.',
 
+  // Where each detail page's figures come from. Checked against app/analytics/{vehicle,driver,
+  // facility}_metrics.py and views.py: all five analytics views became plain views in migration
+  // 2026_09_13_tom_live_analytics_views, so they are worked out on every read and never stale.
+  sources: {
+    vehicle:
+      'Closed trips this vehicle ran and the breakdowns drivers reported against it, from live database views over our trip ledger.',
+    driver:
+      'Closed trips this driver ran (their attested steps, planned times and exception reports), from live database views over our trip ledger.',
+    precinct:
+      'Tracker checks at this precinct on your organisation’s closed trips. Tracker positions come from a simulated Pulsit feed.',
+  },
+
   empty: {
     title: 'No closed trips in this range',
     body: 'Only closed trips are counted. Try a wider month range.',

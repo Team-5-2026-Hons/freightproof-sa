@@ -57,6 +57,7 @@ export function VehicleAnalyticsSummary({ vehicleId, vehicleType }: VehicleAnaly
 
   return (
     <AnalyticsSummaryFrame
+      source={ANALYTICS_COPY.sources.vehicle}
       range={range}
       onRangeChange={setRange}
       isLoading={vehicles.isLoading || streaks.isLoading}
