@@ -8,7 +8,7 @@
 
 ## Goal
 
-Align the dispatcher frontend with the HTML reference files in `docs/references/` and the v1.3 spec in `docs/FreightProof_Frontend_Spec_v1.md`. The current implementation has the correct structural skeleton but diverges from the references in shell chrome, sidebar, missing UI primitives, and page layout.
+Align the dispatcher frontend with the HTML reference files in `docs/references/` and the v1.3 spec in `docs/archive/root/FreightProof_Frontend_Spec_v1.md`. The current implementation has the correct structural skeleton but diverges from the references in shell chrome, sidebar, missing UI primitives, and page layout.
 
 ---
 

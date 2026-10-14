@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Ic } from '@/components/ui/Ic'
+import { useState } from 'react'
+import { Modal } from '@/components/ui/Modal'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -9,6 +9,10 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 interface Props {
   label: string
   artifact: EvidenceArtifactWithUrl | undefined
+  artifactId?: string | null
+  loading?: boolean
+  error?: string | null
+  onRetry?: () => void
 }
 
 /**
@@ -48,92 +52,52 @@ function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl })
   )
 }
 
-/**
- * One captured photo: thumbnail expanding to a lightbox.
- *
- * Three distinct states, deliberately all visible rather than collapsed into one:
- *   no artifact      — nothing was captured at this step
- *   no signed_url    — evidence exists, the image could not be served
- *   both present     — the photo
- * Conflating the middle case with the first would hide a storage failure behind
- * "nothing was captured", which on an evidence platform is the wrong lie.
- */
-export function EvidencePhoto({ label, artifact }: Props) {
-  const [isOpen, setIsOpen] = useState(false)
+/** Optional lookup state distinguishes absent capture from an unavailable recorded artifact. */
+export function EvidencePhoto({ label, artifact, artifactId, loading = false, error, onRetry }: Props) {
+  const artifactKey = artifactId ?? artifact?.id ?? label
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  const isOpen = openKey === artifactKey
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  const imageFailed = !!artifact?.signed_url && failedUrl === artifact.signed_url
+  const unavailable = !artifact || !artifact.signed_url || imageFailed
 
-  // Escape must close the lightbox for keyboard users, since the thumbnail
-  // trigger is a real <button> but the overlay itself has no other focusable
-  // control besides the explicit close button below.
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsOpen(false) }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [isOpen])
+  const message = loading ? 'Loading evidence…'
+    : error ? 'Evidence lookup failed'
+    : !artifact ? (artifactId ? 'Recorded artifact unavailable' : 'Not captured')
+    : !artifact.signed_url ? 'Recorded, image unavailable'
+    : 'Image failed to load'
 
-  if (!artifact) {
-    return (
-      <div>
-        <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
-        <div className="text-[12px] text-on-surf-v">Not captured</div>
-      </div>
-    )
-  }
-
-  if (!artifact.signed_url) {
-    return (
-      <div>
-        <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
-        <div className="flex items-center gap-[5px] text-[12px] text-warn">
-          <Ic n="warn" s={12} className="text-warn" />
-          Recorded, image unavailable
-        </div>
-        {/* Especially here: the picture could not be served, so the hash and capture fix
-            are the only evidence left standing. */}
-        <ArtifactProvenance artifact={artifact} />
-      </div>
-    )
+  function retry(): void {
+    setFailedUrl(null)
+    setRetryAttempt(value => value + 1)
+    onRetry?.()
   }
 
   return (
     <div>
       <div className="text-[10px] text-on-surf-v mb-[3px]">{label}</div>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="block rounded-md overflow-hidden border border-outline-v/30 hover:border-outline-v transition-colors"
-      >
-        {/* Plain <img>: the signed URL is an external host with a short TTL, which
-            next/image's optimiser cannot cache or revalidate usefully. */}
-        <img
-          src={artifact.signed_url}
-          alt={label}
-          className="w-[96px] h-[96px] object-cover"
-        />
-      </button>
-      <ArtifactProvenance artifact={artifact} />
-
-      {isOpen && (
-        <div
-          onClick={() => setIsOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={label}
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-zoom-out"
-        >
-          <button
-            onClick={() => setIsOpen(false)}
-            aria-label="Close"
-            className="absolute top-4 right-4 text-[22px] leading-[1] text-on-surf-v hover:text-on-surf"
-          >
-            ×
-          </button>
-          <img
-            src={artifact.signed_url}
-            alt={label}
-            className="max-w-full max-h-full object-contain rounded-md"
-          />
+      {unavailable ? (
+        <div className="text-[12px] text-on-surf-v" role="status">
+          {message}
+          {onRetry && !loading && (artifactId || artifact || error) && (
+            <button type="button" onClick={retry} className="ml-2 underline">Retry {label}</button>
+          )}
         </div>
+      ) : (
+        <button type="button" onClick={() => setOpenKey(artifactKey)} aria-label={`Open ${label}`}
+          className="block rounded-md overflow-hidden border border-outline-v/30 hover:border-outline-v transition-colors">
+          {/* Signed URLs expire and cannot usefully be cached by the image optimiser. */}
+          <img key={retryAttempt} src={artifact.signed_url!} alt={label}
+            onError={() => setFailedUrl(artifact.signed_url)} className="w-[96px] h-[96px] object-cover" />
+        </button>
       )}
+      {artifact && <ArtifactProvenance artifact={artifact} />}
+      <Modal open={isOpen} onClose={() => setOpenKey(null)} title={label} size="lg">
+        {imageFailed ? <div role="status">Image failed to load{onRetry && <button onClick={retry}>Retry {label}</button>}</div>
+          : artifact?.signed_url && <img src={artifact.signed_url} alt={label}
+            onError={() => setFailedUrl(artifact.signed_url)} className="max-w-full max-h-[70dvh] mx-auto object-contain rounded-md" />}
+      </Modal>
     </div>
   )
 }

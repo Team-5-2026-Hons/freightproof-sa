@@ -29,13 +29,17 @@ def test_trip_event_defaults_resource_to_trip():
     assert event.resource == "trip"
 
 
+def test_realtime_kind_includes_exception_reviewed() -> None:
+    assert RealtimeKind.EXCEPTION_REVIEWED.value == "exception_reviewed"
+
+
 def test_channel_key_uses_org_prefix():
     org_id = uuid4()
 
     assert realtime._channel(org_id) == f"org:{org_id}"
 
 
-# ── Outbox: enqueue / drain / rollback (D9) ───────────────────────────────────
+# ── Outbox: enqueue / drain / rollback ────────────────────────────────────────
 
 
 def test_enqueue_event_appends_to_session_outbox():

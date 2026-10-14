@@ -1,9 +1,5 @@
-// frontend/driver-pwa/app/(app)/trips/detail/TripDetailByIdPageClient.tsx
-//
-// Detail for ONE of the driver's own trips, addressed by ?id=<uuid> (see page.tsx for why
-// the id can't be a path segment). Distinct from trips/active, which renders whichever
-// trip the session context happens to hold: this screen can open a trip the driver has
-// NOT activated yet, which is what makes the Upcoming tab tappable at all.
+// Detail for one of the driver's own trips, addressed by ?id=<uuid>. Distinct from
+// trips/active: this screen can open a trip the driver has not activated yet.
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
@@ -23,15 +19,11 @@ import { TripDetailView } from '@/components/trip/TripDetailView'
 import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
 
-// Route to the first step of the selected phase's own recipe. Mirrors
-// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
-// only export surface for sequencing, this is just route composition, kept local to
-// each caller the same way that file keeps its own.
+// Route to the first step of the selected phase's own recipe.
 function firstStepRoute(phase: PhaseDescriptor): string {
   const steps = stepsFor(phase)
   // Defensive: only trip_creation has an empty recipe, and it resolves before the
-  // driver is ever involved — TripDetailView only ever offers this callback for the
-  // current phase, which should never be trip_creation by the time a driver sees it.
+  // driver is ever involved.
   return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.trips
 }
 
@@ -43,10 +35,8 @@ export default function TripDetailByIdPageClient() {
   const { selectTrip } = useTrip()
 
   const [trip, setTrip] = useState<Trip | null>(null)
-  // The driver's OTHER trips, needed to answer "may this one be started yet" — a trip
-  // already underway, or an earlier trip due the same day, both block activation. Read
-  // from the list endpoint rather than TripContext: the context holds only whichever
-  // single trip the server calls current, which cannot see a same-day sibling at all.
+  // The driver's other trips, needed to answer "may this one be started yet". Read from
+  // the list endpoint since TripContext only holds whichever single trip is current.
   const [siblings, setSiblings] = useState<ActivationCandidate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)

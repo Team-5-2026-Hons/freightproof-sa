@@ -11,7 +11,7 @@ import httpx
 import pytest
 import respx
 
-import app.integrations.parcel_perfect as pp_module
+import app.integrations.parcel_perfect.client as pp_client_module
 from app.integrations.parcel_perfect import (
     MOCK_WAYBILL_RESPONSE,
     MockParcelPerfectClient,
@@ -94,9 +94,9 @@ def reset_cached_token():
     but tests must be isolated — a cached token from one test must not bleed
     into auth-flow assertions in the next.
     """
-    pp_module._cached_token = None
+    pp_client_module._cached_token = None
     yield
-    pp_module._cached_token = None
+    pp_client_module._cached_token = None
 
 
 @pytest.fixture
@@ -107,10 +107,10 @@ def pp_settings(monkeypatch):
     tests that mock getSalt and getSecureToken responses. Without this, a
     real token in .env would skip auth and misalign the mock response queue.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_URL", _PP_BASE)
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_KEY", "user@test.com")
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_PASSWORD", "testpassword")
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_API_TOKEN", "")
+    monkeypatch.setattr("app.core.config.settings.PP_API_URL", _PP_BASE)
+    monkeypatch.setattr("app.core.config.settings.PP_API_KEY", "user@test.com")
+    monkeypatch.setattr("app.core.config.settings.PP_API_PASSWORD", "testpassword")
+    monkeypatch.setattr("app.core.config.settings.PP_API_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -179,16 +179,16 @@ async def test_token_cached_on_second_call(pp_settings):
     await client.get_single_waybill("TESTWAY001")
 
     # Token must be cached at module level after the first call.
-    assert pp_module._cached_token == "tok-abc123"
+    assert pp_client_module._cached_token == "tok-abc123"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_pp_error_response_raises_value_error(pp_settings):
-    """Non-zero errorcode raises ValueError with the PP message — no retry for domain errors.
+async def test_pp_error_response_raises_not_found(pp_settings):
+    """Non-zero errorcode with a 'not found' message raises PPWaybillNotFoundError.
 
-    "Waybill not found" contains no auth keyword, so the narrow retry guard passes
-    it straight through without re-auth. Only 3 responses needed.
+    "Waybill not found" is a domain error, not an auth/transport failure — the
+    client converts it so the endpoint can return 404 instead of 502.
     """
     error_payload = json.dumps({
         "errorcode": 404,
@@ -204,7 +204,7 @@ async def test_pp_error_response_raises_value_error(pp_settings):
     )
 
     client = ParcelPerfectClient()
-    with pytest.raises(ValueError, match="Waybill not found"):
+    with pytest.raises(PPWaybillNotFoundError):
         await client.get_single_waybill("BADWAY999")
 
 
@@ -234,7 +234,7 @@ def test_get_pp_client_mock_mode(monkeypatch):
 
     Plain def — get_pp_client() is synchronous; no coroutine needed.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_USE_MOCK", True)
+    monkeypatch.setattr("app.core.config.settings.PP_USE_MOCK", True)
     client = get_pp_client()
     assert isinstance(client, MockParcelPerfectClient)
 
@@ -244,7 +244,7 @@ def test_get_pp_client_real_mode(monkeypatch):
 
     Plain def — get_pp_client() is synchronous; no coroutine needed.
     """
-    monkeypatch.setattr("app.integrations.parcel_perfect.settings.PP_USE_MOCK", False)
+    monkeypatch.setattr("app.core.config.settings.PP_USE_MOCK", False)
     client = get_pp_client()
     assert isinstance(client, ParcelPerfectClient)
 
@@ -254,9 +254,9 @@ def test_get_pp_client_real_mode(monkeypatch):
 async def test_get_single_waybill_empty_results_raises(pp_settings):
     """PP returning errorcode=0 with an empty results list is PP's "no matching
     waybill" signal, and must raise PPWaybillNotFoundError — distinct from the
-    generic ValueError used for genuine API/auth errors (see
-    test_pp_error_response_raises_value_error) — so callers can fail closed on
-    an actual not-found without conflating it with transport failures."""
+    errorcode-based not-found (see test_pp_error_response_raises_not_found) —
+    so callers can fail closed on an actual not-found without conflating it
+    with transport failures."""
     empty_resp = json.dumps({"errorcode": 0, "errormessage": "", "results": []})
     respx.get(url__startswith=_PP_BASE).mock(
         side_effect=[

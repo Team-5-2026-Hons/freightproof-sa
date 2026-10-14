@@ -2,7 +2,7 @@
 
 > **Purpose:** one shared vocabulary mapping **real Load Factor (LFG) operations** to **our system
 > entities**, so the team designs against the same mental model and confusion stays low.
-> **Status:** living document · **Author:** Ciaran · **Date:** 2026-06-24
+> **Status:** living document · **Author:** Ciaran · **Date:** 2026-06-24 · updated 2026-10-01 (FP-281)
 > **Sources:** Bruce minutes (3 Mar · 26 Mar · 16 Apr · 5 May · **24 Jun**), `docs/parcel-traceability.md`,
 > `docs/scope-boundaries.md`, `docs/iteration2_master_plan.md`.
 > **Confidence column:** High = Bruce-confirmed / standard logistics; Medium = strongly implied;
@@ -18,7 +18,10 @@
 | **Consolidated unit / pallet** | ~50 parcels shrink-wrapped + sealed by the client, handed to LFG as **one opaque sealed thing**. The smallest thing **LFG physically handles & counts**. | **❌ not yet modelled** (`HandlingUnit` — the July-visit gap) | many per trip | **High** it exists; **Low** on tracking |
 | **Consignment** | A **commercial booking / waybill**: one consignor → one consignee, **one client, one origin, one destination**, under one PP reference. The "what was booked." | `Consignment` | many per trip | **High** |
 | **Linehaul / Master Waybill** | The **driver's** document: consolidated **unit count** + seal numbers + reg + driver details. **No contents.** (IVS-issued, hard copy in cab.) | *generated from `Trip` — not a stored cargo entity* | one per trip | **High** |
-| **Manifest** | Full list of what's in the truck (PP-issued). Goes **ops-to-ops, never to the driver** (theft risk). | `Consignment.pp_raw_json` / `Parcel` rows (dispatcher-only) | — | **High** |
+| **PP manifest** | The client's Parcel Perfect manifest: the whole load for **one departure**, created by the client around 12:00 on the day. LFG's Master Waybill references its number. A trip is created from one (FP-281). Goes **ops-to-ops, never to the driver** (theft risk). | `Trip.pp_manifest_*` key; snapshot on the H0 `PhaseEvent.parcel_manifest_snapshot` (dispatcher-only) | one per trip, or none (empty leg) | **High** |
+| **Manifest (cargo listing)** | In code, "manifest" also names the trip's live cargo listing: `manifest_service`, `GET /trips/{id}/manifest`, `ManifestPanel`. The `pp_manifest_*` prefix keeps the two apart. | `Consignment.pp_raw_json` / `Parcel` rows (dispatcher-only) | — | **High** |
+| **Empty leg** | A repositioning trip with no cargo and therefore no manifest. | `Trip.trip_type = empty_leg`, `pp_manifest_*` null | — | **High** |
+| **Order number** | **Removed (FP-281).** Nothing in PP reliably supplied it, and the PP manifest replaced it as the trip's external key. FreightProof's own identifier is `trip_reference`. | `Trip.order_number`: nullable, never written, dropped in a clean-up migration | — | **High** |
 | **Trip / leg / load** | The depot-to-depot **vehicle journey**; LFG consolidates many consignments onto it. | `Trip` (+ its consignments + stops) | the spine | **High** |
 | **Stop / waypoint** | A place the truck **visits** in the route. Can serve several consignments at once (see §3). | `TripStop` (FP-112) | many per trip | **High** (design) |
 | **Origin / destination** | The **precinct** (facility or client site) where a consignment is picked up / dropped off. **A role, not a place** (see §3). | `Precinct`, via a consignment's pickup/delivery `TripStop` | one origin + one destination *per consignment* | **High** |
@@ -107,14 +110,48 @@ same `Trip` / `TripStop` / `Consignment` rows. See FP-112 plan §A.6.
 
 ---
 
+## 5b. Parcel counts: stamped versus live
+
+Two numbers describe the same cargo and legitimately differ. Copy must never blur them.
+
+| | Stamped (phase evidence) | Live (Parcel Perfect) |
+| --- | --- | --- |
+| Fields | `PhaseEvent.parcel_count_origin`, `parcel_count_destination` | `Consignment.scanned_out_count`, `scanned_in_count`; `Parcel.pp_scan_out_at`, `pp_scan_in_at` |
+| Written | ONCE, at phase close | recomputed on every request |
+| Is it evidence? | yes — this is what the handshake attests | no — a current view of another system |
+| UI wording | **"recorded at origin / destination"** | **"scanned out / scanned in"**, always with "current" |
+
+Both ultimately originate from a warehouse scan, so *scan versus count* is **not** the
+distinction — `parcel_count_origin` is, in `LoadingDetail`'s words, "the scanned tally
+stamped at close". The distinction is **stamped versus live**, and it is why the trip
+header and the manifest panel can show different numbers for one trip without either
+being wrong.
+
+Surfaces that summarise (trip header, timeline phase cards) say **recorded**. The phase
+detail panels keep "Scanned onto truck" / "Scanned out (origin depot)" because they sit
+inside an evidence context with explicit labels, and `LoadingDetail` deliberately switches
+between the live and stamped figure depending on whether the phase has closed.
+
+A parcel with no recorded count is **unrecorded**, which is not the same as missing. No
+surface may compute a shortfall from the absence of a count.
+
+---
+
 ## 6. Open questions (→ July site visit / Bruce)
 
-1. **Does LFG scan/identify each pallet, or only count units + seal the truck?** Decides whether
-   `HandlingUnit` is a tracked entity or just a count. (`parcel-traceability.md` §8)
-2. **Consignment ↔ HandlingUnit cardinality:** can one consignment span several pallets, and/or one
-   pallet hold several consignments (Bruce's "2–3 clients on a pallet" = FedEx's *downstream*
-   clients, all under one principal in our model)? 1:N vs N:M.
-3. **Depot-to-depot POD signature:** on-device vs photo-of-paper (BQ2).
+1. ~~**Does LFG scan/identify each pallet, or only count units + seal the truck?**~~ **ANSWERED —
+   team decision, 1 September 2026: the parcel is the smallest grain.** A waybill contains parcels;
+   there is no `HandlingUnit` entity. A pallet remains a *count*
+   (`Consignment.unit_count_expected`), never a tracked entity. (`parcel-traceability.md` §8,
+   `iteration3_plan.md` §8 decision 12)
+2. ~~**Consignment ↔ HandlingUnit cardinality**~~ **— falls away with Q1.** With no `HandlingUnit`
+   there is no cardinality to settle. Bruce's "2–3 clients on a pallet" describes FedEx's
+   *downstream* clients, all under one principal in our model, and is already expressible as
+   multiple consignments on one trip.
+3. **Depot-to-depot POD signature:** on-device vs photo-of-paper (BQ2). *Still open.*
+4. **Custody transfer** — **ANSWERED, Bruce 1 September 2026:** custody transfers at the moment the
+   **destination branch scans and breaks the seal**. The seal number lives on the waybill between
+   the operator and the client, not in the driver's document set.
 
 > Record the answers here after the visit — this file is the team's single source of truth for
 > terminology.

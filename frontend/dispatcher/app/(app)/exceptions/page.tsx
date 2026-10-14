@@ -1,175 +1,408 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { TopBar }     from '@/components/ui/TopBar'
-import { SecHead }    from '@/components/ui/SecHead'
-import { Chip }       from '@/components/ui/Chip'
-import { Ic }         from '@/components/ui/Ic'
-import { EmptyState } from '@/components/ui/EmptyState'
-import { useExceptions } from '@/lib/hooks/useExceptions'
-import { mockTrips }     from '@shared/lib/mocks/trips'
-import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
-import { COPY }   from '@shared/lib/constants/copy'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import {
+  FIRST_HISTORY_PAGE,
+  parseExceptionViewState,
+  serializeExceptionViewState,
+  type ExceptionHistoryNavigationState,
+  type ExceptionListViewState,
+  type ExceptionTab,
+} from '@/lib/exceptions/view-state'
+import { useExceptionListRestoration } from '@/lib/hooks/useExceptionListRestoration'
+import { TopBar } from '@/components/ui/TopBar'
+import { SecHead } from '@/components/ui/SecHead'
+import { Button } from '@/components/ui/Button'
+import { Pagination } from '@/components/ui/Pagination'
+import { Table, type TableGroup } from '@/components/ui/Table'
+import { Tabs, type Tab as TabItem } from '@/components/ui/Tabs'
+import { SearchField } from '@/components/ui/SearchField'
+import { FilterSelect } from '@/components/ui/FilterSelect'
+import { ListToolbar } from '@/components/ui/ListToolbar'
+import { DateRangePicker } from '@/components/ui/DateRangePicker'
+import { buildExceptionColumns, EXCEPTION_TABLE_ID } from '@/components/exceptions/exceptionColumns'
+import { ExceptionGroupHeader } from '@/components/exceptions/ExceptionGroupHeader'
+import {
+  filterQueue,
+  groupQueueByTrip,
+  sortQueue,
+  sortQueueChronologically,
+  type ExceptionSortKey,
+  type ExceptionTripGroup,
+} from '@/lib/exceptions/queue'
+import { useExceptionQueue } from '@/lib/hooks/useExceptions'
+import { useExceptionHistory } from '@/lib/hooks/useExceptionHistory'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useNow } from '@/lib/hooks/useNow'
+import { toggleSort } from '@/lib/sort/sort-rows'
+import { useClaimChanges } from '@/lib/hooks/useClaimChanges'
+import { sastCalendarDay } from '@shared/lib/utils/datetime'
+import { reviewState } from '@/lib/format/review-state'
 import { ROUTES } from '@/lib/constants/routes'
-import { cn }     from '@shared/lib/utils/cn'
+import { withReturnTo } from '@/lib/navigation/returnTo'
+import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
+import type { ExceptionSeverity, TripExceptionListItem } from '@shared/lib/types/exception'
 
-function fmtType(t: string): string {
-  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+const SEARCH_DEBOUNCE_MS = 300
+// Relative claim times ("2 min ago") are minute-granular, so a half-minute tick is enough.
+const CLOCK_TICK_MS = 30_000
+const MS_PER_DAY = 86_400_000
+const PRESET_WEEK_DAYS = 7
+const PRESET_MONTH_DAYS = 30
+// Predates the platform, so an untouched range means "all time", the same convention Trip
+// History uses for its picker.
+const RANGE_START = '2020-01-01'
+// What a reviewed row's background becomes while a colleague's claim change is flashing.
+const CLAIM_FLASH_CLASS = 'bg-sec-c/50'
+
+const SEVERITY_OPTIONS = [
+  { value: '' as const, label: 'All severities' },
+  ...(['critical', 'warning', 'info'] as const).map(value => ({ value, label: EXCEPTION_SEVERITY_META[value].label })),
+]
+const GROUP_OPTIONS = [
+  { value: 'none' as const, label: 'No grouping' },
+  { value: 'trip' as const, label: 'Group by trip' },
+]
+
+// Time-like columns read best newest first; text columns A to Z.
+const defaultDirection = (key: ExceptionSortKey): 'asc' | 'desc' => (key === 'raised' ? 'desc' : 'asc')
+
+interface ExceptionsLoadErrorProps {
+  /** What failed to load, in the heading: "exceptions" or "exception history". */
+  subject: string
+  message: string
+  onRetry: () => void
+  /** Only history can be stuck on a later page, so only history passes this. */
+  onReturnToFirstPage?: () => void
 }
 
-function fmtTs(iso: string): string {
-  return new Date(iso).toLocaleString('en-ZA', {
-    day: 'numeric', month: 'short',
-    hour: '2-digit', minute: '2-digit',
-  })
+function ExceptionsLoadError({
+  subject,
+  message,
+  onRetry,
+  onReturnToFirstPage,
+}: ExceptionsLoadErrorProps): React.JSX.Element {
+  return (
+    <div role="alert" className="p-6">
+      <h2 className="text-lg font-semibold">Could not load {subject}</h2>
+      <p className="my-3 text-sm">{message}</p>
+      <Button onClick={onRetry}>Retry</Button>
+      {onReturnToFirstPage && <Button variant="ghost" onClick={onReturnToFirstPage}>Return to first page</Button>}
+    </div>
+  )
 }
 
-// Left-border accent per severity — draws the eye to high-priority items
-const SEVERITY_BORDER: Record<string, string> = {
-  critical: 'border-l-4 border-err',
-  warning:  'border-l-4 border-warn',
-  info:     'border-l-4 border-outline-v/30',
+// Review states that still sit in the shared queue, whoever holds the claim.
+const UNREVIEWED_KINDS: readonly string[] = ['unreviewed', 'claimed_by_me', 'claimed_by_other']
+
+function emptyMessage(tab: ExceptionTab, filtered: boolean): string {
+  if (filtered) return tab === 'history' ? 'No history matches these filters.' : 'No exceptions match these filters.'
+  if (tab === 'mine') return 'Nothing claimed by you.'
+
+  return tab === 'history' ? 'No exception history yet.' : 'No exceptions need review.'
 }
 
 export default function ExceptionsPage() {
-  const router = useRouter()
-  const [showResolved, setShowResolved] = useState(false)
+  const searchParams = useSearchParams()
+  const urlKey = searchParams.toString()
+  const [state, setState] = useState<ExceptionListViewState>(() => parseExceptionViewState(new URLSearchParams(urlKey)))
+  const { tab, q, severity, fromDate, toDate } = state
+  const dates = useMemo(() => ({ fromDate, toDate }), [fromDate, toDate])
+  const [rawSearch, setRawSearch] = useState(q)
+  const [previousUrl, setPreviousUrl] = useState(urlKey)
 
-  const exceptions  = useExceptions({ resolved: showResolved })
-  const openCount   = useExceptions({ resolved: false }).length
-  const closedCount = useExceptions({ resolved: true }).length
+  if (urlKey !== previousUrl) {
+    setPreviousUrl(urlKey)
+    const next = parseExceptionViewState(new URLSearchParams(urlKey))
+    setState(next)
+    setRawSearch(next.q)
+  }
+
+  const update = useCallback((patch: Partial<ExceptionListViewState>, resetPage = false): void => {
+    setState(current => ({ ...current, ...patch, ...(resetPage ? { navigation: FIRST_HISTORY_PAGE } : {}) }))
+  }, [])
+  const query = serializeExceptionViewState(state)
+  const origin = `${ROUTES.exceptions}${query ? `?${query}` : ''}`
+
+  useEffect(() => {
+    // Native history integrates with Next search params and preserves input focus.
+    if (query !== urlKey) window.history.replaceState(null, '', origin)
+  }, [query, urlKey, origin])
+
+  const queue = useExceptionQueue()
+  const { user, isLoading: authLoading } = useAuth()
+  const meId = user?.id ?? null
+  const now = useNow(CLOCK_TICK_MS)
+  const claimChanges = useClaimChanges(queue.items)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (rawSearch !== q) update({ q: rawSearch }, true)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [rawSearch, q, update])
+
+  const filters = useMemo(
+    () => ({ q: q || undefined, severity: severity || undefined, ...dates }),
+    [q, severity, dates],
+  )
+  const onHistoryNavigation = useCallback(
+    (navigation: ExceptionHistoryNavigationState) => update({ navigation }),
+    [update],
+  )
+  const history = useExceptionHistory(filters, { ...state.navigation, onChange: onHistoryNavigation })
+
+  const { unreviewed, mine } = useMemo(() => {
+    const ordered = sortQueueChronologically([...new Map(queue.items.map(item => [item.id, item])).values()])
+    return {
+      // Everything still awaiting review, whoever holds the claim: a claim says who is working an
+      // exception, it does not take it out of the shared queue. "Claimed by me" is a subset view.
+      unreviewed: ordered.filter(item => UNREVIEWED_KINDS.includes(reviewState(item, meId).kind)),
+      mine: ordered.filter(item => reviewState(item, meId).kind === 'claimed_by_me'),
+    }
+  }, [queue.items, meId])
+
+  const completeTab = tab === 'mine' ? mine : unreviewed
+  // History is cursor-paginated by the server in raised order, and trip groups have their own
+  // order, so header sorting only applies to a flat, complete queue tab.
+  const grouped = tab !== 'history' && state.group === 'trip'
+  const sortable = tab !== 'history' && !grouped
+  const items = tab === 'history' ? history.items : filterQueue(sortQueue(completeTab, state.sort), filters)
+  const loading = tab === 'history' ? history.isLoading : queue.isLoading
+  const error = tab === 'history' ? history.error : queue.error
+  const hasData = tab === 'history' ? history.items.length > 0 : queue.items.length > 0
+  const activeFilters = !!(q || severity || dates.fromDate || dates.toDate)
+
+  function clearFilters(): void {
+    setRawSearch('')
+    update({ q: '', severity: '', fromDate: undefined, toDate: undefined }, true)
+  }
+
+  function selectTab(next: ExceptionTab): void {
+    update({ tab: next })
+  }
+
+  function sortBy(columnId: string): void {
+    update({ sort: toggleSort(state.sort, columnId as ExceptionSortKey, defaultDirection) })
+  }
+
+  // The picker always holds a concrete range; an untouched one is stored as "no date filter" so
+  // the URL, the history query and "Clear filters" keep their existing optional-date meaning.
+  const today = sastCalendarDay(now) ?? RANGE_START
+  const daysAgo = useCallback(
+    (days: number): string => sastCalendarDay(new Date(now.getTime() - days * MS_PER_DAY)) ?? today,
+    [now, today],
+  )
+  const presets = useMemo(() => [
+    { label: 'Today', range: { from: today, to: today } },
+    { label: 'Last 7 days', range: { from: daysAgo(PRESET_WEEK_DAYS), to: today } },
+    { label: 'Last 30 days', range: { from: daysAgo(PRESET_MONTH_DAYS), to: today } },
+  ], [today, daysAgo])
+
+  function onDateRange(range: { from: string; to: string }): void {
+    const from = range.from && range.from !== RANGE_START ? range.from : undefined
+    const to = range.to && range.to !== today ? range.to : undefined
+    if (from && to && from > to) return
+
+    update({ fromDate: from, toDate: to }, true)
+  }
+
+  const tabItems: TabItem[] = [
+    {
+      id: 'unreviewed',
+      label: 'Unreviewed',
+      badge: queue.isLoading ? undefined : unreviewed.length,
+      badgeUrgent: true,
+    },
+    { id: 'mine', label: 'Claimed by me', badge: queue.isLoading ? undefined : mine.length },
+    { id: 'history', label: 'History' },
+  ]
+  const empty = emptyMessage(tab, activeFilters)
+
+  const container = useRef<HTMLDivElement | null>(null)
+  const setScroller = useCallback((el: HTMLDivElement | null): void => {
+    container.current = el
+  }, [])
+  const { save: saveForRestoration, expanded, setExpanded } = useExceptionListRestoration({
+    userId: meId,
+    origin,
+    container,
+    ready: !loading && !error,
+    identityReady: authLoading !== true,
+  })
+
+  const columns = useMemo(() => buildExceptionColumns({
+    meId,
+    now,
+    hrefFor: id => withReturnTo(ROUTES.exceptionDetail(id), origin),
+    onOpen: saveForRestoration,
+  }), [meId, now, origin, saveForRestoration])
+
+  const groups: TableGroup<TripExceptionListItem>[] | undefined = useMemo(() => {
+    if (!grouped) return undefined
+
+    return groupQueueByTrip(items).map((group: ExceptionTripGroup) => {
+      const open = expanded[group.tripId] ?? group.severityCounts.critical > 0
+      return {
+        id: group.tripId,
+        rows: group.items,
+        collapsed: !open,
+        header: (bodyId: string) => (
+          <ExceptionGroupHeader
+            group={group}
+            open={open}
+            bodyId={bodyId}
+            onToggle={() => setExpanded(current => ({ ...current, [group.tripId]: !open }))}
+          />
+        ),
+      }
+    })
+  }, [grouped, items, expanded, setExpanded])
+
+  // Skeleton rows only for the very first load. Once data exists, a refetch (including a live claim
+  // update) swaps rows in place, so nothing flashes.
+  const initialLoad = loading && !hasData
+  const showResults = !initialLoad && !(error && !hasData)
+  const refetch = tab === 'history' ? history.refetch : queue.refetch
+  const cardTitle = tab === 'history' ? 'Exception history' : tab === 'mine' ? 'Claimed by me' : 'Unreviewed exceptions'
+  const topBarSub = queue.isLoading
+    ? 'Loading exceptions…'
+    : queue.error && !queue.items.length
+      ? 'Queue unavailable'
+      : `${queue.items.length} needing review`
+  const stale = error || (tab === 'history' && history.isStale)
+  const resultsCount = tab === 'history'
+    ? `${history.totalItems} matching records`
+    : `Showing ${items.length} of ${completeTab.length}`
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <TopBar
-        title="Exceptions"
-        sub={`${openCount} open · ${closedCount} resolved`}
-      />
-
-      {/* Underline tab toggle */}
-      <div className="flex px-6 pt-5 shrink-0">
-        {(['Open Issues', 'Resolved'] as const).map((label, i) => {
-          const active = i === 0 ? !showResolved : showResolved
-          return (
-            <button
-              key={label}
-              onClick={() => setShowResolved(i === 1)}
-              className={cn(
-                'px-4 pb-3 text-[13px] font-[600] border-b-2 transition-colors duration-150',
-                active
-                  ? 'border-sec text-sec'
-                  : 'border-transparent text-on-surf-v hover:text-on-surf',
-              )}
-            >
-              {label}
-              {i === 0 && openCount > 0 && (
-                <span className="ml-1.5 bg-err text-white text-[10px] font-[700] rounded-sm px-[5px] py-[1px]">
-                  {openCount}
-                </span>
-              )}
-            </button>
-          )
-        })}
-        {/* Underline fills remaining width */}
-        <div className="flex-1 border-b-2 border-outline-v/20" />
+    <div className="flex flex-1 min-h-0 flex-col">
+      <TopBar title="Exceptions" sub={topBarSub} />
+      {/* Tabs size to their labels: a fixed max width cut "Claimed by me" down to "Claimed by…". */}
+      <div className="px-6 pt-4">
+        <Tabs
+          tabs={tabItems}
+          active={tab}
+          onChange={id => selectTab(id as ExceptionTab)}
+          panelId="exception-results"
+          ariaLabel="Exception views"
+          className="w-fit [&>button]:flex-none"
+        />
       </div>
-
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <div className="mx-6 my-5">
-          {exceptions.length === 0 ? (
-            <div className="bg-surf-lowest rounded-lg shadow-level-3 p-10">
-              <EmptyState
-                icon={
-                  showResolved
-                    ? <Ic n="check" s={32} className="text-on-surf-v" />
-                    : <Ic n="warn"  s={32} className="text-on-surf-v" />
-                }
-                title={showResolved ? 'No resolved exceptions' : COPY.emptyState.allClear.title}
-                body={showResolved ? 'No exceptions have been resolved yet.' : COPY.emptyState.allClear.body}
-              />
-            </div>
-          ) : (
-            <div className="bg-surf-lowest rounded-lg shadow-level-3 overflow-hidden">
-              <SecHead title={showResolved ? 'Resolved Exceptions' : 'Open Exceptions'} />
-
-              {/* Column header */}
-              <div className="flex items-center gap-4 px-6 py-[7px] bg-surf-low border-b border-outline-v/10 select-none">
-                <div className="w-[80px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Severity</div>
-                <div className="w-[200px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Type · Source</div>
-                <div className="flex-1 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Description</div>
-                <div className="w-[110px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Trip</div>
-                <div className="w-[110px] shrink-0 text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v">Raised</div>
-                <div className="w-[48px] shrink-0" />
-              </div>
-
-              <div className="divide-y divide-outline-v/10">
-                {exceptions.map(exc => {
-                  const sevMeta = EXCEPTION_SEVERITY_META[exc.severity]
-                  const srcMeta = EXCEPTION_SOURCE_META[exc.source]
-                  const trip    = mockTrips.find(t => t.id === exc.trip_id)
-
-                  return (
-                    <div
-                      key={exc.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => router.push(ROUTES.exceptionDetail(exc.id))}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ')
-                          router.push(ROUTES.exceptionDetail(exc.id))
-                      }}
-                      className={cn(
-                        'flex items-center gap-4 px-6 py-[14px] cursor-pointer',
-                        'bg-surf-lowest transition-colors duration-[120ms] hover:bg-surf-low',
-                        SEVERITY_BORDER[exc.severity],
-                      )}
-                    >
-                      {/* Severity */}
-                      <div className="w-[80px] shrink-0">
-                        <Chip type={sevMeta.chipType} label={sevMeta.label} />
-                      </div>
-
-                      {/* Type + source */}
-                      <div className="w-[200px] shrink-0 min-w-0">
-                        <div className="text-[13px] font-[700] text-on-surf leading-tight truncate">
-                          {fmtType(exc.exception_type)}
-                        </div>
-                        <div className="text-[11px] text-on-surf-v mt-[2px]">
-                          {srcMeta.label}
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] text-on-surf-v truncate">{exc.description}</p>
-                      </div>
-
-                      {/* Trip ref */}
-                      <div className="w-[110px] shrink-0 text-[12px] font-[600] text-sec tabular-nums tracking-[0.04em] truncate">
-                        {trip?.trip_reference ?? '—'}
-                      </div>
-
-                      {/* Timestamp */}
-                      <div className="w-[110px] shrink-0 flex items-center gap-1 text-[11px] font-[500] text-sec tabular-nums">
-                        <Ic n="clock" s={10} className="text-sec shrink-0" />
-                        {fmtTs(exc.created_at)}
-                      </div>
-
-                      {/* View */}
-                      <div className="w-[48px] shrink-0 flex justify-end">
-                        <span className="flex items-center gap-0.5 text-[12px] font-[600] text-sec">
-                          View <Ic n="chev" s={13} className="text-sec" />
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+      <ListToolbar hasActiveFilters={activeFilters} onClear={clearFilters}>
+        <SearchField
+          value={rawSearch}
+          onChange={setRawSearch}
+          placeholder="Search description or trip reference…"
+          ariaLabel="Search description or trip reference"
+        />
+        <FilterSelect
+          value={severity}
+          onChange={(value: '' | ExceptionSeverity) => update({ severity: value }, true)}
+          options={SEVERITY_OPTIONS}
+          ariaLabel="Severity"
+        />
+        <DateRangePicker
+          value={{ from: fromDate ?? RANGE_START, to: toDate ?? today }}
+          onChange={onDateRange}
+          presets={presets}
+        />
+        {tab !== 'history' && (
+          <FilterSelect
+            value={state.group}
+            onChange={group => update({ group })}
+            options={GROUP_OPTIONS}
+            ariaLabel="Group by"
+          />
+        )}
+      </ListToolbar>
+      {/* A colleague's claim change is announced politely: it matters, but never interrupts typing. */}
+      <p role="status" aria-live="polite" className="sr-only">{claimChanges.announcement}</p>
+      {stale && hasData && (
+        <div
+          role="status"
+          className="mx-6 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-warn-c px-5 py-3 text-sm text-warn-onc"
+        >
+          This list may be out of date, the last refresh failed.
+          <Button size="sm" variant="ghost" onClick={refetch}>Retry</Button>
         </div>
+      )}
+
+      <div
+        id="exception-results"
+        role="tabpanel"
+        aria-labelledby={`tab-${tab}`}
+        className="mx-6 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-surf-lowest shadow-level-3"
+      >
+        {/* The count lives in the title bar rather than a row of its own. It stays a heading so a
+            restored list has somewhere to put focus, and a live region so a refetch is announced. */}
+        <SecHead
+          title={cardTitle}
+          meta={showResults && (
+            <h2
+              tabIndex={-1}
+              data-results-heading
+              aria-live="polite"
+              className="text-[11px] font-semibold tracking-normal text-on-surf-v"
+            >
+              {resultsCount}
+            </h2>
+          )}
+        />
+        {error && !hasData ? (
+          <ExceptionsLoadError
+            subject={tab === 'history' ? 'exception history' : 'exceptions'}
+            message={error}
+            onRetry={refetch}
+            onReturnToFirstPage={tab === 'history' && history.hasPrevious ? clearFilters : undefined}
+          />
+        ) : (
+          <>
+            {items.length || initialLoad ? (
+              <Table<TripExceptionListItem>
+                tableId={EXCEPTION_TABLE_ID}
+                caption={cardTitle}
+                isLoading={initialLoad}
+                loadingLabel={tab === 'history' ? 'Loading exception history' : 'Loading exceptions'}
+                columns={columns}
+                rows={grouped ? undefined : items}
+                groups={groups}
+                getRowKey={item => item.id}
+                rowClassName={item => (
+                  claimChanges.highlighted.has(item.id) ? `${CLAIM_FLASH_CLASS} transition-colors` : undefined
+                )}
+                sort={sortable ? { id: state.sort.key, dir: state.sort.dir } : undefined}
+                onSort={sortable ? sortBy : undefined}
+                onScroller={setScroller}
+                className="min-h-0 flex-1"
+              />
+            ) : (
+              <div className="p-6">
+                <p className="text-sm">{empty}</p>
+                {activeFilters && <Button variant="ghost" onClick={clearFilters}>Clear filters</Button>}
+                {tab === 'mine' && !activeFilters && (
+                  <Button variant="ghost" onClick={() => selectTab('unreviewed')}>Go to Unreviewed</Button>
+                )}
+              </div>
+            )}
+            {tab === 'history' && !initialLoad && (
+              <div className="shrink-0 border-t border-outline-v/10 px-5 py-2">
+                <Pagination
+                  page={history.page}
+                  pageSize={history.pageSize}
+                  itemCount={items.length}
+                  totalItems={history.totalItems}
+                  hasPrevious={history.hasPrevious}
+                  hasNext={history.hasNext}
+                  isLoading={loading}
+                  onPrevious={history.goToPreviousPage}
+                  onNext={history.goToNextPage}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )

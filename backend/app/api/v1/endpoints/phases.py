@@ -1,7 +1,7 @@
-"""Phase plan endpoints — the frozen contract's HTTP surface (parent plan §3.2).
+"""Phase plan endpoints — the frozen contract's HTTP surface.
 
-Replaces endpoints/handshakes.py and its five /h{n}/complete routes. Decision S3:
-these are driver-scoped. The dispatcher reads the same plan through
+Replaces endpoints/handshakes.py and its five /h{n}/complete routes. These routes
+are driver-scoped. The dispatcher reads the same plan through
 TripDetailResponse.phases on GET /trips/{id}, which it already calls — giving
 these routes a second auth path would be new security surface with no consumer.
 """
@@ -17,15 +17,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
 from app.core.exceptions import (
+    PhaseBlockedError,
     PhaseSequenceError,
     PhaseTooEarlyError,
     PhaseTypeMismatchError,
     ResourceNotFoundError,
     TripActivationBlockedError,
 )
+from app.core.limits import EVIDENCE_WRITE
+from app.core.rate_limit import rate_limit
 from app.db.models.trips import TripStop
 from app.db.session import get_db
-from app.orchestration.phase_service import complete_phase, list_phases, next_phase
+from app.orchestration.phases.blocking import blocked_on_by_stop
+from app.orchestration.evidence.action_location import (
+    PhaseLocationPreviewConflictError, preview_phase_location,
+)
+from app.orchestration.phases.queries import list_phases, next_phase
+from app.orchestration.phases.service import complete_phase
+from app.schemas.action_location import ActionLocationAssessment, DriverLocationCapture
 from app.schemas.people import DriverRead
 from app.schemas.phases import PhaseCompleteRequest, PhaseEventRead
 from app.schemas.trips import TripDetailResponse
@@ -54,8 +63,12 @@ async def list_phases_endpoint(
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return [
-        PhaseEventRead.from_event(e, stop_sequence_by_id=stop_sequences) for e in events
+        PhaseEventRead.from_event(
+            e, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
+        )
+        for e in events
     ]
 
 
@@ -76,13 +89,47 @@ async def next_phase_endpoint(
     if event is None:
         return None
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
-    return PhaseEventRead.from_event(event, stop_sequence_by_id=stop_sequences)
+    gate = await blocked_on_by_stop(db, trip_id=trip_id)
+    return PhaseEventRead.from_event(
+        event, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
+    )
+
+
+@router.post(
+    "/{phase_event_id}/location-preview",
+    response_model=ActionLocationAssessment,
+    summary="Compare a fresh phone capture with the vehicle tracker without recording evidence",
+    # Same budget as /complete: the preview writes nothing, but every call is one
+    # outbound Pulsit read on the operator's account, which is exactly the kind of
+    # per-driver fan-out EVIDENCE_WRITE exists to bound.
+    dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
+)
+async def preview_phase_location_endpoint(
+    trip_id: UUID,
+    phase_event_id: UUID,
+    payload: DriverLocationCapture,
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> ActionLocationAssessment:
+    try:
+        return await preview_phase_location(
+            db, trip_id=trip_id, driver_id=current_driver.id,
+            phase_event_id=phase_event_id, capture=payload,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PhaseLocationPreviewConflictError as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post(
     "/{phase_event_id}/complete",
     response_model=TripDetailResponse,
     summary="Complete a phase (idempotent by idempotency_key)",
+    # Each completion anchors to Hedera. Already idempotent by idempotency_key, so a
+    # retrying client re-reads rather than re-spends — the budget is here for a caller
+    # that varies the key, which idempotency cannot defend against.
+    dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def complete_phase_endpoint(
     trip_id: UUID,
@@ -93,7 +140,7 @@ async def complete_phase_endpoint(
 ) -> TripDetailResponse:
     """Always 200 on a successful completion, including when the phase records a
     mismatch (that is evidence, not a client error) and including when its Hedera
-    anchor failed (fail-open, D7 — dispatchers see anchor_status='failed', not a 504).
+    anchor failed (fail-open — dispatchers see anchor_status='failed', not a 504).
     """
     try:
         return await complete_phase(
@@ -104,7 +151,7 @@ async def complete_phase_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (
         PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
-        TripActivationBlockedError,
+        TripActivationBlockedError, PhaseBlockedError,
     ) as exc:
         # PhaseTooEarlyError joins the 409 family rather than getting a status of its own:
         # like the others it means "the request is well-formed, the trip's state says no".

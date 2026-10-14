@@ -321,9 +321,20 @@ async def test_update_vehicle_invalid_vin_leaves_db_state_unchanged(
     )
     assert resp.status_code == 422
 
-    db_session.expire_all()
-    refreshed = (
-        await db_session.execute(select(Vehicle).where(Vehicle.id == vehicle.id))
-    ).scalar_one()
-    assert refreshed.vin_number is None
-    assert refreshed.registration == "CA 100-001"
+    # Read the two columns rather than re-loading the entity. A column select always goes
+    # to the database and hands back plain values, so there is no identity-mapped copy to
+    # go stale and nothing to expire first.
+    #
+    # This previously did expire_all() and then re-queried the ORM object, which could not
+    # work: expire_all() expires EVERY loaded object including `vehicle` itself, so
+    # building the WHERE clause read `vehicle.id` off an expired instance — a lazy load,
+    # and a lazy load on an async session raises MissingGreenlet instead of querying. The
+    # test died before it could assert anything. test_phases.py and test_arrival_lifecycle
+    # dodge the same trap by capturing ids first; not needing the dodge is better.
+    stored = (
+        await db_session.execute(
+            select(Vehicle.vin_number, Vehicle.registration).where(Vehicle.id == vehicle.id)
+        )
+    ).one()
+    assert stored.vin_number is None
+    assert stored.registration == "CA 100-001"

@@ -203,6 +203,14 @@ async def test_two_underway_trips_returns_newest_not_500(client: AsyncClient, db
     db_session.add_all([user, driver, horse, origin, dest])
     await db_session.flush()
 
+    # BOTH created_at values are stamped here, from one clock. Leaving `newer` to the
+    # column's server_default would take it from POSTGRES's clock while `older` came from
+    # this process's — and the endpoint orders on that column, so the test's whole premise
+    # would rest on two machines agreeing. They need not: any skew larger than the two
+    # hours below silently inverts "older" and "newer", and the failure reads as a broken
+    # ordering rule rather than as a clock. An explicit pair costs one line and makes the
+    # assertion true by construction.
+    now = datetime.now(UTC)
     older = Trip(
         id=uuid.uuid4(), trip_reference="FP-TEST-OLDER-ACTIVE", order_number="ORD-OLDER",
         operator_organization_id=org.id, client_organization_id=client_org.id,
@@ -210,7 +218,7 @@ async def test_two_underway_trips_returns_newest_not_500(client: AsyncClient, db
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
         created_by_user_id=user.id,
-        created_at=datetime.now(UTC) - timedelta(hours=2),
+        created_at=now - timedelta(hours=2),
     )
     newer = Trip(
         id=uuid.uuid4(), trip_reference="FP-TEST-NEWER-ACTIVE", order_number="ORD-NEWER",
@@ -219,6 +227,7 @@ async def test_two_underway_trips_returns_newest_not_500(client: AsyncClient, db
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
         created_by_user_id=user.id,
+        created_at=now,
     )
     db_session.add_all([older, newer])
     await db_session.flush()

@@ -2,8 +2,8 @@
 # Stop hook — when the backend has uncommitted changes, run the fast unit
 # suite and surface only a summary.
 #
-# Why: turns "pytest green" from a claim into a fact, but only when backend
-# code actually changed this session — so it's instant and free on Q&A turns.
+# Why: turns "pytest green" from a claim into a fact when the working tree has
+# backend changes, while remaining instant and free on clean Q&A turns.
 # Runs unit tests only (no DB needed); integration + full suite stay for CI.
 # On red tests it exits 2 to feed the failure back to Claude.
 set -uo pipefail
@@ -16,7 +16,7 @@ echo "$INPUT" | grep -q '"stop_hook_active": *true' && exit 0
 ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 cd "$ROOT/backend" 2>/dev/null || exit 0
 
-# Only act if backend code actually changed this session.
+# Only act if the backend working tree has changes.
 git status --porcelain -- . 2>/dev/null | grep -q . || exit 0
 
 PY="$ROOT/backend/.venv/bin/python"

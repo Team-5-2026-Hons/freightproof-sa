@@ -1,0 +1,59 @@
+/* Print stylesheet for the audit-pack PDF (WeasyPrint). A4, black-on-white first:
+   packs get photocopied and faxed into claim files, so colour is never the only signal. */
+
+@page {
+  size: A4;
+  margin: 20mm 16mm 22mm 16mm;
+  @top-left { content: string(pack-label); font-size: 8pt; color: #555; }
+  @top-right { content: string(trip-ref); font-size: 8pt; color: #555; }
+  @bottom-left { content: string(issued-to); font-size: 7.5pt; color: #777; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #555; }
+}
+
+html { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9pt; color: #1a1a1a; line-height: 1.4; }
+/* Not display:none — an element that generates no box never fires string-set, which
+   silently dropped the "issued to" line from every page footer. */
+.running { height: 0; overflow: hidden; visibility: hidden; margin: 0; }
+.running-pack { string-set: pack-label content(); }
+.running-trip { string-set: trip-ref content(); }
+.running-issued { string-set: issued-to content(); }
+
+h1 { font-size: 20pt; margin: 0 0 2mm; }
+h2 { font-size: 13pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 1.5pt solid #1a1a1a; }
+h3 { font-size: 10.5pt; margin: 4mm 0 1.5mm; }
+section { page-break-inside: auto; }
+section.page { page-break-before: always; }
+p { margin: 1mm 0 2mm; }
+.muted { color: #555; }
+.small { font-size: 7.5pt; }
+.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 7.5pt; word-break: break-all; }
+
+.preview-banner { border: 2pt solid #b71c1c; color: #b71c1c; padding: 3mm; font-weight: bold;
+  text-align: center; margin-bottom: 4mm; }
+
+table { width: 100%; border-collapse: collapse; margin: 1mm 0 3mm; }
+th, td { text-align: left; vertical-align: top; padding: 1.2mm 1.5mm; border-bottom: 0.5pt solid #ccc; }
+th { background: #f0f0ec; font-size: 8pt; }
+tr { page-break-inside: avoid; }
+table.kv th { width: 34%; background: none; font-weight: normal; color: #555; }
+
+.tier { display: inline-block; padding: 0.3mm 1.5mm; border: 0.8pt solid; border-radius: 1mm;
+  font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3pt; }
+.tier-anchored { color: #1b5e20; border-color: #1b5e20; }
+.tier-corroborated { color: #0d47a1; border-color: #0d47a1; }
+.tier-recorded { color: #424242; border-color: #9e9e9e; }
+.tier-declared { color: #6a1b9a; border-color: #6a1b9a; border-style: dashed; }
+
+.obs { padding: 1.2mm 2mm; margin: 0 0 1.2mm; border-left: 2.5pt solid #9e9e9e; }
+.obs-attention { border-left-color: #c62828; background: #fdf3f3; }
+.obs .code { font-size: 7pt; color: #777; }
+
+.summary-box { border: 1pt solid #1a1a1a; padding: 3mm; margin: 3mm 0; }
+.flag { color: #b71c1c; font-weight: bold; }
+.ok { color: #1b5e20; font-weight: bold; }
+
+.route svg { width: 100%; height: auto; border: 0.5pt solid #ccc; }
+.caveat { border-left: 2.5pt solid #f9a825; padding: 1.5mm 2mm; background: #fffbea; font-size: 8pt; }
+pre.payload { white-space: pre-wrap; word-break: break-all; background: #f6f6f3; padding: 1.5mm;
+  font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; margin: 1mm 0 2mm; }
+.signature-line { border-bottom: 0.8pt solid #1a1a1a; height: 9mm; margin-bottom: 1mm; }

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.db.models.enums import TripStatus
 from app.db.models.trips import Consignment, Trip
-from app.orchestration.consignment_service import fetch_and_sync_consignment
+from app.orchestration.consignments.sync import fetch_and_sync_consignment
 from app.tasks import celery
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # CLOSED, CANCELLED, and EXCEPTION_HOLD are excluded: closed trips are
 # immutable evidence records; cancelled trips have no active cargo; held
 # trips may be legally sensitive and should not be auto-refreshed.
-# Coarse set post-Stage-2.2 (T6) — ACTIVE now covers every old per-handshake
+# Coarse set — ACTIVE now covers every old per-handshake
 # value (ORIGIN_GATE_IN..UNLOADING) that used to enumerate this frozenset.
 _ACTIVE_STATUSES: frozenset[TripStatus] = frozenset({
     TripStatus.CREATED,

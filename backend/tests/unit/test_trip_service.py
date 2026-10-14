@@ -5,9 +5,9 @@ They verify that:
   - fetch_and_sync_consignment is NOT called for an empty-leg trip (no consignments)
   - fetch_and_sync_consignment IS called once per consignment, with the correct args
   - a PP failure for any consignment surfaces as PPSyncError and rolls back the session
-  - create_trip writes the trip's full committed phase plan (Stage 2.1), not just H0
+  - create_trip writes the trip's full committed phase plan, not just H0
 
-One exception (task 2.5): test_create_trip_anchor_failure_still_rolls_back_whole_trip
+One exception: test_create_trip_anchor_failure_still_rolls_back_whole_trip
 uses the real (rolled-back) db_session fixture, because it asserts on rows actually
 persisted/not-persisted — a mocked session can't prove that.
 """
@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 
 from app.core.exceptions import HederaTimeoutError, PPSyncError, ResourceNotFoundError
 from app.db.models.enums import AnchorStatus, DispatcherRole, OrganizationType, PhaseStatus, PhaseType, TripStatus, TripType, VehicleType
@@ -50,7 +51,6 @@ def make_user() -> UserRead:
 def make_loaded_payload(**kwargs) -> TripCreateRequest:
     """A LOADED trip payload — requires at least one consignment."""
     base = dict(
-        order_number="ORD-001",
         driver_id=uuid.uuid4(),
         horse_id=uuid.uuid4(),
         trailer_ids=[uuid.uuid4()],
@@ -69,7 +69,6 @@ def make_loaded_payload(**kwargs) -> TripCreateRequest:
 def make_empty_leg_payload(**kwargs) -> TripCreateRequest:
     """An EMPTY_LEG trip payload — must carry no consignments."""
     base = dict(
-        order_number="ORD-002",
         driver_id=uuid.uuid4(),
         horse_id=uuid.uuid4(),
         trailer_ids=[uuid.uuid4()],
@@ -93,34 +92,53 @@ def _make_db() -> AsyncMock:
 
 
 @pytest.mark.asyncio
+async def test_cancel_trip_locks_trip_before_checking_terminal_status() -> None:
+    """The terminal-status decision must happen while holding the trip row lock."""
+    from app.orchestration.trips.administration import cancel_trip
+
+    db = _make_db()
+    db.execute.side_effect = RuntimeError("statement captured")
+
+    with pytest.raises(RuntimeError, match="statement captured"):
+        await cancel_trip(
+            db,
+            trip_id=uuid.uuid4(),
+            operator_organization_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            note="cargo pulled",
+        )
+
+    statement = db.execute.await_args.args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert "FOR UPDATE OF trips" in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     """An empty-leg trip (no consignments) must never call fetch_and_sync_consignment."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_empty_leg_payload()
     user = make_user()
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock) as mock_detail,
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
         mock_driver.return_value = MagicMock(id=payload.driver_id)
         mock_vehicle.return_value = MagicMock(id=payload.horse_id, pulsit_device_id="DEV-001")
         mock_anchor.return_value = MagicMock()
-        mock_detail.return_value = MagicMock()
 
         try:
             await create_trip(db, payload, user)
@@ -134,7 +152,7 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
 @pytest.mark.asyncio
 async def test_create_trip_with_consignments_calls_sync() -> None:
     """A loaded trip calls fetch_and_sync_consignment once per consignment with correct args."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload(
         consignments=[{"pp_reference": "WAY123", "unit_count_expected": 2}]
@@ -143,25 +161,22 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock) as mock_detail,
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
         mock_driver.return_value = MagicMock(id=payload.driver_id)
         mock_vehicle.return_value = MagicMock(id=payload.horse_id, pulsit_device_id="DEV-001")
         mock_anchor.return_value = MagicMock()
-        mock_detail.return_value = MagicMock()
 
         try:
             await create_trip(db, payload, user)
@@ -181,7 +196,7 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     """A PP failure for any consignment (e.g. unresolvable pp_reference) surfaces as
     PPSyncError and rolls back the session — a trip must not persist with a cargo
     plan that couldn't be pulled from PP."""
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload(
         consignments=[{"pp_reference": "NOPE999", "unit_count_expected": 1}]
@@ -190,11 +205,10 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     db = _make_db()
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
         ) as mock_sync,
     ):
@@ -212,13 +226,13 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
 @pytest.mark.asyncio
 async def test_create_trip_writes_full_pending_plan() -> None:
     """A single-leg (2-stop, 1-consignment) create_trip call writes the full
-    7-row committed phase plan up front (Stage 2.1) — not just a hand-built H0.
+    8-row committed phase plan up front — not just a hand-built H0.
 
-    All 7 rows must be `pending`, ordered by sequence_number, and match
+    All 8 rows must be `pending`, ordered by sequence_number, and match
     build_phase_plan's 2-stop shape: trip_creation, activation, loading,
-    departure, in_transit, unloading, confirmation.
+    departure, in_transit, arrival, unloading, confirmation.
     """
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     payload = make_loaded_payload()
     user = make_user()
@@ -247,18 +261,16 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     fake_sync_result = MagicMock(consignment=fake_consignment, warning=None)
 
     with (
-        patch("app.orchestration.trip_service._fetch_driver", new_callable=AsyncMock) as mock_driver,
-        patch("app.orchestration.trip_service._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
-        patch("app.orchestration.trip_service._check_order_number_conflict", new_callable=AsyncMock),
-        patch("app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock) as mock_anchor,
-        patch("app.orchestration.trip_service.compute_journey_lock_hash", return_value="hash-abc"),
+        patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
+        patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
+        patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
         # on h0's inline completion) needs a JSON-serialisable payload, matching
         # compute_trip_canonical_payload's actual dict return type.
-        patch("app.orchestration.trip_service.compute_trip_canonical_payload", return_value={"trip_id": "canonical"}),
-        patch("app.orchestration.trip_service.get_trip_detail", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.compute_trip_canonical_payload_v2", return_value={"trip_id": "canonical"}),
         patch(
-            "app.orchestration.consignment_service.fetch_and_sync_consignment",
+            "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
             return_value=fake_sync_result,
         ),
@@ -281,12 +293,12 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         key=lambda e: e.sequence_number,
     )
 
-    assert len(phase_events) == 7
-    assert [e.sequence_number for e in phase_events] == list(range(7))
+    assert len(phase_events) == 8
+    assert [e.sequence_number for e in phase_events] == list(range(8))
     # h0 (trip_creation) is the one row create_trip completes inline, right
     # after its Hedera anchor succeeds — every other row stays PENDING until a
     # later advance_* call resolves it. Regression coverage for the h0-never-
-    # completes bug (Stage 2 final review): h0 used to stay PENDING forever,
+    # completes bug: h0 used to stay PENDING forever,
     # which _gate_and_load's "all lower sequence_numbers resolved" check turned
     # into a permanent block on every later phase.
     assert phase_events[0].status == PhaseStatus.COMPLETED
@@ -297,37 +309,34 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         PhaseType.LOADING,
         PhaseType.DEPARTURE,
         PhaseType.IN_TRANSIT,
+        PhaseType.ARRIVAL,
         PhaseType.UNLOADING,
         PhaseType.CONFIRMATION,
     ]
-    # trip_creation is the only NULL-stop row (D3); every other row anchors to
+    # trip_creation is the only NULL-stop row; every other row anchors to
     # a real stop.
     assert phase_events[0].trip_stop_id is None
     assert all(e.trip_stop_id is not None for e in phase_events[1:])
-    # D7: only trip_creation/departure/confirmation carry a Hedera receipt. h0's
-    # anchor is ANCHORED (not just PENDING) because create_trip completes it
-    # inline in the same step that succeeds the anchor; departure/confirmation
-    # stay PENDING until their own advance_* calls run.
+    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
+    # frozenset(PhaseType)). h0's anchor is ANCHORED (not just
+    # PENDING) because create_trip completes it inline in the same step that
+    # succeeds the anchor; every other row stays PENDING until its own advance_*
+    # call anchors it on completion.
     assert phase_events[0].anchor_status == AnchorStatus.ANCHORED
-    assert phase_events[3].anchor_status == AnchorStatus.PENDING
-    assert phase_events[6].anchor_status == AnchorStatus.PENDING
-    assert phase_events[1].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[2].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[4].anchor_status == AnchorStatus.NOT_REQUIRED
-    assert phase_events[5].anchor_status == AnchorStatus.NOT_REQUIRED
+    assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events[1:])
     assert phase_events[0].completed_at is not None
     assert phase_events[0].event_hash is not None
     assert phase_events[0].blockchain_receipt_id is not None
 
 
 def test_build_phase_events_single_leg_matches_plan() -> None:
-    """_build_phase_events is a pure function (Stage 2.1 code-review extraction) —
+    """_build_phase_events is a pure function —
     no session, no mocking, just plain in-memory TripStop/consignment-result
     stand-ins. Complements test_create_trip_writes_full_pending_plan above, which
-    checks the same 7-row shape end-to-end through create_trip's session-mocked
+    checks the same 8-row shape end-to-end through create_trip's session-mocked
     wiring; this test isolates the plan-building logic itself.
     """
-    from app.orchestration.trip_service import _build_phase_events
+    from app.orchestration.trips.creation import _build_phase_events
 
     trip_id = uuid.uuid4()
     stop_0 = TripStop(id=uuid.uuid4(), trip_id=trip_id, precinct_id=uuid.uuid4(), sequence=0)
@@ -348,31 +357,28 @@ def test_build_phase_events_single_leg_matches_plan() -> None:
         PhaseType.LOADING,
         PhaseType.DEPARTURE,
         PhaseType.IN_TRANSIT,
+        PhaseType.ARRIVAL,
         PhaseType.UNLOADING,
         PhaseType.CONFIRMATION,
     ]
-    assert [e.sequence_number for e in phase_events] == list(range(7))
+    assert [e.sequence_number for e in phase_events] == list(range(8))
     assert all(e.trip_id == trip_id for e in phase_events)
     assert all(e.status == PhaseStatus.PENDING for e in phase_events)
-    # trip_creation is the only NULL-stop row (D3); activation/loading anchor
-    # to stop 0, unloading/confirmation to stop 1.
+    # trip_creation is the only NULL-stop row; activation/loading anchor
+    # to stop 0, arrival/unloading/confirmation to stop 1.
     assert phase_events[0].trip_stop_id is None
     assert phase_events[1].trip_stop_id == stop_0.id
     assert phase_events[2].trip_stop_id == stop_0.id
-    assert phase_events[6].trip_stop_id == stop_1.id
-    # D7: only trip_creation/departure/confirmation carry a Hedera receipt.
-    assert [e.anchor_status for e in phase_events] == [
-        AnchorStatus.PENDING,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.PENDING,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.NOT_REQUIRED,
-        AnchorStatus.PENDING,
-    ]
+    assert phase_events[5].trip_stop_id == stop_1.id
+    assert phase_events[7].trip_stop_id == stop_1.id
+    # Every phase carries a Hedera receipt now (ANCHORED_PHASES =
+    # frozenset(PhaseType)) — every row this pure builder emits
+    # is PENDING (create_trip's own inline completion of trip_creation to ANCHORED
+    # happens later, outside this function; see test_create_trip_writes_full_pending_plan).
+    assert all(e.anchor_status == AnchorStatus.PENDING for e in phase_events)
 
 
-# ── P0 fail-closed contrast (task 2.5, D7) ─────────────────────────────────────
+# ── P0 fail-closed contrast ──────────────────────────────────────────────────
 
 @pytest_asyncio.fixture
 async def create_trip_seed(db_session):
@@ -425,7 +431,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     anchor_status=FAILED must, at trip creation, undo the entire trip — no Trip
     or PhaseEvent row may survive it.
     """
-    from app.orchestration.trip_service import create_trip
+    from app.orchestration.trips.creation import create_trip
 
     operator_org, dispatcher_user, driver, horse, origin, dest = create_trip_seed
     user = UserRead(
@@ -434,13 +440,13 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
         created_at=_NOW, updated_at=_NOW,
     )
     payload = TripCreateRequest(
-        order_number="ORD-P0-ROLLBACK", driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
+        driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
         origin_precinct_id=origin.id, destination_precinct_id=dest.id, trip_type=TripType.EMPTY_LEG,
         planned_departure_at=_NOW,
     )
 
     with patch(
-        "app.orchestration.trip_service.anchor_subject", new_callable=AsyncMock,
+        "app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock,
         side_effect=HederaTimeoutError("simulated Hedera timeout"),
     ):
         with pytest.raises(HederaTimeoutError):
@@ -450,9 +456,9 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     # itself has no try/except around P0's anchor call, by design (this task's fence).
     await db_session.rollback()
 
-    trips = (await db_session.execute(select(Trip).where(Trip.order_number == "ORD-P0-ROLLBACK"))).scalars().all()
+    trips = (await db_session.execute(select(Trip).where(Trip.driver_id == driver.id))).scalars().all()
     events = (await db_session.execute(
-        select(PhaseEvent).where(PhaseEvent.trip_id.in_(select(Trip.id).where(Trip.order_number == "ORD-P0-ROLLBACK")))
+        select(PhaseEvent).where(PhaseEvent.trip_id.in_(select(Trip.id).where(Trip.driver_id == driver.id)))
     )).scalars().all()
     assert trips == []
     assert events == []
@@ -490,7 +496,7 @@ async def test_active_trip_prefers_activated_trip_over_newer_assignment(
     PWA's Home and Active tab showed an un-activated assignment while the trip the driver
     was actually driving vanished from view.
     """
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -523,7 +529,7 @@ async def test_active_trip_falls_back_to_created_when_nothing_activated(
 ) -> None:
     """CREATED stays eligible: Activation (which is what flips CREATED -> ACTIVE) is
     reached through this trip, so a driver holding only an assignment must still get it."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -552,9 +558,9 @@ async def test_active_trip_prefers_soonest_departure_over_newest_assignment(
     Nothing is activated, so both trips share the CREATED rank. The trip leaving the day
     after next was the one the dispatcher captured most recently, and created_at ordering
     was enough to make it the driver's "current" trip while the one leaving tomorrow sat
-    unstarted — the opposite of the order phase_service's gates let them be worked in.
+    unstarted — the opposite of the order the phases package's gates let them be worked in.
     """
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -587,7 +593,7 @@ async def test_active_trip_sorts_an_unscheduled_assignment_last(
 ) -> None:
     """A trip with no planned departure cannot be the "next" one to leave, however
     recently it was captured — it has no place in the queue at all until it is scheduled."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -621,7 +627,7 @@ async def test_active_trip_keeps_the_underway_trip_over_a_sooner_assignment(
     """Departure order decides WITHIN a rank, never across one. A trip the driver is
     physically on outranks an assignment even when that assignment leaves sooner —
     otherwise a mis-scheduled row would yank Home away mid-journey."""
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -650,7 +656,7 @@ async def test_active_trip_keeps_the_underway_trip_over_a_sooner_assignment(
 
 @pytest.mark.asyncio
 async def test_active_trip_ignores_terminal_trips(db_session, create_trip_seed) -> None:
-    from app.orchestration.trip_service import get_active_trip_for_driver
+    from app.orchestration.trips.queries import get_active_trip_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -678,7 +684,7 @@ async def test_list_trips_for_driver_returns_all_statuses_newest_first(
 ) -> None:
     """Terminal trips are included on purpose — the PWA's Past tab is built from them,
     and grouping is the client's job."""
-    from app.orchestration.trip_service import list_trips_for_driver
+    from app.orchestration.trips.queries import list_trips_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -718,7 +724,7 @@ async def test_list_trips_for_driver_returns_all_statuses_newest_first(
 @pytest.mark.asyncio
 async def test_list_trips_for_driver_scopes_to_that_driver(db_session, create_trip_seed) -> None:
     """driver_id is the whole authorisation boundary for GET /trips/me."""
-    from app.orchestration.trip_service import list_trips_for_driver
+    from app.orchestration.trips.queries import list_trips_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(
@@ -753,7 +759,7 @@ async def test_list_trips_for_driver_scopes_to_that_driver(db_session, create_tr
 async def test_own_trip_detail_rejects_another_drivers_trip(db_session, create_trip_seed) -> None:
     """404 (ResourceNotFoundError), not a 403: a distinguishable refusal would confirm the
     trip exists and let a driver probe for real trip ids."""
-    from app.orchestration.trip_service import get_own_trip_detail_for_driver
+    from app.orchestration.trips.queries import get_own_trip_detail_for_driver
 
     operator_org, user, driver, horse, origin, dest = create_trip_seed
     client_org = (await db_session.execute(

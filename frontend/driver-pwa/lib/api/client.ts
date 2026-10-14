@@ -24,10 +24,27 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly retryAfterMs?: number,
   ) {
     super(message)
     this.name = 'ApiError'
   }
+}
+
+const MILLISECONDS_PER_SECOND = 1_000
+
+function retryAfterMilliseconds(res: Response): number | undefined {
+  if (res.status !== 429) return undefined
+  const raw = res.headers?.get('Retry-After')
+  if (!raw) return undefined
+
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * MILLISECONDS_PER_SECOND
+  }
+
+  const retryAt = Date.parse(raw)
+  return Number.isNaN(retryAt) ? undefined : Math.max(0, retryAt - Date.now())
 }
 
 // The backend's exact detail for a device that has been superseded by a newer login —
@@ -186,7 +203,11 @@ async function request<T>(
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, errorMessage ?? res.statusText)
+    throw new ApiError(
+      res.status,
+      errorMessage ?? res.statusText,
+      retryAfterMilliseconds(res),
+    )
   }
 
   if (res.status === 204) return undefined as T

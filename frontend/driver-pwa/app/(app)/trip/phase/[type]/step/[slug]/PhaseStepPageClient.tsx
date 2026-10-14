@@ -3,26 +3,25 @@
 // Replaces the deleted app/(app)/trip/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx.
 // The URL keys on phase_type (see page.tsx and lib/phase/routes.ts's header note) — the
 // actual phase_event_id a driver is addressing is resolved here, client-side, from
-// TripContext via currentPhase(trip.phases). A cross-dock plan can visit `unloading`
+// TripContext via actionablePhase(trip.phases). A cross-dock plan can visit `unloading`
 // (say) more than once; the URL alone can never disambiguate which occurrence, only the
 // ledger can — which is exactly why the guard below redirects on any mismatch instead of
 // trusting the URL's [type] segment at face value.
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import type { ComponentType } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 import { usePhaseDraft } from '@/lib/hooks/usePhaseDraft'
-import { useSealReference } from '@/lib/hooks/useSealReference'
 import { useVisualCountCarry } from '@/lib/hooks/useVisualCountCarry'
 import { useTrip } from '@/lib/hooks/useTrip'
-import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
+import { useLocation } from '@/lib/hooks/useLocation'
 import { useToast } from '@/lib/hooks/useToast'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
-import { submitPhase } from '@/lib/api/phases'
-import { ApiError } from '@/lib/api/client'
-import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
-import { currentPhase, stepsFor, phaseStepRoute, nextStepRoute, isAnchored } from '@/lib/phase'
+import {
+  startPhaseSubmission, usePhaseSubmissions, type PhaseSubmissionOutcome,
+} from '@/lib/submission/phase-submitter'
+import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored } from '@/lib/phase'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
@@ -31,45 +30,40 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
 import { stepComponentFor } from '@/components/phase/steps/registry'
+import { fetchLinehaul } from '@/lib/api/manifest'
+import { previewPhaseLocation } from '@/lib/api/phases'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
+import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
 import type {
-  ActivationEvidence, LoadingEvidence, DepartureEvidence, UnloadingEvidence,
+  ActivationEvidence, LoadingEvidence, DepartureEvidence, ArrivalEvidence, UnloadingEvidence,
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
+import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
+import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
-const LOADING_INITIAL: LoadingEvidence = { driverVisualCount: null, capturedAt: null }
+const LOADING_INITIAL: LoadingEvidence = {
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null,
+}
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  waybillPhotoDataUrl: null, waybillPhotoArtifactId: null, sealNumber: null,
-  sealPhotoDataUrl: null, sealPhotoArtifactId: null,
-  sealNumberConfirmed: null, sealVerifiedMatch: null, capturedAt: null,
+  sealNumber: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
+// The seal is no longer captured here — see ArrivalEvidence/ARRIVAL_INITIAL below.
 const UNLOADING_INITIAL: UnloadingEvidence = {
-  waybillHandedOver: null, sealNumberAtDestination: null, sealVerifiedMatch: null,
-  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-  sealBrokenPhotoDataUrl: null, driverVisualCount: null, capturedAt: null,
+  waybillHandedOver: null, driverVisualCount: null, capturedAt: null,
 }
-// driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
+const ARRIVAL_INITIAL: ArrivalEvidence = {
+  sealCondition: null, sealNumberAtArrival: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+}
+// driverVisualCount is seeded per-mount from the carry-forward hook — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
   podPhotoDataUrl: null, podPhotoArtifactId: null,
-  podSignatureDataUrl: null, podSignatureArtifactId: null,
+  podSignatureArtifactId: null, receiverConfirmedAt: null,
   reconciliationNote: null, capturedAt: null,
-}
-
-// The route for wherever the ledger says the driver is right now — used both by the
-// type-mismatch guard below and (duplicated, see that file's own comment) by
-// InTransitPageClient's "Arrive at destination" button. Composed entirely from
-// lib/phase's own exports; lib/phase/ itself is out of scope for this task, so this
-// stays local rather than becoming a second export from that module.
-function currentStepRoute(phases: readonly PhaseDescriptor[]): string {
-  const phase = currentPhase(phases)
-  if (phase === null) return ROUTES.trips // nothing left unresolved — trip finished
-  const steps = stepsFor(phase)
-  // Defensive: only trip_creation has an empty recipe, and it resolves at trip creation
-  // before the driver is ever involved — currentPhase should never surface it here.
-  return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail
 }
 
 // STEP_REGISTRY's ComponentType<never> intentionally erases each step's real prop shape
@@ -95,27 +89,33 @@ function UnknownStep({ phaseType, slug }: { phaseType: PhaseType; slug: string }
 
 // Thin gate: decides WHETHER the step screen renders at all, before any hook that
 // depends on a real trip ever mounts. Mirrors the old HandshakeStepPageClient's split —
-// see the Fix 1/Fix 2 comments below — so usePhaseDraft/useSealReference/
-// useVisualCountCarry (owned further down, by the XStep components) can never mount
-// with an empty tripId or key off a phase that hasn't loaded yet.
+// see the Fix 1/Fix 2 comments below — so usePhaseDraft/useVisualCountCarry (owned
+// further down, by the XStep components) can never mount with an empty tripId or key off
+// a phase that hasn't loaded yet.
 export default function PhaseStepPageClient() {
   const router = useRouter()
   const { trip, isLoading } = useTrip()
 
-  // Fix 2 (submit-triggered spinner/"not found" flash): tracks whether a phase submit
-  // is currently in flight. submitAndAdvance (inside usePhaseStepController) awaits the
-  // backend call and, on a 409, a refetch — both of which can toggle TripContext's
-  // SHARED isLoading — without this flag the step UI (including SwipeToConfirm's own
-  // "Submitting…" state) would flash a full-screen spinner mid-submit. Only reset back
-  // to false on paths that keep the driver on THIS screen; every success/queued path
-  // navigates to a different top-level route, unmounting this component and discarding
-  // the flag for free.
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  // Fix 2 (submit-triggered spinner/"not found" flash): tracks whether a phase submit is
+  // currently in flight. Latched true at hand-off and never reset here — every path out
+  // of a hand-off navigates to a different top-level route, unmounting this component and
+  // discarding the flag for free.
+  //
+  // Still needed even though the hand-off itself is now synchronous: the submission it
+  // starts runs on in lib/submission/phase-submitter.ts and can still toggle TripContext's
+  // SHARED isLoading (its 409 path refetches) — and once confirmation's last step lands,
+  // /trips/me/active legitimately returns null while this component is still mounted.
+  const [isHandingOff, setIsHandingOff] = useState(false)
+  // Generalised across screens now that submissions outlive the page that started them:
+  // a submission handed off from the PREVIOUS phase can still be running while the driver
+  // stands on this one, and its refetch must not knock this screen out either.
+  const { inFlight } = usePhaseSubmissions()
+  const isSubmitting = isHandingOff || inFlight.length > 0
 
   // Fix 2 (trip-closing case): once confirmation's last step submits, the trip is
   // CLOSED — refetching /trips/me/active legitimately returns null — while the success
-  // toast fires and the driver is routed to ROUTES.trips. Without a fallback, the render
-  // in that window falls into the `!trip` branch and flashes "Trip not found" before the
+  // toast fires and the driver is routed away. Without a fallback, the render in that
+  // window falls into the `!trip` branch and flashes "Trip not found" before the
   // navigation actually takes effect. Written in an effect (post-commit), never during
   // render, for the same reasons the old page client's version was.
   const lastTripRef = useRef<Trip | null>(null)
@@ -123,23 +123,39 @@ export default function PhaseStepPageClient() {
     if (trip) lastTripRef.current = trip
   }, [trip])
 
+  // The plan as it stood the instant the driver swiped, pinned for as long as this
+  // component survives the route change. Without it the optimistic advance would turn
+  // this screen against itself: marking the phase resolved moves currentPhase() on, which
+  // makes PhaseStepContent's own mismatch guard fire and router.replace() the driver into
+  // the NEXT phase's first step — the exact "marched straight into the next phase"
+  // behaviour Workstream 1 exists to remove — racing the push to Home that was already
+  // issued. Nothing downstream needs a fresher plan than this: the screen is leaving.
+  const handedOffTripRef = useRef<Trip | null>(null)
+  const beginHandOff = useCallback(() => {
+    handedOffTripRef.current = lastTripRef.current
+    setIsHandingOff(true)
+  }, [])
+
+  const activeTrip = (isHandingOff ? handedOffTripRef.current : null)
+    ?? trip
+    ?? (isSubmitting ? lastTripRef.current : null)
+
   // Fix 1 (CRITICAL evidence-wipe bug, carried over unchanged): the (app) layout only
   // gates children on auth, not on TripContext.isLoading — so a hard reload, PWA
   // relaunch, or a push-notification deep link straight into a phase step can mount this
-  // page while `trip` is still null. usePhaseDraft/useSealReference/useVisualCountCarry
+  // page while `trip` is still null. usePhaseDraft/useVisualCountCarry
   // key their localStorage reads off tripId inside a useState lazy initializer that only
   // ever runs on first mount — if they mounted with tripId = '' before the trip loaded,
   // they'd read the WRONG storage keys, start empty, and the driver's very next
   // onUpdate() call would overwrite the CORRECT (real-tripId) key with that empty state,
   // permanently erasing previously captured evidence. The fix: PhaseStepContent (and
   // everything it renders) never mounts until `trip` is a real, non-null object.
-  if (isLoading && !isSubmitting) {
-    return <LoadingScreen label="Loading trip" />
-  }
-
-  const activeTrip = trip ?? (isSubmitting ? lastTripRef.current : null)
-
-  if (!activeTrip) {
+  //
+  // Gated on having no trip at all rather than on isLoading alone: a background refetch
+  // while the driver is mid-capture should not blank their screen to a spinner when we
+  // already hold a perfectly good plan to render.
+  if (activeTrip === null) {
+    if (isLoading) return <LoadingScreen label="Loading trip" />
     return (
       <main className="flex min-h-dvh items-center justify-center p-6">
         <p className="text-sm text-surface-on-variant">Trip not found.</p>
@@ -160,18 +176,21 @@ export default function PhaseStepPageClient() {
     )
   }
 
-  return <PhaseStepContent trip={activeTrip} setIsSubmitting={setIsSubmitting} />
+  return <PhaseStepContent trip={activeTrip} onHandOff={beginHandOff} />
 }
 
 interface PhaseStepContentProps {
   trip: Trip
-  setIsSubmitting: (isSubmitting: boolean) => void
+  // Called once, synchronously, when the driver's swipe hands a submission to the
+  // background. One-way by design: nothing resets it, because every path out of a
+  // hand-off is a route change that unmounts this component.
+  onHandOff: () => void
 }
 
 // Everything that needs a real, non-null trip lives here (see Fix 1 above) — most
 // importantly the type-mismatch guard, which is this route's whole reason for existing
 // as a client-resolved redirect rather than a plain static page.
-function PhaseStepContent({ trip, setIsSubmitting }: PhaseStepContentProps) {
+function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
   const { type, slug } = useParams<{ type: string; slug: string }>()
   const router = useRouter()
 
@@ -180,14 +199,23 @@ function PhaseStepContent({ trip, setIsSubmitting }: PhaseStepContentProps) {
   // has a real PhaseType in its URL — this cast just names what build time guarantees.
   const urlPhaseType = type as PhaseType
 
-  const phase = currentPhase(trip.phases)
+  // actionablePhase, NOT currentPhase: the two differ for the whole drive, because the
+  // backend holds the driverless `in_transit` row PENDING from departure until arrival.
+  // Guarding on currentPhase deadlocked the trip — this screen demanded the ledger
+  // already be on `unloading`, while the only thing that moves the ledger to `unloading`
+  // is a submit from this screen. The driver was bounced back to the trip page every
+  // time they pressed "Arrive at destination". See lib/phase/derive.ts.
+  const phase = actionablePhase(trip.phases)
   const steps = phase !== null ? stepsFor(phase) : []
-  // Guard: the ledger's current phase may not be the one this URL addresses — a stale
+  // Guard: the phase the driver is due on may not be the one this URL addresses — a stale
   // back-navigation, a bookmarked deep link, or a submit that just advanced the trip to
   // its next phase in another tab. Trusting the URL here would submit evidence against
   // the wrong phase_event_id row (or, worse, a phase that's already resolved). Redirect
-  // to wherever the ledger actually says "current" instead.
-  const mismatched = phase === null || phase.phase_type !== urlPhaseType || steps.length === 0
+  // to wherever the ledger actually puts the driver instead.
+  //
+  // No `steps.length === 0` arm: actionablePhase only ever returns a phase WITH a recipe,
+  // so an empty one is unreachable by construction rather than by check.
+  const mismatched = phase === null || phase.phase_type !== urlPhaseType
 
   useEffect(() => {
     if (mismatched) router.replace(currentStepRoute(trip.phases))
@@ -218,7 +246,7 @@ function PhaseStepContent({ trip, setIsSubmitting }: PhaseStepContentProps) {
       slug={slug}
       stepIndex={stepIndex}
       isFinalStep={stepIndex === steps.length - 1}
-      setIsSubmitting={setIsSubmitting}
+      onHandOff={onHandOff}
     />
   )
 }
@@ -229,7 +257,7 @@ interface StepControllerProps {
   slug: string
   stepIndex: number
   isFinalStep: boolean
-  setIsSubmitting: (isSubmitting: boolean) => void
+  onHandOff: () => void
 }
 
 // Pure dispatch on phase_type — calls no hooks of its own. Each branch below mounts a
@@ -248,6 +276,7 @@ function PhaseStepRouter(props: StepControllerProps) {
     case 'activation': return <ActivationStep {...props} />
     case 'loading': return <LoadingStep {...props} />
     case 'departure': return <DepartureStep {...props} />
+    case 'arrival': return <ArrivalStep {...props} />
     case 'unloading': return <UnloadingStep {...props} />
     case 'confirmation': return <ConfirmationStep {...props} />
     case 'trip_creation':
@@ -255,8 +284,9 @@ function PhaseStepRouter(props: StepControllerProps) {
       // Unreachable: PhaseStepContent's guard redirects away whenever the current
       // phase's step recipe is empty, and these are the two phase types with one
       // (phase-meta.ts). in_transit joined trip_creation when its '1-arrival' GPS step
-      // was removed — the phase is auto-completed server-side and the driver never
-      // walks it. These cases exist only so the switch stays exhaustive.
+      // was removed; it IS driver-submitted again as of 2026-08-09, but from the
+      // in-transit hub's swipe rather than a step page, so it still never reaches here.
+      // These cases exist only so the switch stays exhaustive.
       return null
     default: {
       const unreachable: never = props.phase.phase_type
@@ -278,25 +308,38 @@ function usePhaseStepController<T extends PhaseEvidence>(
   slug: string,
   isFinalStep: boolean,
   initial: T,
-  setIsSubmitting: (isSubmitting: boolean) => void,
+  onHandOff: () => void,
   // Runs once a submission is resolved (by any path — real success, offline queue, or a
   // 409 that turns out to be an earlier attempt's success) but BEFORE the draft is
   // cleared, so a phase-specific carry-forward write (departure's seal, unloading's
   // visual count) still has the just-captured evidence to read from.
   onResolved: (freshTrip: Trip | null, evidence: T) => void,
-  // onComplete returns a Promise on the final step and nothing on the others. The union
-  // is load-bearing, not cosmetic: SwipeToConfirm inspects the return value to decide
-  // whether a submit is still in flight, and that is the only thing keeping the control
-  // locked (and reading "Submitting…") across a multi-second photo upload.
-): { draft: T; onUpdate: (patch: Partial<T>) => void; onComplete: () => void | Promise<void> } {
+  // onComplete is synchronous on EVERY step now — mid-phase steps navigate, and the final
+  // step hands its submission to the background submitter and navigates. The union return
+  // type is kept because the step components all declare it (components/phase/steps/**),
+  // and because SwipeToConfirm treats a synchronous onConfirm as "stay latched, the caller
+  // is navigating" — which is exactly right here and is what stops a second swipe firing a
+  // duplicate confirm into an in-flight route change.
+): {
+  draft: T
+  onUpdate: (patch: Partial<T>) => void
+  onComplete: () => void | Promise<void>
+  locationCheckModal: ReactNode
+} {
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip, adoptTrip } = useTrip()
-  const { capturePosition } = useLocationTrail()
+  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
+  const { capture } = useLocation()
   const tripId = String(trip.id)
 
   const [draft, updateDraftRaw, clearDraft] = usePhaseDraft<T>(tripId, phase.phase_event_id, initial)
+  const [locationAssessment, setLocationAssessment] = useState<ActionLocationAssessment | null>(null)
+  const [locationPreviewLoading, setLocationPreviewLoading] = useState(false)
+  const [locationPreviewError, setLocationPreviewError] = useState<string | null>(null)
+  const [pendingPosition, setPendingPosition] = useState<DriverPosition | null>(null)
+  const [pendingCapturedAt, setPendingCapturedAt] = useState<string | null>(null)
+  const [offlineLocationCheck, setOfflineLocationCheck] = useState(false)
 
   // Mirrors `draft` synchronously. Every submittable phase's FINAL step either reviews
   // already-captured evidence (no onUpdate call at all — e.g. confirmation/Closed.tsx)
@@ -318,14 +361,13 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // Generated once per logical submission attempt and reused across manual retries of
   // THIS SAME attempt (a transient failure followed by the driver tapping submit again)
   // — the online-path counterpart to the offline queue's own per-entry key
-  // (lib/hooks/useOfflineQueue.ts). Every path out of a RESOLVED submission navigates
-  // away, unmounting this hook instance for good, so a fresh key is only ever needed for
-  // a genuinely new attempt — which naturally gets one, from a fresh mount.
+  // (lib/hooks/useOfflineQueue.ts). Every hand-off navigates away, unmounting this hook
+  // instance for good, so a fresh key is only ever needed for a genuinely new attempt —
+  // which naturally gets one, from a fresh mount after a rolled-back failure.
   const idempotencyKeyRef = useRef<string | null>(null)
 
-  // The anchored set is ANCHORED_PHASES (phase-meta.ts): trip_creation, departure,
-  // confirmation — not loading/unloading, which is what the OLD (deleted)
-  // HandshakeStepPageClient.anchoring.test.tsx hard-coded and is now wrong.
+  // The anchored set is ANCHORED_PHASES (phase-meta.ts): every phase since 2026-09-23,
+  // so every driver submission shows the anchoring notice.
   function recordedNotice(addressedPhase: PhaseDescriptor | null): RecordedNotice {
     if (IS_DEMO_MODE || !isAnchored(phase)) return 'plain'
     return addressedPhase?.blockchain_receipt_id ? 'anchored' : 'anchoring'
@@ -335,10 +377,10 @@ function usePhaseStepController<T extends PhaseEvidence>(
     const savedAt = formatTime(new Date())
     const body =
       notice === 'anchored'
-        ? `Saved ${savedAt} — evidence recorded and anchored to Hedera HCS.`
+        ? `Saved . Evidence recorded and anchored to Hedera HCS.`
         : notice === 'anchoring'
-          ? `Saved ${savedAt} — evidence recorded — Hedera anchoring in progress. Track it on your trip screen.`
-          : `Saved ${savedAt} — evidence stored on this device.`
+          ? `Saved . Evidence recorded. Hedera anchoring in progress, track it on your trip screen.`
+          : `Saved . Evidence stored on this device.`
     notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body })
   }
 
@@ -350,194 +392,339 @@ function usePhaseStepController<T extends PhaseEvidence>(
     })
   }
 
-  function advance() {
+  function notifyFinalLocationWarning(addressedPhase: PhaseDescriptor | null): void {
+    const assessment = addressedPhase?.action_location_assessment
+    const hasReliableWarning = assessment !== null && assessment !== undefined && (
+      (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+      || assessment.truck_in_precinct === false
+      || assessment.driver_in_precinct === false
+    )
+    if (!hasReliableWarning) return
+    // Preview is only an early indication. The completion response is authoritative,
+    // so a newer tracker reading may legitimately surface a warning after a pass.
+    notify({
+      kind: 'error',
+      title: 'Location warning recorded',
+      body: 'The final location check found a discrepancy. Your action was still recorded for review.',
+    })
+  }
+
+  // Mid-phase only. isFinalStep decides which of the two onComplete implementations a
+  // step gets, so by construction nextStepRoute here can only ever return the next slug
+  // in THIS phase's own recipe — the end-of-phase walk it also knows how to do is
+  // deliberately unreachable from this branch, because a finished phase now goes Home.
+  function advanceWithinPhase() {
     router.push(nextStepRoute(trip.phases, phase, slug))
   }
 
-  async function submitAndAdvance() {
-    setIsSubmitting(true)
-    if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
-    const evidence = draftRef.current
-    // Taken HERE, at the moment the driver confirms, rather than by a step that made
-    // them tap for it. Awaited before the submit so the position travels with the
-    // evidence — including into the offline queue, so a replay hours later still says
-    // where the driver actually was when they swiped, not where they regained signal.
-    const position = await capturePosition()
-
-    try {
-      const result = await submitPhase(tripId, phase.phase_event_id, phase.phase_type, evidence, idempotencyKeyRef.current, position)
-      const addressedPhase = result.trip?.phases.find((p) => p.phase_event_id === phase.phase_event_id) ?? null
-      onResolved(result.trip, evidence)
-      clearDraft()
-      // The next step page's guard reads currentPhase(trip.phases) from TripContext, so
-      // that cache has to know this phase resolved before we navigate — otherwise the
-      // page we land on sees it still unresolved and bounces straight back.
-      //
-      // This used to be `await refetchTrip()`: a second round trip for a plan the submit
-      // response already contained, on the slowest screen in the app, with the driver
-      // watching. adoptTrip takes that response directly. It stays null only in demo
-      // mode (no backend call happened), where there is no stale cache to correct.
-      if (result.trip !== null) adoptTrip(result.trip)
-      if (result.trip?.status === 'exception_hold') {
+  // Everything that used to happen inline, after the await, now happens here — called by
+  // lib/submission/phase-submitter.ts from wherever the driver has since navigated to.
+  // Every function it closes over survives this component unmounting: notify belongs to
+  // the root ToastProvider, adoptTrip/clearPhaseSyncing to TripProvider, router.push to
+  // the app router, and clearDraft/onResolved write their localStorage synchronously
+  // before touching any component state.
+  function handleOutcome(outcome: PhaseSubmissionOutcome, evidence: T) {
+    switch (outcome.kind) {
+      case 'recorded': {
+        onResolved(outcome.trip, evidence)
+        // Only NOW, once the backend has confirmed. Clearing at hand-off would leave a
+        // driver with no evidence and no record if the submission then failed.
+        clearDraft()
+        if (outcome.trip !== null) {
+          adoptTrip(outcome.trip)
+          // Reconcile: the real plan already shows this phase resolved, so dropping the
+          // optimistic marker changes nothing the driver can see.
+          clearPhaseSyncing(phase.phase_event_id)
+        }
+        // Demo mode returns no trip (no backend call happened), so the marker IS the only
+        // record that this phase is done — it stays until the app is reloaded.
+        notifyPhaseRecorded(recordedNotice(outcome.addressedPhase))
+        notifyFinalLocationWarning(outcome.addressedPhase)
+        return
+      }
+      case 'hold': {
+        onResolved(outcome.trip, evidence)
+        clearDraft()
+        adoptTrip(outcome.trip)
+        clearPhaseSyncing(phase.phase_event_id)
         notifyTripOnHold()
+        // Worth interrupting for even though the driver is already Home: a critical
+        // exception paused the trip, and the trip screen is where they can see why.
         router.push(ROUTES.activeTripDetail)
         return
       }
-      notifyPhaseRecorded(recordedNotice(addressedPhase))
-      advance()
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        // No ordinal TripStatus left to compare against — the parent plan collapsed it
-        // to a coarse five (created | active | closed | cancelled | exception_hold),
-        // and `active` covers the whole multi-stop middle. A duplicate submit of an
-        // already-resolved phase also 409s, so the only way to tell "this already
-        // succeeded" apart from a genuine conflict is to refetch and read the ADDRESSED
-        // PHASE'S OWN status off the returned plan.
-        const fetched = await refetchTrip()
-        if (fetched?.status === 'exception_hold') {
-          notifyTripOnHold()
-          router.push(ROUTES.activeTripDetail)
-          return
-        }
-        const addressedPhase = fetched?.phases.find((p) => p.phase_event_id === phase.phase_event_id) ?? null
-        // Mirrors lib/phase/derive.ts's RESOLVED_STATUSES (not exported from that
-        // module): completed, exception, and overridden all mean this row is done and
-        // won't be revisited — only pending/in_progress means a genuinely fresh attempt
-        // could still land.
-        const alreadyResolved =
-          addressedPhase !== null && addressedPhase.status !== 'pending' && addressedPhase.status !== 'in_progress'
-        if (alreadyResolved) {
-          onResolved(fetched, evidence)
-          clearDraft()
-          notifyPhaseRecorded(recordedNotice(addressedPhase))
-          advance()
-          return
-        }
-        setIsSubmitting(false)
-        // The server's own 409 detail, not a hardcoded sentence. Every 409 the backend
-        // raises writes a message describing its actual cause — an unresolved earlier
-        // phase, or (PhaseTooEarlyError) a trip that isn't due until a stated date. The
-        // fixed "trip state changed unexpectedly" text discarded all of that and told a
-        // driver looking at a next-week trip something that wasn't true.
-        notify({
-          kind: 'error',
-          title: 'Could not confirm phase',
-          body: err.message || 'Trip state changed unexpectedly. Please retry from the trip screen.',
-        })
-        return
-      }
-      if (isQueueableFailure(err)) {
-        // Network error or 5xx — queue for retry once connectivity/the server recovers.
+      case 'queued': {
         // Always 'plain', regardless of whether this phase is normally anchored: the
         // evidence hasn't reached the backend (or Hedera) yet, so claiming "anchoring in
         // progress" here would be dishonest.
-        enqueuePhase(tripId, phase.phase_event_id, phase.phase_type, evidence, position)
         onResolved(null, evidence)
-        clearDraft()
         notifyPhaseRecorded('plain')
-        // Deliberately NOT advance(): nothing reached the backend, so TripContext's
-        // cached trip.phases still shows THIS phase as unresolved — a future page's
-        // mismatch guard would immediately bounce the driver right back here, onto a
-        // now-blank draft (clearDraft() already ran). The trip hub is the honest
-        // landing spot: it isn't gated on ledger position the way a phase step page is,
-        // and it's where OfflineBanner's queued-evidence indicator already lives.
-        router.push(ROUTES.activeTripDetail)
+        // Draft deliberately NOT cleared, and the optimistic advance deliberately KEPT:
+        // the queue holds the evidence and will replay it, so re-offering the step would
+        // only invite a second copy of the same submission. OfflineBanner already tells
+        // the driver, on every screen, that something is waiting to sync.
         return
       }
-      // Terminal failure — either a client-side 4xx, or a local validation Error thrown
-      // by submitPhase before any network call. Neither can ever succeed on retry, so
-      // queuing it would be dishonest. Leave the driver on this screen with their draft
-      // intact so they can fix and retry.
-      setIsSubmitting(false)
-      const message = err instanceof Error ? err.message : 'Could not submit. Please try again.'
-      notify({ kind: 'error', title: 'Could not submit', body: message })
+      case 'conflict':
+      case 'failed': {
+        // Roll the optimistic advance back — the phase reads unresolved again, Home
+        // re-offers the step, and the untouched draft is still there when they open it.
+        clearPhaseSyncing(phase.phase_event_id)
+        notify({
+          kind: 'error',
+          title: outcome.kind === 'conflict' ? 'Could not confirm phase' : 'Could not submit',
+          // The server's own detail, not a hardcoded sentence: every 409 the backend
+          // raises describes its actual cause (an unresolved earlier phase, or a trip
+          // that isn't due until a stated date), and a fixed string discarded all of it.
+          body: outcome.message,
+        })
+        // The toast fades; the failure notice in OfflineBanner does not, because a driver
+        // who missed it would otherwise believe evidence was recorded when it was not.
+        return
+      }
+      default: {
+        const unreachable: never = outcome
+        throw new Error(`handleOutcome: unhandled outcome "${String(unreachable)}"`)
+      }
     }
   }
 
-  // Returns submitAndAdvance's promise rather than discarding it with `void`. Discarding
-  // it meant the swipe control never learned a submit was running: it re-enabled itself
-  // ~180ms after the gesture, mid-upload, so the driver got a live track back while the
-  // request was still in flight and could fire a second submit into it.
-  const onComplete = isFinalStep ? submitAndAdvance : advance
+  // The whole point of Workstream 1: synchronous, so the driver is on Home before the
+  // first byte of their evidence leaves the phone.
+  function handOffSubmission(
+    position: DriverPosition | null,
+    driverCapturedAt: string,
+    acknowledgement: LocationWarningAcknowledgement | null,
+  ) {
+    onHandOff()
+    if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
+    const evidence = draftRef.current
+    // Stamped HERE, at the same instant the driver confirms — mirrors
+    // idempotencyKeyRef above (generated once per attempt, reused across any retry of
+    // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
+    // instant, never the retry's own clock.
+    // Return value deliberately ignored: `false` means a submission for this exact
+    // phase_event_id is already running, and the right response to that is still to mark
+    // and navigate — the driver's evidence is on its way either way, and leaving them on
+    // the step screen would only invite a third swipe.
+    startPhaseSubmission({
+      tripId,
+      phaseEventId: phase.phase_event_id,
+      phaseType: phase.phase_type,
+      evidence,
+      idempotencyKey: idempotencyKeyRef.current,
+      driverCapturedAt,
+      // This is the exact phone fix used for preview. Replacing it after an assessment
+      // would compare a different location than the driver saw, so retry replaces both.
+      position: Promise.resolve(position),
+      acknowledgement,
+      enqueuePhase,
+      refetchTrip,
+      onOutcome: (outcome) => handleOutcome(outcome, evidence),
+    })
 
-  return { draft, onUpdate, onComplete }
+    // Order matters: mark before navigating, so Home's very first render already sees
+    // this phase resolved rather than re-offering the step for a frame.
+    markPhaseSyncing(phase.phase_event_id)
+    router.push(ROUTES.home)
+  }
+
+  async function startLocationCheck(): Promise<void> {
+    if (locationPreviewLoading) return
+    const attemptStartedAt = new Date().toISOString()
+    setLocationPreviewLoading(true)
+    setLocationPreviewError(null)
+    setLocationAssessment(null)
+    setPendingPosition(null)
+    setPendingCapturedAt(null)
+
+    const offline = typeof navigator !== 'undefined' && !navigator.onLine
+    setOfflineLocationCheck(offline)
+    const coords = await capture()
+    if (coords === null) {
+      setPendingCapturedAt(attemptStartedAt)
+      setLocationPreviewLoading(false)
+      return
+    }
+
+    const position: DriverPosition = {
+      lat: coords.latitude, lng: coords.longitude, accuracyM: coords.accuracy, capturedAt: coords.capturedAt,
+    }
+    setPendingPosition(position)
+    setPendingCapturedAt(coords.capturedAt)
+    if (offline) {
+      // Offline prevents only the ephemeral comparison. Keep this exact phone fix
+      // with the later queue envelope; substituting a reconnect-time reading would
+      // fabricate where the phase was completed.
+      setLocationPreviewLoading(false)
+      return
+    }
+    try {
+      const assessment = await previewPhaseLocation(tripId, phase.phase_event_id, {
+        lat: position.lat,
+        lng: position.lng,
+        accuracy_metres: position.accuracyM,
+        captured_at: coords.capturedAt,
+      })
+      const requiresAcknowledgement =
+        (assessment.proximity === 'separated' && assessment.separation_metres !== null)
+        || assessment.truck_in_precinct === false
+        || assessment.driver_in_precinct === false
+      if (requiresAcknowledgement || assessment.proximity === 'unverified') {
+        setLocationAssessment(assessment)
+      } else {
+        // A pass never needs a driver exception — it must not add a new interaction
+        // gate to the existing phase sequence. pendingCapturedAt is cleared HERE,
+        // before hand-off, rather than left for the next startLocationCheck() call:
+        // showLocationCheck (below) is keyed on it, and a real hand-off can outlive
+        // this render (router.push does not synchronously unmount in every host). A
+        // stale pendingCapturedAt would otherwise reopen LocationCheckModal a beat
+        // later against a `null` assessment, reading as a failed check on a pass.
+        setPendingCapturedAt(null)
+        setPendingPosition(null)
+        handOffSubmission(position, coords.capturedAt, null)
+      }
+    } catch (err) {
+      console.error('PhaseStepPageClient: location preview failed', err)
+      setLocationPreviewError('Location preview failed')
+    } finally {
+      setLocationPreviewLoading(false)
+    }
+  }
+
+  function continueAfterLocationCheck(reason: string | null): void {
+    const capturedAt = pendingCapturedAt ?? new Date().toISOString()
+    const acknowledgement = reason === null
+      ? null
+      : { acknowledgedAt: new Date().toISOString(), reason }
+    handOffSubmission(pendingPosition, capturedAt, acknowledgement)
+  }
+
+  // The final step of a phase always returns the driver Home — it is what makes the
+  // in-transit hub reachable, and it is the difference between finishing a phase and
+  // being marched straight into the next one.
+  const onComplete = isFinalStep ? () => { void startLocationCheck() } : advanceWithinPhase
+  // Open condition, unchanged from the old inline notice's render gate — a clean pass
+  // never routes through here for long enough to demand a tap (see startLocationCheck's
+  // else-branch, which hands off and navigates Home directly). What changes is WHERE
+  // this state is presented: a blocking popup instead of a div appended below the fold.
+  const showLocationCheck = isFinalStep && (locationPreviewLoading || pendingCapturedAt !== null)
+  const locationCheckModal = isFinalStep ? (
+    <LocationCheckModal
+      open={showLocationCheck}
+      assessment={locationAssessment}
+      loading={locationPreviewLoading}
+      error={locationPreviewError}
+      offline={offlineLocationCheck}
+      onRetry={() => { void startLocationCheck() }}
+      onContinue={continueAfterLocationCheck}
+    />
+  ) : null
+
+  return { draft, onUpdate, onComplete, locationCheckModal }
 }
 
-function ActivationStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+function ActivationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<ActivationEvidence>(
-    trip, phase, slug, isFinalStep, ACTIVATION_INITIAL, setIsSubmitting, () => {},
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<ActivationEvidence>(
+    trip, phase, slug, isFinalStep, ACTIVATION_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
 
-function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+// Exported (rather than kept module-private like its sibling XStep functions) so
+// components/phase/steps/__tests__/linehaul.test.tsx can render through the real call
+// site — see that test's header comment on why the isolated-component test alone can't
+// catch a missing prop here (renderStep's ComponentType<never> cast).
+export function LoadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<LoadingEvidence>(
-    trip, phase, slug, isFinalStep, LOADING_INITIAL, setIsSubmitting, () => {},
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<LoadingEvidence>(
+    trip, phase, slug, isFinalStep, LOADING_INITIAL, onHandOff, () => {},
+  )
+
+  // Null is a NORMAL state, not an error: lib/api/manifest.ts returns null for any trip
+  // created without a Parcel Perfect reference, which it documents as common. The step
+  // renders dashes and stays confirmable — the driver still has the paper sheet, and
+  // blocking him over a document the trip never had would be the wrong failure direction.
+  const [linehaul, setLinehaul] = useState<LinehaulDocument | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void fetchLinehaul(tripId)
+      .then((doc) => { if (!cancelled) setLinehaul(doc) })
+      .catch(() => { if (!cancelled) setLinehaul(null) })
+    return () => { cancelled = true }
+  }, [tripId])
+
+  const StepComponent = stepComponentFor(phase.phase_type, slug)
+  if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete, linehaul })}{locationCheckModal}</>
+}
+
+function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
+  const tripId = String(trip.id)
+  // No carry-forward. The seal committed here used to be persisted per-trip
+  // (useSealReference) so `unloading` could display it as a reference to type against;
+  // that display is gone (2026-08-05) because showing a driver the expected number is
+  // not verification. advance_arrival compares against this leg's own departure event
+  // server-side, so nothing on the device needs to remember the seal.
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<DepartureEvidence>(
+    trip, phase, slug, isFinalStep, DEPARTURE_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
 
-function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+function ArrivalStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  // Durable per-trip reference the seal committed here needs to survive into
-  // `unloading`'s reference display (see UnloadingStep below) — this phase's own draft
-  // is cleared the moment it submits successfully.
-  const [, setSealReference] = useSealReference(tripId)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<DepartureEvidence>(
-    trip, phase, slug, isFinalStep, DEPARTURE_INITIAL, setIsSubmitting,
-    (_freshTrip, evidence) => setSealReference(evidence.sealNumber),
+  // No carry-forward, same reasoning as DepartureStep above: the seal comparison is
+  // server-side (advance_arrival), so nothing on the device needs to remember either
+  // seal. sealNumberAtArrival is cleared to a fresh draft per phase_event_id by
+  // usePhaseDraft, which is exactly right for a repeated arrival on a cross-dock plan.
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<ArrivalEvidence>(
+    trip, phase, slug, isFinalStep, ARRIVAL_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
 
-// The seal-verify step's slug — referenced by name (not position) so this branch reads
-// as "the step that needs the reference seal", matching how components/phase/steps/
-// unloading/SealVerify.tsx itself is keyed in STEP_REGISTRY.
-const UNLOADING_SEAL_VERIFY_SLUG = '2-seal-verify'
-
-function UnloadingStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+function UnloadingStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
-  const [sealReference, , clearSealReference] = useSealReference(tripId)
   const [, setVisualCountCarry] = useVisualCountCarry(tripId)
-  const { draft, onUpdate, onComplete } = usePhaseStepController<UnloadingEvidence>(
-    trip, phase, slug, isFinalStep, UNLOADING_INITIAL, setIsSubmitting,
-    (_freshTrip, evidence) => {
-      // The seal reference has no consumer after unloading (confirmation doesn't need
-      // it) — torn down here, the same point the old model cleared it.
-      clearSealReference()
-      setVisualCountCarry(evidence.driverVisualCount)
-    },
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<UnloadingEvidence>(
+    trip, phase, slug, isFinalStep, UNLOADING_INITIAL, onHandOff,
+    (_freshTrip, evidence) => setVisualCountCarry(evidence.driverVisualCount),
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  const extraProps = slug === UNLOADING_SEAL_VERIFY_SLUG ? { referenceSealNumber: sealReference } : {}
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete, ...extraProps })
+  // No per-slug extra props any more: SealVerify's referenceSealNumber was the only one,
+  // and the seal is now entered blind (see that component's header comment).
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
 
-function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, setIsSubmitting }: StepControllerProps) {
+function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
   const tripId = String(trip.id)
   const [carriedVisualCount, , clearVisualCountCarry] = useVisualCountCarry(tripId)
   const initial: ConfirmationEvidence = { ...CONFIRMATION_INITIAL_BASE, driverVisualCount: carriedVisualCount }
-  const { draft, onUpdate, onComplete } = usePhaseStepController<ConfirmationEvidence>(
-    trip, phase, slug, isFinalStep, initial, setIsSubmitting,
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<ConfirmationEvidence>(
+    trip, phase, slug, isFinalStep, initial, onHandOff,
     () => clearVisualCountCarry(),
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
-  return renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
 
 // InTransitStep is gone with in_transit's step recipe. Its single step ('1-arrival')
-// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere —
-// the phase has no PhaseCompleteRequest variant and is auto-completed server-side by
-// advance_departure's stopgap (parent plan D13). With an empty recipe, PhaseStepContent's
-// guard now redirects away before this phase can address a step page at all, exactly as
-// it always has for trip_creation.
+// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere.
+//
+// The phase DOES have a PhaseCompleteRequest variant again as of 2026-08-09
+// (InTransitCompleteRequest / advance_in_transit) and the driver does submit it — but
+// from the in-transit hub's "Arrive at destination" swipe, deliberately not from a step
+// page: a step recipe would perturb actionablePhase() and force a change to the shared
+// STEP_SLUGS contract. So the recipe stays empty, PhaseStepContent's guard still
+// redirects away before this phase can address a step page, and this file stays out of
+// it — exactly as it always has for trip_creation.

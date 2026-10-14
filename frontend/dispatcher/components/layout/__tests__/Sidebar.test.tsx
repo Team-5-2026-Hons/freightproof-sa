@@ -1,0 +1,298 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { Sidebar } from '../Sidebar'
+import { SidebarCollapseProvider } from '@/lib/context/SidebarCollapseContext'
+import { ROUTES } from '@/lib/constants/routes'
+
+// The collapse behaviour is route-driven (auto-collapse on trip detail), so
+// usePathname is mocked at the module boundary with a controllable return value —
+// the same approach ConfirmationDetail.test.tsx uses for useAuth.
+const mockUsePathname = vi.fn(() => '/')
+const mockAuth = vi.hoisted(() => ({
+  role: 'dispatcher' as 'dispatcher' | 'admin_dispatcher',
+}))
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => mockUsePathname(),
+}))
+
+vi.mock('@/lib/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-1',
+      organization_id: 'org-1',
+      email: 'jane@freightproof.test',
+      full_name: 'Jane Dispatcher',
+      is_active: true,
+      role: mockAuth.role,
+    },
+    isLoading: false,
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}))
+
+// LiveBadge pulls in RealtimeProvider, whose module graph reaches the real Supabase
+// client (lib/api/client -> lib/supabase/client), which throws at import time without
+// env vars configured for the test runner. Mock it at the module boundary — this suite
+// is about sidebar collapse behaviour, not the realtime connection status.
+vi.mock('@/lib/realtime/RealtimeProvider', () => ({
+  useRealtimeStatus: () => 'live',
+}))
+
+const SIDEBAR_COLLAPSE_STORAGE_KEY = 'fp.sidebarCollapsed'
+
+function renderSidebar() {
+  return render(
+    <SidebarCollapseProvider>
+      <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+    </SidebarCollapseProvider>,
+  )
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  mockUsePathname.mockReturnValue('/')
+  mockAuth.role = 'dispatcher'
+})
+
+describe('Sidebar role-based navigation', () => {
+  it.each(['dispatcher', 'admin_dispatcher'] as const)('offers parcel search to %s without the retired receipt page', (role) => {
+    mockAuth.role = role
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Parcel Search' })).toHaveAttribute('href', ROUTES.parcels)
+    expect(screen.queryByRole('link', { name: 'Receipt Lookup' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Blockchain')).not.toBeInTheDocument()
+  })
+})
+
+describe('Sidebar create-trip action', () => {
+  it('renders create trip once, outside the navigation landmark', () => {
+    renderSidebar()
+
+    const links = screen.getAllByRole('link', { name: 'Create Trip' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', ROUTES.tripNew)
+    expect(screen.getByRole('navigation', { name: 'Primary' })).not.toContainElement(links[0])
+  })
+
+  it('keeps create trip reachable from the collapsed rail', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Create Trip')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create Trip' }))
+      .toHaveAttribute('href', ROUTES.tripNew)
+  })
+
+  it('marks create trip as the current page on its route', () => {
+    mockUsePathname.mockReturnValue(ROUTES.tripNew)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Create Trip' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+describe('Sidebar active state', () => {
+  it('marks only the link for the current route with aria-current', () => {
+    mockUsePathname.mockReturnValue(ROUTES.history)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Trip History' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('Sidebar profile footer', () => {
+  it('shows initials, name and role, with the live status on its own element', () => {
+    renderSidebar()
+
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByText('Jane Dispatcher')).toBeInTheDocument()
+    expect(screen.getByText('Dispatcher')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Live')
+  })
+
+  it('shows the admin role in words instead of a badge', () => {
+    mockAuth.role = 'admin_dispatcher'
+    renderSidebar()
+
+    expect(screen.getByText('Admin Dispatcher')).toBeInTheDocument()
+    expect(screen.queryByText('ADMIN')).not.toBeInTheDocument()
+  })
+
+  it('keeps the live status in the collapsed rail and drops the name', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Jane Dispatcher')).not.toBeInTheDocument()
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Live')
+  })
+})
+
+describe('Sidebar navigation', () => {
+  it('links a regular dispatcher to analytics', () => {
+    // The analytics endpoints take any dispatcher (get_current_dispatcher, not
+    // require_admin_dispatcher), so this entry is never hidden.
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Analytics' }))
+      .toHaveAttribute('href', ROUTES.analytics)
+  })
+
+  it('links to the exceptions queue', () => {
+    // Hidden in 6071ab2 as "not yet live", when the page was mock data behind a route.
+    // It is live now — FP-146 gave it a real org-scoped list, detail and resolve — and a
+    // triage queue a dispatcher cannot reach from the nav is a queue nobody works.
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Exceptions' }))
+      .toHaveAttribute('href', ROUTES.exceptions)
+  })
+
+  it('keeps the exceptions link reachable from the collapsed rail', async () => {
+    // NavLink carries an aria-label so the icon-only rail stays navigable. Asserted
+    // because this is the one nav entry a dispatcher reaches for mid-incident.
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Exceptions')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Exceptions' }))
+      .toHaveAttribute('href', ROUTES.exceptions)
+  })
+})
+
+describe('Sidebar collapse', () => {
+  it('toggling collapses and expands, hiding and restoring label text', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    const collapseButton = screen.getByRole('button', { name: 'Collapse sidebar' })
+    expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(collapseButton)
+
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+    const expandButton = screen.getByRole('button', { name: 'Expand sidebar' })
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(expandButton)
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+  })
+
+  it('writes the toggle to localStorage and reads it back on remount', async () => {
+    const user = userEvent.setup()
+    const { unmount } = renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
+    unmount()
+
+    renderSidebar()
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+  })
+
+  it('collapses automatically when navigating to a trip detail page', () => {
+    mockUsePathname.mockReturnValue('/')
+    const { rerender } = renderSidebar()
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+
+    mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
+    rerender(
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>,
+    )
+
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+  })
+
+  it('does not auto-collapse for the create-trip route', () => {
+    mockUsePathname.mockReturnValue(ROUTES.tripNew)
+    renderSidebar()
+
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse sidebar' })).toBeInTheDocument()
+  })
+
+  it('lets a manual expand on a trip detail page win for that visit without touching the saved preference', async () => {
+    const user = userEvent.setup()
+    mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
+    const { rerender } = renderSidebar()
+
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBeNull()
+
+    // Navigating away reverts to the untouched (default expanded) preference.
+    mockUsePathname.mockReturnValue('/')
+    rerender(
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>,
+    )
+    expect(screen.getByText('Dashboard')).toBeInTheDocument()
+  })
+
+  it('keeps the saved preference intact through a route-driven auto-collapse', async () => {
+    const user = userEvent.setup()
+    mockUsePathname.mockReturnValue('/')
+    const { rerender } = renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
+
+    mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
+    rerender(
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>,
+    )
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
+
+    mockUsePathname.mockReturnValue('/')
+    rerender(
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>,
+    )
+    expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
+    expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
+  })
+
+  it('does not crash when localStorage throws', async () => {
+    const user = userEvent.setup()
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked')
+    })
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage blocked')
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(() => renderSidebar()).not.toThrow()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+    expect(screen.getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument()
+    expect(warnSpy).toHaveBeenCalled()
+
+    getItemSpy.mockRestore()
+    setItemSpy.mockRestore()
+    warnSpy.mockRestore()
+  })
+})

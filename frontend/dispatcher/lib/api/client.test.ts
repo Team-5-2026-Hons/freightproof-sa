@@ -13,7 +13,10 @@ vi.mock('@/lib/supabase/client', () => ({
   getAccessToken: vi.fn(),
 }))
 
-import { api, ApiError, cancelTrip, overridePhase } from './client'
+import {
+  api, ApiError, cancelTrip, overridePhase, createTripFromPPManifest,
+  findLiveTripForManifest, previewPPManifest,
+} from './client'
 import { getAccessToken, supabase } from '@/lib/supabase/client'
 
 const mockedGetAccessToken = vi.mocked(getAccessToken)
@@ -62,13 +65,13 @@ describe('api request', () => {
   it('throws ApiError with the first validation message on a 422', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(jsonResponse(422, { detail: [{ msg: 'order_number is required' }] })),
+      vi.fn().mockResolvedValue(jsonResponse(422, { detail: [{ msg: 'driver_id is required' }] })),
     )
 
     await expect(api.get('/trips')).rejects.toBeInstanceOf(ApiError)
     await expect(api.get('/trips')).rejects.toMatchObject({
       status: 422,
-      message: 'order_number is required',
+      message: 'driver_id is required',
     })
   })
 })
@@ -176,7 +179,211 @@ describe('network-layer retry', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     // A dropped POST may have already mutated server state, so it must not retry.
-    await expect(api.post('/trips', { order_number: 'X' })).rejects.toBeInstanceOf(TypeError)
+    // The client normalises the raw TypeError into ApiError(0, …) so callers only ever
+    // reconcile one error shape — assert on that, not on the underlying fetch rejection.
+    await expect(api.post('/trips', { driver_id: 'X' })).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+    })
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('structured error detail (FP-281)', () => {
+  it('surfaces the message of an object detail and keeps the detail itself', async () => {
+    const detail = {
+      code: 'MANIFEST_ALREADY_ON_TRIP',
+      message: 'This PP manifest is already on trip FP-1. Cancel that trip before creating a new one.',
+      trip_id: 'trip-1',
+      trip_reference: 'FP-1',
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, { detail })))
+
+    await expect(api.post('/api/v1/trips/from-pp-manifest', {})).rejects.toMatchObject({
+      status: 409,
+      message: detail.message,
+      detail,
+    })
+  })
+
+  it('keeps a plain string detail as the message', async () => {
+    const detail = "Waybill 'WAY001' is already assigned to another trip."
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(409, { detail })))
+
+    await expect(api.get('/x')).rejects.toMatchObject({ status: 409, message: detail, detail })
+  })
+
+  it('falls back to the status text when the detail carries no message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(422, { detail: { code: 'X' } })))
+
+    await expect(api.get('/x')).rejects.toMatchObject({ status: 422, message: 'HTTP 422' })
+  })
+})
+
+describe('manifest trip helpers', () => {
+  const key = { issuer_account: 'MOCK01', origin_hub: 'CPT', number: 81, display: 'The Courier Guy · CPT 81' }
+
+  it('previewPPManifest asks for the typed number', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { can_create: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await previewPPManifest(81)
+
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8000/api/v1/trips/pp-manifest-preview?manifest_number=81')
+  })
+
+  it('createTripFromPPManifest posts the payload to the manifest endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(201, { id: 'trip-1' }))
+    vi.stubGlobal('fetch', fetchMock)
+    const payload = {
+      manifest_number: 81, expected_snapshot_sha256: 'a'.repeat(64), driver_id: 'd', horse_id: 'h',
+      trailer_ids: [], planned_departure_at: null, planned_arrival_at: null,
+      origin_precinct_id: null, destination_precinct_id: null,
+    }
+
+    await createTripFromPPManifest(payload)
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://localhost:8000/api/v1/trips/from-pp-manifest')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual(payload)
+  })
+
+  it('findLiveTripForManifest ignores cancelled trips and other issuers', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [
+      { id: 'cancelled', status: 'cancelled', pp_manifest: key },
+      { id: 'other-issuer', status: 'created', pp_manifest: { ...key, issuer_account: 'RTT001' } },
+      { id: 'live', status: 'created', pp_manifest: key },
+    ])))
+
+    await expect(findLiveTripForManifest(key)).resolves.toEqual({ id: 'live' })
+  })
+
+  it('findLiveTripForManifest returns null when no live trip carries the manifest', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [
+      { id: 'cancelled', status: 'cancelled', pp_manifest: key },
+    ])))
+
+    await expect(findLiveTripForManifest(key)).resolves.toBeNull()
+  })
+
+  it('findLiveTripForManifest preserves lookup failures as ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(503, { detail: 'lookup failed' })))
+
+    await expect(findLiveTripForManifest(key)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 503,
+      message: 'lookup failed',
+    })
+  })
+})
+
+describe('request timeout', () => {
+  // Short enough to keep the suite fast, long enough that the stall is unambiguous.
+  const SHORT_TIMEOUT_MS = 60
+
+  // A fetch that never settles on its own — it rejects only once the client aborts it,
+  // and it rejects the way WebKit does: an AbortError carrying "Fetch is aborted", not
+  // the TimeoutError the spec names. That exact shape is what used to slip past the
+  // client's name check, and jsdom's own AbortSignal.timeout is too spec-correct to
+  // reproduce it, so the reason is supplied here deliberately.
+  function stallingFetch() {
+    return vi.fn((_url: string, init: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('Fetch is aborted', 'AbortError')),
+        )
+      }),
+    )
+  }
+
+  // Read-only POST: retry is on, so a timeout mistaken for a dropped connection would
+  // visibly cost a second window here.
+  const stalledCall = () =>
+    api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
+
+  it('reports a stalled request as a timeout, whatever the browser calls the abort', async () => {
+    vi.stubGlobal('fetch', stallingFetch())
+
+    await expect(stalledCall()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: expect.stringContaining(`timed out after ${SHORT_TIMEOUT_MS}ms`),
+    })
+  })
+
+  // The costly half of the same bug: a timeout that reads as an ordinary network failure
+  // gets retried, so an idempotent call spent two full windows stalling before it spoke.
+  it('does not spend a second window retrying a request that timed out', async () => {
+    const fetchMock = stallingFetch()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledCall()).rejects.toBeInstanceOf(ApiError)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  // A response whose headers arrive normally but whose BODY never settles. This is the
+  // half-open socket the timeout actually exists for, and the half fetch() cannot signal:
+  // it resolved back at the headers, so only the body promise is left to reject. json()
+  // settles solely when the client aborts, so if the window is disarmed on the headers
+  // this response hangs the caller forever.
+  function stallingBodyResponse(signal: AbortSignal | undefined): Response {
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'HTTP 200',
+      json: () =>
+        new Promise<unknown>((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('Fetch is aborted', 'AbortError')),
+          )
+        }),
+    } as unknown as Response
+  }
+
+  // Same short-window call as stalledCall(), so the suite never waits on the real 12s ceiling.
+  const stalledBodyCall = () =>
+    api.post('/blockchain/verify', {}, { idempotent: true, timeoutMs: SHORT_TIMEOUT_MS })
+
+  it('reports a stalled response body as a timeout, not a hang', async () => {
+    const fetchMock = vi.fn((_url: string, init: RequestInit) =>
+      Promise.resolve(stallingBodyResponse(init.signal ?? undefined)),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledBodyCall()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 0,
+      message: expect.stringContaining(`timed out after ${SHORT_TIMEOUT_MS}ms`),
+    })
+  })
+
+  // Rejecting the caller's promise is only half the job: the socket has to be released
+  // too, or a stalled body leaks a connection for as long as the tab lives.
+  it('aborts the underlying request when the body stalls', async () => {
+    let captured: AbortSignal | undefined
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      captured = init.signal ?? undefined
+      return Promise.resolve(stallingBodyResponse(captured))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(stalledBodyCall()).rejects.toBeInstanceOf(ApiError)
+
+    expect(captured?.aborted).toBe(true)
+  })
+
+  // The retry must survive: a dropped connection is not a timeout, and recovering from a
+  // dead keep-alive is the reason it exists.
+  it('still retries a GET whose connection drops rather than stalls', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse(200, { recovered: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(api.get('/trips')).resolves.toEqual({ recovered: true })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

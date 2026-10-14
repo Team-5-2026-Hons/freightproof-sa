@@ -15,11 +15,28 @@ on:
 
 jobs:
 
+  agent-config:
+    name: Agent setup — config and hook checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Claude settings JSON
+        run: python3 -m json.tool .claude/settings.json > /dev/null
+
+      - name: Validate agent shell scripts
+        run: bash -n .claude/hooks/*.sh scripts/update-graph.sh
+
+      - name: Test edit-time lint hook
+        run: .claude/hooks/test-lint-changed.sh
+
   backend:
     name: Backend — lint, type-check, test
     runs-on: ubuntu-latest
 
-    # Throwaway Postgres for the DB-backed suite (133 of 320 tests). Isolated per
+    # Throwaway Postgres for the DB-backed suite. Isolated per
     # workflow run, which matters: tests/conftest.py runs Base.metadata.drop_all()
     # at session teardown, so a shared database would have concurrent PRs dropping
     # each other's tables mid-run. Mirrors infrastructure/docker/docker-compose.test.yml.
@@ -34,6 +51,18 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d freightproof_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      # Backs app/core/realtime.py's Redis pub/sub (after-commit event fan-out) —
+      # any test that mutates state through a real endpoint touches this.
+      test-redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -54,13 +83,36 @@ jobs:
           key: pip-${{ hashFiles('backend/requirements-dev.txt') }}
           restore-keys: pip-
 
+      # WeasyPrint (audit-pack PDFs) loads Pango and HarfBuzz when imported, and app/reporting
+      # imports it at module level, so without these every app import fails, not just the PDF
+      # tests. Same packages as backend/Dockerfile; installed explicitly rather than relying
+      # on whatever the runner image happens to ship.
+      - name: Install WeasyPrint system libraries
+        run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core
+
       - name: Install dependencies
         working-directory: backend
         run: pip install -r requirements-dev.txt
 
+      # Reads backend/ruff.toml: defaults plus C901/PLR0915/PLR0913, with today's
+      # violations grandfathered per file. Complexity, statements and arguments only —
+      # physical length is the next step.
       - name: Lint — ruff
         working-directory: backend
         run: ruff check .
+
+      # No new function over 100 lines, and no growth of an already-oversized function or
+      # of a file in structure-baseline.json. After a legitimate shrink or pure move, run
+      # `python scripts/check_structure.py --update` and commit the baseline diff.
+      - name: Structure — function and file size ratchet
+        working-directory: backend
+        run: python scripts/check_structure.py
+
+      # Layer order and no API layer-skipping, per backend/.importlinter. Existing
+      # violations are listed there as ignores with reasons; the list may only shrink.
+      - name: Layering — import-linter
+        working-directory: backend
+        run: lint-imports
 
       - name: Type-check — mypy
         working-directory: backend
@@ -74,10 +126,90 @@ jobs:
           # exists only to dodge a host Postgres locally. Service containers get a
           # clean runner, so the default port is free.
           TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+          REDIS_URL: redis://localhost:6379/0
         run: pytest -m "not slow"
 
+      # B7 of the behaviour baseline: import every module under app/ in its own fresh
+      # interpreter, which is the only way to see an order-dependent import cycle. ~160
+      # interpreter start-ups, hence marked slow and run here on its own because the step
+      # above excludes slow tests. Same env as above so Settings() can instantiate.
+      - name: Test — every app module imports in a fresh interpreter (slow)
+        working-directory: backend
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+          REDIS_URL: redis://localhost:6379/0
+        run: pytest -m slow tests/baseline/test_b7_import_cycles.py
+
+      # ---------------------------------------------------------------------
+      # Alembic. CI has never run it, which is exactly why it is being added: a
+      # forked revision chain passes every other check in this file and then breaks
+      # the next real `alembic upgrade` for whoever runs it first. The test suite
+      # cannot catch it — tests build their schema with Base.metadata.create_all,
+      # never through migrations, so the chain could be broken for weeks unnoticed.
+      # ---------------------------------------------------------------------
+      - name: Migrations — exactly one head
+        working-directory: backend
+        env:
+          # Any reachable URL satisfies env.py; this step reads the versions
+          # directory, it does not connect.
+          DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_test
+        run: |
+          heads=$(alembic heads --verbose | grep -c "^Rev:" || true)
+          echo "Revision heads found: $heads"
+          alembic heads --verbose
+          if [ "$heads" -ne 1 ]; then
+            echo "::error::Expected exactly 1 migration head, found $heads. Two devs" \
+                 "branched migrations from the same parent — do not fix the revision" \
+                 "chain unilaterally, coordinate with the other author (see CLAUDE.md)."
+            exit 1
+          fi
+
+      # Proves the chain actually applies to an empty database. This is the check that
+      # catches a migration using syntax the target Postgres does not support, or one
+      # that depends on state only the author's database happens to have.
+      #
+      # THROWAWAY DATABASE ONLY — note the dedicated name below. Never point this at
+      # the shared Supabase dev database: CLAUDE.md forbids applying migrations from a
+      # feature branch precisely because that records an alembic_version only this
+      # branch knows, breaking alembic for the other three devs until it merges.
+      - name: Migrations — apply the whole chain to a fresh database
+        working-directory: backend
+        env:
+          PGPASSWORD: test
+          DATABASE_URL: postgresql+asyncpg://postgres:test@localhost:5432/freightproof_migrations
+          # env.py imports app.core.config, so Settings() must instantiate. These are the
+          # placeholders tests/conftest.py supplies, which Alembic never loads. Migrations
+          # only use DATABASE_URL, so no real secret belongs in this step.
+          REDIS_URL: redis://localhost:6379/0
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_ANON_KEY: test-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          HEDERA_ACCOUNT_ID: "0.0.0"
+          HEDERA_PRIVATE_KEY: test-hedera-key
+        run: |
+          psql -h localhost -U postgres -d postgres \
+            -c "DROP DATABASE IF EXISTS freightproof_migrations;" \
+            -c "CREATE DATABASE freightproof_migrations;"
+          # Plain Postgres has no Supabase auth schema or API roles, which the migrations
+          # reference (0002 FKs to auth.users, 0003 RLS policies). Stub just those.
+          psql -h localhost -U postgres -d freightproof_migrations -v ON_ERROR_STOP=1 \
+            -f scripts/ci_supabase_stub.sql
+          alembic upgrade head
+          echo "Migration chain applied cleanly from empty."
+
+      # Report-only for now: the dependency tree already has known findings that need
+      # a coordinated, tested version bump (some are coupled to FastAPI's pinned
+      # Starlette range). continue-on-error keeps this from blocking every unrelated PR
+      # until that cleanup lands — surfaced here so it can't be missed, not silently
+      # skipped. Flip continue-on-error to false once the tree is clean.
+      - name: Dependency vulnerability scan — pip-audit (report only)
+        working-directory: backend
+        continue-on-error: true
+        run: pip-audit -r requirements.txt
+
   frontend:
-    name: Frontend — lint, type-check
+    name: Dispatcher — lint, type-check, test
     runs-on: ubuntu-latest
 
     steps:
@@ -101,12 +233,30 @@ jobs:
 
       - name: Type-check — tsc
         working-directory: frontend/dispatcher
-        run: npx tsc --noEmit
+        run: npm run type-check
+
+      - name: Test — vitest
+        working-directory: frontend/dispatcher
+        run: npm test
+
+      - name: Build — Next.js production bundle
+        working-directory: frontend/dispatcher
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/dispatcher
+        continue-on-error: true
+        run: npm audit --audit-level=high
 
   # ---------------------------------------------------------------------------
-  # Driver PWA — previously had no CI at all, while carrying 61 source files.
-  # The scripts already existed; only this job was missing. Runs vitest too,
-  # which the dispatcher job still does not.
+  # Driver PWA checks run as their own job: it is a separate npm project with its
+  # own lockfile and Capacitor toolchain, so a dispatcher failure should not mask
+  # a driver regression (or vice versa).
   # ---------------------------------------------------------------------------
   driver-pwa:
     name: Driver PWA — lint, type-check, test
@@ -138,3 +288,90 @@ jobs:
       - name: Test — vitest
         working-directory: frontend/driver-pwa
         run: npm test
+
+      - name: Build — Next.js static export
+        working-directory: frontend/driver-pwa
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/driver-pwa
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # Receiver app. Added because it had NO CI coverage at all — no lint, no tests,
+  # no build — despite being the one surface a stranger opens, on their own phone,
+  # from a link they did not type and cannot verify. It is also the app that holds
+  # the handover capability token, so "nothing checks it" was the wrong default.
+  # ---------------------------------------------------------------------------
+  receiver:
+    name: Receiver — lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/receiver/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/receiver
+        run: npm ci
+
+      - name: Lint — ESLint
+        working-directory: frontend/receiver
+        run: npm run lint
+
+      - name: Type-check — tsc
+        working-directory: frontend/receiver
+        run: npm run type-check
+
+      - name: Test — vitest
+        working-directory: frontend/receiver
+        run: npm test
+
+      # A deliberately unreachable API origin: this build must not depend on a real
+      # backend, and a value that silently worked would hide a missing env var.
+      - name: Build — Next.js production bundle
+        working-directory: frontend/receiver
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/receiver
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # Scans the PR diff (or the pushed commits on dev) for accidentally committed secrets.
+  # .env is gitignored and has never been tracked, but that is one `git add -A` away from
+  # changing — this catches it before a key ever needs rotating. Report-only until a first
+  # clean run confirms no false positives against this repo's fixtures/mocks, same as the
+  # dependency scans above. gitleaks-action is free for public repos (this one is); a
+  # private repo would need GITLEAKS_LICENSE.
+  secret-scan:
+    name: Secret scan — gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks (report only)
+        uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

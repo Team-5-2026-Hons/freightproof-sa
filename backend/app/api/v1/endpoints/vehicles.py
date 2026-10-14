@@ -13,8 +13,10 @@ from app.core.exceptions import (
     HederaTimeoutError,
     ResourceNotFoundError,
 )
+from app.core.limits import FLEET_MUTATION
+from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration.vehicle_service import (
+from app.orchestration.fleet.vehicles import (
     list_vehicles, create_vehicle, update_vehicle, get_vehicle_detail,
 )
 from app.schemas.people import UserRead
@@ -31,7 +33,9 @@ async def list_vehicles_endpoint(
     return await list_vehicles(db=db, organization_id=current_user.organization_id)
 
 
-@router.post("", response_model=VehicleRead, status_code=201)
+# Same rationale as the driver mutations: an event row per call, and an anchor on top.
+@router.post("", response_model=VehicleRead, status_code=201,
+             dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def create_vehicle_endpoint(
     body: VehicleCreateBody,
     db: AsyncSession = Depends(get_db),
@@ -52,7 +56,8 @@ async def create_vehicle_endpoint(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
 
-@router.patch("/{vehicle_id}", response_model=VehicleRead)
+@router.patch("/{vehicle_id}", response_model=VehicleRead,
+              dependencies=[Depends(rate_limit(FLEET_MUTATION))])
 async def update_vehicle_endpoint(
     vehicle_id: UUID,
     body: VehicleUpdateBody,
@@ -69,6 +74,9 @@ async def update_vehicle_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except DuplicateResourceError as exc:
+        # Same conflict the create path returns a 409 for — a rename can collide too.
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except HederaTimeoutError as exc:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(exc))
     except HederaServiceError as exc:

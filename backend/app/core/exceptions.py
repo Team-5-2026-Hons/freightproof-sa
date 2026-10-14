@@ -4,16 +4,8 @@ Endpoints catch these and map them to the appropriate HTTP status codes.
 Do not import FastAPI here — this module must remain framework-agnostic.
 """
 
-
-class TripConflictError(Exception):
-    """Raised when a trip with the given order_number is already active."""
-
-    def __init__(self, order_number: str) -> None:
-        super().__init__(
-            f"An active trip already exists for order_number='{order_number}'. "
-            "Cancel or close the existing trip before creating a new one."
-        )
-        self.order_number = order_number
+import uuid
+from typing import Any
 
 
 class ResourceNotFoundError(Exception):
@@ -35,13 +27,59 @@ class DuplicateResourceError(Exception):
         self.value = value
 
 
+class ExceptionAlreadyReviewedError(Exception):
+    """Raised when a DIFFERENT dispatcher already reviewed this exception.
+
+    Not raised on a replay by the same dispatcher (double-tap/retry, same
+    account, nothing lost). The first review stays the record; a 200 that
+    silently discarded a second dispatcher's note would misreport success.
+    """
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(
+            f"Exception '{exception_id}' was already reviewed by another dispatcher. "
+            "Their review is the record; re-read it before reviewing again."
+        )
+        self.exception_id = exception_id
+
+
+class ExceptionClaimedByColleagueError(Exception):
+    """Raised when a request meets a colleague's claim without saying it means to take over.
+
+    Not a lock — anyone may take over, by claiming or reviewing with take_over=True. This
+    only refuses the *silent* override: a page loaded before the colleague claimed would
+    otherwise replace their claim without the dispatcher ever seeing it existed.
+    """
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(
+            f"Exception '{exception_id}' is claimed by another dispatcher. "
+            "Take it over before acting on it."
+        )
+
+
+class ExceptionNotOpenError(Exception):
+    """Raised when claiming or releasing an exception that is already reviewed — by
+    then, who claimed it is part of the record, not a work assignment."""
+
+    def __init__(self, exception_id: str) -> None:
+        super().__init__(f"Exception '{exception_id}' is already reviewed; its claim can no longer change.")
+
+
+class BatchReviewRejectedError(Exception):
+    """A batch review that breaks a batch rule (a critical row, rows from another trip).
+    422, not 409: nothing changed underneath the caller — the request itself is not a
+    reviewable batch."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+
+
 class PhaseSequenceError(Exception):
     """Raised when a phase is completed out of order (gated on the phase plan, not trip.status).
 
-    `trip_status` is a reason clause, not necessarily a bare TripStatus value —
-    the two call sites in phase_service.py's _gate_and_load have different real
-    causes (trip closed/cancelled/held vs. an earlier phase still unresolved)
-    and each passes a clause describing its own cause accurately.
+    `trip_status` is a reason clause, not necessarily a bare TripStatus value
+    — each call site in phases/gate.py's _gate_and_load describes its own cause.
     """
 
     def __init__(self, trip_status: str, attempted_handshake: str) -> None:
@@ -53,14 +91,11 @@ class PhaseSequenceError(Exception):
 class PhaseTooEarlyError(Exception):
     """Raised when a driver tries to activate a trip before its scheduled day.
 
-    Distinct from PhaseSequenceError even though both map to 409: that one means the
-    plan is out of order, this one means the plan is fine and the calendar is not.
-    Keeping them separate is what lets the driver app show the driver a date instead
-    of a generic "trip state changed" message.
+    Distinct from PhaseSequenceError (plan out of order) — here the plan is
+    fine, the calendar isn't, so the driver app can show a date.
 
-    `scheduled_for` is a pre-formatted, human-readable date (or None when the trip
-    carries no schedule at all) — the message it builds is surfaced verbatim to the
-    driver, so it has to read as something a person wrote.
+    `scheduled_for` is a pre-formatted, human-readable date (or None), since
+    the message is surfaced verbatim to the driver.
     """
 
     def __init__(self, scheduled_for: str | None, attempted_phase: str) -> None:
@@ -79,14 +114,12 @@ class PhaseTooEarlyError(Exception):
 class TripActivationBlockedError(Exception):
     """Raised when another of the driver's trips stands in the way of activating this one.
 
-    Distinct from PhaseTooEarlyError (the calendar says no) and PhaseSequenceError (this
-    trip's own plan says no): here both the plan and the calendar are fine, and the
-    obstacle is a DIFFERENT trip. Keeping it separate is what lets the driver app name
-    the trip they have to deal with first instead of showing a generic conflict.
+    Distinct from PhaseTooEarlyError/PhaseSequenceError: plan and calendar
+    are both fine here, the obstacle is a different trip, so the driver app
+    can name it.
 
-    `blocking_trip_reference` is a driver-facing trip reference, never an id — the message
-    is surfaced verbatim in the PWA, so it has to name something the driver can find on
-    their own trip list.
+    `blocking_trip_reference` is a driver-facing reference, never an id —
+    surfaced verbatim in the PWA.
     """
 
     def __init__(self, blocking_trip_reference: str, reason: str) -> None:
@@ -118,22 +151,35 @@ class PPSyncError(Exception):
 class ConsignmentAlreadyAssignedError(Exception):
     """Raised when a PP waybill is put on a second trip while still on its first.
 
-    A consignment is cargo, and cargo is on exactly one trip. Silently reusing the
-    reference does not merely duplicate a row - the second trip's creation restamps
-    the existing consignment's pickup/delivery stops onto its own route, rewriting
-    the FIRST trip's phase-plan basis after that trip was already anchored. That is
-    evidence changing under a closed record, so this fails closed.
-
-    Distinct from PPSyncError: Parcel Perfect answered correctly and the waybill is
-    real. The conflict is ours, and the caller maps it to 409, not 422.
+    A consignment belongs to exactly one trip; reassigning it would rewrite
+    the first trip's already-anchored phase-plan basis — evidence changing
+    under a closed record, so this fails closed. Distinct from PPSyncError
+    (PP answered correctly here); maps to 409, not 422.
     """
 
-    def __init__(self, pp_reference: str, trip_reference: str) -> None:
+    def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
         self.pp_reference = pp_reference
         self.trip_reference = trip_reference
+        # A foreign holder still blocks, but its internal trip identity is private.
+        holder = f"trip {trip_reference}" if trip_reference is not None else "another trip"
         super().__init__(
-            f"Waybill {pp_reference!r} is already assigned to trip {trip_reference}. "
+            f"Waybill {pp_reference!r} is already assigned to {holder}. "
             "A consignment belongs to one trip - remove it there first, or use a different waybill."
+        )
+
+
+class ConsignmentScannedOnCancelledTripError(ConsignmentAlreadyAssignedError):
+    """A waybill's parcels were scanned on a cancelled trip, so it cannot move to a new
+    one (FP-281 §10.5). A subclass, so every existing 409 handler covers it unchanged."""
+
+    def __init__(self, pp_reference: str, trip_reference: str | None) -> None:
+        super().__init__(pp_reference, trip_reference)
+        # The parent's "already on trip X" is not the reason here; say what is.
+        holder = f"cancelled trip {trip_reference}" if trip_reference is not None else "another cancelled trip"
+        self.args = (
+            f"Waybill {pp_reference!r} was scanned on {holder}, so its "
+            "parcels cannot move to a new trip. Handing a loaded manifest to another truck "
+            "is not supported yet.",
         )
 
 
@@ -150,14 +196,10 @@ class HederaTimeoutError(HederaServiceError):
 
 
 class TripStateError(Exception):
-    """Raised when a dispatcher lifecycle action is attempted against a trip whose
-    current status makes the action illegal — e.g. cancelling an already-closed or
-    already-cancelled trip.
-
-    Distinct from PhaseSequenceError: that means "out of order in the plan"; this
-    means "the trip itself is already in a terminal state", which is a different
-    fact and deserves its own message rather than being folded into the phase
-    gate's vocabulary.
+    """Raised when a dispatcher lifecycle action is attempted against a trip
+    whose current status makes it illegal (e.g. cancelling an already-closed
+    trip). Distinct from PhaseSequenceError: this is a terminal trip state,
+    not an out-of-order plan.
     """
 
     def __init__(self, current_status: str, attempted_action: str) -> None:
@@ -168,13 +210,29 @@ class TripStateError(Exception):
         self.attempted_action = attempted_action
 
 
+class PhaseBlockedError(Exception):
+    """Raised when a phase is waiting on an external system it cannot proceed
+    without. Distinct from PhaseSequenceError/PhaseTooEarlyError: plan and
+    calendar are fine, a third party just hasn't finished — so the driver
+    app can say "waiting for the warehouse" instead of a generic message.
+    """
+
+    def __init__(self, attempted_phase: str) -> None:
+        super().__init__(
+            f"Cannot complete {attempted_phase}: the warehouse has not finished "
+            f"scanning at this stop. This will clear on its own once they do — "
+            f"contact your dispatcher if it does not."
+        )
+        self.attempted_phase = attempted_phase
+
+
 class PhaseTypeMismatchError(Exception):
     """Raised when a completion payload's phase_type does not match the addressed row's.
 
-    A client bug, not a sequencing problem: the driver app resolved a phase_event_id
-    and then sent the wrong shape for it (or addressed a phase — trip_creation,
-    in_transit — that no driver action completes). Distinct from PhaseSequenceError
-    so the 409 body says which of the two actually happened.
+    A client bug, not a sequencing problem: the driver app resolved a
+    phase_event_id and sent the wrong shape for it (or addressed
+    trip_creation, the one phase no driver action completes). Distinct from
+    PhaseSequenceError so the 409 body says which of the two happened.
     """
 
     def __init__(self, expected: str, received: str) -> None:
@@ -184,3 +242,102 @@ class PhaseTypeMismatchError(Exception):
         )
         self.expected = expected
         self.received = received
+
+
+class PPManifestAlreadyOnTripError(Exception):
+    """A non-cancelled trip already carries this PP manifest (FP-281 §6). trip_id and
+    trip_reference name it; both are None only when a lost race's winner rolled back."""
+
+    def __init__(self, *, trip_id: uuid.UUID | None, trip_reference: str | None) -> None:
+        holder = f" {trip_reference}" if trip_reference else ""
+        super().__init__(
+            f"This manifest is already on trip{holder}. "
+            "Cancel that trip before creating a new one."
+        )
+        self.trip_id = trip_id
+        self.trip_reference = trip_reference
+
+
+class PPUnavailableError(Exception):
+    """Parcel Perfect could not be reached or returned an error (502)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Parcel Perfect is unavailable: {reason}")
+        self.reason = reason
+
+
+class PPManifestUnusableError(Exception):
+    """The PP manifest cannot become a trip as it stands (FP-281 §10.7's 422 cases).
+    code is a stable string the screen can switch on."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class PPManifestChangedError(Exception):
+    """The PP manifest changed between the dispatcher's preview and create (FP-281
+    §10.2). Carries the fresh preview, already JSON-shaped, so the 409 shows what changed."""
+
+    def __init__(self, manifest_number: int, preview: dict[str, Any]) -> None:
+        super().__init__(
+            f"Manifest {manifest_number} changed since it was previewed. Review it again."
+        )
+        self.manifest_number = manifest_number
+        self.preview = preview
+
+
+class WaybillNotFoundError(Exception):
+    """The parcel system has no waybill under this reference (404).
+
+    Domain-side twin of the integration's lookup error, so the API layer can map it
+    without importing the integration. The message is client-facing: keep it stable.
+    """
+
+    def __init__(self, waybill_number: str) -> None:
+        super().__init__(f"Waybill {waybill_number!r} not found in Parcel Perfect")
+        self.waybill_number = waybill_number
+
+
+class ManifestNotFoundError(Exception):
+    """The parcel system has no manifest under this number (404). Client-facing message."""
+
+    def __init__(self, manifest_number: int) -> None:
+        super().__init__(f"Manifest {manifest_number} not found")
+        self.manifest_number = manifest_number
+
+
+class ManifestLookupUnsupportedError(Exception):
+    """The connected parcel system cannot look manifests up (501). Carries no detail on
+    purpose: the integration's own message is an internal engineering note."""
+
+
+class StoredFileMismatchError(Exception):
+    """A stored file is missing or no longer hashes to the value recorded when it was
+    stored (409 for an issued audit pack). Domain-side twin of the storage layer's
+    integrity error, so the API layer can map it without importing app.storage."""
+
+
+class FileStorageUnavailableError(Exception):
+    """Object storage could not be reached, so nothing was read or written (503).
+    Domain-side twin of the storage layer's availability error."""
+
+
+class HandoverLinkInvalidError(Exception):
+    """A presented handover link cannot be used, for any reason (404).
+
+    Deliberately one type with no reason attached: the receiver-facing routes must answer
+    every failure identically, so the true reason lives in handover_token_attempts and never
+    travels up the stack where a caller could be tempted to surface it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("The handover link is not valid.")
+
+
+class HandoverAlreadyConfirmedError(Exception):
+    """The receiver has already confirmed this handover, so no new code may be issued (409)."""
+
+    def __init__(self, phase_event_id: str) -> None:
+        super().__init__(f"Handover for phase event '{phase_event_id}' is already confirmed.")
+        self.phase_event_id = phase_event_id

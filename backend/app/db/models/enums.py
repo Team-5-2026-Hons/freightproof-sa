@@ -18,17 +18,9 @@ class VehicleType(str, enum.Enum):
 
 
 class TripStatus(str, enum.Enum):
-    """Coarse trip lifecycle. The phase ledger (PhaseEvent) — not this field —
-    sequences a trip.
-
-    CREATED / ACTIVE / CLOSED (+ CANCELLED, EXCEPTION_HOLD) are the whole
-    model as of Stage 2.2, which replaced the old fine-grained per-handshake
-    values (ORIGIN_GATE_IN/LOADING/ORIGIN_GATE_OUT/IN_TRANSIT/DEST_GATE_IN/
-    UNLOADING) with advance_activation..advance_confirmation gating on
-    PhaseEvent.sequence_number instead. Nothing may branch on trip.status for
-    sequencing — only for the coarse created/active/closed/cancelled/held
-    description.
-    """
+    """Coarse trip lifecycle; the phase ledger (PhaseEvent), not this field, sequences
+    a trip. Nothing may branch on trip.status for sequencing — only for the coarse
+    created/active/closed/cancelled/held description."""
 
     CREATED          = "created"
     ACTIVE           = "active"
@@ -44,21 +36,31 @@ class TripType(str, enum.Enum):
 
 
 class PhaseType(str, enum.Enum):
-    """One entry in a trip's committed phase plan — parent plan D5.
-
-    The plan's LENGTH is data, generated at trip creation from the trip's stops
-    and consignments. A 2-stop trip is 7 rows, a 3-stop cross-dock is 11. Any
-    code that treats this enum's cardinality as the number of phases in a trip
-    is wrong: the same type appears more than once on a multi-stop route.
-    """
+    """One entry in a trip's committed phase plan; plan LENGTH is
+    data generated per trip, so this enum's cardinality is not the phase count of
+    any one trip — a type can appear more than once on a multi-stop route."""
 
     TRIP_CREATION = "trip_creation"
     ACTIVATION    = "activation"
     LOADING       = "loading"
     DEPARTURE     = "departure"
     IN_TRANSIT    = "in_transit"
+    # The custody check at the gate: the seal as found, BEFORE anything is opened.
+    # Its own phase (not a step of unloading) so "inspected before opened" is a
+    # sequence rule the server enforces, and so it gets its own completed_at and
+    # anchor.
+    ARRIVAL       = "arrival"
     UNLOADING     = "unloading"
     CONFIRMATION  = "confirmation"
+
+
+class SealCondition(str, enum.Enum):
+    """The seal's physical condition as the driver finds it at arrival. Stored as a
+    plain String, like every enum here, so adding a value needs no migration."""
+
+    INTACT  = "intact"
+    DAMAGED = "damaged"
+    MISSING = "missing"
 
 
 class PhaseStatus(str, enum.Enum):
@@ -70,12 +72,10 @@ class PhaseStatus(str, enum.Enum):
 
 
 class AnchorStatus(str, enum.Enum):
-    """Hedera anchor state for one phase event — parent plan D4.
-
-    A phase may be `completed` while its anchor is `failed`: that combination is
-    what makes the fail-open policy (D7) honest, because the system still knows a
-    receipt is owed. Never render `failed` as success.
-    """
+    """Hedera anchor state for one phase event. A phase may be
+    `completed` while its anchor is `failed` — that keeps the fail-open policy
+    honest, since the system still knows a receipt is owed. Never render `failed`
+    as success."""
 
     NOT_REQUIRED = "not_required"
     PENDING      = "pending"
@@ -85,13 +85,63 @@ class AnchorStatus(str, enum.Enum):
 
 class ExceptionType(str, enum.Enum):
     SEAL_MISMATCH          = "seal_mismatch"
+    # Distinct from SEAL_MISMATCH: MISMATCH means two recorded seals differ (a
+    # theft indicator); UNVERIFIED means no departure seal exists to compare (a
+    # gap in the chain, not evidence of tampering).
+    SEAL_UNVERIFIED        = "seal_unverified"
+    # A third seal finding, distinct from both: the seal at arrival is physically
+    # damaged or missing. MISMATCH is "the number differs" (a swap); COMPROMISED is
+    # "the seal is broken" (an opening). Different findings for an insurer, so the
+    # dispatcher must be able to tell them apart without reading descriptions.
+    SEAL_COMPROMISED       = "seal_compromised"
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
-    ROUTE_DEVIATION        = "route_deviation"
+    # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
+    # PRECINCT" (FP-145, evidence.geofence); this is "the driver's OWN PHONE
+    # disagrees with the vehicle tracker" (evidence.proximity.evaluate_proximity) —
+    # independent questions that can both fire, or either alone, on the same
+    # handshake. See evidence.action_location.record_separation_finding.
+    DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
+    # A THIRD independent question, distinct from both of the above: "does the
+    # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
+    # driver_in_precinct, evidence.geofence). Closes a gap neither existing type can
+    # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
+    # distance was measured (proximity == "separated"), so a driver's phone that is
+    # measurably outside the fence produces NOTHING today if the truck's tracker fix
+    # is stale or unavailable — the driver could be 50km away and the record shows
+    # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
+    # position, never the phone's. Only ever evaluated for a phase anchored to a stop
+    # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
+    # evidence.action_location.record_driver_location_finding.
+    DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
+    # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
+    # the horse was measured inside the stop's precinct, the trailer was measured
+    # outside it, and the two trackers are further apart than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
+    # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
+    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
+    TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
+    # On the ROAD, not at a stop: a trailer tracker is further than
+    # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
+    # on an in-transit leg. No fence is involved, which is what keeps it apart from
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See evidence.road_check.
+    TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
+    # The horse's tracker is outside its stop's precinct while that stop's departure is
+    # still pending: the truck moved without a recorded seal. See evidence.road_check.
+    MOVED_BEFORE_DEPARTURE = "moved_before_departure"
+    # A known tracker returned no position. A gap in the record, not a verdict: nothing
+    # else is inferred from it. See evidence.road_check.
+    TRACKER_SILENT = "tracker_silent"
+    ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
     DRIVER_SUBSTITUTION    = "driver_substitution"
     CHECKPOINT_TIMEOUT     = "checkpoint_timeout"
     WAYBILL_COUNT_MISMATCH = "waybill_count_mismatch"
+    # Same MISMATCH/UNVERIFIED distinction as SEAL_MISMATCH/SEAL_UNVERIFIED above:
+    # MISMATCH means identity was checked and disagreed (fraud signal); UNVERIFIED
+    # means no check completed (a gap, often benign).
+    RECEIVER_ID_MISMATCH   = "receiver_id_mismatch"
+    RECEIVER_ID_UNVERIFIED = "receiver_id_unverified"
     SEQUENCE_VIOLATION     = "sequence_violation"
     PANIC_BUTTON           = "panic_button"
     DELIVERY_REFUSED       = "delivery_refused"
@@ -125,6 +175,17 @@ class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
     DELIVERY            = "delivery"
+    # One per phase anchored since every phase started anchoring on completion.
+    # PICKUP (departure) and DELIVERY (confirmation) keep their names so existing
+    # receipts stay valid.
+    ACTIVATION          = "activation"
+    LOADING             = "loading"
+    TRANSIT_ARRIVAL     = "transit_arrival"
+    ARRIVAL_INSPECTION  = "arrival_inspection"
+    UNLOADING           = "unloading"
+    # A dispatcher override of any phase. Its own type, so a receipt can never make
+    # an overridden phase read as one the driver actually evidenced.
+    PHASE_OVERRIDE      = "phase_override"
     CHECKPOINT_BATCH    = "checkpoint_batch"
     EXCEPTION_BATCH     = "exception_batch"
     DRIVER_SUBSTITUTION = "driver_substitution"
@@ -132,6 +193,10 @@ class BlockchainReceiptType(str, enum.Enum):
     VEHICLE_UPDATED     = "vehicle_updated"
     DRIVER_CREATED      = "driver_created"
     DRIVER_UPDATED      = "driver_updated"
+    PRECINCT_CREATED    = "precinct_created"
+    PRECINCT_UPDATED    = "precinct_updated"
+    # The seal on an issued audit pack: hash of its manifest and PDF hashes.
+    AUDIT_PACK_ISSUED   = "audit_pack_issued"
 
 
 class SubjectType(str, enum.Enum):
@@ -141,6 +206,8 @@ class SubjectType(str, enum.Enum):
     VEHICLE_EVENT   = "vehicle_event"
     DRIVER_EVENT    = "driver_event"
     PHASE_EVENT     = "phase_event"
+    PRECINCT_EVENT  = "precinct_event"
+    AUDIT_PACK      = "audit_pack"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -157,6 +224,16 @@ class DriverEventType(str, enum.Enum):
     CREATED          = "created"
     LICENSE_RENEWED  = "license_renewed"
     DEACTIVATED      = "deactivated"
+    COSMETIC_UPDATE  = "cosmetic_update"
+
+
+class PrecinctEventType(str, enum.Enum):
+    CREATED          = "created"
+    # Coordinates moved; separate from a resize since one changes WHERE the
+    # facility is, the other changes HOW CLOSE a handshake must be to count as inside it.
+    RELOCATED        = "relocated"
+    GEOFENCE_RESIZED = "geofence_resized"
+    SHARING_CHANGED  = "sharing_changed"
     COSMETIC_UPDATE  = "cosmetic_update"
 
 
@@ -181,8 +258,128 @@ class IdvsStatus(str, enum.Enum):
     FAILED   = "failed"
 
 
+class ReceiverVerificationStatus(str, enum.Enum):
+    """Where one receiver's identity check ended up. PENDING exists only while a
+    Didit session is in flight — no trip may reach a terminal state with one still
+    open."""
+
+    PENDING    = "pending"
+    VERIFIED   = "verified"
+    FAILED     = "failed"
+    UNVERIFIED = "unverified"
+
+
+class ReceiverVerificationTier(str, enum.Enum):
+    """How much evidence the check actually produced.
+
+    SELFIE_ONLY is presence evidence, not identity evidence: a live face with no document
+    to match against proves a human confirmed, never who they were.
+    """
+
+    DOCUMENT_AND_FACE = "document_and_face"
+    SELFIE_ONLY       = "selfie_only"
+    TYPED_ONLY        = "typed_only"
+
+
+class ReceiverVerificationUnverifiedReason(str, enum.Enum):
+    """Why a check did not reach a verdict. Never free text, so a dispatcher can
+    separate "no ID on them" from "vendor was down"."""
+
+    NO_DOCUMENT        = "no_document"
+    DECLINED_CONSENT   = "declined_consent"
+    NO_CONNECTION      = "no_connection"
+    QUOTA_EXHAUSTED    = "quota_exhausted"
+    VENDOR_UNAVAILABLE = "vendor_unavailable"
+    ABANDONED          = "abandoned"
+
+
 class ParcelStatus(str, enum.Enum):
     PENDING     = "pending"
     SCANNED_OUT = "scanned_out"
     SCANNED_IN  = "scanned_in"
     EXCEPTION   = "exception"
+
+
+class ExceptionReviewStatus(str, enum.Enum):
+    """Where an exception sits in the dispatcher's review workflow. Replaces the old
+    `resolved: bool`, which couldn't distinguish "not looked at" from "looked at,
+    still needs a decision"."""
+
+    RECORDED     = "recorded"
+    NEEDS_REVIEW = "needs_review"
+    REVIEWED     = "reviewed"
+
+
+class ExceptionReviewOutcome(str, enum.Enum):
+    """What a dispatcher concluded when reviewing an exception. LEGACY_REVIEW and
+    DISPATCHER_AUTHORED are not real choices (see DispatcherReviewOutcome): the first
+    only back-marks a pre-existing `resolved=true` row as reviewed with no recorded
+    finding, the second marks a dispatcher's own note as reviewed by its author."""
+
+    NO_ACTION_REQUIRED     = "no_action_required"
+    HANDLED_EXTERNALLY     = "handled_externally"
+    EVIDENCE_VERIFIED      = "evidence_verified"
+    DATA_DISCREPANCY       = "data_discrepancy"
+    REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
+    LEGACY_REVIEW          = "legacy_review"
+    # Not a finding either: marks a dispatcher's own note (phase override, trip
+    # cancellation) as reviewed by its author the moment it is written. Only the
+    # author knows why they acted, so queueing it would have a colleague rubber-stamp
+    # it. Excluded from DispatcherReviewOutcome for the same reason as LEGACY_REVIEW.
+    DISPATCHER_AUTHORED    = "dispatcher_authored"
+
+
+class DispatcherReviewOutcome(str, enum.Enum):
+    """The choices a dispatcher may actually submit — ExceptionReviewOutcome without
+    LEGACY_REVIEW, which is a migration-only marker no dispatcher should be able to pick
+    for a review happening today."""
+
+    NO_ACTION_REQUIRED     = "no_action_required"
+    HANDLED_EXTERNALLY     = "handled_externally"
+    EVIDENCE_VERIFIED      = "evidence_verified"
+    DATA_DISCREPANCY       = "data_discrepancy"
+    REFERRED_FOR_FOLLOW_UP = "referred_for_follow_up"
+
+
+class ExceptionContactMethod(str, enum.Enum):
+    """How a dispatcher reached someone while reviewing an exception. NO_CONTACT_YET
+    has no equivalent here — it recorded the absence of contact, which belongs on
+    ExceptionReviewOutcome, not a field named for the method of contact."""
+
+    PHONE     = "phone"
+    WHATSAPP  = "whatsapp"
+    IN_PERSON = "in_person"
+
+
+class HandoverTokenRejectionReason(str, enum.Enum):
+    """Why a receiver capability-token redemption was refused; every value is written
+    to HandoverTokenAttempt, since a rejected attempt is itself evidence. UNKNOWN (a
+    hash matching no row) is deliberately indistinguishable from
+    EXPIRED/ALREADY_REDEEMED to the caller, though the true reason is recorded
+    server-side."""
+
+    EXPIRED          = "expired"
+    ALREADY_REDEEMED = "already_redeemed"
+    WRONG_TRIP       = "wrong_trip"
+    WRONG_STOP       = "wrong_stop"
+    UNKNOWN          = "unknown"
+
+
+class AuditPackAccessEventType(str, enum.Enum):
+    """What someone holding an audit-pack link did — the issuing dispatcher sees these,
+    so a leaked link shows up as views nobody expected. DENIED_* rows record attempts on
+    a link that no longer works, which is exactly when a leak would show itself."""
+
+    VIEWED          = "viewed"
+    PDF_DOWNLOADED  = "pdf_downloaded"
+    PHOTO_VIEWED    = "photo_viewed"
+    VERIFY_RUN      = "verify_run"
+    DENIED_EXPIRED  = "denied_expired"
+    DENIED_REVOKED  = "denied_revoked"
+
+
+def enum_text(value: enum.Enum | str) -> str:
+    """The text an enum column stores. str() on a (str, Enum) member gives
+    'PhaseType.DEPARTURE', not 'departure' — and a row still in the session holds the
+    member while a freshly loaded one holds the plain string, so both must map the same."""
+    return str(value.value) if isinstance(value, enum.Enum) else value

@@ -1,0 +1,7 @@
+.env
+.env.local
+.env.*.local
+frontend/**/.env.local
+frontend/**/.env.*.local
+.envrc
+spikes/fp-23-hedera-sdk/.env.spike

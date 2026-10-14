@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, Numeric,
-    PrimaryKeyConstraint, String, Text, UniqueConstraint,
+    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric,
+    PrimaryKeyConstraint, String, Text, UniqueConstraint, column, desc,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -15,6 +15,18 @@ from sqlalchemy.sql import func
 
 from app.db.models import Base
 from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
+
+# Statuses that make a trip live — fleet analytics counts these as in use.
+LIVE_TRIP_STATUSES: tuple[TripStatus, ...] = (
+    TripStatus.CREATED,
+    TripStatus.ACTIVE,
+    TripStatus.EXCEPTION_HOLD,
+)
+
+# The trip's PP manifest key (FP-281, spec §6). Referenced by orchestration when
+# translating a unique violation into a domain error, and by the schema tests.
+PP_MANIFEST_INDEX = "uq_trips_pp_manifest"
+PP_MANIFEST_CHECK = "ck_trips_pp_manifest_all_or_none"
 
 
 class TripTemplate(Base):
@@ -47,14 +59,21 @@ class Consignment(Base):
     """Cargo consignment pulled from Parcel Perfect — linked to a trip at creation."""
 
     __tablename__ = "consignments"
+    # One waybill, one consignment row (FP-138): a select-then-insert can't close
+    # this race alone (two concurrent callers both insert), so the database enforces it.
+    __table_args__ = (
+        UniqueConstraint(
+            "parcel_perfect_reference", name="uq_consignments_parcel_perfect_reference"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=True
     )
     parcel_perfect_reference: Mapped[str] = mapped_column(String(100), nullable=False)
-    # Nullable: resolved from the PP account number (Organization.pp_account_number)
-    # during consignment sync, not caller-supplied — may be unresolved (warning, not error).
+    # Resolved from the PP account number during sync, not caller-supplied; may be
+    # unresolved (warning, not error).
     client_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
@@ -69,22 +88,22 @@ class Consignment(Base):
     slot_time_origin: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     slot_time_destination: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     pp_raw_json: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
-    # The stop realising this consignment's origin/destination on the assigned trip's route.
-    # A TripStop has no inherent role — it's an origin/destination only via these links (FP-112).
+    # The stop realising this consignment's origin/destination; a TripStop has no
+    # inherent role beyond these links (FP-112).
     pickup_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
     delivery_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
-    # Recorded evidence only (door vs bulkhead) — FreightProof records freight position,
-    # it does not enforce loading order (scope-boundaries.md §3).
+    # Recorded evidence only (door vs bulkhead) — FreightProof records freight
+    # position, it does not enforce loading order.
     load_priority: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Consolidated-unit grain (pallets), distinct from parcel-grain parcel_count_expected.
-    # PP cannot supply this — pallet grain is LFG's — so it's populated outside the PP pull.
+    # Consolidated-unit grain (pallets), distinct from parcel_count_expected; PP
+    # can't supply this, so it's populated outside the PP pull.
     unit_count_expected: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Snapshot of the PP waybill's "manifest" field (last manifest number), distinct from
-    # parcel_perfect_reference which is the PP waybill number itself.
+    # Snapshot of the PP waybill's manifest field, distinct from
+    # parcel_perfect_reference (the waybill number itself).
     pp_manifest_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -96,6 +115,12 @@ class Parcel(Base):
     """Individual parcel within a consignment — tracked via Parcel Perfect barcode."""
 
     __tablename__ = "parcels"
+    # Declared so autogenerate stops proposing to drop indexes that already exist
+    # in the deployed database.
+    __table_args__ = (
+        Index("ix_parcels_barcode", "barcode"),
+        Index("ix_parcels_consignment_id", "consignment_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     consignment_id: Mapped[uuid.UUID] = mapped_column(
@@ -117,10 +142,41 @@ class Trip(Base):
     """Central entity — one row per depot-to-depot trip, progresses through TripStatus states."""
 
     __tablename__ = "trips"
+    __table_args__ = (
+        # One non-cancelled trip per PP manifest (spec §6). Not LIVE_TRIP_STATUSES: a
+        # manifest is one departure, so a closed trip still owns it. Only cancelling
+        # frees it, so the dispatcher can recreate the trip.
+        Index(
+            PP_MANIFEST_INDEX,
+            "operator_organization_id",
+            "pp_manifest_issuer_account",
+            "pp_manifest_origin_hub",
+            "pp_manifest_number",
+            unique=True,
+            postgresql_where=column("status") != TripStatus.CANCELLED.value,
+        ),
+        # A partial key identifies nothing: all three set (manifest trip) or none.
+        CheckConstraint(
+            "(pp_manifest_issuer_account IS NULL AND pp_manifest_origin_hub IS NULL"
+            " AND pp_manifest_number IS NULL)"
+            " OR (pp_manifest_issuer_account IS NOT NULL AND pp_manifest_origin_hub IS NOT NULL"
+            " AND pp_manifest_number IS NOT NULL)",
+            name=PP_MANIFEST_CHECK,
+        ),
+        # Declared so autogenerate stops proposing to drop indexes that already exist
+        # in the deployed database.
+        Index("ix_trips_driver_id", "driver_id"),
+        Index("ix_trips_order_number", "order_number"),
+        Index("ix_trips_status", "status"),
+        Index("ix_trips_org_status_closed_id", "operator_organization_id", "status", "closed_at", "id"),
+        Index("ix_trips_created_at_desc", desc("created_at")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_reference: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    order_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    # No longer written (FP-281): the PP manifest key replaced it. Nullable so trips
+    # without one can be inserted; the column itself is dropped in piece C.
+    order_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     operator_organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False
     )
@@ -128,6 +184,11 @@ class Trip(Base):
     client_organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True
     )
+    # PP manifest key (spec §6): issuer account + origin hub + number. All null on
+    # empty legs and on trips created through the explicit POST /trips path.
+    pp_manifest_issuer_account: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
+    pp_manifest_origin_hub: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    pp_manifest_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )
@@ -146,11 +207,9 @@ class Trip(Base):
         UUID(as_uuid=True), ForeignKey("trip_templates.id"), nullable=True
     )
     status: Mapped[TripStatus] = mapped_column(String(30), nullable=False, server_default="created")
-    # Denormalised caches of the ledger derivation (D6), maintained on every phase
-    # completion so list views don't recompute across every trip. READ PATHS ONLY.
-    # No write path may branch on these: the ledger is the truth, and a stored
-    # position can drift from what actually happened — which is the entire reason
-    # this refactor exists.
+    # Denormalised caches of the ledger derivation, refreshed on every phase
+    # completion so list views don't recompute. Read paths only — the ledger is
+    # the truth; no write path may branch on these.
     current_phase: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     current_stop: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     trip_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=TripType.LOADED.value)
@@ -213,29 +272,31 @@ class TripTrailer(Base):
 
 
 class DriverSubstitution(Base):
-    """Records every mid-trip driver change — planned or unplanned.
-
-    Spec §5 + Handshake 3: four fields are required for all substitutions.
-    Planned substitutions (is_planned=True) are normal trip events with no
-    exception flag. Unplanned ones link to a TripException row via exception_id
-    and are anchored to blockchain separately.
-    """
+    """Records every mid-trip driver change — planned or unplanned. Unplanned
+    substitutions link to a TripException via exception_id and are anchored to
+    blockchain separately."""
 
     __tablename__ = "driver_substitutions"
+    # Declared so autogenerate stops proposing to drop an index that already exists
+    # in the deployed database.
+    __table_args__ = (
+        Index("ix_driver_substitutions_trip_id", "trip_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    # The four required log fields from the spec.
+    # The four required log fields for a driver substitution: who left, who took
+    # over, where, and who approved it.
     original_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )
     substituting_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )
-    # Free-text: exchange points are Pulsit geofence locations (e.g. "Harrismith
-    # N3 fuel stop"), not necessarily Precinct rows in our DB.
+    # Free-text: exchange points are Pulsit geofence locations, not necessarily
+    # Precinct rows in our DB.
     exchange_location: Mapped[str] = mapped_column(String(255), nullable=False)
     approving_dispatcher_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False

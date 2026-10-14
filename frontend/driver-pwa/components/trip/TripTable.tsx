@@ -62,13 +62,9 @@ function TripRow({ trip, onSelect }: { trip: DriverTripSummary; onSelect: () => 
             {' → '}
             {destination}
           </p>
+          {/* Phones only: from tablet width the departure has its own right-hand column. */}
           <p className="truncate text-xs leading-tight text-surface-on-variant sm:hidden">
-            {trip.order_number} · {formatDeparture(trip.planned_departure_at)}
-          </p>
-          {/* From tablet width there is room to give the departure its own right-hand
-              column, so the third line here drops back to just the order number. */}
-          <p className="hidden truncate text-xs leading-tight text-surface-on-variant sm:block">
-            {trip.order_number}
+            {formatDeparture(trip.planned_departure_at)}
           </p>
         </div>
 

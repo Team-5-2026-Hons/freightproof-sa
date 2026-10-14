@@ -2,18 +2,24 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { Plus } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { AlertCircle, PackageOpen } from 'lucide-react'
 import { TopBar } from '@/components/ui/TopBar'
-import { DataTable } from '@/components/ui/DataTable'
+import { SecHead } from '@/components/ui/SecHead'
+import { Table } from '@/components/ui/Table'
+import { SearchField } from '@/components/ui/SearchField'
+import { FilterSelect } from '@/components/ui/FilterSelect'
+import { ListToolbar } from '@/components/ui/ListToolbar'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
-import { Chip } from '@/components/ui/Chip'
 import { Modal } from '@/components/ui/Modal'
 import { FormField } from '@/components/ui/FormField'
-import { Ic } from '@/components/ui/Ic'
+import { buildDriverColumns, DRIVER_TABLE_ID } from '@/components/drivers/driverColumns'
 import { useDrivers } from '@/lib/hooks/useDrivers'
+import { useNow } from '@/lib/hooks/useNow'
 import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
-import type { Column } from '@/components/ui/DataTable'
+import { DEFAULT_DRIVER_SORT, defaultDriverSortDirection, DRIVER_SORT_KEYS, sortDrivers } from '@/lib/drivers/sort'
+import { useTableSort } from '@/lib/hooks/useTableSort'
 import type { Driver } from '@shared/lib/types/driver'
 import {
   validateDriverForm,
@@ -26,109 +32,16 @@ import {
 import { SA_ID_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
 
-// Days until a date string expires — negative means already expired.
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null
-  const diff = new Date(dateStr).getTime() - Date.now()
-  return Math.ceil(diff / (1000 * 60 * 60 * 24))
-}
-
-function ExpiryCell({ value }: { value: string | null }) {
-  if (!value) return <span className="text-surface-on-variant text-sm">—</span>
-  const days = daysUntil(value)!
-  const label = new Date(value).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
-  // Colour-code: red ≤30 days (including expired), amber ≤90, green otherwise.
-  const colour =
-    days <= 30 ? 'text-red-500' :
-    days <= 90 ? 'text-amber-500' :
-    'text-surface-on'
-  return <span className={`text-sm tabular-nums ${colour}`}>{label}</span>
-}
-
-const columns: Column<Driver>[] = [
-  {
-    key: 'full_name',
-    label: 'Name',
-    sortable: true,
-    render: (val) => <span className="font-bold text-surface-on">{String(val)}</span>,
-  },
-  {
-    key: 'id_number',
-    label: 'ID Number',
-    render: (val) => (
-      <span className="font-mono text-xs tracking-wider text-surface-on-variant">
-        {/* Mask for POPIA compliance — show only last 4 digits */}
-        ···· {String(val).slice(-4)}
-      </span>
-    ),
-  },
-  {
-    key: 'phone_number',
-    label: 'Phone',
-    render: (val) => <span className="text-sm text-surface-on">{String(val)}</span>,
-  },
-  {
-    key: 'license_expiry',
-    label: 'Licence Expiry',
-    render: (_val, row) => <ExpiryCell value={row.license_expiry} />,
-  },
-  {
-    key: 'is_active',
-    label: 'Status',
-    sortable: true,
-    render: (val) => (
-      <Chip type={val ? 'complete' : 'pending'} label={val ? 'Active' : 'Inactive'} />
-    ),
-  },
-]
-
 type StatusFilter = 'all' | 'active' | 'inactive'
-type SortOption = 'created-desc' | 'created-asc' | 'name-asc' | 'name-desc' | 'expiry-asc' | 'expiry-desc'
 
-const SORT_OPTIONS: { value: SortOption; label: string }[] = [
-  { value: 'created-desc', label: 'Newest first' },
-  { value: 'created-asc',  label: 'Oldest first' },
-  { value: 'name-asc',     label: 'Name A–Z' },
-  { value: 'name-desc',    label: 'Name Z–A' },
-  { value: 'expiry-asc',   label: 'Licence Expiry — Soonest' },
-  { value: 'expiry-desc',  label: 'Licence Expiry — Latest' },
+const STATUS_OPTIONS = [
+  { value: 'all' as const, label: 'All statuses' },
+  { value: 'active' as const, label: 'Active only' },
+  { value: 'inactive' as const, label: 'Inactive only' },
 ]
 
-function sortDrivers(drivers: Driver[], option: SortOption): Driver[] {
-  const sorted = [...drivers]
-  switch (option) {
-    case 'created-desc':
-      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      break
-    case 'created-asc':
-      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-      break
-    case 'name-asc':
-      sorted.sort((a, b) => a.full_name.localeCompare(b.full_name))
-      break
-    case 'name-desc':
-      sorted.sort((a, b) => b.full_name.localeCompare(a.full_name))
-      break
-    case 'expiry-asc':
-      sorted.sort((a, b) => {
-        // Null expiry always sorts last.
-        if (!a.license_expiry && !b.license_expiry) return 0
-        if (!a.license_expiry) return 1
-        if (!b.license_expiry) return -1
-        return new Date(a.license_expiry).getTime() - new Date(b.license_expiry).getTime()
-      })
-      break
-    case 'expiry-desc':
-      sorted.sort((a, b) => {
-        if (!a.license_expiry && !b.license_expiry) return 0
-        if (!a.license_expiry) return 1
-        if (!b.license_expiry) return -1
-        return new Date(b.license_expiry).getTime() - new Date(a.license_expiry).getTime()
-      })
-      break
-  }
-  return sorted
-}
+// Licence colours change on a day boundary, so an hourly refresh is plenty for a tab left open.
+const CLOCK_TICK_MS = 3_600_000
 
 const EMPTY_FORM: DriverFormValues = {
   full_name: '',
@@ -139,7 +52,6 @@ const EMPTY_FORM: DriverFormValues = {
 }
 
 export default function FleetDriversPage(): React.JSX.Element {
-  const router = useRouter()
   const { drivers, isLoading, error: fetchError, refetch } = useDrivers()
   const { notify } = useToast()
   const [modalOpen, setModalOpen] = useState(false)
@@ -151,7 +63,8 @@ export default function FleetDriversPage(): React.JSX.Element {
   // List controls — parity with the vehicles page.
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [sortOption, setSortOption] = useState<SortOption>('created-desc')
+  const { sort, tableSort, onSort } = useTableSort({ keys: DRIVER_SORT_KEYS, firstDir: defaultDriverSortDirection, initial: DEFAULT_DRIVER_SORT })
+  const now = useNow(CLOCK_TICK_MS)
 
   useEffect(() => {
     if (fetchError) {
@@ -178,8 +91,13 @@ export default function FleetDriversPage(): React.JSX.Element {
         d.id_number.includes(q)
       )
     })
-    return sortDrivers(filtered, sortOption)
-  }, [drivers, search, statusFilter, sortOption])
+    return sortDrivers(filtered, sort)
+  }, [drivers, search, statusFilter, sort])
+
+  const columns = useMemo(() => buildDriverColumns({ now }), [now])
+
+  // Placeholder rows only on the first load: a refetch (after adding a driver) swaps rows in place.
+  const initialLoad = isLoading && drivers.length === 0
 
   function handleChange(field: string, value: string): void {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -235,56 +153,37 @@ export default function FleetDriversPage(): React.JSX.Element {
         </AdminOnly>
       </TopBar>
 
-      <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
-        {/* List controls — matches vehicles page design exactly */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[140px]">
-            <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, phone, licence, or ID…"
-              className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
-            />
-          </div>
+      <ListToolbar>
+        <SearchField value={search} onChange={setSearch} placeholder="Name, phone, licence, or ID…" ariaLabel="Search drivers by name, phone, licence, or ID" />
+        <FilterSelect value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} ariaLabel="Status" />
+      </ListToolbar>
 
-          <div className="relative shrink-0">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-              className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active only</option>
-              <option value="inactive">Inactive only</option>
-            </select>
-            <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
-          </div>
-
-          <div className="relative shrink-0">
-            <select
-              value={sortOption}
-              onChange={(e) => setSortOption(e.target.value as SortOption)}
-              className="appearance-none py-2 pl-3 pr-8 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            <Ic n="chev" s={12} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rotate-90 text-on-surf-v" />
-          </div>
-        </div>
-
-        <DataTable<Driver>
-          columns={columns}
-          rows={filteredDrivers}
-          isLoading={isLoading}
-          error={fetchError}
-          onRetry={refetch}
-          onRowClick={(d) => router.push(`/fleet/drivers/${d.id}`)}
-          empty={{ title: 'No drivers', body: 'No drivers match your filters.' }}
-        />
+      <div className="mx-6 mb-6 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-surf-lowest shadow-level-3">
+        <SecHead title="Drivers" />
+        {fetchError ? (
+          <EmptyState
+            icon={<AlertCircle />}
+            title="Failed to load"
+            body={fetchError}
+            cta={<Button size="sm" variant="ghost" onClick={refetch}>Try again</Button>}
+          />
+        ) : !initialLoad && filteredDrivers.length === 0 ? (
+          <EmptyState icon={<PackageOpen />} title="No drivers" body="No drivers match your filters." />
+        ) : (
+          <Table<Driver>
+            tableId={DRIVER_TABLE_ID}
+            caption="Drivers"
+            isLoading={initialLoad}
+            loadingLabel="Loading drivers"
+            columns={columns}
+            rows={filteredDrivers}
+            getRowKey={driver => driver.id}
+            sort={tableSort}
+            onSort={onSort}
+            density="compact"
+            className="min-h-0 flex-1"
+          />
+        )}
       </div>
 
       <Modal

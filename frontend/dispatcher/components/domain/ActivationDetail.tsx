@@ -1,6 +1,5 @@
 'use client'
 
-import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseLocationSection } from './PhaseLocationSection'
 import { PhaseOverrideSection } from './PhaseOverrideSection'
@@ -11,6 +10,9 @@ import type { Precinct } from '@shared/lib/types/precinct'
 import type { Trip } from '@shared/lib/types/trip'
 
 interface Props {
+  artifactLoading?: boolean
+  artifactError?: string | null
+  onRetryArtifacts?: () => void
   phase: PhaseDescriptor
   trip: Trip
   // The precinct this phase is anchored to, resolved by the page from phase.stop_sequence.
@@ -18,13 +20,7 @@ interface Props {
   artifactsById: Map<string, EvidenceArtifactWithUrl>
 }
 
-const IDVS_LABELS: Record<Trip['idvs_check_status'], string> = {
-  pending:  'Pending',
-  verified: 'Verified ✓',
-  failed:   'Failed ✗',
-}
-
-export function ActivationDetail({ phase, trip, precinct, artifactsById }: Props) {
+export function ActivationDetail({ phase, trip, precinct }: Props) {
   const stop = phase.stop_sequence === null
     ? undefined
     : trip.stops.find(s => s.sequence === phase.stop_sequence)
@@ -40,15 +36,6 @@ export function ActivationDetail({ phase, trip, precinct, artifactsById }: Props
       </Section>
 
       <PhaseLocationSection phase={phase} precinct={precinct} />
-
-      <Section title="Verification">
-        <Field label="Identity check" value={IDVS_LABELS[trip.idvs_check_status]} />
-        <Field label="Anchor"         value={phase.anchor_status} />
-        <EvidencePhoto
-          label="Gate photo"
-          artifact={phase.gate_photo_artifact_id ? artifactsById.get(phase.gate_photo_artifact_id) : undefined}
-        />
-      </Section>
 
       {/* An override means a human bypassed a check. It is never a footnote — and it is
           no longer only activation's concern, so the rendering is shared. */}

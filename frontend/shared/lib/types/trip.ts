@@ -7,6 +7,7 @@ import type { Vehicle } from './vehicle'
 import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
+import type { PPManifestRef } from './pp-manifest'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -14,16 +15,14 @@ export type TripId = string & { readonly __brand: 'TripId' }
 // PP consignments ("loaded") or is a deadhead/repositioning move ("empty_leg").
 export type TripType = 'loaded' | 'empty_leg'
 
-// Mirrors backend TripStatus (coarse since Stage 2 — parent plan §2.3). The old
-// ten-value union doubled as the sequencer; position now comes from the phase
-// ledger, so this is a plain description and nothing may branch on it for order.
-// Defined in ./phase.ts because "coarse status" is phase-model vocabulary; aliased
-// here because `status` is the trip's own field and ten files import this name.
-// The resulting trip <-> phase cycle is TYPE-ONLY and must stay that way.
+// Mirrors backend TripStatus. Position in the lifecycle comes from the phase ledger, so
+// this is a plain description — nothing may branch on it for order. Defined in ./phase.ts
+// and aliased here since `status` is the trip's own field. The resulting trip <-> phase
+// cycle is TYPE-ONLY and must stay that way.
 export type { CoarseTripStatus as TripStatus } from './phase'
 
-// A sequenced waypoint on the trip's route (FP-112). Role (origin/destination) is not
-// stored — it is derived per consignment. Mirrors backend TripStopRead.
+// A sequenced waypoint on the trip's route. Role (origin/destination) is not stored — it
+// is derived per consignment. Mirrors backend TripStopRead.
 export interface TripStop {
   id: string
   trip_id: string
@@ -35,13 +34,45 @@ export interface TripStop {
   updated_at: string
 }
 
-// Lightweight shape for list views (GET /trips).
-// Nests full driver/horse/trailers — confirmed by API contract §4.1.
-// open_exception_count is derived by the backend service layer.
-export interface TripSummary {
+// Structural row contract shared by the active-trip list and terminal-trip history.
+// Includes only what ChecklistRow renders, so the history endpoint need not disclose a
+// driver's contact/licence details or a vehicle's full record to paint one row.
+export interface TripChecklistItem {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null for empty legs and trips created
+  // without one. It replaces the order number, which FreightProof no longer captures.
+  pp_manifest: PPManifestRef | null
+  // Sent on active-list rows (TripSummary). History rows do not carry it, so a row with no
+  // manifest cannot be proven to be an empty leg (see lib/format/manifest.ts).
+  trip_type?: TripType
+  status: CoarseTripStatus
+  driver: { full_name: string }
+  horse: { registration: string }
+  origin_precinct_id: string | null
+  destination_precinct_id: string | null
+  needs_review_count: number
+  created_at: string
+  current_phase: PhaseType | null
+  current_stop: number | null
+  phase_total: number
+  phase_completed: number
+}
+
+// Purpose-specific response from GET /trips/history. Terminal ordering and date
+// filtering use closed_at; created_at stays separate for when the row shows creation time.
+export interface TripHistoryListItem extends TripChecklistItem {
+  closed_at: string
+}
+
+// Lightweight shape for list views (GET /trips), nesting full driver/horse/trailers.
+// needs_review_count counts every unreviewed exception on the trip, whatever its severity:
+// since FP-280 every exception starts needs_review. (The driver's own trip list counts
+// critical rows only — see DriverTripSummary.)
+export interface TripSummary extends TripChecklistItem {
+  id: TripId
+  trip_reference: string
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   driver: Driver
@@ -53,27 +84,25 @@ export interface TripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  open_exception_count: number
+  needs_review_count: number
   created_at: string
   updated_at: string
-  // Denormalised position cache (parent D6), read-path only. The list view carries
-  // no plan, so these four are the only way a row can show plan-driven progress.
-  // phase_total is the plan's own length — never assume 6, never assume 7.
+  // Denormalised position cache, read-path only — the only way a list row can show
+  // plan-driven progress without carrying the whole plan. phase_total is the plan's own
+  // length; never assume 6 or 7.
   current_phase: PhaseType | null
   current_stop: number | null
   phase_total: number
   phase_completed: number
 }
 
-// One PP waybill booked onto a trip. Mirrors backend ConsignmentRead
-// (backend/app/schemas/trips.py) — a minimal frontend interface since no
-// consignment type existed here before this trip's response started including it.
+// One PP waybill booked onto a trip. Mirrors backend ConsignmentRead (schemas/trips.py).
 export interface ConsignmentRead {
   id: string
   trip_id: string | null
   parcel_perfect_reference: string
-  // Nullable: resolved from the PP accnum at sync time — an unmapped accnum
-  // leaves this null on the consignment (creation warning, not an error).
+  // Nullable: resolved from the PP accnum at sync time — an unmapped accnum leaves this
+  // null (creation warning, not an error).
   client_organization_id: string | null
   origin_precinct_id: string | null
   destination_precinct_id: string | null
@@ -88,6 +117,10 @@ export interface ConsignmentRead {
   // Consolidated-unit (pallet) grain — dispatcher-entered, distinct from parcel grain.
   unit_count_expected: number | null
   pp_manifest_number: number | null
+  // Live scan progress, recomputed per request — NOT the stamped parcel_count_origin /
+  // parcel_count_destination on the phase rows, which are written once and are the evidence.
+  scanned_out_count: number
+  scanned_in_count: number
   created_at: string
   updated_at: string
 }
@@ -97,7 +130,9 @@ export interface ConsignmentRead {
 export interface Trip {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null. The snapshot of it is not here:
+  // it is dispatcher-only, on GET /trips/{id}/manifest (spec §7.3).
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   journey_lock_hash: string | null
@@ -116,15 +151,13 @@ export interface Trip {
   horse: Vehicle | null
   trailers: Vehicle[]
   phases: PhaseDescriptor[]
-  // Caches of the derivation in `phases` above. The trip-DETAIL view must derive
-  // the active phase from `phases` (see dispatcher lib/phase/derive.ts) and must
-  // not read these — if the cache ever diverges, the derived view tells the truth.
+  // Caches of the derivation in `phases` above. The detail view must derive the active
+  // phase from `phases` and must not read these — if the cache diverges, the derived view wins.
   current_phase: PhaseType | null
   current_stop: number | null
   exceptions: TripException[]
   blockchain_receipts: BlockchainReceipt[]
-  // Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode
-  // warnings). Always [] on GET — never persisted.
+  // Creation-transient (e.g. PP sync degraded-mode warnings). Always [] on GET — never persisted.
   warnings: string[]
   created_at: string
   updated_at: string
@@ -134,7 +167,8 @@ export interface Trip {
 // Re-exported here so existing imports from './trip' continue to resolve.
 export type { BlockchainReceipt } from './blockchain'
 
-// Pagination envelope for GET /trips — keys confirmed by API contract §0.2.
+// Pagination envelope for GET /trips — key names match the backend response exactly,
+// do not rename.
 export interface PaginatedList<T> {
   items: T[]
   total: number
@@ -142,16 +176,14 @@ export interface PaginatedList<T> {
   page_size: number
 }
 
-// Trip creation payload types — mirrors backend TripConsignmentInput /
-// TripCreateRequest (backend/app/schemas/trips.py). Exported for the
-// dispatcher trip-creation wizard (Task 10).
+// Trip creation payload types — mirrors backend TripConsignmentInput / TripCreateRequest
+// (backend/app/schemas/trips.py).
 export interface TripConsignmentInput {
   pp_reference: string
   unit_count_expected: number
 }
 
 export interface TripCreatePayload {
-  order_number: string
   trip_type: TripType
   driver_id: string
   horse_id: string

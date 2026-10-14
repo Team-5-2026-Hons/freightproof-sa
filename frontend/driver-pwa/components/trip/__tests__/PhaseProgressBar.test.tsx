@@ -25,18 +25,18 @@ function rowCount(): number {
 }
 
 describe('PhaseProgressBar', () => {
-  it('renders exactly 7 rows for the single-leg plan', () => {
-    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(7)
+  it('renders exactly 8 rows for the single-leg plan', () => {
+    expect(SINGLE_LEG_PHASE_PLAN).toHaveLength(8)
     render(<PhaseProgressBar phases={SINGLE_LEG_PHASE_PLAN} />)
 
-    expect(rowCount()).toBe(7)
+    expect(rowCount()).toBe(8)
   })
 
-  it('renders exactly 11 rows for the cross-dock plan', () => {
-    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(11)
+  it('renders exactly 13 rows for the cross-dock plan', () => {
+    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(13)
     render(<PhaseProgressBar phases={CROSS_DOCK_PHASE_PLAN} />)
 
-    expect(rowCount()).toBe(11)
+    expect(rowCount()).toBe(13)
   })
 
   it('renders a repeated phase type more than once rather than collapsing it', () => {

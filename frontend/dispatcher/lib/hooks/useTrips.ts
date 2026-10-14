@@ -27,7 +27,7 @@ export function useTrips(filter?: TripsFilter): UseTripsResult {
     EMPTY,
   )
   // Live: any trip changing (new trip, phase, exception, close) refreshes the list in
-  // place so status chips and open-exception counts stay current without a reload.
+  // place so status chips and needs-review counts stay current without a reload.
   useLiveResource('trip', 'any', refetchSilent)
 
   const statusKey = filter?.status?.join(',') ?? ''
@@ -39,8 +39,8 @@ export function useTrips(filter?: TripsFilter): UseTripsResult {
       if (filter?.status?.length && !filter.status.includes(t.status)) return false
       if (filter?.driverId && t.driver.id !== filter.driverId) return false
       if (hasExceptions !== undefined) {
-        const hasOpen = t.open_exception_count > 0
-        if (hasExceptions !== hasOpen) return false
+        const hasNeedsReview = t.needs_review_count > 0
+        if (hasExceptions !== hasNeedsReview) return false
       }
       return true
     })

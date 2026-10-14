@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/lib/context/AuthContext'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
+import { SidebarCollapseProvider } from '@/lib/context/SidebarCollapseContext'
 import { ToastProvider } from '@/lib/context/ToastContext'
 
 const inter = Inter({
@@ -23,9 +24,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans bg-surface text-surface-on antialiased">
         <AuthProvider>
           <ForensicModeProvider>
-            <ToastProvider>
-              {children}
-            </ToastProvider>
+            <SidebarCollapseProvider>
+              <ToastProvider>
+                {children}
+              </ToastProvider>
+            </SidebarCollapseProvider>
           </ForensicModeProvider>
         </AuthProvider>
       </body>

@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for VehicleEvent and DriverEvent read shapes."""
+"""Pydantic v2 schemas for VehicleEvent, DriverEvent and PrecinctEvent read shapes."""
 
 from datetime import datetime
 from typing import Any
@@ -22,6 +22,18 @@ class VehicleEventRead(BaseModel):
 class DriverEventRead(BaseModel):
     id: UUID
     driver_id: UUID
+    event_type: str
+    changed_fields: dict[str, Any]
+    changed_by_user_id: UUID
+    blockchain_receipt_id: UUID | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PrecinctEventRead(BaseModel):
+    id: UUID
+    precinct_id: UUID
     event_type: str
     changed_fields: dict[str, Any]
     changed_by_user_id: UUID

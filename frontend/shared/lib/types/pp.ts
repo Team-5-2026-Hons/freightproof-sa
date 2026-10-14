@@ -1,6 +1,5 @@
-// Parcel Perfect dispatcher-facing lookup types — mirrors backend
-// backend/app/schemas/pp.py exactly. Used by the trip-creation wizard to
-// validate a PP waybill reference before it is added as a consignment.
+// Parcel Perfect dispatcher-facing lookup types — mirrors backend/app/schemas/pp.py.
+// Used by the trip-creation wizard to validate a PP waybill reference before adding it.
 
 // Wizard-time validation summary. Never the raw PP payload.
 export interface PPWaybillSummary {
@@ -15,6 +14,8 @@ export interface PPWaybillSummary {
   manifest_number: number | null
   is_delivered: boolean
   has_delivery_failure: boolean
+  // Set to the owning trip's reference when already linked — checked FreightProof-side.
+  already_assigned_to_trip: string | null
 }
 
 export interface PPCapabilities {

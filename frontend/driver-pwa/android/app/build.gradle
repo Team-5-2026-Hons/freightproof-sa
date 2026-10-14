@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "za.ac.uct.freightproof.driver"
+    namespace "za.co.freightproof.driver"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "za.ac.uct.freightproof.driver"
+        applicationId "za.co.freightproof.driver"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

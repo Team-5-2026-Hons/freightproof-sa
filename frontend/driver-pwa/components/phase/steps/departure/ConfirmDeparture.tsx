@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/departure/ConfirmDeparture.tsx
 'use client'
 
 import { StepHeader } from '@/components/phase/StepHeader'
@@ -16,29 +15,23 @@ interface ConfirmDepartureProps {
 }
 
 export function ConfirmDeparture({ tripId, phase, stepIndex, draft, onComplete }: ConfirmDepartureProps) {
-  // sealNumberConfirmed is set by the previous step (CaptureSeal, which now owns both the
-  // capture AND the guard's confirmation entry — see that file's header comment) — this
-  // gate simply requires it exists before departure is submitted.
-  const isReady = draft.sealNumberConfirmed !== null
+  // Both halves checked, not just the number: submitPhase's departure branch throws
+  // locally without a seal photo, and a swipe that can only fail is worse than a disabled one.
+  const isReady = draft.sealNumber !== null && draft.sealPhotoDataUrl !== null
 
   return (
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
-          You are about to depart. Swipe to submit — your departure is recorded and you are now in transit.
+        <p className="text-lg leading-relaxed text-surface-on-variant">
+          You are about to depart. Swipe to submit. Your departure is recorded and you are now in transit.
         </p>
         <EvidenceReview
           items={[
             // No GPS line: the fix is taken as this swipe submits, so a "Captured"
-            // receipt here would be claiming something that hasn't happened yet.
-            {
-              label: 'Seal confirmed',
-              value:
-                draft.sealNumberConfirmed === null
-                  ? null
-                  : `${draft.sealNumberConfirmed}${draft.sealVerifiedMatch === false ? ' (mismatch)' : ''}`,
-            },
+            // receipt here would claim something that hasn't happened yet.
+            { label: 'Seal number', value: draft.sealNumber },
+            { label: 'Seal photo', value: draft.sealPhotoDataUrl, isImage: true },
           ]}
         />
       </div>

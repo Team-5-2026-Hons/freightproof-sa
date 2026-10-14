@@ -1,18 +1,18 @@
-"""Unit tests for orchestration/driver_service.py.
+"""Unit tests for orchestration/fleet/drivers.py.
 
 Characterization tests of the driver create/update anchoring behaviour. All are
 DB-free: the AsyncSession, the Supabase auth-user provisioning, and the Hedera
 anchor call are mocked at the boundaries only. The diff/hash/payload logic runs
 as real code so the POPIA guarantees (no PII on chain) are genuinely exercised.
 
-Naming note: this file tests orchestration/driver_service.py — NOT core/exceptions
+Naming note: this file tests orchestration/fleet/drivers.py — NOT core/exceptions
 (which is test_exceptions.py).
 
 Mock boundaries:
 - db (AsyncSession): _mock_db() below.
-- create_driver_auth_user: patched at app.orchestration.driver_service.create_driver_auth_user
-  (the name driver_service actually resolves).
-- anchor_subject: patched at app.orchestration.driver_service.anchor_subject.
+- create_driver_auth_user: patched at app.orchestration.fleet.drivers.create_driver_auth_user
+  (the name fleet.drivers actually resolves).
+- anchor_subject: patched at app.orchestration.fleet.drivers.anchor_subject.
 """
 
 import hashlib
@@ -28,8 +28,8 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.enums import BlockchainReceiptType, DriverEventType, IdvsStatus, SubjectType
 from app.db.models.events import DriverEvent
-from app.db.models.people import Driver
-from app.orchestration.driver_service import create_driver, update_driver
+from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
+from app.orchestration.fleet.drivers import create_driver, update_driver
 from app.schemas.people import DriverCreateBody, DriverUpdateBody
 
 # Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.
@@ -40,16 +40,25 @@ _VALID_ID_NUMBER = "9001015009081"
 
 
 class _FakeUniqueViolation(Exception):
-    """Stand-in for asyncpg's UniqueViolationError — carries the sqlstate the
-    service reads to decide DuplicateResourceError vs. re-raise."""
+    """Stand-in for asyncpg's UniqueViolationError.
+
+    Carries both the sqlstate and the constraint name the service reads. The name is
+    not optional detail: the service will not translate a violation it cannot tie to a
+    specific constraint, because naming the wrong field in a 409 sends a dispatcher to
+    correct something that was never wrong.
+    """
 
     sqlstate = _UNIQUE_VIOLATION_SQLSTATE
+
+    def __init__(self, constraint_name: str = UQ_DRIVERS_ORG_ID_NUMBER) -> None:
+        super().__init__(constraint_name)
+        self.constraint_name = constraint_name
 
 
 # ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
-    """AsyncSession double for driver_service.
+    """AsyncSession double for fleet.drivers.
 
     - execute(...).scalar_one_or_none() → `scalar_result` (the row update_driver fetches).
     - flush() simulates Postgres applying server_default columns on INSERT
@@ -142,10 +151,10 @@ async def test_create_driver_anchors_once_without_pii() -> None:
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new=AsyncMock(return_value=driver_uuid),
         ),
-        patch("app.orchestration.driver_service.anchor_subject", new=anchor),
+        patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor),
     ):
         await create_driver(db, org_id, data, user_id)
 
@@ -176,7 +185,7 @@ async def test_update_driver_cosmetic_does_not_anchor_but_records_event() -> Non
     anchor = _anchor_stub()
     data = DriverUpdateBody(full_name="Renamed Driver")
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         await update_driver(db, driver.id, driver.organization_id, data, uuid.uuid4())
 
     anchor.assert_not_called()
@@ -200,7 +209,7 @@ async def test_update_driver_critical_anchors_only_the_diff() -> None:
     anchor = _anchor_stub()
     data = DriverUpdateBody(license_number=new_license)
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         await update_driver(db, driver.id, driver.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -228,7 +237,7 @@ async def test_update_driver_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
     anchor = _anchor_stub()
 
-    with patch("app.orchestration.driver_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor):
         with pytest.raises(ResourceNotFoundError):
             await update_driver(
                 db, uuid.uuid4(), uuid.uuid4(), DriverUpdateBody(full_name="X"), uuid.uuid4()
@@ -252,10 +261,10 @@ async def test_create_driver_duplicate_raises_duplicate_resource() -> None:
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new=AsyncMock(return_value=uuid.uuid4()),
         ),
-        patch("app.orchestration.driver_service.anchor_subject", new=anchor),
+        patch("app.orchestration.fleet.drivers.anchor_subject", new=anchor),
     ):
         with pytest.raises(DuplicateResourceError):
             await create_driver(db, uuid.uuid4(), data, uuid.uuid4())

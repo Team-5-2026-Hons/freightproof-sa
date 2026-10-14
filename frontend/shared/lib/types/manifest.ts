@@ -1,7 +1,9 @@
 // Manifest: the Parcel Perfect consignment for a trip, grouped by delivery stop.
-// Fetched on demand via GET /trips/{id}/manifest — separate from trip detail.
-// Only available after H2 loading starts; the endpoint returns 404 before that.
-// Mirrors backend ManifestResponse schema — see api_contract_dispatcher_driver.md §4.3.
+// Fetched on demand via GET /trips/{id}/manifest, separate from trip detail. Only
+// available once the loading phase starts; the endpoint returns 404 before that.
+// Mirrors backend ManifestResponse schema.
+
+import type { PPManifestSnapshot } from './pp-manifest'
 
 export type ParcelId = string & { readonly __brand: 'ParcelId' }
 
@@ -20,15 +22,15 @@ export interface Parcel {
   updated_at: string
 }
 
-// Parcels grouped by delivery stop — dispatcher-only view; the driver's H2 screen only
-// ever receives Linehaul, never per-stop/per-parcel detail.
+// Parcels grouped by delivery stop — dispatcher-only view; the driver only ever receives
+// Linehaul, never per-stop/per-parcel detail.
 export interface DeliveryStop {
   delivery_stop: string
   parcel_count: number
   parcels: Parcel[]
 }
 
-// One consignment's slice of the manifest — multi-client trips return one per client (FP-112).
+// One consignment's slice of the manifest — multi-client trips return one per client.
 export interface ConsignmentManifest {
   consignment_id: string
   parcel_perfect_reference: string
@@ -46,12 +48,14 @@ export interface Manifest {
   origin_scan_complete: boolean
   consignments: ConsignmentManifest[]
   pulled_at: string
+  // The PP manifest as locked at creation (H0, FP-281), or null on trips without one. Never
+  // refreshed: later Parcel Perfect changes show in `consignments`, not here (spec §10.6).
+  pp_manifest_snapshot: PPManifestSnapshot | null
 }
 
-// Linehaul: the driver-facing document for the same GET /trips/{id}/manifest endpoint —
-// the backend returns this shape instead of Manifest when the caller is a driver, never
-// including per-parcel data or per-stop breakdown (theft-risk rule: drivers see only a
-// consolidated unit count, never contents). Mirrors backend LinehaulResponse.
+// Linehaul: the driver-facing document for the same manifest endpoint — returned instead
+// of Manifest when the caller is a driver, with no per-parcel/per-stop detail (theft-risk
+// rule: drivers see only a consolidated unit count, never contents).
 export interface Linehaul {
   trip_id: string
   vehicle_registration: string

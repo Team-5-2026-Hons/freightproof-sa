@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">FreightProof Driver</string>
     <string name="title_activity_main">FreightProof Driver</string>
-    <string name="package_name">za.ac.uct.freightproof.driver</string>
-    <string name="custom_url_scheme">za.ac.uct.freightproof.driver</string>
+    <string name="package_name">za.co.freightproof.driver</string>
+    <string name="custom_url_scheme">za.co.freightproof.driver</string>
 </resources>

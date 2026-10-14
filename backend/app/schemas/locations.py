@@ -11,15 +11,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# One flush of the PWA's offline queue can carry a backlog of fixes, so the endpoint
-# takes a batch. Bounded because an unbounded list is a free denial-of-service against
-# a table that one authenticated driver can write to at will; a day of interaction-rate
-# pings is comfortably under this, and a larger backlog simply flushes as two requests.
+# Endpoint takes a batch (offline queue flush); bounded so one driver can't DoS the table.
 MAX_PINGS_PER_REQUEST = 200
 
-# Free-form label describing what the driver was doing (a route, or an action name).
-# Length-capped to match TripLocationPing.context's String(80).
-MAX_CONTEXT_LENGTH = 80
+MAX_CONTEXT_LENGTH = 80  # matches TripLocationPing.context's String(80)
 
 
 class LocationPingCreate(BaseModel):
@@ -27,13 +22,9 @@ class LocationPingCreate(BaseModel):
 
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
-    # Metres of horizontal uncertainty. Optional (not every platform reports it) but
-    # never negative — a negative accuracy is a client bug, not a wide fix.
-    accuracy_m: Optional[float] = Field(default=None, ge=0)
+    accuracy_m: Optional[float] = Field(default=None, ge=0)  # metres; negative is a client bug
     context: str = Field(min_length=1, max_length=MAX_CONTEXT_LENGTH)
-    # Device capture time, not receipt time: a replayed offline ping is hours older than
-    # its request, and ordering the trail by arrival would draw the route out of sequence.
-    recorded_at: datetime
+    recorded_at: datetime  # device capture time, not receipt time — offline pings replay late
 
 
 class LocationPingBatch(BaseModel):

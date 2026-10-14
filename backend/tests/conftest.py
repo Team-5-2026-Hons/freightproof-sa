@@ -16,9 +16,11 @@ import asyncio
 import base64
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
+from unittest.mock import Mock
 
 import pytest
 import pytest_asyncio
@@ -55,6 +57,39 @@ if not (Path(__file__).resolve().parent.parent / ".env").exists():
 from app.core.config import settings  # noqa: E402
 from app.db.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
+
+# ── Rate limiting off for the suite ───────────────────────────────────────────
+# A test run is not a traffic model. Several hundred requests arrive from one client in a
+# couple of seconds, which is exactly the shape the global per-IP limit exists to reject —
+# leaving it on makes unrelated tests fail with 429s depending on how many ran before
+# them, and on whether a developer happens to have Redis running locally.
+#
+# It also removes an event-loop hazard: the async Redis client is created once and cached,
+# binding it to whichever loop first used it, while pytest-asyncio gives each test a fresh
+# loop. The cached client then raises "Event loop is closed" on the second test onwards.
+#
+# Set here rather than in an autouse fixture so it applies before the app is exercised at
+# all. The limiter's own tests (tests/unit/test_rate_limit.py) monkeypatch this back on
+# and substitute a fake Redis, so the behaviour is still covered — just not by accident,
+# from every other test in the suite.
+settings.RATE_LIMIT_ENABLED = False
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
+    """Never publish test phase IDs to the development broker; drain per-loop work.
+
+    Module-specific capture/failure fixtures replace this stub when they test the
+    queue boundary. Draining before pytest closes the loop keeps tasks from leaking
+    into the next test without changing the application's async dispatch behavior.
+    """
+    from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+    from app.tasks.blockchain import anchor_phase_event_task
+
+    monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
+    yield
+    while _BACKGROUND_ANCHOR_TASKS:
+        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS))
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
@@ -138,6 +173,47 @@ def make_token(
     )
 
 
+@contextmanager
+def production_settings(**overrides: Any):
+    """Run a block with settings that look like a VALID production deployment.
+
+    app.main calls enforce_production_config() at import time, so any test that flips
+    ENVIRONMENT to "production" and reloads it must also satisfy the production
+    preconditions — otherwise the reload raises ProductionConfigError and the test fails
+    for a reason that has nothing to do with what it is checking.
+
+    That coupling is deliberate, not an inconvenience to work around: a test simulating
+    production should simulate a production that is actually allowed to serve. The
+    defaults below are the minimum that passes; pass overrides for whatever the test is
+    actually about.
+
+    Every touched field is restored on exit, including __pydantic_fields_set__ — assigning
+    to a settings field mutates it, and leaving that changed would let one test silently
+    satisfy another's explicit-configuration rule.
+    """
+    defaults: dict[str, Any] = {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": ["https://www.freightproof.co.za"],
+        "HANDOVER_RECEIVER_BASE_URL": "https://receiver.freightproof.co.za",
+        "IDVS_USE_MOCK": True,
+        "RATE_LIMIT_ENABLED": True,
+        "RATE_LIMIT_TRUST_PROXY_HEADERS": True,
+    }
+    values = {**defaults, **overrides}
+
+    originals = {name: getattr(settings, name) for name in values}
+    original_fields_set = set(settings.model_fields_set)
+
+    for name, value in values.items():
+        setattr(settings, name, value)
+    try:
+        yield settings
+    finally:
+        for name, value in originals.items():
+            setattr(settings, name, value)
+        settings.__pydantic_fields_set__ = original_fields_set
+
+
 def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -205,3 +281,272 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
             await transaction.rollback()
+
+
+class FakeMockStateStore:
+    """Dict-backed MockStateStore, so tests never need a real Redis.
+
+    One definition rather than a copy per test module. MockStateStore is a
+    structural Protocol: nothing asserts that a fake still satisfies it, so adding
+    a method to the contract used to break every copy at runtime with an
+    AttributeError that neither ruff nor mypy could see coming. Extending this one
+    class is now the whole migration.
+
+    The fixture that injects it stays local to each test module — what gets
+    monkeypatched genuinely differs (scan_feed, parcel_perfect, or both), and that
+    wiring is the part each test should keep saying out loud.
+    """
+
+    def __init__(self) -> None:
+        self.data: dict[str, dict[str, Any]] = {}
+        # Counts batched reads, so a test can assert the phase gate stays at one
+        # round trip per call however many consignments a trip carries.
+        self.batch_calls = 0
+
+    async def get_json(self, key: str) -> dict[str, Any] | None:
+        return self.data.get(key)
+
+    async def get_many_json(self, keys: list[str]) -> list[dict[str, Any] | None]:
+        self.batch_calls += 1
+        return [self.data.get(key) for key in keys]
+
+    async def set_json(self, key: str, value: dict[str, Any]) -> None:
+        self.data[key] = value
+
+    async def flush(self) -> int:
+        count = len(self.data)
+        self.data.clear()
+        return count
+
+
+# ── Warehouse-scan fixtures ─────────────────────────────────────────────────────
+# Shared by test_scan_service.py and test_phase_gate.py, so both agree on one
+# seeded trip shape instead of drifting apart in duplicated fixture bodies.
+
+
+@pytest.fixture
+async def seeded(db_session):
+    """A one-stop trip with one 3-parcel consignment picked up at that stop."""
+    from app.db.models.enums import (
+        IdvsStatus, OrganizationType, ParcelStatus, TripStatus, VehicleType,
+    )
+    from app.db.models.organisations import Organization, Precinct
+    from app.db.models.people import Driver, User
+    from app.db.models.trips import Consignment, Parcel, Trip, TripStop
+    from app.db.models.vehicles import Vehicle
+
+    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    precinct = Precinct(
+        id=uuid.uuid4(), name="Origin", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    db_session.add_all([user, driver, horse, precinct])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-1",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=1)
+    db_session.add(stop)
+    await db_session.flush()
+
+    consignment = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
+        parcel_count_expected=3, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
+    )
+    db_session.add(consignment)
+    await db_session.flush()
+
+    barcodes = ["WAY0010001", "WAY0010002", "WAY0010003"]
+    for barcode in barcodes:
+        db_session.add(Parcel(
+            id=uuid.uuid4(), consignment_id=consignment.id,
+            barcode=barcode, status=ParcelStatus.PENDING,
+        ))
+    await db_session.flush()
+
+    return {"trip": trip, "stop": stop, "consignment": consignment, "barcodes": barcodes}
+
+
+@pytest.fixture
+async def empty_trip(db_session):
+    """A trip with TripStop rows but no Consignment rows — no PP reference at all.
+
+    manifest.ts documents this shape as common and normal, not a failure: a trip
+    created without a Parcel Perfect reference. phases.blocking must never block it.
+    """
+    from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+    from app.db.models.organisations import Organization, Precinct
+    from app.db.models.people import Driver, User
+    from app.db.models.trips import Trip, TripStop
+    from app.db.models.vehicles import Vehicle
+
+    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    precinct = Precinct(
+        id=uuid.uuid4(), name="Origin", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    db_session.add_all([user, driver, horse, precinct])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-1",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=1)
+    db_session.add(stop)
+    await db_session.flush()
+
+    return {"trip": trip, "stop": stop}
+
+
+@pytest.fixture
+async def xdock_trip(db_session):
+    """A cross-dock trip: two pickup stops, one consignment loaded at each."""
+    from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+    from app.db.models.organisations import Organization, Precinct
+    from app.db.models.people import Driver, User
+    from app.db.models.trips import Consignment, Trip, TripStop
+    from app.db.models.vehicles import Vehicle
+
+    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    precinct_1 = Precinct(
+        id=uuid.uuid4(), name="Origin A", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    precinct_2 = Precinct(
+        id=uuid.uuid4(), name="Origin B", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    db_session.add_all([user, driver, horse, precinct_1, precinct_2])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-1",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop_1 = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct_1.id, sequence=1)
+    stop_2 = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct_2.id, sequence=2)
+    db_session.add_all([stop_1, stop_2])
+    await db_session.flush()
+
+    consignment_1 = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
+        parcel_count_expected=3, pickup_stop_id=stop_1.id, delivery_stop_id=stop_1.id,
+    )
+    consignment_2 = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY002",
+        parcel_count_expected=3, pickup_stop_id=stop_2.id, delivery_stop_id=stop_2.id,
+    )
+    db_session.add_all([consignment_1, consignment_2])
+    await db_session.flush()
+
+    return {"trip": trip, "stop_1": stop_1, "stop_2": stop_2}
+
+
+@pytest.fixture
+async def two_waybill_stop(db_session):
+    """One stop serving two waybills — stays blocked while either session is open."""
+    from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
+    from app.db.models.organisations import Organization, Precinct
+    from app.db.models.people import Driver, User
+    from app.db.models.trips import Consignment, Trip, TripStop
+    from app.db.models.vehicles import Vehicle
+
+    org = Organization(id=uuid.uuid4(), name="Op", org_type=OrganizationType.OPERATOR)
+    db_session.add(org)
+    await db_session.flush()
+
+    user = User(id=uuid.uuid4(), organization_id=org.id, email="d@test.co.za", full_name="D")
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=org.id, full_name="Driver",
+        id_number="8001015009087", phone_number="+27821234567", license_number="DRV-1",
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=org.id, vehicle_type=VehicleType.HORSE,
+        registration="ABC123GP", pulsit_device_id="PUL-1",
+    )
+    precinct = Precinct(
+        id=uuid.uuid4(), name="Origin", principal_organization_id=org.id,
+        latitude="0", longitude="0",
+    )
+    db_session.add_all([user, driver, horse, precinct])
+    await db_session.flush()
+
+    trip = Trip(
+        id=uuid.uuid4(), trip_reference=f"FP-{uuid.uuid4().hex[:6]}", order_number="ORD-1",
+        operator_organization_id=org.id, driver_id=driver.id, horse_id=horse.id,
+        status=TripStatus.ACTIVE, idvs_check_status=IdvsStatus.VERIFIED,
+        created_by_user_id=user.id,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=precinct.id, sequence=1)
+    db_session.add(stop)
+    await db_session.flush()
+
+    consignment_1 = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY001",
+        parcel_count_expected=3, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
+    )
+    consignment_2 = Consignment(
+        id=uuid.uuid4(), trip_id=trip.id, parcel_perfect_reference="WAY002",
+        parcel_count_expected=3, pickup_stop_id=stop.id, delivery_stop_id=stop.id,
+    )
+    db_session.add_all([consignment_1, consignment_2])
+    await db_session.flush()
+
+    return {"trip": trip, "stop": stop}

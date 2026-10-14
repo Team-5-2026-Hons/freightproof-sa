@@ -9,24 +9,25 @@ Covers:
 Run: pytest tests/unit/test_model_schema_v6.py -v
 """
 
-import uuid
-from datetime import datetime, timezone
+
+import pytest
+
+from app.db.models.organisations import Organization, Precinct
+from app.db.models.sla import SlaConfig
+from app.db.models.trips import TripTemplate
+from app.db.models.vehicles import Vehicle
 
 
 # ---------------------------------------------------------------------------
-# DriverSubstitution — model importable and has all required columns
+# DriverSubstitution — has all required columns
 # ---------------------------------------------------------------------------
 
 def _column_names(model_cls) -> set[str]:
     return {c.name for c in model_cls.__table__.columns}
 
 
-def test_driver_substitution_importable():
-    from app.db.models.trips import DriverSubstitution  # noqa: F401
-
-
 def test_driver_substitution_has_four_required_log_fields():
-    """Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,
+    """original_driver_id, substituting_driver_id, exchange_location,
     approving_dispatcher_user_id must all be present and non-nullable."""
     from app.db.models.trips import DriverSubstitution
 
@@ -94,69 +95,8 @@ def test_driver_substitution_has_timestamps():
 # updated_at present on tables that previously lacked it (CLAUDE.md standard)
 # ---------------------------------------------------------------------------
 
-def test_organization_has_updated_at():
-    from app.db.models.organisations import Organization
-
-    assert "updated_at" in _column_names(Organization)
-
-
-def test_precinct_has_updated_at():
-    from app.db.models.organisations import Precinct
-
-    assert "updated_at" in _column_names(Precinct)
+@pytest.mark.parametrize("model_cls", [Organization, Precinct, Vehicle, TripTemplate, SlaConfig])
+def test_model_has_updated_at(model_cls) -> None:
+    assert "updated_at" in _column_names(model_cls)
 
 
-def test_vehicle_has_updated_at():
-    from app.db.models.vehicles import Vehicle
-
-    assert "updated_at" in _column_names(Vehicle)
-
-
-def test_trip_template_has_updated_at():
-    from app.db.models.trips import TripTemplate
-
-    assert "updated_at" in _column_names(TripTemplate)
-
-
-def test_sla_config_has_updated_at():
-    from app.db.models.sla import SlaConfig
-
-    assert "updated_at" in _column_names(SlaConfig)
-
-
-# ---------------------------------------------------------------------------
-# DriverSubstitutionCreate schema — validates the four required log fields
-# ---------------------------------------------------------------------------
-
-def test_driver_substitution_schema_valid():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Harrismith N3 fuel stop",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=True,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-    )
-    assert ds.is_planned is True
-    assert ds.exception_id is None
-
-
-def test_driver_substitution_schema_unplanned_accepts_exception_id():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    eid = uuid.uuid4()
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Side of N3 near Mooi River",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=False,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-        exception_id=eid,
-    )
-    assert ds.is_planned is False
-    assert ds.exception_id == eid

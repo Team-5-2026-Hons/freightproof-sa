@@ -8,8 +8,8 @@
 
 **Key references before starting:**
 - `frontend/DESIGN_SYSTEM.md` — token values, component specs, spacing, shadows, typography
-- `docs/FreightProof_Frontend_Spec_v1.md` — types, mock shapes, context interfaces, component props, page catalogue
-- `docs/FreightProof_Full_Picture_v6.md` — domain concepts (handshakes, exceptions, trip lifecycle)
+- `docs/archive/root/FreightProof_Frontend_Spec_v1.md` — historical types, mock shapes, context interfaces, component props, page catalogue
+- `docs/archive/root/FreightProof_Full_Picture_v6.md` — historical domain concepts (handshakes, exceptions, trip lifecycle)
 
 **Tech stack:** Next.js 15 App Router, React 19, TypeScript 5.5 (strict, no `any`), Tailwind v3.4, `lucide-react`, `recharts` (dispatcher only), `@serwist/next` + Capacitor 6 + `@capacitor/camera` + `@capacitor/geolocation` + `@capacitor/push-notifications` (driver-pwa only).
 
@@ -19,12 +19,12 @@
 
 **Files:**
 - Modify: `CLAUDE.md`
-- Modify: `docs/FreightProof_Frontend_Spec_v1.md`
+- Modify: `docs/archive/root/FreightProof_Frontend_Spec_v1.md` (historical path after archival)
 
 - [ ] In `CLAUDE.md` Architecture section, update the `driver-pwa/` description from `(Next.js + next-pwa)` → `(Next.js + Capacitor + @serwist/next)`.
 - [ ] In `CLAUDE.md` Standards section, add a note that the `"use client"` at-lowest-level rule has a driver-pwa exception: all `page.tsx` files in driver-pwa must be `"use client"` due to `output: 'export'`.
 - [ ] In `CLAUDE.md` Architecture section, add a note that `driver-pwa/next.config.ts` must set `output: 'export'` — no SSR, no server actions, no `next/headers` on any driver page.
-- [ ] In `docs/FreightProof_Frontend_Spec_v1.md` §8.0 conventions, update the photo capture sentence to match §5.2: use `@capacitor/camera` (`Camera.getPhoto()`), falling back to `<input type="file" capture="environment">` in a desktop browser.
+- [ ] In `docs/archive/root/FreightProof_Frontend_Spec_v1.md` §8.0 conventions, update the photo capture sentence to match §5.2: use `@capacitor/camera` (`Camera.getPhoto()`), falling back to `<input type="file" capture="environment">` in a desktop browser.
 - [ ] Commit: `docs: align CLAUDE.md and spec §8.0 with Capacitor v1.1 changes`
 
 If already done then skip.

@@ -1,9 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
-import { api } from '@/lib/api/client'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
-import { useAsyncData } from './useAsyncData'
+import { useTripResource } from './useTripResource'
 
 export interface UseTripArtifactsResult {
   artifacts: EvidenceArtifactWithUrl[]
@@ -12,20 +11,18 @@ export interface UseTripArtifactsResult {
   // itself carries no phase attribution.
   byId: Map<string, EvidenceArtifactWithUrl>
   isLoading: boolean
+  isValidating: boolean
   error: string | null
+  errorStatus: number | null
+  lastUpdated: number | null
   refetch: () => void
+  refetchSilent: () => void
 }
 
+const EMPTY_ARTIFACTS: EvidenceArtifactWithUrl[] = []
+
 export function useTripArtifacts(tripId: string): UseTripArtifactsResult {
-  const { data, isLoading, error, refetch } = useAsyncData<EvidenceArtifactWithUrl[]>(
-    () => api.get<EvidenceArtifactWithUrl[]>(`/api/v1/trips/${tripId}/artifacts`),
-    [],
-  )
-
-  const byId = useMemo(
-    () => new Map(data.map(a => [a.id, a])),
-    [data],
-  )
-
-  return { artifacts: data, byId, isLoading, error, refetch }
+  const { data, ...resource } = useTripResource<EvidenceArtifactWithUrl[]>(tripId, '/artifacts', EMPTY_ARTIFACTS)
+  const byId = useMemo(() => new Map(data.map(artifact => [artifact.id, artifact])), [data])
+  return { artifacts: data, byId, ...resource }
 }

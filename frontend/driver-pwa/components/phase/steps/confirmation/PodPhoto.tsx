@@ -2,7 +2,7 @@
 // BQ2 resolved 2026-06-29: proof of delivery is a photo of the delivered cargo
 // AND an on-device signature from the receiver — both required, now captured as two
 // separate steps (this one, and PodSignature.tsx) instead of one combined screen, per
-// confirmation's recipe (STEP_SLUGS.confirmation: '1-pod-photo', '2-pod-signature').
+// confirmation's recipe (STEP_SLUGS.confirmation: '1-pod-photo', '2-receiver-handover').
 'use client'
 
 import { StepHeader } from '@/components/phase/StepHeader'
@@ -41,7 +41,7 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
     <main className="flex min-h-dvh flex-col">
       <StepHeader phase={phase} stepIndex={stepIndex} />
       <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-sm text-surface-on-variant">
+        <p className="text-lg leading-relaxed text-surface-on-variant">
           Photograph the delivered cargo.
         </p>
         <CameraCapture

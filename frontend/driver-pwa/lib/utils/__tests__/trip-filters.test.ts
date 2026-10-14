@@ -10,7 +10,7 @@ function makeTrip(overrides: Partial<Trip>): Trip {
   return {
     id: 'trip-1' as TripId,
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-0001',
+    pp_manifest: null,
     status: 'created',
     trip_type: 'loaded',
     journey_lock_hash: null,

@@ -40,6 +40,14 @@ export function OtpInput({ length, value, onChange, autoFocus }: OtpInputProps) 
     focusBox(cursor >= length ? length - 1 : cursor)
   }
 
+  // A whole code arriving in one event is the OS or the clipboard, not typing, so it
+  // belongs at box 0 whichever box happened to hold focus when it was inserted — a
+  // driver who has tapped box 3 before the WhatsApp code lands would otherwise get
+  // the code written from box 3 and truncated.
+  function applyDigits(index: number, digits: string) {
+    writeFrom(digits.length >= length ? 0 : index, digits)
+  }
+
   function handleChange(index: number, raw: string) {
     const digits = raw.replace(/\D/g, '')
     if (!digits) {
@@ -48,7 +56,7 @@ export function OtpInput({ length, value, onChange, autoFocus }: OtpInputProps) 
       onChange(chars.join(''))
       return
     }
-    writeFrom(index, digits)
+    applyDigits(index, digits)
   }
 
   function handleKeyDown(index: number, e: KeyboardEvent<HTMLInputElement>) {
@@ -72,7 +80,7 @@ export function OtpInput({ length, value, onChange, autoFocus }: OtpInputProps) 
   function handlePaste(index: number, e: ClipboardEvent<HTMLInputElement>) {
     e.preventDefault()
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '')
-    if (pasted) writeFrom(index, pasted)
+    if (pasted) applyDigits(index, pasted)
   }
 
   return (
@@ -84,7 +92,12 @@ export function OtpInput({ length, value, onChange, autoFocus }: OtpInputProps) 
           type="text"
           inputMode="numeric"
           autoComplete={index === 0 ? 'one-time-code' : 'off'}
-          maxLength={1}
+          // Capped at the whole code, never at 1: iOS AutoFill inserts the code as a
+          // user edit, so WebKit truncates it to `maxLength` before any handler runs.
+          // maxLength={1} therefore delivered "1" instead of "123456" and only the
+          // first box ever filled. The box still shows one digit — `value[index]`
+          // below is what renders; handleChange redistributes anything longer.
+          maxLength={length}
           value={value[index] ?? ''}
           autoFocus={autoFocus && index === 0}
           onChange={(e) => handleChange(index, e.target.value)}

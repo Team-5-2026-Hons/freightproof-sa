@@ -18,6 +18,7 @@ export function makePhase(phaseType: PhaseType, overrides: Partial<PhaseDescript
     status: 'in_progress',
     anchor_status: 'not_required',
     step_recipe: [],
+    blocked_on: null,
     dispatcher_override_user_id: null,
     dispatcher_override_note: null,
     driver_phone_lat: null,

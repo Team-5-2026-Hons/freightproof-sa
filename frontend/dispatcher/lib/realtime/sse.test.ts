@@ -7,6 +7,7 @@ describe('parseFrame', () => {
     resource: 'trip',
     id: '11111111-1111-1111-1111-111111111111',
     kind: 'phase_completed',
+    severity: 'info',
     ts: '2026-08-05T10:00:00Z',
   }
 

@@ -1,0 +1,1807 @@
+{
+  "paths": {
+    "/api/v1/dev/exceptions": {
+      "post": {
+        "description": "Raise through exception_service, the same function the driver's panic page calls.",
+        "operationId": "trigger_exception_api_v1_dev_exceptions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExceptionTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExceptionTriggerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Raise an exception",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/mock-state/flush": {
+      "post": {
+        "description": "Delete every staged mock key. Evidence in PostgreSQL is untouched.",
+        "operationId": "flush_mock_state_api_v1_dev_mock_state_flush_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlushMockStateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Clear staged mock state",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/pp/manifest": {
+      "post": {
+        "description": "Stage a header change on the mock manifest (FP-281), e.g. to demo MANIFEST_CHANGED.",
+        "operationId": "trigger_pp_manifest_change_api_v1_dev_pp_manifest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PpManifestTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PpManifestTriggerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Simulate a PP manifest header change",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/pp/waybill": {
+      "post": {
+        "description": "Stage a waybill override, then run the real consignment sync (fetch_and_sync_consignment).",
+        "operationId": "trigger_pp_change_api_v1_dev_pp_waybill_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PpTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PpTriggerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Simulate a PP waybill change",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/pulsit/move-truck": {
+      "post": {
+        "description": "Stage a tracker position, then report where the truck is and what the fence says.\n\nIdempotent by construction: `stage_position` REPLACES the staged state for a device\nrather than merging into it, so pressing the same button twice leaves Redis in the\nidentical state and returns the identical response. Re-pressing is how a presenter\nrecovers from a mis-click, so it must be boring.\n\nNothing is committed. The session is used only for reads and never written to.\n\nTWO INPUT MODES (FP-197), mutually exclusive by MoveTruckRequest's own\nvalidator: `waypoint_id` (legacy, fixed Cape Town demo locations — unchanged\nbelow) or `scenario` (+ `trip_stop_id`), which computes a position relative to\nTHIS trip's own stop via orchestration/dev_truck_service.py. Whichever mode ran,\nthe EXPECTED-stop verdict fields (`precinct_id`, `distance_metres`,\n`geofence_confirmed`, ...) always describe the trip's current phase stop, exactly\nas before this task — only the TARGET fields differ by mode.",
+        "operationId": "move_truck_api_v1_dev_pulsit_move_truck_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveTruckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveTruckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move the trip's tracker to a waypoint or a trip-stop-relative scenario (Pulsit mock state only)",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/pulsit/waypoints": {
+      "get": {
+        "description": "Serve the route so the panel renders one definition of it.\n\nStatic data behind a dispatcher token: the panel needs it, and hardcoding the\ncoordinates in TypeScript as well would give a corrected digit somewhere to hide.",
+        "operationId": "list_waypoints_api_v1_dev_pulsit_waypoints_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WaypointRead"
+                  },
+                  "title": "Response List Waypoints Api V1 Dev Pulsit Waypoints Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The ordered waypoints the presenter can move the truck to",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/scans": {
+      "post": {
+        "description": "Stage barcodes into the mock feed, then run the real reconciliation.",
+        "operationId": "trigger_scan_api_v1_dev_scans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanTriggerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Simulate a warehouse scan",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/scans/close-session": {
+      "post": {
+        "description": "Close the scan session for every consignment at this stop (drives the mock only).",
+        "operationId": "close_scan_session_api_v1_dev_scans_close_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloseScanSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloseScanSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Simulate the warehouse finishing its scan at a stop",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/tracker/check": {
+      "post": {
+        "operationId": "run_road_check_api_v1_dev_tracker_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoadCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoadCheckResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run the on-road tracker check",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/tracker/scenario": {
+      "post": {
+        "operationId": "run_rig_scenario_api_v1_dev_tracker_scenario_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RigScenarioRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RigScenarioResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stage a rig scenario, then run the road check",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
+    "/api/v1/dev/trips": {
+      "get": {
+        "description": "Trips with their stops, per-stop waybills (with real barcodes), and the\nwarehouse-scan gate status at each stop, for the panel's own pickers.",
+        "operationId": "list_dev_trips_api_v1_dev_trips_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DevTripSummary"
+                  },
+                  "title": "Response List Dev Trips Api V1 Dev Trips Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trips and stops for the panel",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    }
+  },
+  "schemas": {
+    "CloseScanSessionRequest": {
+      "description": "Simulate the warehouse operator finishing at one stop.\n\nScoped to a stop rather than a trip: a cross-dock trip has several stops, and\nclosing them all at once would make the per-stop gate untestable.",
+      "properties": {
+        "direction": {
+          "$ref": "#/components/schemas/ScanDirection"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "title": "Trip Stop Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "trip_stop_id",
+        "direction"
+      ],
+      "title": "CloseScanSessionRequest",
+      "type": "object"
+    },
+    "CloseScanSessionResponse": {
+      "properties": {
+        "direction": {
+          "$ref": "#/components/schemas/ScanDirection"
+        },
+        "sessions_closed": {
+          "title": "Sessions Closed",
+          "type": "integer"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "title": "Trip Stop Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "trip_stop_id",
+        "direction",
+        "sessions_closed"
+      ],
+      "title": "CloseScanSessionResponse",
+      "type": "object"
+    },
+    "ConsignmentScanResultRead": {
+      "description": "Reconciliation outcome for one consignment, as returned to the panel.",
+      "properties": {
+        "consignment_id": {
+          "format": "uuid",
+          "title": "Consignment Id",
+          "type": "string"
+        },
+        "exception_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "title": "Exception Ids",
+          "type": "array"
+        },
+        "expected_count": {
+          "title": "Expected Count",
+          "type": "integer"
+        },
+        "matched_barcodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Matched Barcodes",
+          "type": "array"
+        },
+        "missing_barcodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Barcodes",
+          "type": "array"
+        },
+        "observed_count": {
+          "title": "Observed Count",
+          "type": "integer"
+        },
+        "parcel_perfect_reference": {
+          "title": "Parcel Perfect Reference",
+          "type": "string"
+        },
+        "unexpected_barcodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unexpected Barcodes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "consignment_id",
+        "parcel_perfect_reference",
+        "expected_count",
+        "observed_count",
+        "matched_barcodes",
+        "missing_barcodes",
+        "unexpected_barcodes",
+        "exception_ids"
+      ],
+      "title": "ConsignmentScanResultRead",
+      "type": "object"
+    },
+    "DevConsignment": {
+      "description": "One waybill at a stop, with the real parcel barcodes under it.",
+      "properties": {
+        "barcodes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Barcodes",
+          "type": "array"
+        },
+        "consignment_id": {
+          "format": "uuid",
+          "title": "Consignment Id",
+          "type": "string"
+        },
+        "parcel_perfect_reference": {
+          "title": "Parcel Perfect Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "consignment_id",
+        "parcel_perfect_reference",
+        "barcodes"
+      ],
+      "title": "DevConsignment",
+      "type": "object"
+    },
+    "DevTripStop": {
+      "description": "One stop on a trip, with the consignments picked up and dropped there.",
+      "properties": {
+        "arrival_phase_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Arrival Phase Status"
+        },
+        "confirmation_phase_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Confirmation Phase Status"
+        },
+        "delivery_consignments": {
+          "items": {
+            "$ref": "#/components/schemas/DevConsignment"
+          },
+          "title": "Delivery Consignments",
+          "type": "array"
+        },
+        "loading_phase_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Loading Phase Status"
+        },
+        "pickup_consignments": {
+          "items": {
+            "$ref": "#/components/schemas/DevConsignment"
+          },
+          "title": "Pickup Consignments",
+          "type": "array"
+        },
+        "preceding_departure_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Preceding Departure Status"
+        },
+        "precinct_name": {
+          "title": "Precinct Name",
+          "type": "string"
+        },
+        "sequence": {
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "title": "Trip Stop Id",
+          "type": "string"
+        },
+        "unloading_phase_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Unloading Phase Status"
+        }
+      },
+      "required": [
+        "trip_stop_id",
+        "sequence",
+        "precinct_name",
+        "pickup_consignments",
+        "delivery_consignments"
+      ],
+      "title": "DevTripStop",
+      "type": "object"
+    },
+    "DevTripSummary": {
+      "description": "Everything the panel needs to populate its pickers for one trip.",
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "current_phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Phase"
+        },
+        "current_stop_sequence": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Stop Sequence"
+        },
+        "driver_full_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Driver Full Name"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "stops": {
+          "items": {
+            "$ref": "#/components/schemas/DevTripStop"
+          },
+          "title": "Stops",
+          "type": "array"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_reference": {
+          "title": "Trip Reference",
+          "type": "string"
+        },
+        "vehicles": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/DevVehicle"
+          },
+          "title": "Vehicles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "trip_id",
+        "trip_reference",
+        "status",
+        "current_phase",
+        "stops",
+        "created_at"
+      ],
+      "title": "DevTripSummary",
+      "type": "object"
+    },
+    "DevVehicle": {
+      "description": "One vehicle on the trip, so the panel can offer a per-trailer scenario.",
+      "properties": {
+        "registration": {
+          "title": "Registration",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "horse",
+            "trailer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "vehicle_id": {
+          "format": "uuid",
+          "title": "Vehicle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "vehicle_id",
+        "registration",
+        "role"
+      ],
+      "title": "DevVehicle",
+      "type": "object"
+    },
+    "ExceptionTriggerRequest": {
+      "description": "Raise an exception through the real exception service.",
+      "properties": {
+        "description": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "exception_type": {
+          "$ref": "#/components/schemas/ExceptionType"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "exception_type",
+        "description"
+      ],
+      "title": "ExceptionTriggerRequest",
+      "type": "object"
+    },
+    "ExceptionTriggerResponse": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "exception_id": {
+          "format": "uuid",
+          "title": "Exception Id",
+          "type": "string"
+        },
+        "exception_type": {
+          "$ref": "#/components/schemas/ExceptionType"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "exception_id",
+        "trip_id",
+        "exception_type",
+        "severity",
+        "description"
+      ],
+      "title": "ExceptionTriggerResponse",
+      "type": "object"
+    },
+    "FlushMockStateResponse": {
+      "description": "Result of clearing staged mock state. Evidence in Postgres is untouched.",
+      "properties": {
+        "keys_deleted": {
+          "title": "Keys Deleted",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "keys_deleted"
+      ],
+      "title": "FlushMockStateResponse",
+      "type": "object"
+    },
+    "MoveTruckRequest": {
+      "description": "Move one trip's horse tracker. Writes Pulsit mock state only.\n\nExactly one input mode is accepted:\n  - `waypoint_id` (legacy): one of the fixed Cape Town demo locations in\n    demo_waypoints.py. Ignores the trip's real stops entirely.\n  - `scenario` + `trip_stop_id`: stage a position computed relative to one of\n    THIS trip's actual stops. `trip_stop_id` is required for every scenario\n    except `no_signal` (the tracker going dark is not a coordinate, so there is\n    nothing to offset from a stop; naming a stop for it is optional context).\n\nBoth set, or neither set, is a 422 (`_validate_exactly_one_mode` below) — a\nrequest that could mean two things is treated the same as one that means\nnothing. Arbitrary coordinates are never accepted from the browser in either\nmode: a waypoint id and a scenario id are both closed, server-defined vocabularies.",
+      "properties": {
+        "scenario": {
+          "anyOf": [
+            {
+              "enum": [
+                "at_stop",
+                "inside_tolerance",
+                "outside_tolerance",
+                "three_km",
+                "fifty_km",
+                "no_signal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scenario"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trip Stop Id"
+        },
+        "waypoint_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Waypoint Id"
+        }
+      },
+      "required": [
+        "trip_id"
+      ],
+      "title": "MoveTruckRequest",
+      "type": "object"
+    },
+    "MoveTruckResponse": {
+      "description": "Where the truck now is, and what the geofence makes of it.\n\nCarries the measured distance and the real verdict so the panel displays actual\nstate rather than restating what it just asked for. The verdict is computed by the\nsame `orchestration.geofence_service.evaluate_geofence` a handshake uses — read\nonly, nothing here is persisted.\n\nEXPECTED vs TARGET, and why both exist (FP-197): `precinct_id`/\n`precinct_name` and the distance/verdict fields below all describe the EXPECTED\nphase stop — the trip's current stop per the phase-event ledger, exactly as\nbefore this change. `target_*` fields describe where scenario mode actually\nstaged the tracker, which is a DIFFERENT stop unless the operator picked the\ntrip's current one. Never render both distances as \"from the precinct\" — say\nwhich one is which (see DevTriggerPanel.tsx).",
+      "properties": {
+        "device_id": {
+          "title": "Device Id",
+          "type": "string"
+        },
+        "distance_metres": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Distance Metres"
+        },
+        "expected_precinct_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Precinct Name"
+        },
+        "expected_trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Trip Stop Id"
+        },
+        "geofence_confirmed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Geofence Confirmed"
+        },
+        "geofence_radius_metres": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Geofence Radius Metres"
+        },
+        "gps_tolerance_metres": {
+          "title": "Gps Tolerance Metres",
+          "type": "integer"
+        },
+        "has_position": {
+          "title": "Has Position",
+          "type": "boolean"
+        },
+        "in_tolerance_band": {
+          "title": "In Tolerance Band",
+          "type": "boolean"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Longitude"
+        },
+        "precinct_id": {
+          "format": "uuid",
+          "title": "Precinct Id",
+          "type": "string"
+        },
+        "precinct_name": {
+          "title": "Precinct Name",
+          "type": "string"
+        },
+        "scenario": {
+          "anyOf": [
+            {
+              "enum": [
+                "at_stop",
+                "inside_tolerance",
+                "outside_tolerance",
+                "three_km",
+                "fifty_km",
+                "no_signal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Scenario"
+        },
+        "target_distance_metres": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Distance Metres"
+        },
+        "target_precinct_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Precinct Name"
+        },
+        "target_trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Trip Stop Id"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "vehicle_registration": {
+          "title": "Vehicle Registration",
+          "type": "string"
+        },
+        "verdict_reason": {
+          "title": "Verdict Reason",
+          "type": "string"
+        },
+        "waypoint_id": {
+          "title": "Waypoint Id",
+          "type": "string"
+        },
+        "waypoint_label": {
+          "title": "Waypoint Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "waypoint_id",
+        "waypoint_label",
+        "device_id",
+        "vehicle_registration",
+        "precinct_id",
+        "precinct_name",
+        "latitude",
+        "longitude",
+        "has_position",
+        "distance_metres",
+        "geofence_radius_metres",
+        "gps_tolerance_metres",
+        "geofence_confirmed",
+        "in_tolerance_band",
+        "verdict_reason"
+      ],
+      "title": "MoveTruckResponse",
+      "type": "object"
+    },
+    "PpManifestTriggerRequest": {
+      "description": "Stage a change to a mock PP manifest header, as if the client edited it in PP.\n\nSupplied fields are staged; the rest are untouched. Waybills move between manifests\nthrough POST /dev/pp/waybill (each waybill's own `manifest` field).",
+      "properties": {
+        "closed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closed"
+        },
+        "expected_arrival_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Arrival At"
+        },
+        "manifest_number": {
+          "exclusiveMinimum": 0.0,
+          "title": "Manifest Number",
+          "type": "integer"
+        },
+        "planned_departure_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Planned Departure At"
+        }
+      },
+      "required": [
+        "manifest_number"
+      ],
+      "title": "PpManifestTriggerRequest",
+      "type": "object"
+    },
+    "PpManifestTriggerResponse": {
+      "description": "The manifest's new snapshot hash — a preview made before this call is now stale.",
+      "properties": {
+        "manifest_number": {
+          "title": "Manifest Number",
+          "type": "integer"
+        },
+        "snapshot_sha256": {
+          "title": "Snapshot Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest_number",
+        "snapshot_sha256"
+      ],
+      "title": "PpManifestTriggerResponse",
+      "type": "object"
+    },
+    "PpTriggerRequest": {
+      "description": "Stage a change to a mock waybill, as if someone edited it in the PP portal.\n\nEvery field is optional; supplied fields are staged and the rest are untouched.\n`parcel_count` reproduces the verified mid-trip edit that grew a\nwaybill's tracks[] from 2 to 27 barcodes.",
+      "properties": {
+        "failtype": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failtype"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Manifest"
+        },
+        "parcel_count": {
+          "anyOf": [
+            {
+              "maximum": 500.0,
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parcel Count"
+        },
+        "parcel_perfect_reference": {
+          "title": "Parcel Perfect Reference",
+          "type": "string"
+        },
+        "poddate": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Poddate"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "parcel_perfect_reference"
+      ],
+      "title": "PpTriggerRequest",
+      "type": "object"
+    },
+    "PpTriggerResponse": {
+      "description": "What the consignment looks like after the real PP sync ran.",
+      "properties": {
+        "consignment_id": {
+          "format": "uuid",
+          "title": "Consignment Id",
+          "type": "string"
+        },
+        "failtype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failtype"
+        },
+        "parcel_count_expected": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parcel Count Expected"
+        },
+        "parcel_perfect_reference": {
+          "title": "Parcel Perfect Reference",
+          "type": "string"
+        },
+        "poddate": {
+          "title": "Poddate",
+          "type": "string"
+        },
+        "pp_manifest_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Pp Manifest Number"
+        },
+        "warning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Warning"
+        }
+      },
+      "required": [
+        "consignment_id",
+        "parcel_perfect_reference",
+        "parcel_count_expected",
+        "pp_manifest_number",
+        "poddate",
+        "failtype",
+        "warning"
+      ],
+      "title": "PpTriggerResponse",
+      "type": "object"
+    },
+    "RigReadingRead": {
+      "properties": {
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Longitude"
+        },
+        "registration": {
+          "title": "Registration",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "horse",
+            "trailer"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "vehicle_id": {
+          "format": "uuid",
+          "title": "Vehicle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "vehicle_id",
+        "registration",
+        "role",
+        "status"
+      ],
+      "title": "RigReadingRead",
+      "type": "object"
+    },
+    "RigScenarioRequest": {
+      "additionalProperties": false,
+      "description": "Stage every tracker on a trip for one named scenario, then run the road check.",
+      "properties": {
+        "scenario": {
+          "enum": [
+            "at_stop",
+            "away_from_stop",
+            "en_route",
+            "left_before_departure",
+            "trailer_uncoupled",
+            "silent"
+          ],
+          "title": "Scenario",
+          "type": "string"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trip Stop Id"
+        },
+        "vehicle_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Vehicle Id"
+        }
+      },
+      "required": [
+        "trip_id",
+        "scenario"
+      ],
+      "title": "RigScenarioRequest",
+      "type": "object"
+    },
+    "RigScenarioResponse": {
+      "properties": {
+        "findings": {
+          "items": {
+            "$ref": "#/components/schemas/RoadFindingRead"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "readings": {
+          "items": {
+            "$ref": "#/components/schemas/RigReadingRead"
+          },
+          "title": "Readings",
+          "type": "array"
+        },
+        "scenario": {
+          "enum": [
+            "at_stop",
+            "away_from_stop",
+            "en_route",
+            "left_before_departure",
+            "trailer_uncoupled",
+            "silent"
+          ],
+          "title": "Scenario",
+          "type": "string"
+        },
+        "skipped_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skipped Reason"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "readings",
+        "findings",
+        "scenario",
+        "label"
+      ],
+      "title": "RigScenarioResponse",
+      "type": "object"
+    },
+    "RoadCheckRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id"
+      ],
+      "title": "RoadCheckRequest",
+      "type": "object"
+    },
+    "RoadCheckResponse": {
+      "properties": {
+        "findings": {
+          "items": {
+            "$ref": "#/components/schemas/RoadFindingRead"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "readings": {
+          "items": {
+            "$ref": "#/components/schemas/RigReadingRead"
+          },
+          "title": "Readings",
+          "type": "array"
+        },
+        "skipped_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Skipped Reason"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "readings",
+        "findings"
+      ],
+      "title": "RoadCheckResponse",
+      "type": "object"
+    },
+    "RoadFindingRead": {
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "exception_type": {
+          "$ref": "#/components/schemas/ExceptionType"
+        },
+        "newly_recorded": {
+          "title": "Newly Recorded",
+          "type": "boolean"
+        },
+        "severity": {
+          "title": "Severity",
+          "type": "string"
+        },
+        "vehicle_id": {
+          "format": "uuid",
+          "title": "Vehicle Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "exception_type",
+        "severity",
+        "vehicle_id",
+        "description",
+        "newly_recorded"
+      ],
+      "title": "RoadFindingRead",
+      "type": "object"
+    },
+    "ScanDirection": {
+      "description": "Which way through the warehouse door the parcel went.\n\nDeliberately not in db/models/enums.py — never persisted as a column,\nand that file is read by every branch.",
+      "enum": [
+        "out",
+        "in"
+      ],
+      "title": "ScanDirection",
+      "type": "string"
+    },
+    "ScanTriggerRequest": {
+      "description": "Stage a warehouse scan, then ingest it through the real reconciliation path.\n\nPrecedence, most specific first:\n  - `barcodes_by_reference`: scan exactly the listed barcodes for each named\n    waybill (parcel_perfect_reference -> barcodes). A waybill absent from the\n    map stages an EMPTY scan for it, not a full one — that is how a demo\n    expresses \"this waybill was never scanned\". MockScanFeed.stage_scans\n    REPLACES prior staging rather than appending (see its docstring), so a\n    caller wanting \"everything plus one stranger barcode\" must send the full\n    list for that waybill; there is no additive mode. Per-waybill selection is\n    what lets the panel build that list correctly across several waybills at\n    one stop in a single trigger.\n  - `barcodes`: scan this literal list for every consignment at the stop,\n    which may include barcodes that are not on the manifest at all.\n  - `parcel_count`: scan the first N expected barcodes (N < expected = partial).\n  - none of the above: scan everything expected.",
+      "properties": {
+        "barcodes": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 500,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Barcodes"
+        },
+        "barcodes_by_reference": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Barcodes By Reference"
+        },
+        "direction": {
+          "$ref": "#/components/schemas/ScanDirection"
+        },
+        "parcel_count": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parcel Count"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "title": "Trip Stop Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "trip_stop_id",
+        "direction"
+      ],
+      "title": "ScanTriggerRequest",
+      "type": "object"
+    },
+    "ScanTriggerResponse": {
+      "properties": {
+        "consignments": {
+          "items": {
+            "$ref": "#/components/schemas/ConsignmentScanResultRead"
+          },
+          "title": "Consignments",
+          "type": "array"
+        },
+        "direction": {
+          "$ref": "#/components/schemas/ScanDirection"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "format": "uuid",
+          "title": "Trip Stop Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trip_id",
+        "trip_stop_id",
+        "direction",
+        "consignments"
+      ],
+      "title": "ScanTriggerResponse",
+      "type": "object"
+    },
+    "WaypointRead": {
+      "description": "One waypoint the presenter can move the truck to.\n\nServed by the panel rather than hardcoded in TypeScript, so the ordered route and\nits distances have exactly one definition (core/demo_waypoints.py) and a coordinate\ncorrected in Python cannot leave a stale copy on screen.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "expected_confirmed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expected Confirmed"
+        },
+        "intended_distance_metres": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Intended Distance Metres"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Longitude"
+        },
+        "sequence": {
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "waypoint_id": {
+          "title": "Waypoint Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "waypoint_id",
+        "label",
+        "sequence",
+        "description",
+        "latitude",
+        "longitude",
+        "intended_distance_metres",
+        "expected_confirmed"
+      ],
+      "title": "WaypointRead",
+      "type": "object"
+    }
+  }
+}

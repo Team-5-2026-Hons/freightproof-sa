@@ -2,8 +2,7 @@
 
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 
-// Shared defaults for the fleet detail-page side panels (vehicle + driver),
-// so the two pages stay visually identical.
+// Shared defaults for the fleet detail-page side panels (vehicle + driver).
 export const DETAIL_PANEL_DEFAULT_W = 520
 export const DETAIL_PANEL_MIN_W = 360
 export const DETAIL_PANEL_MAX_W = 720
@@ -16,29 +15,17 @@ interface ResizablePanel {
   startResize: (e: ReactMouseEvent) => void
 }
 
-/**
- * Clamp a width into [min, max], where MAX WINS when the two conflict.
- *
- * `max` is the space genuinely left over once every other column has taken its due, so a
- * caller on a narrow viewport can legitimately pass a max below `min`. The design minimum
- * gives way there: a cramped panel is a cosmetic problem, whereas one wider than the
- * space available pushes its neighbour out of an `overflow-hidden` row and silently clips
- * it — which is a column of the UI disappearing, not a cosmetic problem.
- */
+/** Clamp a width into [min, max], where MAX WINS when the two conflict: a caller on a
+ *  narrow viewport can legitimately pass a max below min, and a panel wider than the
+ *  space available pushes its neighbour out of an `overflow-hidden` row and clips it. */
 export function clampPanelWidth(width: number, min: number, max: number): number {
   const upper = Math.max(0, max)
   return Math.min(upper, Math.max(Math.min(min, upper), width))
 }
 
-/**
- * Width arithmetic for one drag step. Extracted from the interaction so the sign
- * convention is provable without a DOM — it is the part that was actually wrong.
- *
- * A handle on the panel's RIGHT edge widens the panel as the pointer moves right. A
- * handle on its LEFT edge widens it as the pointer moves LEFT, because the panel grows
- * backwards into the column beside it. Applying the right-edge sign to a left-edge
- * handle makes the panel track the cursor in the opposite direction.
- */
+/** Width arithmetic for one drag step, extracted so the sign convention is testable
+ *  without a DOM. A left-edge handle widens the panel as the pointer moves LEFT, since
+ *  the panel grows backwards into the column beside it. */
 export function nextPanelWidth(
   startWidth: number,
   pointerDelta: number,
@@ -51,16 +38,11 @@ export function nextPanelWidth(
 }
 
 /**
- * Owns a single resizable panel's width and the drag interaction. The panel
- * renders `style={{ width }}` and wires `onMouseDown={startResize}` to a drag
- * handle. Width is clamped to [min, max] during the drag AND on read.
- *
- * `max` is expected to be dynamic where the panel shares a row with columns that have
- * their own minimums — pass the space actually available, not a constant, or the panel
- * will grow until it pushes a neighbour out of an `overflow-hidden` row.
- *
- * Scoped to single-panel detail layouts. The dashboard/history tables use a
- * different per-column resize and intentionally do not use this hook.
+ * Owns a single resizable panel's width and the drag interaction. The panel renders
+ * `style={{ width }}` and wires `onMouseDown={startResize}`. Width is clamped to
+ * [min, max] during the drag AND on read. Pass the actual available space as `max`, not
+ * a constant, or the panel can push a neighbour out of an `overflow-hidden` row.
+ * Scoped to single-panel detail layouts; the dashboard/history tables resize per-column.
  */
 export function useResizablePanel(
   initialWidth: number,
@@ -91,9 +73,7 @@ export function useResizablePanel(
     window.addEventListener('mouseup', onUp)
   }
 
-  // Clamped on read, not only during the drag: `max` shrinks when the window does, and a
-  // width stored at a wider viewport would otherwise keep overflowing the row until the
-  // user happened to drag it back by hand. State keeps the user's intent; the render
-  // shows what currently fits.
+  // Clamped on read too: `max` shrinks with the window, and state alone would keep
+  // overflowing until the user dragged it back by hand.
   return { width: clampPanelWidth(width, opts.min, opts.max), startResize }
 }

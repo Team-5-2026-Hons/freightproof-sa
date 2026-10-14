@@ -9,46 +9,85 @@ Ciaran Formby · Tim Gultig · Chiko Kasongo · Tom Davis
 
 ## What it does
 
-FreightProof records every handover in a road freight trip — from origin depot to destination depot — and anchors a tamper-proof hash of each event to the Hedera public blockchain. When a hijacking, disputed delivery, or missing parcel claim arises, FreightProof produces a complete evidence chain: the right driver, the right vehicle, the right cargo, at the right place and time, verified from multiple independent sources.
+FreightProof records every custody handover in a road freight trip, from origin depot to
+destination depot, and anchors a SHA-256 hash of each recorded phase to the Hedera
+Consensus Service. When a hijacking, disputed delivery, or missing-parcel claim arises,
+the trip's record shows who had the cargo, in which vehicle, where, and when — and
+whether that record has changed since it was written.
 
-It does not replace Pulse Tracking (GPS), Parcel Perfect (manifests), or Fidelity/G4S (gate security). It sits at the gaps between those systems — the handover moments — where organised cargo theft currently operates undetected.
-
----
+It does not replace GPS tracking (Pulsit), manifest systems (Parcel Perfect), or gate
+security. It sits at the handover moments between those systems and records what
+happened. It records; it does not reroute drivers or dispatch a response.
 
 ## The problem
 
-South Africa accounts for roughly 95% of all truck hijackings across the EMEA region. Around 2,000 incidents in 2024 at a direct cost of R3 billion. Cargo insurance premiums sit at 12.5% of cost-per-kilogram for road freight.
-
-Every leg of a trip is already instrumented — GPS, manifest scans, gate access logs. The problem is that none of these systems share data at the moment it matters: the handover. FreightProof closes that gap.
+South Africa accounts for most truck hijackings in the EMEA region — around 2,000
+incidents in 2024 at a direct cost of roughly R3 billion. Every leg of a trip is already
+instrumented (GPS, manifest scans, gate logs), but those systems do not share data at the
+moment custody changes hands, which is where organised cargo theft operates.
 
 ---
 
-## Architecture overview
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        Frontends                         │
-│  Dispatcher (Next.js)  Driver PWA  Guard  Client Portal  │
-└────────────────────────┬────────────────────────────────┘
-                         │ HTTPS / WebSocket
-┌────────────────────────▼────────────────────────────────┐
-│              FastAPI Backend (Python 3.13)               │
-│  api/  auth/  orchestration/  blockchain/  integrations/ │
-└──────┬──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                          Frontends                           │
+│   Dispatcher (Next.js)   Driver PWA (Next.js + Capacitor)    │
+│   Receiver handover page (Next.js, QR link, no account)      │
+└───────────────────────────────┬──────────────────────────────┘
+                                │ HTTPS / server-sent events
+┌───────────────────────────────▼──────────────────────────────┐
+│                FastAPI backend (Python 3.13)                 │
+│  api · auth · orchestration · analytics · blockchain · tasks │
+└──────┬───────────────────────────────────────────────────────┘
        │
-┌──────▼──────┐  ┌────────┐  ┌──────────────────────────┐
-│ PostgreSQL  │  │ Redis  │  │ S3 / Supabase Storage    │
-│ (Supabase) │  │        │  │ (photos, evidence files) │
-└─────────────┘  └────────┘  └──────────────────────────┘
+┌──────▼──────┐  ┌──────────────┐  ┌──────────────────────────┐
+│ PostgreSQL  │  │ Redis/Celery │  │ Supabase Storage         │
+│ (Supabase)  │  │              │  │ (photos, evidence files) │
+└─────────────┘  └──────────────┘  └──────────────────────────┘
        │
-┌──────▼──────────────────────────────────────────────────┐
-│                  External integrations                   │
-│  Pulse Tracking · Parcel Perfect · IDVS · Hedera HCS    │
-│  Twilio · SendGrid                                       │
-└─────────────────────────────────────────────────────────┘
+┌──────▼───────────────────────────────────────────────────────┐
+│ External: Hedera HCS · Parcel Perfect · Pulsit · IDVS (Didit)│
+└──────────────────────────────────────────────────────────────┘
 ```
 
-Full architecture documentation: [`docs/FreightProof_TechArch.docx`](docs/)
+Backend layering is strict: `endpoints → orchestration/auth/storage →
+integrations/blockchain/crypto → db`. Endpoints stay thin; business rules live in
+`orchestration/`.
+
+**Privacy (POPIA):** personal data — identities, GPS fixes, photos, parcel details — stays
+in PostgreSQL. Only SHA-256 hashes are sent to Hedera.
+
+---
+
+## The phase model
+
+At creation, each trip gets a committed **phase plan** generated from its ordered stops
+and consignments. The phase-event ledger is the source of truth; the trip's current phase
+and stop are caches rebuilt from it, and every transition is validated against the plan.
+
+There are eight phase types:
+
+| Phase | Where | What it records |
+|---|---|---|
+| `trip_creation` | — | The committed trip parameters, hashed as the journey lock |
+| `activation` | First stop | Driver, vehicle, and position at the start of the trip |
+| `arrival` | Every later stop | The seal as found at the gate, before anything is opened |
+| `unloading` | Stops that receive cargo | What was taken off the vehicle |
+| `loading` | Stops that dispatch cargo | What was put on the vehicle |
+| `departure` | Every stop except the last | Seal applied, waybill, departure position |
+| `in_transit` | Between stops | The driving leg, closed by the driver's arrival |
+| `confirmation` | Final stop | Proof of delivery and count reconciliation |
+
+Plan length is data, not a constant. A two-stop loaded trip has 8 rows; a three-stop
+cross-dock has 13, because `arrival`, `loading`, and `unloading` recur per stop. Each
+completed phase has a canonical payload hashed for Hedera anchoring, with its anchor
+status (pending, failed, anchored) kept on the ledger. Only hashes go to Hedera. The
+journey lock commits to the trip ID, order number, driver, horse, trailer IDs, origin
+and destination precinct IDs, creator, creation time, and trip type. Changes to those
+fields can be detected against the anchored hash; intermediate stops and consignments
+are outside the current journey-lock payload.
 
 ---
 
@@ -56,57 +95,59 @@ Full architecture documentation: [`docs/FreightProof_TechArch.docx`](docs/)
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.13, FastAPI, SQLAlchemy 2.0 async, Alembic, Celery |
-| Auth | JWT + python-jose, Ed25519 (PyNaCl) |
-| Blockchain | Hedera HCS via REST API, SHA-256 hashing |
-| Database | PostgreSQL 16 (Supabase for dev, AWS RDS af-south-1 for prod) |
-| Cache / Queue | Redis 7, Celery |
-| Storage | Amazon S3 / Supabase Storage |
-| Frontend | Next.js 15 (App Router), TypeScript 5.5, React 19, Tailwind CSS |
-| Driver PWA | Next.js 15 + Capacitor (Android APK) + @serwist/next (browser PWA / Workbox) |
-| Guard page | Plain HTML + JS (zero install, zero login) |
-| Infrastructure | Docker, AWS ECS Fargate, af-south-1 region (POPIA) |
-| CI/CD | GitHub Actions |
+| Backend | Python 3.13, FastAPI, SQLAlchemy 2.0 (async), Alembic, Pydantic v2 |
+| Auth | Supabase Auth (phone OTP for drivers), JWT verified server-side with python-jose |
+| Blockchain | Hedera Consensus Service via REST, SHA-256 hashing |
+| Database | PostgreSQL (Supabase-managed); throwaway Postgres for the integration suite |
+| Queue | Redis 7, Celery (anchoring and background work) |
+| Storage | Supabase Storage |
+| Frontend | Next.js 15 (App Router), React 19, TypeScript 5.5, Tailwind CSS |
+| Driver app | Next.js static export + Capacitor (Android APK) + @serwist/next (browser PWA) |
+| CI | GitHub Actions (`.github/workflows/ci.yml`) |
 
 ---
 
 ## Project structure
 
 ```
-freightproof-sa/
-├── backend/
-│   ├── app/
-│   │   ├── api/v1/endpoints/   # FastAPI route definitions
-│   │   ├── auth/               # JWT, password hashing, dependencies
-│   │   ├── blockchain/         # Hedera HCS anchoring
-│   │   ├── core/               # Config, constants, exceptions
-│   │   ├── crypto/             # Ed25519 signing, SHA-256, Merkle trees
-│   │   ├── db/
-│   │   │   ├── models/         # SQLAlchemy ORM models
-│   │   │   └── session.py      # Async engine and get_db()
-│   │   ├── integrations/       # Pulse, Parcel Perfect, IDVS, Twilio, SendGrid
-│   │   ├── orchestration/      # Trip state machine, phase logic
-│   │   ├── storage/            # S3 / Supabase Storage
-│   │   └── tasks/              # Celery background tasks
-│   ├── migrations/             # Alembic migrations
-│   └── tests/
-│       ├── unit/               # Pure logic tests (no DB, no HTTP)
-│       └── integration/        # API and database tests
-├── frontend/
-│   ├── dispatcher/             # Next.js — dispatcher dashboard
-│   ├── driver-pwa/             # Next.js PWA — driver phase-capture app
-│   ├── guard/                  # Plain HTML — guard QR verification page
-│   └── client-portal/         # Next.js — client evidence portal
-├── infrastructure/
-│   ├── docker/
-│   │   └── docker-compose.dev.yml
-│   └── nginx/
-│       └── nginx.dev.conf
-├── docs/
-├── CLAUDE.md                   # Claude Code instructions for all developers
-├── LICENSE
-└── README.md
+backend/
+├── app/
+│   ├── api/v1/endpoints/   FastAPI routes (thin)
+│   ├── analytics/          Fleet, vehicle, lane and facility read models
+│   ├── auth/               Supabase Auth integration and dependencies
+│   ├── blockchain/         Hedera HCS anchoring
+│   ├── core/               Config, constants, exceptions
+│   ├── crypto/             SHA-256 hashing
+│   ├── db/models/          SQLAlchemy models, one file per table
+│   ├── integrations/       Parcel Perfect, Pulsit, IDVS, scan feed (each with a mock)
+│   ├── orchestration/      Phase plan, phase engine, geofence and exception services
+│   ├── schemas/            Pydantic v2 request/response models
+│   ├── storage/            Supabase Storage I/O
+│   └── tasks/              Celery tasks
+├── migrations/             Alembic migrations
+└── tests/                  unit/ (pure logic) and integration/ (endpoints + DB)
+frontend/
+├── dispatcher/             Dispatcher dashboard (port 3000)
+├── driver-pwa/             Driver phase-capture app (port 3001)
+├── receiver/               Receiver QR handover page (port 3002)
+└── shared/                 Types, constants and utilities shared via @shared/*
+infrastructure/docker/      Dev stack (Redis, API, Celery worker, dispatcher) and test Postgres
 ```
+
+---
+
+## Implementation status
+
+- **Implemented:** trips, phase plan and phase ledger, evidence capture, exceptions,
+  manifests, analytics, the receiver handover, Hedera anchoring, and dev tooling for
+  demonstrations.
+- **Mocked for local use and demos:** Parcel Perfect, Pulsit tracking, IDVS identity
+  checks, and the warehouse scan feed, each selected by a `*_USE_MOCK` flag. Mock output
+  is not provider evidence.
+- **Live-capable, not verified against a live provider:** the Pulsit and Didit (IDVS)
+  clients, which are selected when their mock flags are off and credentials are present.
+- **Not built:** the client evidence portal (`frontend/client-portal/` holds a README
+  only) and Ed25519 evidence signing.
 
 ---
 
@@ -114,290 +155,95 @@ freightproof-sa/
 
 ### Prerequisites
 
-| Tool | Version | Install |
-|---|---|---|
-| Python | 3.13+ | [python.org](https://python.org) |
-| Node.js | 22 LTS | [nodejs.org](https://nodejs.org) |
-| Docker Desktop | latest | [docker.com](https://docker.com/products/docker-desktop) |
-| Git | any | [git-scm.com](https://git-scm.com) |
+Python 3.13+, Node.js 22 LTS, Docker Desktop, and Git. Android Studio (SDK 34+, Java 17)
+only if you want to build the driver APK.
 
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/YOUR_ORG/freightproof-sa.git
-cd freightproof-sa
-```
-
-### 2. Set up environment variables
+### 1. Environment
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-Open `backend/.env` and fill in your credentials. You need:
-- Supabase database URI (connection string from Settings → Database → URI tab)
-- Hedera testnet account ID and private key from [portal.hedera.com](https://portal.hedera.com)
-- Twilio account SID, auth token, and phone number
-- SendGrid API key and verified sender email
-- A generated JWT secret: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+Fill in values from the team's shared secret store. Each `.env.example` lists key names
+and explains what each key controls. Leave the `*_USE_MOCK` flags set to `true` for local
+development. The frontends each have their own `.env.example`.
 
-See [`.env.example`](backend/.env.example) for all required keys.
-
-### 3. Start Docker services
+### 2. Install
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.dev.yml up -d
-```
-
-Verify both containers are healthy:
-```bash
-docker ps
-# freightproof-redis    Up (healthy)
-# freightproof-postgres Up (healthy)
-```
-
-### 4. Install backend dependencies
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 5. Run database migrations
-
-```bash
-alembic upgrade head
-```
-
-### 6. Start the backend
-
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-- API: [http://localhost:8000/health](http://localhost:8000/health)
-- Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-### 7. Start the dispatcher frontend
-
-```bash
-cd frontend/dispatcher
-npm install
-npm run dev
-```
-
-Opens at [http://localhost:3000](http://localhost:3000)
-
-### 8. Start the driver PWA (separate terminal)
-
-```bash
-cd frontend/driver-pwa
-npm install
-npm run dev -- --port 3001
-```
-
-Opens at [http://localhost:3001](http://localhost:3001)
-
-### 9. Build and run the driver Android APK (optional — requires Android Studio)
-
-```bash
-cd frontend/driver-pwa
-npm run build          # Next.js static export → out/
-npx cap sync android   # copies out/ into android/app/src/main/assets
-npx cap open android   # opens Android Studio
-```
-
-In Android Studio: select a connected Samsung device or emulator → Run. The APK installs and launches the driver app natively.
-
-> **Prerequisites:** Android Studio with SDK Platform 34+, Java 17. `ANDROID_HOME` env var set.  
-> **Not required** for browser-based development — `npm run dev` works without Android Studio.
-
----
-
-## Development workflow
-
-### Branch structure
-
-```
-main          ← production only, tagged releases
-  └── dev     ← integration branch, always runnable
-        └── feature/[name]-[what]   ← individual work
-```
-
-### Making changes
-
-```bash
-# Always start from an updated dev
-git checkout dev
-git pull origin dev
-
-# Create your feature branch
-git checkout -b feature/tim-auth-refresh-token
-
-# Do your work, run tests before committing
-cd backend && pytest
-
-# Review your changes
-git diff
-
-# Stage and commit yourself — Claude does not commit
-git add .
-git commit -m "feat(auth): add JWT refresh token endpoint"
-git push origin feature/tim-auth-refresh-token
-```
-
-Open a pull request into `dev`. One reviewer must approve before merging.
-
-### Running tests
-
-```bash
-# All tests
-cd backend && pytest
-
-# Unit tests only
-cd backend && pytest tests/unit/
-
-# Integration tests only
-cd backend && pytest tests/integration/
-
-# With coverage
-cd backend && pytest --cov=app tests/
-```
-
-### Adding a database model
-
-1. Create the model file in `backend/app/db/models/yourmodel.py`
-2. Import it in `backend/app/db/models/__init__.py`
-3. Generate a migration: `alembic revision --autogenerate -m "add yourmodel table"`
-4. Review the generated file in `migrations/versions/`
-5. Apply it: `alembic upgrade head`
-
-Never modify the database schema directly in Supabase.
-
-### Adding a new config value
-
-1. Add the key with an empty value to `backend/.env.example`
-2. Add the field to `backend/app/core/config.py`
-3. Note it in your PR description so teammates add it to their `.env`
-
----
-
-## The phase model
-
-A trip moves through a plan-driven sequence of phases, generated from its stops and consignments
-at trip creation. Plan length is data, not a constant — a single-leg trip is 7 rows (P0–P6 below),
-a 3-stop cross-dock is 11, because `loading`/`unloading` can recur per stop. `current_phase` on the
-trip is a cache rebuilt from the phase-event ledger; the ledger is the source of truth for where a
-trip is.
-
-| # | Phase | Who | What gets anchored |
-|---|---|---|---|
-| P0 | `trip_creation` | Dispatcher | Journey lock hash of all committed trip parameters |
-| P1 | `activation` | Driver | Phone GPS on arrival at the first stop — not anchored |
-| P2 | `loading` | System (driver visual count) | Not anchored |
-| P3 | `departure` | Driver | Seal number, seal photo, waybill photo — `PICKUP` receipt |
-| P4 | `in_transit` | System | Auto-completed on departure — not anchored |
-| P5 | `unloading` | Driver | Seal-at-destination vs. this leg's departure seal — not anchored |
-| P6 | `confirmation` | Driver | POD photo + signature, count reconciliation — `DELIVERY` receipt |
-
----
-
-## Environment variables reference
-
-| Key | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL async URI (`postgresql+asyncpg://...`) |
-| `REDIS_URL` | Yes | Redis connection string |
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes | Supabase anon/public key (not service_role) |
-| `HEDERA_ACCOUNT_ID` | Yes | Hedera account ID (format: `0.0.xxxxxx`) |
-| `HEDERA_PRIVATE_KEY` | Yes | Hedera account private key |
-| `HEDERA_NETWORK` | Yes | `testnet` or `mainnet` |
-| `HEDERA_TOPIC_ID` | No | HCS topic ID — required for real anchoring |
-| `TWILIO_ACCOUNT_SID` | Yes | Twilio account SID |
-| `TWILIO_AUTH_TOKEN` | Yes | Twilio auth token |
-| `TWILIO_PHONE_NUMBER` | Yes | Twilio sender phone number |
-| `SENDGRID_API_KEY` | Yes | SendGrid API key |
-| `SENDGRID_FROM_EMAIL` | Yes | Verified sender email |
-| `JWT_SECRET_KEY` | Yes | 64-character hex string for signing JWTs |
-| `JWT_ALGORITHM` | Yes | `HS256` |
-| `JWT_EXPIRE_MINUTES` | Yes | Token lifetime in minutes (default: `480`) |
-| `ENVIRONMENT` | Yes | `development` or `production` |
-| `ALLOWED_ORIGINS` | Yes | Comma-separated list of allowed CORS origins |
-
----
-
-## Using Claude Code
-
-All four developers use Claude Code on this project. Claude's behaviour is
-governed by [`CLAUDE.md`](CLAUDE.md) at the repo root — every Claude instance
-reads it automatically at the start of each session.
-
-Key rules Claude follows on this project:
-- Makes a written plan before writing any code
-- Writes unit and integration tests for every feature
-- Never runs `git commit`, `git push`, or any git write command
-- Only touches files within the declared scope of the task
-- Flags shared file changes for team awareness
-- Always uses latest stable versions — Python 3.13+, Next.js 15+, Node 22 LTS
-
-If Claude's behaviour on your machine differs from another team member's,
-check that you both have the latest `CLAUDE.md` from `dev`.
-
----
-
-## Useful commands reference
-
-```bash
-# Start all Docker services
-docker compose -f infrastructure/docker/docker-compose.dev.yml up -d
-
-# Stop all Docker services
-docker compose -f infrastructure/docker/docker-compose.dev.yml down
-
-# View Docker logs
-docker logs freightproof-redis
-docker logs freightproof-postgres
-
-# Activate Python virtual environment
+python3.13 -m venv backend/.venv
 source backend/.venv/bin/activate
+pip install -r backend/requirements.txt
 
-# Run the backend
-cd backend && uvicorn app.main:app --reload --port 8000
-
-# Run all tests
-cd backend && pytest
-
-# Generate a new migration
-cd backend && alembic revision --autogenerate -m "description"
-
-# Apply migrations
-cd backend && alembic upgrade head
-
-# Roll back one migration
-cd backend && alembic downgrade -1
-
-# Check current migration version
-cd backend && alembic current
-
-# Install frontend dependencies
 cd frontend/dispatcher && npm install
-cd frontend/driver-pwa && npm install
+cd ../driver-pwa && npm install
+cd ../receiver && npm install
+```
+
+### 3. Run
+
+Each in its own terminal:
+
+```bash
+cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+cd frontend/dispatcher && npm run dev
+cd frontend/driver-pwa && npm run dev
+cd frontend/receiver && npm run dev
+```
+
+The API serves Swagger docs at `http://localhost:8000/docs` in development.
+
+Alternatively, `docker compose -f infrastructure/docker/docker-compose.dev.yml up -d --build`
+runs Redis, the API, a Celery worker, and the dispatcher. It does not run Postgres; the
+database is the Supabase project in `DATABASE_URL`.
+
+### 4. Driver Android APK (optional)
+
+```bash
+cd frontend/driver-pwa
+npm run build          # static export to out/
+npx cap sync android   # copies out/ into the Android project
+npx cap open android   # opens Android Studio; run on a device or emulator
 ```
 
 ---
 
-## Vercel link to live hosted site.
+## Tests
 
-frontend: https://freightproof-sa.vercel.app/
+Integration tests need `TEST_DATABASE_URL` pointing at a throwaway Postgres — never a
+Supabase project, because the suite drops all tables at teardown. Without it, DB-backed
+tests skip rather than fail.
 
-backend: https://freightproof-sa.up.railway.app
+```bash
+docker compose -f infrastructure/docker/docker-compose.test.yml up -d
+cd backend && .venv/bin/pytest
+```
+
+Frontend tests run with Vitest: `npm test` in each frontend directory.
+
+## Database migrations
+
+All schema changes go through Alembic. `DATABASE_URL` is a shared database with a single
+Alembic version, so migrations are applied only from `dev` after merge — never from a
+feature branch. Review every autogenerated operation in both `upgrade()` and `downgrade()`
+before committing a migration.
+
+## Contributing
+
+Branch from `dev`, open a pull request back into `dev`, and follow the conventions in
+[CLAUDE.md](CLAUDE.md) (Conventional Commits, testing requirements, layering rules).
+
+---
+
+## Live deployment
+
+| Surface | URL |
+|---|---|
+| Frontend (Vercel) | [freightproof-sa.vercel.app](https://freightproof-sa.vercel.app/) |
+| Backend API (Railway) | [freightproof-sa.up.railway.app](https://freightproof-sa.up.railway.app) |
 
 ## Licence
 
 Copyright (c) 2026 Ciaran Formby, Tim Gultig, Chiko Kasongo, Tom Davis.
-University of Cape Town — INF4027W Honours Project.
-
-All rights reserved. See [`LICENSE`](LICENSE) for full terms.
+University of Cape Town — INF4027W Honours Project. All rights reserved. See
+[LICENSE](LICENSE).

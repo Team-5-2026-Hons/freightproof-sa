@@ -1,21 +1,44 @@
 """FastAPI router for blockchain receipt and verification endpoints."""
 
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, require_admin_dispatcher
-from app.blockchain.anchor_service import list_receipts_for_subject
-from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import SubjectNotVisibleError
+from app.core.limits import BLOCKCHAIN_VERIFY
+from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, SubjectType
 from app.db.session import get_db
-from app.orchestration.verification_service import verify_subject
-from app.schemas.blockchain import BlockchainReceiptRead, VerifyRequest, VerifyResponse
+from app.orchestration.verification import receipts as receipt_reads
+from app.orchestration.verification.service import verify_visible_subject
+from app.schemas.blockchain import (
+    BlockchainReceiptLookupQuery,
+    BlockchainReceiptRead,
+    VerifyRequest,
+    VerifyResponse,
+)
 from app.schemas.people import UserRead
 
 router = APIRouter(prefix="/blockchain", tags=["blockchain"])
+
+
+@router.get("/receipts/lookup", response_model=list[BlockchainReceiptRead])
+async def lookup_receipts_endpoint(
+    query: Annotated[BlockchainReceiptLookupQuery, Query()],
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(require_admin_dispatcher),
+) -> list[BlockchainReceiptRead]:
+    receipts = await receipt_reads.lookup_receipts(
+        db,
+        organization_id=current_user.organization_id,
+        data_hash=query.data_hash,
+        hedera_tx_id=query.hedera_tx_id,
+        subject_id=query.subject_id,
+    )
+    return [BlockchainReceiptRead.model_validate(receipt) for receipt in receipts]
 
 
 @router.get("/receipts", response_model=list[BlockchainReceiptRead])
@@ -26,7 +49,7 @@ async def list_receipts(
     current_user: UserRead = Depends(require_admin_dispatcher),
 ) -> list[BlockchainReceiptRead]:
     try:
-        receipts = await list_receipts_for_subject(
+        receipts = await receipt_reads.list_receipts_for_subject(
             db, subject_type=subject_type,
             subject_id=subject_id, organization_id=current_user.organization_id,
         )
@@ -35,28 +58,27 @@ async def list_receipts(
     return [BlockchainReceiptRead.model_validate(r) for r in receipts]
 
 
-@router.post("/verify", response_model=VerifyResponse)
+# Verification re-reads a Hedera mirror node. Cheap for us, not free for them, and it is
+# the one dispatcher-facing endpoint whose cost is borne by a third party per call.
+@router.post("/verify", response_model=VerifyResponse,
+             dependencies=[Depends(rate_limit(BLOCKCHAIN_VERIFY))])
 async def verify_endpoint(
     payload: VerifyRequest,
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> VerifyResponse:
     try:
-        await assert_subject_visible(
+        outcome = await verify_visible_subject(
             db, subject_type=payload.subject_type,
             subject_id=payload.subject_id, organization_id=current_user.organization_id,
         )
     except SubjectNotVisibleError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blockchain subject not found")
-    outcome = await verify_subject(
-        db,
-        subject_type=payload.subject_type,
-        subject_id=payload.subject_id,
-    )
     is_admin = current_user.role == DispatcherRole.ADMIN_DISPATCHER
     return VerifyResponse(
         status=outcome.status,
         receipt=BlockchainReceiptRead.model_validate(outcome.receipt) if (outcome.receipt and is_admin) else None,
         expected_hash=outcome.expected_hash if is_admin else None,
         current_hash=outcome.current_hash if is_admin else None,
+        evidence_verified=outcome.evidence_verified,
     )

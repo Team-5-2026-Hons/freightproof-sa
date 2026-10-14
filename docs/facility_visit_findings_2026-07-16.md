@@ -80,7 +80,7 @@ What we saw, and how it maps to what's already in the codebase:
 | **Waybill** | One client's shipment: 1+ pieces, an owner, a destination. **[CONFIRMED]** | `Consignment` (trips.py) — `parcel_perfect_reference` is the PP waybill no.; carries its own `origin_precinct_id` + `destination_precinct_id`. |
 | **Manifest** | The set of waybills on one truck for one trip. **[CONFIRMED]** | Represented as the collection of `Consignment` rows linked to a `Trip`; `Consignment.pp_manifest_number` snapshots PP's manifest field. |
 | **"Container"** | RTT's word — **[UNCERTAIN]** whether this means the manifest, a physical consolidation unit (roll cage/ULD/pallet), or an actual shipping container. | Not modelled as a distinct entity. Do not build on this until confirmed — may be RTT's name for a consolidated unit. |
-| **Consolidated unit / pallet** | A grouping of pieces below the waybill. With FedEx, LFG received *sealed* pallets it couldn't see inside (Bruce, 24 Jun). Relationship to the new manifest→waybill→piece framing is **[OPEN]**. | Planned `HandlingUnit` idea (FP-112/FP-121) — **not built**; hold pending the open question below. |
+| **Consolidated unit / pallet** | A grouping of pieces below the waybill. With FedEx, LFG received *sealed* pallets it couldn't see inside (Bruce, 24 Jun). **[CLOSED 1 Sep 2026 — not modelled.]** | `HandlingUnit` (FP-112/FP-121) — **will not be built.** Team decision: the parcel is the smallest grain, a waybill contains parcels, and a pallet stays a *count* on the consignment. Additive later if the operation proves otherwise. See §6.8. |
 | **Trip / leg** | One hub→hub run: one driver, one truck, one manifest. **[CONFIRMED]** | `Trip` (trips.py) — "one row per depot-to-depot trip". |
 | **Linehaul sheet** | The driver's printed A→B reference; no contents. **[CONFIRMED]** | Not a stored entity; it's a *view* — the point is it must NOT expose manifest contents to the driver surface. |
 | **Seal** | Coded, locked seal on the doors. **[CONFIRMED]** | Already on `HandshakeEvent`: `seal_number` + `seal_photo_artifact_id`. |
@@ -214,9 +214,13 @@ weight/dims/photo today. Worth noting as future evidence, not a now-change.
 
 ## 6. Open questions — for RTT / LFG
 
-1. **Seal mechanism.** Who generates the seal code? Who holds it? Is it revealed to the driver
-   only at the destination, or verified against a control-hub record? Is the seal number on the
-   manifest? *(Determines whether the seal is usable tamper evidence or just a lock.)*
+1. ~~**Seal mechanism.**~~ **ANSWERED — Bruce, 1 September 2026.** The seal is a **unique barcoded
+   number recorded on the waybill between the operator and the client** (e.g. LFG↔RTT). The origin
+   branch alerts the destination branch that it must remain intact; the destination **scans it,
+   verifies it, then breaks it — and that is the moment custody transfers.** The driver can read the
+   seal but **does not hold the number in his document set**. *Verdict: usable tamper evidence, not
+   just a lock*, because the value is not driver-controlled. Two further mechanisms sit alongside it
+   on the vehicle: the **Pulsit geofence door lock** and a mechanical **fifth lock**.
 2. **"Container" terminology.** Does "container" mean the manifest, a physical consolidation unit
    (roll cage / ULD), or an actual shipping container? *(Changes the entity hierarchy.)*
 3. **Back-to-back drivers.** Can one driver run Durban→Joburg and then straight back
@@ -229,17 +233,20 @@ weight/dims/photo today. Worth noting as future evidence, not a now-change.
    is there any gate-in event at all, or does the trip effectively begin at `loading`?
 7. **Driver at destination.** At the destination, does the driver also stay out of the warehouse
    (unloaded by hub staff), or do they participate? *(Affects who attests at `unloading`/H5.)*
-8. **Pallet / consolidated-unit level.** Given the new `manifest → waybill → piece` framing, does
-   a consolidated-unit / pallet level still sit **between waybill and piece** (needed for sealed,
-   can't-see-inside FedEx-style handoffs), or is it dropped? *(Decides whether the planned
-   `HandlingUnit` entity gets built — see §2.)*
+8. ~~**Pallet / consolidated-unit level.**~~ **CLOSED — team decision, 1 September 2026: dropped.**
+   The `manifest → waybill → parcel` framing stands with **no level between waybill and parcel**.
+   `HandlingUnit` will not be built; a pallet remains `Consignment.unit_count_expected`, a count with
+   no entity. Taken on simplicity grounds, with an additive migration still available if the
+   operation later proves it necessary. Consequence: a loss is bounded to a **waybill's** sealed
+   window, not a pallet's. See §2 and `iteration3_plan.md` §8 decision 12.
 
 ---
 
 ## 7. Clarifying questions — for the team (to remove our own confusion)
 
-- Do we agree the atomic unit is the **waybill** (not "pallet")? If so, update
-  `parcel-traceability.md` and the memory note.
+- ~~Do we agree the atomic unit is the **waybill** (not "pallet")?~~ **Answered 1 Sep 2026:** the
+  waybill is the custody unit and the **parcel** is the smallest grain beneath it. No pallet entity.
+  `parcel-traceability.md` §8 and `glossary.md` §6 updated.
 - For §4.2 A: what does the **driver** actually attest to at each handshake, given they never see
   the cargo? (Proposed: seal number + seal intact only.)
 - For §4.2 C: **Option 1 (leg-scoped) or Option 2 (journey-scoped)** for waybill destination?

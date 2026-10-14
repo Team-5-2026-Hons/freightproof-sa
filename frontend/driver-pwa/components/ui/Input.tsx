@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
     <div className="flex flex-col gap-1.5">
       <label
         htmlFor={inputId}
-        className="text-xs font-bold uppercase tracking-wider text-surface-on-variant"
+        className="text-sm font-bold uppercase tracking-wider text-surface-on-variant"
       >
         {label}
       </label>
@@ -45,9 +45,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         {...props}
       />
       {showError ? (
-        <p className="text-xs text-destructive font-medium">{error}</p>
+        <p className="text-sm text-destructive font-medium">{error}</p>
       ) : helperText ? (
-        <p className="text-xs text-muted-foreground">{helperText}</p>
+        <p className="text-sm text-muted-foreground">{helperText}</p>
       ) : null}
     </div>
   )

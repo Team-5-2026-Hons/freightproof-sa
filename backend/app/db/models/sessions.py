@@ -1,14 +1,7 @@
-"""SQLAlchemy model for the one device a driver may be signed in on.
-
-FreightProof's evidence rests on knowing WHO captured something. A driver account signed
-in on two handsets breaks that in a way no amount of downstream validation can repair:
-two people can walk two different phases of the same trip, and every timestamp, GPS fix
-and photo afterwards is attributed to one identity that was in two places.
-
-One row per driver, holding whichever session is currently allowed. Supabase issues and
-signs the tokens, so the backend cannot revoke one — instead it records the session it
-recognises, and refuses any request carrying a different, older one.
-"""
+"""SQLAlchemy models for session tracking: the driver's single device, and the
+last-seen record that makes the idle timeout enforceable for dispatchers. Supabase
+issues and signs the tokens, so the backend cannot revoke one — instead it records
+the session it recognises and refuses any other."""
 
 import uuid
 from datetime import datetime
@@ -26,22 +19,47 @@ class DriverSession(Base):
 
     __tablename__ = "driver_sessions"
 
-    # driver_id IS the primary key, not a plain FK: "one active session per driver" is
-    # the whole point, and a schema that can hold two rows for one driver would let a
-    # race create exactly the state this table exists to prevent.
+    # driver_id IS the primary key (not a plain FK): a schema that could hold two rows
+    # for one driver would let a race create the state this table exists to prevent.
     driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), primary_key=True
     )
-    # Supabase's session_id claim. A string, not a UUID column: it is an identifier from
-    # another system, and storing it as an opaque token means a future auth provider with
-    # a different id format doesn't need a migration.
+    # Supabase's session_id claim, stored as a string not UUID since it's another
+    # system's identifier.
     session_id: Mapped[str] = mapped_column(String(255), nullable=False)
-    # The `iat` of the token that claimed this session. This is what decides which of two
-    # competing sessions is the newer one — the backend never sees a login event, only
-    # requests, so "most recently issued token wins" is the only ordering available.
+    # `iat` of the claiming token — decides which of two competing sessions is newer,
+    # since the backend never sees a login event, only requests.
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class UserSession(Base):
+    """When each dispatcher session was last used, so an idle one can be refused
+    (auth/sessions.enforce_idle_timeout). Keyed on session_id, not user_id, since a
+    dispatcher may legitimately hold multiple sessions (desktop + laptop) at once,
+    unlike DriverSession's one-per-driver."""
+
+    __tablename__ = "user_sessions"
+
+    # Supabase's session_id claim; same string-not-UUID reasoning as DriverSession.session_id.
+    session_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True
+    )
+    # `iat` of the opening token — the only activity floor available for a session
+    # with no row yet.
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Indexed because the retention sweep filters on it.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

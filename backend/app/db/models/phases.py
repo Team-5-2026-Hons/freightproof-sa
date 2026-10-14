@@ -28,22 +28,20 @@ class PhaseEvent(Base):
 
     __tablename__ = "phase_events"
     __table_args__ = (
-        # D3: only trip_creation has a NULL trip_stop_id, so this constraint is
-        # total for P1..P6. PostgreSQL treats NULLs as distinct in a unique
-        # constraint, which is exactly why in_transit is anchored to the stop it
-        # DEPARTS FROM rather than left NULL — otherwise duplicate NULL-stop rows
-        # would slip through this.
+        # Only trip_creation has a NULL trip_stop_id, so this constraint is total
+        # for P1..P6 — Postgres treats NULLs as distinct in a unique constraint, which
+        # is why in_transit anchors to its departure stop rather than being left NULL.
         UniqueConstraint("trip_id", "trip_stop_id", "phase_type", name="uq_phase_events_trip_stop_type"),
-        # The other half of D3: exactly one P0 per trip, which the constraint
-        # above cannot express because its trip_stop_id is NULL.
+        # The other half of that rule: exactly one P0 per trip, which the constraint
+        # above can't express since its trip_stop_id is NULL.
         Index(
             "uq_phase_events_trip_creation",
             "trip_id",
             unique=True,
             postgresql_where=text("phase_type = 'trip_creation'"),
         ),
-        # Replay protection for the driver app's offline queue. Partial, because
-        # server-generated rows (the whole plan at creation) carry no key.
+        # Replay protection for the driver app's offline queue; partial since
+        # server-generated rows carry no key.
         Index(
             "uq_phase_events_idempotency_key",
             "idempotency_key",
@@ -57,22 +55,20 @@ class PhaseEvent(Base):
     trip_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trips.id"), nullable=False
     )
-    # NULL only for trip_creation (D3). in_transit anchors to its departure stop.
+    # NULL only for trip_creation. in_transit anchors to its departure stop.
     trip_stop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("trip_stops.id"), nullable=True
     )
     phase_type: Mapped[PhaseType] = mapped_column(String(30), nullable=False)
     sequence_number: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     status: Mapped[PhaseStatus] = mapped_column(String(20), nullable=False, server_default="pending")
-    # D4. Decoupled from `status` on purpose: a completed phase whose anchor
-    # failed is a real state under the fail-open policy, and the system must be
-    # able to say a receipt is owed.
+    # Decoupled from `status`: a completed phase with a failed anchor is a real
+    # state under the fail-open policy, and the system must still know a receipt is owed.
     anchor_status: Mapped[AnchorStatus] = mapped_column(
         String(20), nullable=False, server_default="not_required"
     )
-    # The driver app's offline-queue entry id, echoed back on replay. Drivers lose
-    # signal; a resubmitted completion must return the current state, never a
-    # duplicate row and never an error.
+    # Driver app's offline-queue entry id, echoed back on replay, so a resubmitted
+    # completion returns current state, never a duplicate or an error.
     idempotency_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     dispatcher_override_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -80,13 +76,36 @@ class PhaseEvent(Base):
     dispatcher_override_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # Instant the driver's phone submitted this completion, not when the server
+    # processed it — needed so evidence.corroboration can tell a live handshake from a
+    # stale offline replay. Nullable for older clients; never backfilled with completed_at.
+    driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     horse_gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # The versioned ActionLocationAssessment snapshot (schemas/action_location.py)
+    # assembled by evidence.action_location.build_phase_assessment at
+    # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
+    # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
+    # completed before this column existed, and never backfilled — fabricating a
+    # historical assessment from columns that predate this contract would misrepresent
+    # what was actually evaluated at the time. Validated through ActionLocationAssessment
+    # on every read (schemas/phases.py's PhaseEventRead), never read as a raw dict.
+    action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    # The driver's acknowledgement of a preview warning. This never replaces
+    # the independently assembled action_location_assessment above; it records only
+    # what the driver saw and, for a reliable discrepancy, why they continued.
+    location_warning_acknowledged_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    location_warning_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     seal_number: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    # Artifact FKs use use_alter=True to break the circular dependency in the
-    # migration: evidence_artifacts is created before trips, so these FKs are
-    # added via ALTER TABLE after all tables exist.
+    # Arrival only: the seal's condition as found (SealCondition). Plain String like
+    # every enum column here, so new values need no migration. NULL on every other
+    # phase type, where "condition" has no meaning.
+    seal_condition: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Artifact FKs use use_alter=True to break the migration's circular dependency:
+    # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.
     seal_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_seal_photo"),
@@ -112,6 +131,14 @@ class PhaseEvent(Base):
     pod_signature_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_pod_signature"),
+        nullable=True,
+    )
+    # Paper linehaul sheet from the warehouse at loading — third-party evidence of what
+    # was claimed loaded, distinct from the legal waybill copy. Optional: a paperless
+    # warehouse gives the driver nothing to photograph, and this must never block his trip.
+    linehaul_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_linehaul_photo"),
         nullable=True,
     )
     parcel_manifest_snapshot: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
@@ -147,4 +174,9 @@ class TrailerGpsSnapshot(Base):
     lat: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     lng: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # This trailer's own verdict against the phase's precinct, with the same three-state
+    # meaning as PhaseEvent.pulsit_geofence_confirmed: TRUE inside, FALSE measured
+    # outside, NULL could not check (fix too far in time from the driver's action, no
+    # precinct coordinates, or a phase with no verdict such as in_transit).
+    geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

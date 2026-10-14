@@ -2,6 +2,8 @@
 // Batched into a Merkle tree and anchored to Hedera HCS.
 // Mirrors backend CheckpointRead schema in schemas/transit.py.
 
+import type { ActionLocationAssessment } from './action-location'
+
 export type CheckpointId = string & { readonly __brand: 'CheckpointId' }
 
 export interface Checkpoint {
@@ -17,5 +19,6 @@ export interface Checkpoint {
   note: string | null
   is_deviation: boolean
   merkle_batch_id: string | null
+  action_location_assessment?: ActionLocationAssessment | null
   created_at: string
 }

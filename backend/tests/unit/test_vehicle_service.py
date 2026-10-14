@@ -1,4 +1,4 @@
-"""Unit tests for orchestration/vehicle_service.py.
+"""Unit tests for orchestration/fleet/vehicles.py.
 
 Characterization tests of the vehicle create/update anchoring behaviour. All are
 DB-free: the AsyncSession and the Hedera anchor call are mocked at the boundaries
@@ -9,7 +9,7 @@ test_create_vehicle_payload_json_hashes_pulsit_device_id at the unit level.
 
 Mock boundaries:
 - db (AsyncSession): _mock_db() below.
-- anchor_subject: patched at app.orchestration.vehicle_service.anchor_subject.
+- anchor_subject: patched at app.orchestration.fleet.vehicles.anchor_subject.
 """
 
 import hashlib
@@ -25,8 +25,8 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import DuplicateResourceError, ResourceNotFoundError
 from app.db.models.enums import BlockchainReceiptType, SubjectType, VehicleEventType, VehicleType
 from app.db.models.events import VehicleEvent
-from app.db.models.vehicles import Vehicle
-from app.orchestration.vehicle_service import create_vehicle, update_vehicle
+from app.db.models.vehicles import UQ_VEHICLES_ORG_PULSIT, UQ_VEHICLES_ORG_REGISTRATION, Vehicle
+from app.orchestration.fleet.vehicles import create_vehicle, update_vehicle
 from app.schemas.vehicles import VehicleCreateBody, VehicleUpdateBody
 
 # Postgres error code for unique_violation — the service maps only this to DuplicateResourceError.
@@ -34,16 +34,24 @@ _UNIQUE_VIOLATION_SQLSTATE = "23505"
 
 
 class _FakeUniqueViolation(Exception):
-    """Stand-in for asyncpg's UniqueViolationError — carries the sqlstate the
-    service reads to decide DuplicateResourceError vs. re-raise."""
+    """Stand-in for asyncpg's UniqueViolationError.
+
+    Carries both the sqlstate and the constraint name. Which constraint fired decides
+    which field the 409 names — the whole point of the mapping — so a fake that omits
+    it cannot exercise the behaviour that matters.
+    """
 
     sqlstate = _UNIQUE_VIOLATION_SQLSTATE
+
+    def __init__(self, constraint_name: str = UQ_VEHICLES_ORG_REGISTRATION) -> None:
+        super().__init__(constraint_name)
+        self.constraint_name = constraint_name
 
 
 # ── Test doubles ───────────────────────────────────────────────────────────────
 
 def _mock_db(scalar_result: object | None = None) -> MagicMock:
-    """AsyncSession double for vehicle_service.
+    """AsyncSession double for fleet.vehicles.
 
     - execute(...).scalar_one_or_none() → `scalar_result` (the row update_vehicle fetches).
     - flush() simulates Postgres applying server_default columns on INSERT
@@ -134,7 +142,7 @@ async def test_create_vehicle_anchors_once_and_hashes_pulsit_device_id() -> None
         pulsit_device_id=secret_device_id,
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -160,7 +168,7 @@ async def test_update_vehicle_cosmetic_does_not_anchor_but_records_event() -> No
     anchor = _anchor_stub()
     data = VehicleUpdateBody(make="Scania")
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_not_called()
@@ -181,7 +189,7 @@ async def test_update_vehicle_critical_anchors_only_the_diff() -> None:
     anchor = _anchor_stub()
     data = VehicleUpdateBody(registration=new_reg)
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -205,7 +213,7 @@ async def test_update_vehicle_pulsit_change_anchors_only_hashed() -> None:
     anchor = _anchor_stub()
     data = VehicleUpdateBody(pulsit_device_id=new_device)
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         await update_vehicle(db, vehicle.id, vehicle.organization_id, data, uuid.uuid4())
 
     anchor.assert_called_once()
@@ -227,7 +235,7 @@ async def test_update_vehicle_unknown_id_raises_not_found() -> None:
     db = _mock_db(scalar_result=None)
     anchor = _anchor_stub()
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(ResourceNotFoundError):
             await update_vehicle(
                 db, uuid.uuid4(), uuid.uuid4(), VehicleUpdateBody(make="X"), uuid.uuid4()
@@ -248,8 +256,61 @@ async def test_create_vehicle_duplicate_raises_duplicate_resource() -> None:
         pulsit_device_id="PLT-DUP-001",
     )
 
-    with patch("app.orchestration.vehicle_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
         with pytest.raises(DuplicateResourceError):
+            await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
+
+    anchor.assert_not_called()
+
+
+# ── G2.7: the 409 names the field that actually clashed ────────────────────────
+
+async def test_create_vehicle_duplicate_pulsit_names_the_device_field() -> None:
+    """A double-assigned tracker must not be reported as a duplicate registration.
+
+    (organization_id, pulsit_device_id) was the only vehicle constraint that existed
+    for a long time, and every violation of it was reported against `registration` —
+    a field that, in this exact scenario, is unique and correct.
+    """
+    db = _mock_db()
+    db.flush = AsyncMock(
+        side_effect=IntegrityError("INSERT", {}, _FakeUniqueViolation(UQ_VEHICLES_ORG_PULSIT))
+    )
+    anchor = _anchor_stub()
+    data = VehicleCreateBody(
+        registration="CA UNIQUE 001",
+        vehicle_type=VehicleType.HORSE,
+        pulsit_device_id="PLT-SHARED-001",
+    )
+
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
+        with pytest.raises(DuplicateResourceError) as caught:
+            await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
+
+    assert caught.value.field == "pulsit_device_id"
+    assert caught.value.value == "PLT-SHARED-001"
+    anchor.assert_not_called()
+
+
+async def test_create_vehicle_unknown_constraint_is_not_relabelled() -> None:
+    """An unmapped constraint re-raises rather than guessing at a field.
+
+    A 500 that gets investigated is better than a confident 409 pointing somewhere
+    the dispatcher cannot fix.
+    """
+    db = _mock_db()
+    db.flush = AsyncMock(
+        side_effect=IntegrityError("INSERT", {}, _FakeUniqueViolation("uq_something_else"))
+    )
+    anchor = _anchor_stub()
+    data = VehicleCreateBody(
+        registration="CA OTHER 001",
+        vehicle_type=VehicleType.HORSE,
+        pulsit_device_id="PLT-OTHER-001",
+    )
+
+    with patch("app.orchestration.fleet.vehicles.anchor_subject", new=anchor):
+        with pytest.raises(IntegrityError):
             await create_vehicle(db, uuid.uuid4(), data, uuid.uuid4())
 
     anchor.assert_not_called()

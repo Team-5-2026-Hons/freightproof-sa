@@ -12,10 +12,12 @@ import pytest_asyncio
 from httpx import AsyncClient
 
 from app.db.models.enums import (
+    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
     IdvsStatus, OrganizationType, TripStatus, VehicleType,
 )
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -172,6 +174,40 @@ async def test_list_my_trips_excludes_other_drivers_trips(client: AsyncClient, d
 
     assert resp.status_code == 200
     assert [r["trip_reference"] for r in resp.json()] == ["FP-MINE"]
+
+
+async def test_list_my_trips_counts_only_unreviewed_critical_exceptions(client: AsyncClient, db_session):
+    """Every exception starts needs_review (FP-280), but the driver cannot review any of
+    them: their count must stay on unreviewed critical rows, not every routine warning."""
+    org, client_org, user, horse, origin, dest = await _fixture_world(db_session)
+    driver = await _make_driver(db_session, org, name="Driver", id_number="8001015009087", license_number="DRV-1")
+    trip = _make_trip(
+        org=org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-COUNT", status=TripStatus.ACTIVE,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    def _exception(severity: ExceptionSeverity, status: ExceptionReviewStatus) -> TripException:
+        return TripException(
+            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.SEAL_MISMATCH,
+            source=ExceptionSource.SYSTEM, severity=severity, review_status=status,
+            description=f"{severity.value} {status.value}",
+        )
+
+    db_session.add_all([
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.REVIEWED),
+        _exception(ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.INFO, ExceptionReviewStatus.NEEDS_REVIEW),
+    ])
+    await db_session.flush()
+
+    token = make_token(sub=str(driver.id), role="driver")
+    resp = await client.get("/api/v1/trips/me", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["needs_review_count"] == 1
 
 
 async def test_list_my_trips_returns_empty_list_when_none_assigned(client: AsyncClient, db_session):

@@ -2,6 +2,19 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PanicPage from '../page'
 import { ROUTES } from '@/lib/constants/routes'
+import { SINGLE_LEG_PHASE_PLAN } from '@shared/lib/mocks/phase-trips'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import { REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
+
+// One fix, shaped exactly as useLocation.capture() resolves it (capturedAt included),
+// so the assertions below can check the whole location payload, not just the pair.
+const FIX = { latitude: -26.09, longitude: 28.13, accuracy: 5, capturedAt: '2026-09-16T10:00:00.000Z' }
+
+// Marks every phase up to and including `through` (by sequence_number) as completed —
+// same local helper lib/phase/__tests__/derive.test.ts uses.
+function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
+  return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
+}
 
 // `trip` is provided to PanicPage via useTrip() (session-derived) — there's no URL
 // param to verify against, so these tests only cover the loading/no-trip states and
@@ -43,7 +56,7 @@ vi.mock('@/lib/hooks/useOfflineQueue', () => ({
 describe('PanicPage no-active-trip guard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
+    mockCapture.mockResolvedValue(FIX)
   })
 
   it('renders an unavailable state and no swipe control when trip is null', () => {
@@ -102,6 +115,7 @@ describe('PanicPage no-active-trip guard', () => {
 describe('PanicPage handlePanic sequencing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
     vi.useFakeTimers()
   })
 
@@ -127,10 +141,19 @@ describe('PanicPage handlePanic sequencing', () => {
     })
   }
 
-  it('captures GPS, logs the exception with coords, and navigates to panic/submitted', async () => {
+  // Runs the handler to completion: capture() is raced against REPORT_CAPTURE_BUDGET_MS
+  // (lib/utils/bounded-capture.ts), so advancing exactly that far releases a stalled
+  // capture AND flushes the promise continuations a fast one leaves behind.
+  async function settlePanic(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS)
+    })
+  }
+
+  it('captures GPS within the budget and sends the alert with the fix attached', async () => {
     const logException = vi.fn()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
-    mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
+    mockCapture.mockResolvedValue(FIX)
 
     render(<PanicPage />)
     confirmPanicSwipe()
@@ -138,20 +161,21 @@ describe('PanicPage handlePanic sequencing', () => {
     // capture() and logException() are awaited/called inside an async
     // handler invoked from a fake-timer callback — flush microtasks so
     // those promise continuations resolve before asserting.
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await settlePanic()
 
     expect(mockCapture).toHaveBeenCalled()
     expect(logException).toHaveBeenCalledWith(
       'panic_button',
-      expect.objectContaining({ gpsLat: -26.09, gpsLng: 28.13 }),
+      expect.objectContaining({
+        description: 'Driver activated panic button.',
+        gpsLat: -26.09, gpsLng: 28.13,
+        driverCapturedAt: FIX.capturedAt, driverAccuracyMetres: 5,
+      }),
     )
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
 
-  it('still logs and navigates when GPS capture fails (resolves to null)', async () => {
+  it('still logs and navigates when location capture is unavailable', async () => {
     const logException = vi.fn()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
     mockCapture.mockResolvedValue(null)
@@ -159,15 +183,33 @@ describe('PanicPage handlePanic sequencing', () => {
     render(<PanicPage />)
     confirmPanicSwipe()
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await settlePanic()
 
     expect(mockCapture).toHaveBeenCalled()
     expect(logException).toHaveBeenCalledWith(
       'panic_button',
-      expect.objectContaining({ gpsLat: null, gpsLng: null }),
+      expect.objectContaining({ description: 'Driver activated panic button.', gpsLat: null, gpsLng: null }),
+    )
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+  })
+
+  it('does not wait for a stalled location adapter beyond the capture budget', async () => {
+    const logException = vi.fn().mockResolvedValue(undefined)
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockReturnValue(new Promise(() => {}))
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    // Just short of the budget: still waiting on the phone, nothing sent yet.
+    await act(async () => { await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS - 1) })
+    expect(logException).not.toHaveBeenCalled()
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+
+    // Budget elapsed: the alert goes WITHOUT a fix rather than waiting any longer.
+    expect(logException).toHaveBeenCalledWith(
+      'panic_button', expect.objectContaining({ description: 'Driver activated panic button.', gpsLat: null, gpsLng: null }),
     )
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
   })
@@ -178,28 +220,45 @@ describe('PanicPage handlePanic sequencing', () => {
   it('queues the alert and navigates with the queued flag when logException fails', async () => {
     const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
-    mockCapture.mockResolvedValue({ latitude: -26.09, longitude: 28.13, accuracy: 5 })
+    mockCapture.mockResolvedValue(FIX)
 
     render(<PanicPage />)
     confirmPanicSwipe()
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await settlePanic()
 
-    // The queued body must carry the captured GPS pair too — a retry that sends
-    // without location would break the page's "location will be included" promise
-    // precisely in the offline case panic queuing exists for.
+    // The queued body must carry the captured fix too — a retry that sends without
+    // location would break the page's "location is included" promise precisely in the
+    // offline case panic queuing exists for.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
+      client_report_id: expect.any(String),
       gps_lat: -26.09,
       gps_lng: 28.13,
+      driver_captured_at: FIX.capturedAt,
+      driver_accuracy_metres: 5,
     })
+    const livePayload = logException.mock.calls[0][1] as { clientReportId: string }
+    const queuedBody = mockEnqueueException.mock.calls[0][1] as { client_report_id: string }
+    expect(queuedBody.client_report_id).toBe(livePayload.clientReportId)
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
     expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
+  })
+
+  it('shows that the alert was not saved when local storage refuses it', async () => {
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(FIX)
+    mockEnqueueException.mockReturnValue({ persisted: false, photoPersisted: false })
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await settlePanic()
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/alert was not sent or saved/i)
+    expect(mockRouterReplace).not.toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
   })
 
   it('queued body omits GPS entirely when capture failed — never a partial fix', async () => {
@@ -210,17 +269,62 @@ describe('PanicPage handlePanic sequencing', () => {
     render(<PanicPage />)
     confirmPanicSwipe()
 
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
-    })
+    await settlePanic()
 
     // No gps_lat/gps_lng keys at all — the backend 422s a partial fix, which would
     // make the offline queue drop the panic entry as a terminal failure.
     expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
       exception_type: 'panic_button',
       description: 'Driver activated panic button.',
+      client_report_id: expect.any(String),
     })
+  })
+
+  it('queued body carries the phase the driver was on, captured before the queue wait', async () => {
+    // The regression this whole change exists for. This entry can sit in the queue until
+    // signal returns — possibly after the driver has arrived and the trip has advanced —
+    // so the phase has to be resolved NOW, at the press, not at flush time. Without it
+    // the alert lands untagged and the dispatcher infers placement on every render,
+    // which is what made a 15:17 panic appear to walk forward through the timeline.
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    // Everything through departure resolved: the ledger sits on the PENDING in_transit
+    // row for the whole drive, which is exactly where a panic on the road belongs.
+    const phases = walk(SINGLE_LEG_PHASE_PLAN, 3)
+    const inTransit = phases.find((p) => p.phase_type === 'in_transit')!
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', phases }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await settlePanic()
+
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+      phase_event_id: String(inTransit.phase_event_id),
+      client_report_id: expect.any(String),
+    })
+  })
+
+  it('still queues the alert when the trip carries no phase plan at all', async () => {
+    // Defensive: this runs inside the catch block of an already-failed send. A throw
+    // here would lose the panic AND strand the driver on this screen. Untagged is a
+    // small loss; unsent is the whole failure.
+    const logException = vi.fn().mockRejectedValue(new Error('network unreachable'))
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    confirmPanicSwipe()
+
+    await settlePanic()
+
+    expect(mockEnqueueException).toHaveBeenCalledWith('trip-123', {
+      exception_type: 'panic_button',
+      description: 'Driver activated panic button.',
+      client_report_id: expect.any(String),
+    })
+    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
   })
 })

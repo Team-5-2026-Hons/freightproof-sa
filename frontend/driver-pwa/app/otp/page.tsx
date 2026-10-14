@@ -8,6 +8,10 @@ import { AuthContext } from '@/lib/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { OtpInput } from '@/components/ui/OtpInput'
 import { ROUTES } from '@/lib/constants/routes'
+import { takeReturnPath } from '@shared/lib/session/return-path'
+
+// Kept in step with AuthContext's own list — see that file for why '/otp' isn't in ROUTES.
+const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
 
 const OTP_LENGTH = 6
 
@@ -63,8 +67,12 @@ function OtpForm() {
 
     try {
       await auth?.signIn({ phone_number: phone, otp: code })
-      // replace() so the user cannot navigate back to the OTP screen after login.
-      router.replace(ROUTES.trips)
+      // Send the driver back to whatever guarded screen they were bounced from (idle
+      // expiry or a silently-expired token) when there is one; otherwise the usual
+      // default landing page. replace() so the user cannot navigate back to the OTP
+      // screen after login.
+      const returnTo = takeReturnPath(window.localStorage, AUTH_ROUTE_PREFIXES)
+      router.replace(returnTo ?? ROUTES.trips)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to verify OTP.')
     } finally {

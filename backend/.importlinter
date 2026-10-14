@@ -1,0 +1,338 @@
+# import-linter contracts for backend/app. Run from backend/: `lint-imports`.
+#
+# Every ignore_imports line below is a violation that exists TODAY (audit
+# docs/design-notes/2026-10-06-backend-structure-tech-debt-audit.md, section 4.2).
+# The list is a ratchet: it may only shrink. Do not add a line to make a new import
+# pass; fix the import. When a line stops matching (the import was fixed), the run
+# fails with "unmatched ignore" so the stale entry gets deleted.
+
+# Numbering note: contracts 3, 5, 6, 8, 11, 13, 15, 17, 24 and 26 were the "must not import the
+# facade" contracts. They went with the compatibility wrappers they named (audit section 6.1
+# removal record); tests/baseline/test_b8_no_facade_patches.py (RETIRED_MODULES) now carries that
+# guarantee. The remaining numbers are not reused, because comments and docs cite them.
+
+[importlinter]
+root_package = app
+include_external_packages = False
+# An ignore that no longer matches an import means the debt was paid. Fail so the
+# entry is removed rather than left to silently excuse a future regression.
+unmatched_ignore_imports_alerting = error
+
+# ---------------------------------------------------------------------------
+# 1. Layer order. A module may import from layers below it, never above.
+#    "|" = independent siblings: they may not import each other either.
+#    db may import only app.core (config); that is the bottom-layer rule.
+# ---------------------------------------------------------------------------
+[importlinter:contract:layers]
+name = Layer order (api|tasks|dev > orchestration > integrations|blockchain|storage|auth|analytics > schemas > db > core|crypto)
+type = layers
+layers =
+    app.api | app.tasks | app.dev
+    app.orchestration
+    app.integrations | app.blockchain | app.storage | app.auth | app.analytics
+    app.schemas
+    app.db
+    app.core | app.crypto
+ignore_imports =
+    # core -> db: enums used as shared vocabulary by two core modules.
+    app.core.phase_meta -> app.db.models.enums
+    app.core.realtime -> app.db.models.enums
+    # schemas -> analytics: pure constants and helpers; candidates to move below schemas.
+    app.schemas.analytics -> app.analytics.stats
+    app.schemas.fleet_analytics -> app.analytics.stats
+    app.schemas.fleet_analytics -> app.analytics.fleet.constants
+    app.schemas.fleet_analytics -> app.analytics.fleet.periods
+    # orchestration -> tasks: phases.anchor_dispatch imports tasks.blockchain lazily (function
+    # level) to queue the Hedera submit on the Celery worker. The anchor_dispatch split (audit
+    # 5.2) removed the import CYCLE (tasks.blockchain now re-enters phases.anchor_execution,
+    # which never points back here); the layer violation itself remains, so the ignore moved
+    # with the code rather than being deleted.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
+
+# ---------------------------------------------------------------------------
+# 2. No layer skipping from the API. CLAUDE.md: endpoints -> orchestration -> integrations.
+#    The layers contract above permits skipping; this contract forbids it.
+#    allow_indirect_imports: api -> orchestration -> integrations is the intended path.
+#    app.db.session (get_db) is deliberately not forbidden: CLAUDE.md requires it.
+# ---------------------------------------------------------------------------
+[importlinter:contract:api-no-layer-skip]
+name = Endpoints reach integrations, blockchain, storage and crypto only via orchestration
+type = forbidden
+source_modules =
+    app.api
+forbidden_modules =
+    app.integrations
+    app.blockchain
+    app.storage
+    app.crypto
+allow_indirect_imports = True
+
+# ---------------------------------------------------------------------------
+# 4. Tier order inside phases/ (audit 5.1). A module may import only from tiers below it;
+#    modules on one tier ("|") may not import each other. This is what keeps the package
+#    acyclic, and it is why _finish_phase lives in `completion`, not `service`.
+#    Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:phases-tier-order]
+name = Inside phases/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.phases
+layers =
+    service
+    advance_activation | advance_loading | advance_departure | advance_in_transit | advance_arrival | advance_unloading | advance_confirmation | override
+    queries | gate | anchor_dispatch | anchor_recovery | completion
+    payloads | loaders | state | artifacts | driver_position | seals | scheduling | findings | anchor_execution | blocking | plan
+ignore_imports =
+    # The one lazy edge that leaves phases/. Audit 5.2 draws it as terminating at
+    # tasks.blockchain: tasks.blockchain re-enters via anchor_execution / anchor_recovery, and
+    # nothing points back at anchor_dispatch. Without this, import-linter follows the chain
+    # through tasks.blockchain and reports anchor_dispatch as importing its own siblings.
+    app.orchestration.phases.anchor_dispatch -> app.tasks.blockchain
+
+# ---------------------------------------------------------------------------
+# 7. creation, administration and queries share no code today and must stay that way
+#    (audit 5.3). Independence also rejects an indirect chain from one to another, so a
+#    shared helper has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-independent-modules]
+name = trips.creation, trips.administration and trips.queries do not import each other
+type = independence
+modules =
+    app.orchestration.trips.creation
+    app.orchestration.trips.administration
+    app.orchestration.trips.queries
+
+# ---------------------------------------------------------------------------
+# 9. creation, review and queries share no code today and must stay that way (audit 5.4).
+#    Independence also rejects an indirect chain from one to another, so a shared helper has
+#    to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-independent-modules]
+name = exceptions.creation, exceptions.review and exceptions.queries do not import each other
+type = independence
+modules =
+    app.orchestration.exceptions.creation
+    app.orchestration.exceptions.review
+    app.orchestration.exceptions.queries
+
+# ---------------------------------------------------------------------------
+# 10. Tier order inside integrations/parcel_perfect/ (audit 5, rule 6). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     package __init__ is a facade that imports every submodule, so a child importing the
+#     facade is an import of its siblings through it, and this contract catches that too,
+#     for every tier except `factory` (nothing sits above it to be checked); the AST test in
+#     tests/unit/test_parcel_perfect_package.py covers `factory` as well.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:parcel-perfect-tier-order]
+name = Inside integrations/parcel_perfect/, modules import only from lower tiers
+type = layers
+containers =
+    app.integrations.parcel_perfect
+layers =
+    factory
+    mock
+    unassigned_fixtures | manifest_fixtures
+    port | waybill_fixtures | client
+    errors | timestamps | models
+
+# ---------------------------------------------------------------------------
+# 12. Tier order inside evidence/ (audit 5, move order: leaves first). A module may import
+#     only from tiers below it; modules on one tier ("|") may not import each other. The
+#     tiers are the edges the code has today: checkpoints builds on corroboration and
+#     action_location; those and road_check build on the geofence/proximity leaves.
+#     evidence/__init__ stays empty (audit 5 rule 1), so there is no package facade to
+#     reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-tier-order]
+name = Inside evidence/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.evidence
+layers =
+    checkpoints
+    corroboration | action_location | road_check
+    geofence | proximity | location | artifacts
+
+# ---------------------------------------------------------------------------
+# 14. drivers, vehicles and precincts share no code today and must stay that way (audit 5).
+#     Independence also rejects an indirect chain from one to another, so a shared helper
+#     has to be extracted to a lower module instead of imported sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:fleet-independent-modules]
+name = fleet.drivers, fleet.vehicles and fleet.precincts do not import each other
+type = independence
+modules =
+    app.orchestration.fleet.drivers
+    app.orchestration.fleet.vehicles
+    app.orchestration.fleet.precincts
+
+# ---------------------------------------------------------------------------
+# 16. Tier order inside handover/. service composes the other two for the receiver routes
+#     (it is the route's database work, moved out of endpoints/handover.py); receiver_verification
+#     builds on capability (it extends a handover token and builds the scan URL); capability
+#     never reaches back. handover/__init__ stays empty (audit 5 rule 1), so there is no package
+#     facade to reach siblings through. Layers are not optional: a misspelt or missing module
+#     fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:handover-tier-order]
+name = Inside handover/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.handover
+layers =
+    service
+    receiver_verification
+    capability
+
+# ---------------------------------------------------------------------------
+# 18. Tier order inside consignments/ (audit 5, move order: leaves first). The tiers are the
+#     edges the code has today: manifest_import and manifest_reads build on manifest_snapshot,
+#     which builds on sync (it serialises a waybill); sync, scans and waybill_lookup are the
+#     leaves and share nothing. consignments/__init__ stays empty (audit 5 rule 1).
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:consignments-tier-order]
+name = Inside consignments/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.consignments
+layers =
+    manifest_import | manifest_reads
+    manifest_snapshot
+    sync | scans | waybill_lookup
+
+# ---------------------------------------------------------------------------
+# 19. Tier order inside dev/ (audit 4.5, 5). Endpoints call services, services build on the
+#     schemas, and nothing reaches back up: schemas is the leaf, so the dev request/response
+#     shapes stay importable without pulling in a service or an endpoint. dev/__init__,
+#     dev/endpoints/__init__ and dev/services/__init__ stay empty (audit 5 rule 1).
+#     Production code may not import app.dev at all: that is contract 1, where app.dev sits in
+#     the top layer beside api and tasks, and app/main.py (outside every contract) is its only
+#     importer.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:dev-tier-order]
+name = Inside dev/, endpoints import services and schemas, services import schemas, never upward
+type = layers
+containers =
+    app.dev
+layers =
+    endpoints
+    services
+    schemas
+
+# ---------------------------------------------------------------------------
+# 20. Keeps the anchoring cycle from returning through tasks.blockchain (audit 5.2).
+#     phases.anchor_dispatch imports tasks.blockchain to dispatch the anchor task, so nothing
+#     tasks.blockchain reaches may lead back to anchor_dispatch. Today it reaches phases only
+#     through two lazy imports, anchor_execution and anchor_recovery, which are the leaves of
+#     that chain. This contract fails the day tasks.blockchain imports anything that itself
+#     imports anchor_dispatch (directly or through the advance_* modules, override or service). Indirect chains count, and so do function-level imports.
+#     The forbidden list is explicit because import-linter rejects partial wildcards such as
+#     advance_*. A new phases module that imports anchor_dispatch belongs in this list.
+# ---------------------------------------------------------------------------
+[importlinter:contract:tasks-blockchain-entry-points]
+name = tasks.blockchain reaches phases only through anchor_execution and anchor_recovery
+type = forbidden
+source_modules =
+    app.tasks.blockchain
+forbidden_modules =
+    app.orchestration.phases.anchor_dispatch
+    app.orchestration.phases.advance_activation
+    app.orchestration.phases.advance_loading
+    app.orchestration.phases.advance_departure
+    app.orchestration.phases.advance_in_transit
+    app.orchestration.phases.advance_arrival
+    app.orchestration.phases.advance_unloading
+    app.orchestration.phases.advance_confirmation
+    app.orchestration.phases.override
+    app.orchestration.phases.service
+
+# ---------------------------------------------------------------------------
+# 21. Tier order inside audit_packs/ (audit 5.7, stage 5). A module may import only from tiers
+#     below it; modules on one tier ("|") may not import each other. The tiers are the edges the
+#     code has today: access (the share-link side) builds on lifecycle (issue, revoke, hash and
+#     seal helpers); lifecycle builds the manifest through builder; builder reads the pure
+#     rules in analysis and the declarations loader in incident_declarations, which are leaves
+#     and share nothing. audit_packs/__init__ stays empty (audit 5 rule 1), so there is no
+#     package facade to reach siblings through. These modules moved without wrappers.
+#     Layers are not optional: a misspelt or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:audit-packs-tier-order]
+name = Inside audit_packs/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.audit_packs
+layers =
+    access
+    lifecycle
+    builder
+    analysis | incident_declarations
+
+# ---------------------------------------------------------------------------
+# 22. Tier order inside trips/ (audit 5.7, stage 3b). detail holds trip detail assembly and the
+#     client-name and manifest-reference helpers every trip read shares, so it is the lowest tier
+#     and imports no sibling. creation, administration, queries and listing sit above it and may
+#     use it, but not each other (contract 7 already holds the first three apart; listing joins
+#     them here, so a shared helper goes down into detail rather than sideways). trips/__init__
+#     stays empty (audit 5 rule 1). Layers are not optional: a misspelt or missing module fails
+#     the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:trips-tier-order]
+name = Inside trips/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.trips
+layers =
+    creation | administration | queries | listing
+    detail
+
+# ---------------------------------------------------------------------------
+# 23. Tier order inside exceptions/ (audit 5.7, stage 4). review_identity and review_policy are
+#     shared leaves: they import nothing from creation, review or queries, and not each other.
+#     creation, review and queries sit above them (contract 9 holds those three apart). exceptions/
+#     __init__ stays empty (audit 5 rule 1). Layers are not optional: a misspelt or missing
+#     module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:exceptions-tier-order]
+name = Inside exceptions/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.exceptions
+layers =
+    creation | review | queries
+    review_identity | review_policy
+
+# ---------------------------------------------------------------------------
+# 25. metrics (the dispatcher analytics screen) and fleet (the fleet-wide page) share no code and
+#     must stay that way; a shared helper goes down into a lower module, not sideways.
+# ---------------------------------------------------------------------------
+[importlinter:contract:orchestration-analytics-independent-modules]
+name = analytics.metrics and analytics.fleet do not import each other
+type = independence
+modules =
+    app.orchestration.analytics.metrics
+    app.orchestration.analytics.fleet
+
+# ---------------------------------------------------------------------------
+# 27. Tier order inside verification/ (audit 5.7, stage 6). service is the entry point and sits
+#     on top. receipts, trip_payloads, phase_payloads and fleet_events are independent siblings:
+#     each rebuilds one kind of subject (or reads receipts) and none uses another. errors is the
+#     leaf holding the one error trip_payloads and phase_payloads both raise, so neither imports
+#     the other. _hash_payload and _PhaseEvidenceMissing live in phase_payloads, the lowest module
+#     that needs them besides service. verification/__init__ stays empty (audit 5 rule 1), so
+#     there is no package facade to reach siblings through. Layers are not optional: a misspelt
+#     or missing module fails the contract.
+# ---------------------------------------------------------------------------
+[importlinter:contract:verification-tier-order]
+name = Inside verification/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.verification
+layers =
+    service
+    receipts | trip_payloads | phase_payloads | fleet_events
+    errors

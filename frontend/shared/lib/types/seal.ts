@@ -1,6 +1,5 @@
-// Seal: a bolt seal applied to a trailer at H3 (origin gate-out) and verified at H4
-// (destination gate-in). Not a separate backend entity — derived from HandshakeEvent
-// fields (seal_number, seal_photo_artifact_id) for display purposes.
+// Seal: a bolt seal applied at departure and verified at unloading. Not a separate
+// backend entity — derived from phase fields (seal_number, seal_photo_artifact_id).
 
 export interface Seal {
   seal_number: string

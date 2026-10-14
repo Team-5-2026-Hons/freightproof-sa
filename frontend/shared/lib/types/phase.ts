@@ -2,31 +2,35 @@
 //
 // The plan is DATA, generated at trip creation from the trip's stops and consignments —
 // not a fixed list of six. A single-leg trip is the degenerate case of a multi-stop plan
-// (7 rows); a three-stop cross-dock is 11. Nothing in this file may assume a length.
+// (8 rows); a three-stop cross-dock is 13. Nothing in this file may assume a length.
 //
 // Replaces ./handshake.ts, which encodes the old fixed 1-5 model. Both exist during the
-// phase refactor; handshake.ts is removed once its last consumer goes (Stages 4 and 5).
+// phase refactor; handshake.ts is removed once its last consumer goes.
 //
-// Mirrors backend PhaseEventRead (schemas/phases.py) — see
-// docs/superpowers/plans/2026-07-25-phase-model-refactor.md §3.1.
+// Mirrors backend PhaseEventRead (schemas/phases.py).
 
 import type { Driver } from './driver'
 import type { Vehicle } from './vehicle'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
 import type { ConsignmentRead, TripId, TripStop, TripType } from './trip'
+import type { ActionLocationAssessment } from './action-location'
 
 export type PhaseEventId = string & { readonly __brand: 'PhaseEventId' }
 
-// Mirrors backend PhaseType exactly — parent plan D5.
+// Mirrors backend PhaseType exactly.
 export type PhaseType =
   | 'trip_creation'
   | 'activation'
   | 'loading'
   | 'departure'
   | 'in_transit'
+  | 'arrival'
   | 'unloading'
   | 'confirmation'
+
+// Mirrors backend SealCondition. A seal found at arrival is intact, damaged or missing.
+export type SealCondition = 'intact' | 'damaged' | 'missing'
 
 // pending -> in_progress -> completed (happy path); exception and overridden are off-path.
 export type PhaseStatus =
@@ -36,7 +40,7 @@ export type PhaseStatus =
   | 'exception'
   | 'overridden'
 
-// Parent plan D4. A phase can be `completed` while its anchor is `failed` — that pairing
+// A phase can be `completed` while its anchor is `failed` — that pairing
 // is what makes the fail-open policy honest, so never render it as an unqualified success.
 export type AnchorStatus =
   | 'not_required'
@@ -44,7 +48,7 @@ export type AnchorStatus =
   | 'anchored'
   | 'failed'
 
-// Coarse trip status — parent plan §2.3. TripStatus no longer doubles as the sequencer:
+// Coarse trip status. TripStatus no longer doubles as the sequencer:
 // position in the lifecycle is derived from the phase ledger, not stored here.
 export type CoarseTripStatus =
   | 'created'
@@ -58,7 +62,7 @@ export interface PhaseDescriptor {
   trip_id: string
   phase_type: PhaseType
 
-  // Null ONLY for trip_creation (parent D3). Every other phase is anchored to a stop —
+  // Null ONLY for trip_creation. Every other phase is anchored to a stop —
   // in_transit anchors to the stop it DEPARTS FROM, so in_transit at stop 1 means
   // "the transit leg leaving stop 1". This is what lets one partial unique index close
   // the duplicate-row hole, since Postgres treats NULLs as distinct.
@@ -75,6 +79,16 @@ export interface PhaseDescriptor {
   // Empty for system-observed phases (trip_creation, loading).
   step_recipe: readonly string[]
 
+  // Optional ONLY until the driver-pwa fixtures are updated (that directory is owned by
+  // another dev and is out of scope for this change). The server always sends this field,
+  // so it becomes a required `string | null` as soon as those fixtures carry it.
+  //
+  // Non-null while this phase waits on an external system — today only the warehouse
+  // scan feed ('warehouse_scan'). Derived server-side per request, never stored: it is
+  // a property of the outside world, not of this row. A phase carrying a non-null value
+  // must not be submittable; the server independently 409s if one is.
+  blocked_on?: string | null
+
   // ── Evidence, populated as the phase completes ────────────────────────────
   dispatcher_override_user_id: string | null
   dispatcher_override_note: string | null
@@ -83,15 +97,32 @@ export interface PhaseDescriptor {
   horse_gps_lat: number | null
   horse_gps_lng: number | null
   pulsit_geofence_confirmed: boolean | null
+  // Optional while older fixtures catch up; the API always returns null or a
+  // server-built snapshot and clients must never submit this back as evidence.
+  action_location_assessment?: ActionLocationAssessment | null
+  // When the driver's device captured the phone fix (mirrors PhaseEventRead.driver_captured_at).
+  // Optional ONLY until the driver-pwa fixtures are updated; same convention as blocked_on above.
+  driver_captured_at?: string | null
 
-  // Captured at `departure`, NOT at `loading` — parent D7 and §2.6. Verified again at
-  // `unloading` before the doors open. Moving this is the highest-risk edit in the
-  // refactor: a silent NULL == NULL comparison raises nothing and fails no test.
+  // Captured at `departure`, NOT at `loading`. Inspected again at
+  // `arrival` before the doors open (the arrival row holds its own seal_number and
+  // seal_photo_artifact_id). Moving this is the highest-risk edit in the refactor: a
+  // silent NULL == NULL comparison raises nothing and fails no test.
   seal_number: string | null
+  // Arrival only: the seal's condition as found. Mirrors PhaseEventRead.seal_condition.
+  // Optional ONLY until the fixtures are updated, same convention as blocked_on above.
+  seal_condition?: SealCondition | null
   seal_photo_artifact_id: string | null
   waybill_photo_artifact_id: string | null
   gate_photo_artifact_id: string | null
   pod_photo_artifact_id: string | null
+
+  // Captured at `loading` (schemas/phases.py PhaseEventRead) — the warehouse's linehaul
+  // sheet, distinct from waybill_photo_artifact_id above (that's departure's waybill
+  // copy). Optional ONLY until the driver-pwa fixtures are updated, same convention as
+  // blocked_on above: the server always sends this field, so it becomes a required
+  // `string | null` as soon as those fixtures carry it.
+  linehaul_photo_artifact_id?: string | null
 
   // Present on the backend read schema (schemas/handshakes.py:153) but missing from the
   // old shared HandshakeEvent — a live contract drift. Carried across deliberately so
@@ -125,5 +156,5 @@ export interface PhaseStep {
 
 // Trip detail under the phase model lives in ./trip.ts as `Trip` — this file used to
 // carry a forward declaration of it (`TripWithPhases`) while the old handshake-shaped
-// Trip still existed. Stage 4 cut that over, so the forward declaration is gone:
+// Trip still existed. That forward declaration is gone now:
 // two structurally identical interfaces is exactly the halfway state to avoid.

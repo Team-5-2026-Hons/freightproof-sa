@@ -9,8 +9,33 @@
       "input_tokens": 823416,
       "output_tokens": 0,
       "files": 190
+    },
+    {
+      "date": "2026-08-10T09:22:03.820798+00:00",
+      "input_tokens": 32500,
+      "output_tokens": 8200,
+      "files": 863
+    },
+    {
+      "date": "2026-08-23T20:22:58.731463+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 752
+    },
+    {
+      "date": "2026-09-02T16:35:16.436620+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 804
+    },
+    {
+      "date": "2026-10-12T13:40:41.222229+00:00",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "files": 1531,
+      "note": "subagent token counts not split into input/output; not recorded"
     }
   ],
-  "total_input_tokens": 823416,
-  "total_output_tokens": 0
+  "total_input_tokens": 855916,
+  "total_output_tokens": 8200
 }

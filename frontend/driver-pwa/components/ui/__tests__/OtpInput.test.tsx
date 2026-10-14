@@ -55,6 +55,38 @@ describe('OtpInput', () => {
     expect(onChange).toHaveBeenCalledWith('654321')
   })
 
+  // Regression: each box used to carry maxLength={1}. iOS AutoFill inserts a code as a
+  // user edit, so WebKit truncated it to one character and only box 1 ever filled.
+  // jsdom cannot catch that behaviourally — fireEvent.change sets .value programmatically,
+  // which the HTML spec exempts from maxlength — so assert the attribute itself.
+  it('never caps a box below the full code length, so iOS autofill is not truncated', () => {
+    render(<OtpInput length={6} value="" onChange={vi.fn()} />)
+
+    for (const n of [1, 2, 3, 4, 5, 6]) {
+      expect(Number(box(n).getAttribute('maxlength'))).toBeGreaterThanOrEqual(6)
+    }
+  })
+
+  it('a full code landing on a later box still fills from the first box', () => {
+    const onChange = vi.fn()
+    render(<OtpInput length={6} value="" onChange={onChange} />)
+
+    fireEvent.change(box(4), { target: { value: '123456' } })
+
+    expect(onChange).toHaveBeenCalledWith('123456')
+  })
+
+  it('pasting a full code into a later box still fills from the first box', () => {
+    const onChange = vi.fn()
+    render(<OtpInput length={6} value="" onChange={onChange} />)
+
+    fireEvent.paste(box(4), {
+      clipboardData: { getData: () => '654321' },
+    })
+
+    expect(onChange).toHaveBeenCalledWith('654321')
+  })
+
   it('exposes the group under an accessible "6-digit code" label', () => {
     render(<OtpInput length={6} value="" onChange={vi.fn()} />)
 

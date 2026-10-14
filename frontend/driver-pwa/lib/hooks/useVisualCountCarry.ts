@@ -11,14 +11,14 @@ const storageKey = (tripId: string): string => `fp:visual-count-carry:${tripId}`
 // wire (lib/types/evidence-draft.ts's header comment). `unloading` and `confirmation`
 // are separate phase_event_id rows with separate usePhaseDraft-backed drafts, and
 // unloading's draft is cleared the moment it submits successfully — so this count needs
-// the same durable, per-trip carry-forward mechanism lib/hooks/useSealReference.ts
-// already built for the seal (departure -> unloading).
+// a durable, per-trip carry-forward that outlives the draft it came from.
 //
-// Mirrors that hook's shape exactly rather than generalising it into one parametrised
-// hook: the two carried values have different underlying types (string vs number) and
-// are read/written by different phase pairs — forcing a shared generic would only hide
-// that they're two independent one-off bridges, not one reusable capability, for the
-// sake of a few lines saved.
+// A sibling hook, useSealReference, once did the same job for the seal number
+// (departure -> unloading). It was deleted on 2026-08-05 along with the reference display
+// it fed: showing a driver the seal set at departure before asking them to type what they
+// see is not verification. This hook is now the only carry-forward of its kind, which is
+// why it stays a purpose-built one-off rather than a parametrised generic — there is no
+// second caller to share with.
 export function useVisualCountCarry(
   tripId: string,
 ): [count: number | null, setCount: (count: number | null) => void, clearCount: () => void] {

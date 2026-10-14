@@ -4,6 +4,7 @@ import OtpPage from '../page'
 import { AuthContext } from '@/lib/context/AuthContext'
 import type { AuthState } from '@/lib/types/user'
 import { ROUTES } from '@/lib/constants/routes'
+import { RETURN_PATH_KEY } from '@shared/lib/session/return-path'
 
 const mockSignIn = vi.fn()
 const mockRequestOtp = vi.fn()
@@ -169,5 +170,48 @@ describe('OtpPage auto-submit and navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: /wrong number\? go back/i }))
 
     expect(mockPush).toHaveBeenCalledWith(ROUTES.login)
+  })
+})
+
+describe('OtpPage return-path redirect', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSignIn.mockResolvedValue(undefined)
+    localStorage.clear()
+  })
+
+  it('redirects to a saved return path instead of the default landing page', async () => {
+    localStorage.setItem(RETURN_PATH_KEY, '/trips/detail?id=abc-123')
+    renderOtpPage()
+
+    await act(async () => {
+      fireEvent.change(getFirstOtpBox(), { target: { value: '123456' } })
+    })
+
+    expect(mockReplace).toHaveBeenCalledWith('/trips/detail?id=abc-123')
+  })
+
+  it('consumes the saved return path so it cannot be reused by a later sign-in', async () => {
+    localStorage.setItem(RETURN_PATH_KEY, '/trips/detail?id=abc-123')
+    renderOtpPage()
+
+    await act(async () => {
+      fireEvent.change(getFirstOtpBox(), { target: { value: '123456' } })
+    })
+
+    expect(localStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+  })
+
+  it('rejects an unsafe saved value and falls back to the default landing page', async () => {
+    // Same-origin check happens again on the way out — a stored value is not trusted
+    // just because it once passed validation on the way in.
+    localStorage.setItem(RETURN_PATH_KEY, '//evil.com')
+    renderOtpPage()
+
+    await act(async () => {
+      fireEvent.change(getFirstOtpBox(), { target: { value: '123456' } })
+    })
+
+    expect(mockReplace).toHaveBeenCalledWith(ROUTES.trips)
   })
 })
