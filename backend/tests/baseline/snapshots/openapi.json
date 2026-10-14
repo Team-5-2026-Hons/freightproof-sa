@@ -1375,6 +1375,77 @@
         "title": "Body_upload_artifact_endpoint_api_v1_artifacts_post",
         "type": "object"
       },
+      "BusyEntry": {
+        "description": "One driver, horse or trailer, and the trip that has it in the asked-about window.",
+        "properties": {
+          "busy_from": {
+            "format": "date-time",
+            "title": "Busy From",
+            "type": "string"
+          },
+          "busy_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Busy Until"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "planned_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Until"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "$ref": "#/components/schemas/CrewResourceType"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id",
+          "label",
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "busy_from",
+          "busy_until",
+          "planned_until"
+        ],
+        "title": "BusyEntry",
+        "type": "object"
+      },
       "CancelTripRequest": {
         "description": "POST /trips/{trip_id}/cancel body. note is required — a dispatcher abandoning a\ntrip mid-plan without stating why is the single most audit-sensitive gap this action\ncould leave. RequiredFreeText, not a bare min_length, also rejects invisible-char-only notes.",
         "properties": {
@@ -2213,6 +2284,44 @@
         ],
         "title": "CoverageGap",
         "type": "object"
+      },
+      "CrewAvailabilityResponse": {
+        "properties": {
+          "busy": {
+            "items": {
+              "$ref": "#/components/schemas/BusyEntry"
+            },
+            "title": "Busy",
+            "type": "array"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "busy"
+        ],
+        "title": "CrewAvailabilityResponse",
+        "type": "object"
+      },
+      "CrewResourceType": {
+        "description": "The three things a trip occupies. Ordered as the wizard asks for them.",
+        "enum": [
+          "driver",
+          "horse",
+          "trailer"
+        ],
+        "title": "CrewResourceType",
+        "type": "string"
       },
       "CriticalWaiting": {
         "description": "Critical problems waiting for a dispatcher's review, right now.",
@@ -16044,6 +16153,65 @@
           }
         ],
         "summary": "Create a new trip (Handshake 0)",
+        "tags": [
+          "trips"
+        ]
+      }
+    },
+    "/api/v1/trips/availability": {
+      "get": {
+        "description": "Every crew member a new trip in [start, end) would clash with, and until when (FP-142).\n\nThe same rule trip creation refuses with (spec D11), so what the wizard greys out is\nexactly what POST /trips would refuse. Read-only; the organisation comes from the token.",
+        "operationId": "get_crew_availability_endpoint_api_v1_trips_availability_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "End",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrewAvailabilityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Drivers, horses and trailers already busy in a time window (trip wizard)",
         "tags": [
           "trips"
         ]

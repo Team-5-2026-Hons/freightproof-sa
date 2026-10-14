@@ -210,6 +210,42 @@ async def test_unusable_manifest_is_422(client: AsyncClient, db_session: AsyncSe
     assert await _trip_count(db_session, world) == 0
 
 
+async def test_manifest_and_request_without_arrival_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
+    """FP-139: the manifest has no expected arrival and the dispatcher entered none."""
+    world = await build_manifest_world(db_session)
+    departure = datetime.now(UTC) + timedelta(hours=2)
+
+    resp = await _create(client, world, MANIFEST_OPEN_NO_TIMES, planned_departure_at=departure.isoformat())
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["detail"]["code"] == "NO_PLANNED_ARRIVAL"
+    assert await _trip_count(db_session, world) == 0
+
+
+async def test_busy_horse_on_the_manifest_path_is_409(client: AsyncClient, db_session: AsyncSession) -> None:
+    """FP-139: both creation paths go through persist_trip, so the manifest path refuses a clash too."""
+    world = await build_manifest_world(db_session)
+    departure = datetime.now(UTC) + timedelta(hours=2)
+    arrival = departure + timedelta(hours=10)
+    busy = await client.post("/api/v1/trips", headers=world.headers(), json={
+        "driver_id": str(world.driver.id), "horse_id": str(world.horse.id), "trailer_ids": [],
+        "origin_precinct_id": str(world.cape_town.id), "destination_precinct_id": str(world.johannesburg.id),
+        "trip_type": "empty_leg", "planned_departure_at": departure.isoformat(), "planned_arrival_at": arrival.isoformat(),
+    })
+    assert busy.status_code == 201, busy.text
+
+    resp = await _create(
+        client, world, MANIFEST_HAPPY_PATH,
+        planned_departure_at=departure.isoformat(), planned_arrival_at=arrival.isoformat(),
+    )
+
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "CREW_UNAVAILABLE"
+    assert {c["trip_reference"] for c in detail["clashes"]} == {busy.json()["trip_reference"]}
+    assert await _trip_count(db_session, world) == 1
+
+
 async def test_unlinked_client_is_422(client: AsyncClient, db_session: AsyncSession) -> None:
     world = await build_manifest_world(db_session, client_account="OTHER1")
 

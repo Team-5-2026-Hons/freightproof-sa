@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
+    CrewUnavailableError,
     PPManifestAlreadyOnTripError,
     PPSyncError,
     ResourceNotFoundError,
@@ -42,6 +43,9 @@ from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
 from app.orchestration.phases.state import recompute_position
+from app.orchestration.trips.availability import (
+    CrewFilter, TimeWindow, busy_crew_in_window, clash_message, lock_crew, planned_window,
+)
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead, UserRead
@@ -53,6 +57,7 @@ from app.schemas.trips import (
     TripDetailResponse,
     TripStopCreate,
     TripStopRead,
+    stop_slot_times,
 )
 from app.schemas.vehicles import VehicleRead
 
@@ -111,6 +116,52 @@ async def _fetch_vehicle(
     if vehicle is None:
         raise ResourceNotFoundError(vehicle_type.value.capitalize(), str(vehicle_id))
     return vehicle
+
+
+async def _claim_crew(
+    db: AsyncSession, new_trip: "NewTrip", organization_id: uuid.UUID,
+) -> tuple[Driver, Vehicle, list[Vehicle]]:
+    """Lock the crew, load it (404 for anything missing or inactive), and refuse a clash.
+
+    The lock comes first, so two dispatchers claiming the same horse are serialised: the second
+    waits for the first to commit, then sees its trip and is refused (spec D7). The check runs
+    inside the same transaction as the insert that follows, so nothing can slip in between.
+    """
+    await lock_crew(db, driver_id=new_trip.driver_id, vehicle_ids=[new_trip.horse_id, *new_trip.trailer_ids])
+    driver = await _fetch_driver(db, new_trip.driver_id, organization_id)
+    horse = await _fetch_vehicle(db, new_trip.horse_id, VehicleType.HORSE, organization_id)
+    trailers = [
+        await _fetch_vehicle(db, trailer_id, VehicleType.TRAILER, organization_id)
+        for trailer_id in new_trip.trailer_ids
+    ]
+
+    # A manifest race lost while waiting on the lock is reported as what it is (spec B1): the
+    # wizard names and links the winning trip for MANIFEST_ALREADY_ON_TRIP, which a crew clash
+    # with that same trip would hide. Rechecked here because the preview's check ran before the wait.
+    if new_trip.manifest is not None:
+        winner = await find_live_trip_for_manifest(
+            db, operator_organization_id=organization_id, key=new_trip.manifest.key,
+        )
+        if winner is not None:
+            raise PPManifestAlreadyOnTripError(trip_id=winner.id, trip_reference=winner.trip_reference)
+
+    now = datetime.now(UTC)
+    start, end = planned_window(
+        new_trip.planned_departure_at, new_trip.planned_arrival_at, stop_slot_times(new_trip.stops),
+    )
+    clashes = await busy_crew_in_window(
+        db, organization_id=organization_id,
+        # The schemas guarantee a start; `or now` only satisfies the type.
+        window=TimeWindow(start=start or now, end=end), now=now,
+        crew=CrewFilter(
+            driver_id=new_trip.driver_id, horse_id=new_trip.horse_id, trailer_ids=tuple(new_trip.trailer_ids),
+        ),
+    )
+    if clashes:
+        raise CrewUnavailableError(
+            clash_message(clashes), [entry.model_dump(mode="json") for entry in clashes],
+        )
+    return driver, horse, trailers
 
 
 @dataclass(frozen=True)
@@ -319,19 +370,14 @@ async def persist_trip(
     Raises:
         ResourceNotFoundError: driver, horse, or any trailer is not found/inactive.
         PPManifestAlreadyOnTripError: lost the race for this manifest (uq_trips_pp_manifest).
+        CrewUnavailableError: the driver, horse or a trailer is busy in this trip's window.
         ConsignmentAlreadyAssignedError: a waybill is on another trip.
         PPSyncError: a waybill could not be pulled or written.
     """
     cargo = new_trip.manifest
 
-    # 1. Validate all referenced records exist before any writes.
-    driver = await _fetch_driver(db, new_trip.driver_id, current_user.organization_id)
-    horse = await _fetch_vehicle(db, new_trip.horse_id, VehicleType.HORSE, current_user.organization_id)
-    trailers: list[Vehicle] = []
-    for trailer_id in new_trip.trailer_ids:
-        trailers.append(
-            await _fetch_vehicle(db, trailer_id, VehicleType.TRAILER, current_user.organization_id)
-        )
+    # 1. Lock, validate and clash-check the crew before any writes (FP-139).
+    driver, horse, trailers = await _claim_crew(db, new_trip, current_user.organization_id)
 
     # 2. Create the Trip row. origin/destination_precinct_id are set below once the
     #    route's stops are known (a derived convenience, not authoritative — FP-112).

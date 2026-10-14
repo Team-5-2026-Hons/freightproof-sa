@@ -49,6 +49,8 @@ def _empty_leg(world: ManifestWorld, *, planned_departure_at: str) -> dict:
         "destination_precinct_id": str(world.johannesburg.id),
         "trip_type": "empty_leg",
         "planned_departure_at": planned_departure_at,
+        # Arrival is required at creation (FP-139); a fixed length after the given departure.
+        "planned_arrival_at": (datetime.fromisoformat(planned_departure_at) + timedelta(hours=10)).isoformat(),
     }
 
 

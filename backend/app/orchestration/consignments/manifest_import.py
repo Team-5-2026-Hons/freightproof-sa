@@ -375,13 +375,19 @@ async def create_trip_from_pp_manifest(
         )
 
     # 3. Times: the request overrides the manifest. A departure is required after the
-    #    merge — a trip without one can never be activated (_reject_if_not_due).
+    #    merge — a trip without one can never be activated (_reject_if_not_due). So is an
+    #    arrival (FP-139): without an end, nobody can say when the crew is free again.
     departure = payload.planned_departure_at or header.planned_departure_at
     arrival = payload.planned_arrival_at or header.expected_arrival_at
     if departure is None:
         raise PPManifestUnusableError(
             PPManifestErrorCode.NO_PLANNED_DEPARTURE.value,
             "The manifest has no planned departure. Enter one.",
+        )
+    if arrival is None:
+        raise PPManifestUnusableError(
+            PPManifestErrorCode.NO_PLANNED_ARRIVAL.value,
+            "The manifest has no expected arrival. Enter one.",
         )
     try:
         validate_declared_schedule(departure, arrival)

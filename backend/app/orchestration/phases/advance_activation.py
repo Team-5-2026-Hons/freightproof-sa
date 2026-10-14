@@ -11,10 +11,7 @@ from app.orchestration.phases.completion import _finish_phase
 from app.orchestration.phases.driver_position import _record_driver_position
 from app.orchestration.phases.gate import _gate_and_load
 from app.orchestration.phases.payloads import compute_activation_canonical_payload_v2
-from app.orchestration.phases.scheduling import (
-    _other_trips_for_driver, _reject_if_an_earlier_trip_is_due, _reject_if_another_trip_underway,
-    _reject_if_not_due,
-)
+from app.orchestration.phases.scheduling import _claim_crew_for_activation, _reject_if_not_due
 from app.schemas.phases import ActivationCompleteRequest
 from app.schemas.trips import TripDetailResponse
 
@@ -33,12 +30,11 @@ async def advance_activation(
 
     await _reject_if_not_due(db, trip)
 
-    # Both gates sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same
-    # reason _reject_if_not_due does: a queued offline activation resent later must not
-    # start failing on a rule it already satisfied when it was captured.
-    others = await _other_trips_for_driver(db, trip)
-    _reject_if_another_trip_underway(others)
-    await _reject_if_an_earlier_trip_is_due(db, trip, others)
+    # The crew gates (one trip at a time for the driver, horse and trailers; the driver's trips
+    # in order) sit AFTER _gate_and_load's idempotent-replay short-circuit, for the same reason
+    # _reject_if_not_due does: a queued offline activation resent later must not start failing
+    # on a rule it already satisfied when it was captured.
+    await _claim_crew_for_activation(db, trip)
 
     # Two sources, recorded together: the driver's phone says where the phone is,
     # then Pulsit says where the vehicle is. The second is what makes the first

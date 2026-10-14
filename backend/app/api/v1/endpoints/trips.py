@@ -11,7 +11,7 @@ POST /trips/from-pp-manifest — create a loaded trip from a PP manifest (FP-281
 """
 
 import logging
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
 from app.core.exceptions import (
     ConsignmentAlreadyAssignedError,
+    CrewUnavailableError,
     HederaServiceError,
     HederaTimeoutError,
     ManifestLookupUnsupportedError,
@@ -43,12 +44,14 @@ from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
 from app.orchestration.trips.detail import get_trip_detail
 from app.orchestration.trips.listing import list_trip_history, list_trips
+from app.orchestration.trips.availability import CrewFilter, TimeWindow, busy_crew_in_window
 from app.orchestration.trips.creation import create_trip
 from app.orchestration.trips.queries import (
     get_active_trip_for_driver,
     get_own_trip_detail_for_driver,
     list_trips_for_driver,
 )
+from app.schemas.availability import CrewAvailabilityQuery, CrewAvailabilityResponse
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.pagination import CursorPage
 from app.schemas.pp_manifest import (
@@ -75,6 +78,8 @@ _PP_UNAVAILABLE_DETAIL = "The parcel system is unreachable. Try again shortly."
 _HEDERA_TIMEOUT_DETAIL = "Blockchain anchoring timed out, so the trip was not created. Please retry."
 _HEDERA_UNAVAILABLE_DETAIL = "Blockchain anchoring is unavailable, so the trip was not created. Please retry."
 _UNEXPECTED_DETAIL = "An unexpected error occurred. Please try again."
+# Stable code the trip wizard switches on (frontend lib/trips/trip-api-errors.ts).
+_CREW_UNAVAILABLE_CODE = "CREW_UNAVAILABLE"
 
 
 def _trip_http_error(exc: Exception) -> HTTPException | None:
@@ -107,6 +112,12 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
         )
     if isinstance(exc, ConsignmentAlreadyAssignedError):
         return HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, CrewUnavailableError):
+        # Every clash, not just the one the message names, so the wizard can grey them all out.
+        return HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail={"code": _CREW_UNAVAILABLE_CODE, "message": str(exc), "clashes": exc.clashes},
+        )
     if isinstance(exc, PPManifestUnusableError):
         return HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -265,6 +276,30 @@ async def preview_pp_manifest_endpoint(
         if http_error is None:
             raise
         raise http_error from exc
+
+
+# Declared before GET /trips/{trip_id}, like the routes above: "availability" is not a UUID.
+@router.get(
+    "/availability",
+    response_model=CrewAvailabilityResponse,
+    summary="Drivers, horses and trailers already busy in a time window (trip wizard)",
+)
+async def get_crew_availability_endpoint(
+    query: Annotated[CrewAvailabilityQuery, Query()],
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> CrewAvailabilityResponse:
+    """Every crew member a new trip in [start, end) would clash with, and until when (FP-142).
+
+    The same rule trip creation refuses with (spec D11), so what the wizard greys out is
+    exactly what POST /trips would refuse. Read-only; the organisation comes from the token.
+    """
+    window = TimeWindow(start=query.start, end=query.end)
+    busy = await busy_crew_in_window(
+        db, organization_id=current_user.organization_id, window=window,
+        now=datetime.now(UTC), crew=CrewFilter(),
+    )
+    return CrewAvailabilityResponse(start=query.start, end=query.end, busy=busy)
 
 
 @router.get(

@@ -30,7 +30,7 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
-from app.db.models.trips import Consignment, Parcel, Trip, TripStop
+from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
@@ -2836,6 +2836,145 @@ async def test_activation_replay_is_not_blocked_by_a_trip_started_since(db_sessi
     )
 
     assert replay.id == first.id
+
+
+# ── FP-139: the horse and trailers are one-trip-at-a-time too ─────────────────────────
+#
+# The sibling trips above share the driver. These belong to ANOTHER driver and share only a
+# vehicle, which is the gap FP-139 closes: before it, nothing stopped two drivers starting two
+# trips on one horse.
+
+
+async def _another_drivers_trip(
+    db_session, trip, *, status, horse_id, scheduled=_SCHEDULED_TODAY, reference="FP-OTHER-DRIVER",
+):
+    other_driver = Driver(
+        id=uuid.uuid4(), organization_id=trip.operator_organization_id, full_name="Other Driver",
+        id_number=f"810101{uuid.uuid4().int % 10**7:07d}", phone_number="+27820000002",
+        license_number=f"DRV-{uuid.uuid4().hex[:6]}",
+    )
+    db_session.add(other_driver)
+    await db_session.flush()
+    other = Trip(
+        id=uuid.uuid4(), trip_reference=reference, order_number=f"ORD-{uuid.uuid4().hex[:6]}",
+        operator_organization_id=trip.operator_organization_id,
+        client_organization_id=trip.client_organization_id,
+        driver_id=other_driver.id, horse_id=horse_id,
+        origin_precinct_id=trip.origin_precinct_id, destination_precinct_id=trip.destination_precinct_id,
+        status=status, idvs_check_status=IdvsStatus.VERIFIED, planned_departure_at=scheduled,
+        created_by_user_id=trip.created_by_user_id,
+    )
+    db_session.add(other)
+    await db_session.flush()
+    return other
+
+
+async def _vehicle(db_session, trip, vehicle_type, registration):
+    vehicle = Vehicle(
+        id=uuid.uuid4(), organization_id=trip.operator_organization_id, vehicle_type=vehicle_type,
+        registration=registration, pulsit_device_id=f"PUL-{uuid.uuid4().hex[:6]}",
+    )
+    db_session.add(vehicle)
+    await db_session.flush()
+    return vehicle
+
+
+async def _hitch(db_session, trip, trailer):
+    db_session.add(TripTrailer(
+        trip_id=trip.id, trailer_id=trailer.id, pulsit_device_id_snapshot=trailer.pulsit_device_id,
+    ))
+    await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_activation_rejected_while_the_horse_is_on_another_drivers_active_trip(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    await _another_drivers_trip(
+        db_session, trip, status=TripStatus.ACTIVE, horse_id=trip.horse_id, reference="FP-HORSE-OUT",
+    )
+
+    with pytest.raises(TripActivationBlockedError) as exc:
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+    assert exc.value.blocking_trip_reference == "FP-HORSE-OUT"
+    assert exc.value.reason == "horse ABC123GP is on another trip that is underway"
+    assert str(exc.value) == (
+        "Cannot start this trip: horse ABC123GP is on another trip that is underway (FP-HORSE-OUT)."
+    )
+
+
+@pytest.mark.asyncio
+async def test_activation_rejected_while_a_trailer_is_on_another_drivers_held_trip(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    trailer = await _vehicle(db_session, trip, VehicleType.TRAILER, "TRL777GP")
+    await _hitch(db_session, trip, trailer)
+    other_horse = await _vehicle(db_session, trip, VehicleType.HORSE, "HRS888GP")
+    other = await _another_drivers_trip(
+        db_session, trip, status=TripStatus.EXCEPTION_HOLD, horse_id=other_horse.id, reference="FP-TRAILER-HELD",
+    )
+    await _hitch(db_session, other, trailer)
+
+    with pytest.raises(TripActivationBlockedError) as exc:
+        await advance_activation(
+            db_session, trip_id=trip.id, driver_id=driver.id,
+            phase_event_id=phases["activation"].id, payload=_activation_payload(),
+        )
+
+    assert exc.value.blocking_trip_reference == "FP-TRAILER-HELD"
+    assert exc.value.reason == "trailer TRL777GP is on another trip that is underway"
+
+
+@pytest.mark.asyncio
+async def test_activation_allowed_when_the_horses_other_trip_is_closed(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    await _another_drivers_trip(db_session, trip, status=TripStatus.CLOSED, horse_id=trip.horse_id)
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_activation_not_blocked_by_another_drivers_earlier_unstarted_trip_on_the_same_horse(
+    db_session, trip_fixture,
+):
+    """D10: start-in-order is about one driver's day. Another driver's unstarted trip on this
+    horse, due earlier today, must not stop this driver starting theirs."""
+    trip, driver, phases = trip_fixture
+    trip.planned_departure_at = _SCHEDULED_TODAY.replace(hour=14, minute=0, second=0, microsecond=0)
+    await db_session.flush()
+    await _another_drivers_trip(
+        db_session, trip, status=TripStatus.CREATED, horse_id=trip.horse_id,
+        scheduled=trip.planned_departure_at - timedelta(hours=4),
+    )
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
+
+
+@pytest.mark.asyncio
+async def test_activation_not_blocked_by_an_unrelated_live_trip(db_session, trip_fixture):
+    """Another driver, another horse, no shared trailer: nothing in common, nothing blocked."""
+    trip, driver, phases = trip_fixture
+    other_horse = await _vehicle(db_session, trip, VehicleType.HORSE, "HRS999GP")
+    await _another_drivers_trip(db_session, trip, status=TripStatus.ACTIVE, horse_id=other_horse.id)
+
+    result = await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id,
+        phase_event_id=phases["activation"].id, payload=_activation_payload(),
+    )
+
+    assert result.status == TripStatus.ACTIVE
 
 
 @pytest.mark.asyncio

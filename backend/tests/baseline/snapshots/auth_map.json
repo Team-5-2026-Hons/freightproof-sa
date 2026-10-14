@@ -287,6 +287,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/trips/availability": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/trips/history": {
     "access": "dispatcher",
     "dependencies": [

@@ -1088,6 +1088,8 @@ async def test_empty_leg_trip_walks_to_closed(
                 "origin_precinct_id": str(seed["origin_id"]),
                 "destination_precinct_id": str(seed["dest_id"]),
                 "planned_departure_at": datetime.now(UTC).isoformat(),
+                # Arrival is required at creation (FP-139).
+                "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
                 "trip_type": "empty_leg",
                 "consignments": [],
             },

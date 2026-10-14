@@ -84,14 +84,14 @@ def validate_declared_schedule(
     *,
     schedule_source: str = "planned_departure_at/planned_arrival_at",
 ) -> None:
-    """Reject a declared schedule that could not have happened.
+    """Reject a declared schedule that could not have happened, or that never ends.
 
-    Shared by both creation schemas so the rule can't drift between two copies. Silent
-    when either end is missing — planned_arrival_at is legitimately optional.
-    schedule_source names where the two times came from (trip-level fields, or stop
-    slot_times on a multi-stop route), since an error naming fields never sent helps no one.
+    Shared by both creation schemas so the rule can't drift. Arrival is required (FP-139): with no
+    end, nobody can say when the crew is free. schedule_source names where the times came from.
     """
-    if not (planned_departure_at and planned_arrival_at):
+    if planned_arrival_at is None:
+        raise ValueError("a planned arrival is required (planned_arrival_at, or a stop slot_time after departure)")
+    if planned_departure_at is None:  # each caller rejects a missing departure with its own error
         return
     if planned_arrival_at <= planned_departure_at:
         raise ValueError(
@@ -274,10 +274,9 @@ class TripCreateRequest(BaseModel):
         )
         if self.planned_departure_at is None and not has_stop_schedule:
             raise ValueError(
-                "planned_departure_at is required when no stop carries a "
-                "slot_time — a trip with neither can never be activated "
-                "(provide planned_departure_at, or set slot_time on at least "
-                "one of the provided stops)"
+                "planned_departure_at is required when no stop carries a slot_time — a trip with "
+                "neither can never be activated (provide planned_departure_at, or set slot_time on "
+                "at least one of the provided stops)"
             )
         # Falls back to stop bounds so the explicit-stops path can't bypass the
         # duration rule entirely; each half falls back independently.
