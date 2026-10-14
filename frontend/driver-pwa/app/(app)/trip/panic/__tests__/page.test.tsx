@@ -347,6 +347,10 @@ describe('PanicPage — the overhauled screen (7.1, 7.1b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
+    // jsdom implements none of the Pointer Capture API; SwipeToConfirm calls all three.
+    HTMLElement.prototype.setPointerCapture = vi.fn()
+    HTMLElement.prototype.releasePointerCapture = vi.fn()
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
   })
 
   it('test_is_a_white_page_with_one_red_control', () => {
