@@ -13,6 +13,29 @@ function getPanel(): HTMLElement {
 }
 
 describe('Drawer accessibility-tree hygiene', () => {
+  it('test_an_open_sheet_is_a_modal_dialog_named_by_its_title', () => {
+    // Without this a screen reader was never told a sheet had opened over the page.
+    render(
+      <Drawer open onClose={vi.fn()} side="bottom" title="Appearance">
+        <p>Panel body</p>
+      </Drawer>,
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Appearance' })
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+  })
+
+  it('test_a_closed_sheet_is_not_announced_as_a_dialog', () => {
+    render(
+      <Drawer open={false} onClose={vi.fn()} side="bottom" title="Appearance">
+        <p>Panel body</p>
+      </Drawer>,
+    )
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('hides a closed drawer from assistive tech with aria-hidden and inert', () => {
     render(
       <Drawer open={false} onClose={vi.fn()} title="Driver Profile">
@@ -33,7 +56,7 @@ describe('Drawer accessibility-tree hygiene', () => {
       </Drawer>,
     )
 
-    // ProfilePanel's memoization relies on the drawer never unmounting its children.
+    // The Profile sheets rely on the drawer never unmounting its children.
     expect(screen.getByText('Panel body')).toBeInTheDocument()
   })
 
@@ -137,6 +160,20 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
     fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
     fireEvent.pointerMove(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.2, pointerId: 1 })
     fireEvent.pointerUp(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.2, pointerId: 1 })
+
+    // Assert
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('stays open when the system cancels a drag that was past the dismiss point', () => {
+    // Arrange
+    const onClose = vi.fn()
+    render(<Drawer open onClose={onClose} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
+
+    // Act — 60% down would dismiss on a release; here the OS takes the touch instead.
+    fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
+    fireEvent.pointerCancel(dragHandle(), { clientY: 100 + SHEET_HEIGHT_PX * 0.6, pointerId: 1 })
 
     // Assert
     expect(onClose).not.toHaveBeenCalled()

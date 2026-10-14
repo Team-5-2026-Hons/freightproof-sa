@@ -60,7 +60,7 @@ const config: Config = {
         input: 'hsl(var(--input))',
         ring:  'hsl(var(--ring))',
         // Sets the default `border` utility color. Same value as outline-variant
-        // (#c7c6ca / hsl(var(--border))), which existing components already
+        // (#919099 / hsl(var(--border))), which existing components already
         // reference explicitly via border-outline-variant.
         border: 'hsl(var(--border))',
         // ── Design-system tokens ──
@@ -117,6 +117,19 @@ const config: Config = {
           c:       'rgb(var(--fp-chain-container) / <alpha-value>)',
           on:      'rgb(var(--fp-chain-on) / <alpha-value>)',
           onc:     'rgb(var(--fp-chain-on-container) / <alpha-value>)',
+          tint:    'rgb(var(--fp-chain-tint) / <alpha-value>)',
+        },
+
+        // Overhaul (Oct 2026) flat-grouping tokens: the grey face of pills, tiles and
+        // fields, and the inset rule between list rows. See app/globals.css.
+        fill:     'rgb(var(--fp-fill) / <alpha-value>)',
+        hairline: 'rgb(var(--fp-hairline) / <alpha-value>)',
+        // Waiting / under review / offline. Amber text on a pale amber ground; never red,
+        // because none of these states is an error.
+        attention: {
+          DEFAULT: 'rgb(var(--fp-attention) / <alpha-value>)',
+          tint:    'rgb(var(--fp-attention-tint) / <alpha-value>)',
+          ink:     'rgb(var(--fp-attention-ink) / <alpha-value>)',
         },
 
         outline: {
@@ -155,12 +168,16 @@ const config: Config = {
           container:     'rgb(var(--fp-success-container) / <alpha-value>)',
           on:            'rgb(var(--fp-success-on) / <alpha-value>)',
           'on-container':'rgb(var(--fp-success-on-container) / <alpha-value>)',
+          // Status-banner ground and its ink; the container above is a saturated chip fill.
+          tint:          'rgb(var(--fp-success-tint) / <alpha-value>)',
+          ink:           'rgb(var(--fp-success-ink) / <alpha-value>)',
         },
         error: {
           DEFAULT:       'rgb(var(--fp-error) / <alpha-value>)',
           container:     'rgb(var(--fp-error-container) / <alpha-value>)',
           on:            'rgb(var(--fp-error-on) / <alpha-value>)',
           'on-container':'rgb(var(--fp-error-on-container) / <alpha-value>)',
+          tint:          'rgb(var(--fp-error-tint) / <alpha-value>)',
         },
         surface: {
           DEFAULT:            'rgb(var(--fp-surface) / <alpha-value>)',
@@ -277,13 +294,31 @@ const config: Config = {
         },
         // iOS push/pop (app/(app)/template.tsx). Starts at 0.6 opacity, never 0: the
         // incoming screen is legible from the first frame, it only settles into place.
+        // An indeterminate run along the receipt's anchoring bar: Hedera gives no progress
+        // to report, so the bar says "working", never a made-up percentage.
+        'anchor-slide': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(250%)' },
+        },
+        // The panic screen's red vignette while a finger is on the swipe (7.1b): one full
+        // cycle a second (1 Hz), far under WCAG 2.3.1's three flashes, and never below a
+        // third of its strength so it reads as a glow, not a flash.
+        'panic-pulse': {
+          '0%, 100%': { opacity: '0.35' },
+          '50%': { opacity: '1' },
+        },
+        // A floating sheet rising from the bottom edge it is anchored to (Modal).
+        'sheet-up': {
+          from: { transform: 'translate3d(0, 2rem, 0)', opacity: '0' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
+        },
         'push-in': {
-          from: { left: '1.5rem', opacity: '0.6' },
-          to: { left: '0', opacity: '1' },
+          from: { transform: 'translate3d(1.5rem, 0, 0)', opacity: '0.6' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
         },
         'pop-in': {
-          from: { left: '-1.5rem', opacity: '0.6' },
-          to: { left: '0', opacity: '1' },
+          from: { transform: 'translate3d(-1.5rem, 0, 0)', opacity: '0.6' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
         },
         // Scrolls the dashed road exactly one tile per cycle, which is what makes the
         // loop seamless. --road-tile is set by the loader and read here and by the
@@ -306,6 +341,9 @@ const config: Config = {
         // gate, long gentle settle — at a short duration so it never feels like waiting.
         'push-in': 'push-in 320ms cubic-bezier(0.32, 0.72, 0, 1)',
         'pop-in': 'pop-in 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'sheet-up': 'sheet-up 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'anchor-slide': 'anchor-slide 1.4s ease-in-out infinite',
+        'panic-pulse': 'panic-pulse 1s ease-in-out infinite',
       },
 
       backgroundImage: {

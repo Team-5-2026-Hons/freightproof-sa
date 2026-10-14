@@ -1,133 +1,188 @@
 'use client'
 
-import { ArrowRight, ChevronRight, Truck } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
+import type { TripException } from '@shared/lib/types/exception'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { currentPhase, isDriving, phaseLocation } from '@/lib/phase'
-import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { formatTime } from '@/lib/utils/format-time'
+import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { formatDateTime, formatTime } from '@/lib/utils/format-time'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/Button'
-import { Chip } from '@/components/ui/Chip'
-import { HoldNotice } from '@/components/trip/HoldNotice'
+import { ExceptionCard } from '@/components/trip/ExceptionCard'
 
 interface NowCardProps {
   trip: Trip
+  /** Open exceptions the driver should see (openDriverExceptions) — the badge's reason. */
+  exceptions: readonly TripException[]
   onStartPhase: (phase: PhaseDescriptor) => void
   onContinueDriving: () => void
   onViewTrip: () => void
 }
 
-// Home's one job: answer "what do I do now?" in a single glance. The full phase plan
-// used to sit here too, which made Home a copy of the trip detail screen (audit H6);
-// it now lives one tap away behind "View Trip", and this card carries only what the
-// driver needs to act — which phase, where, how far through the trip, and the one action.
-export function NowCard({ trip, onStartPhase, onContinueDriving, onViewTrip }: NowCardProps) {
+// The card's one action: a white capsule on the ink card (overhaul 2.1/2.2).
+const CARD_ACTION = 'flex min-h-[52px] w-full items-center justify-center rounded-full bg-primary-on text-body font-semibold text-primary transition-transform duration-100 active:scale-[0.98]'
+
+function Exceptions({ exceptions }: { exceptions: readonly TripException[] }) {
+  // Every reason the Home tab can be badged, on the screen the badge leads to.
+  if (exceptions.length === 0) return null
+  return (
+    <section aria-label="Open exceptions" className="flex flex-col gap-2">
+      {exceptions.map((exc) => <ExceptionCard key={exc.id} exception={exc} />)}
+    </section>
+  )
+}
+
+function ViewTrip({ reference, onClick }: { reference: string; onClick: () => void }) {
+  // The reference doubles as the way into the full trip: the one string a driver reads
+  // to dispatch, now also the door to everything about it.
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`View trip ${reference}`}
+      className="-mr-1 inline-flex min-h-11 items-center gap-0.5 text-footnote tabular-nums text-primary-on/70"
+    >
+      {reference}
+      <ChevronRight aria-hidden className="size-3.5" strokeWidth={2.5} />
+    </button>
+  )
+}
+
+/**
+ * Home's "now" (overhaul 2.1, 2.2, 2.4): what is happening on the trip and the one thing to
+ * do next. Three shapes — on hold (amber, no action: any submit while held 409s), assigned
+ * but not started (the route and Start Trip), and underway (where it is, how far through,
+ * and the next action).
+ */
+export function NowCard({ trip, exceptions, onStartPhase, onContinueDriving, onViewTrip }: NowCardProps) {
+  const places = useTripPlaces(trip)
   const sorted = [...trip.phases].sort((a, b) => a.sequence_number - b.sequence_number)
   const current = currentPhase(sorted)
-  // isDriving is true only while the ledger's current row is an unresolved in_transit.
   const driving = isDriving(sorted)
-  const onHold = trip.status === 'exception_hold'
-  const { kind, label } = tripStatusChip(trip.status)
-
-  // trip_creation is the system's phase, finished before the driver is involved — counting
-  // it made Home say "Phase 5 of 8" while the timeline's dot for the same phase said 4.
-  // Both now count the driver's phases only, so the numbers match on every screen.
   const driverPhases = sorted.filter((p) => p.phase_type !== 'trip_creation')
   const position = current === null ? driverPhases.length : driverPhases.indexOf(current) + 1
-  const where = current === null ? null : phaseLocation(sorted, current)
-  const eta = trip.planned_arrival_at ? formatTime(trip.planned_arrival_at) : null
+  const next = current === null ? null : driverPhases[driverPhases.indexOf(current) + 1] ?? null
 
-  // While driving the useful fact is where the truck is heading and when, not the stop
-  // the transit leg departed from.
+  if (trip.status === 'exception_hold') {
+    return (
+      <div className="flex flex-col gap-3">
+        <section aria-label="Current trip" className="overflow-hidden rounded-[22px] bg-attention-tint text-attention-ink">
+          <div className="px-[18px] pb-4 pt-[18px]">
+            <div className="flex flex-wrap items-center gap-x-2">
+              <span aria-hidden className="size-2 rounded-full bg-attention" />
+              <span className="text-footnote font-bold uppercase tracking-wide text-attention">Trip on hold</span>
+              <span className="ml-auto text-footnote tabular-nums text-attention">{trip.trip_reference}</span>
+            </div>
+            <p className="mt-3 text-title-2">Waiting for dispatch</p>
+            <p className="mt-1.5 text-subhead">
+              A critical exception was recorded. Your dispatcher is reviewing it. You can carry on once they clear the hold.
+            </p>
+          </div>
+        </section>
+        <Exceptions exceptions={exceptions} />
+        <button
+          type="button"
+          onClick={onViewTrip}
+          className="flex min-h-[50px] items-center justify-center rounded-full bg-fill text-body font-semibold text-surface-on transition-transform duration-100 active:scale-[0.98]"
+        >
+          View Trip
+        </button>
+      </div>
+    )
+  }
+
+  if (trip.status === 'created') {
+    const stops = [
+      { label: places.origin, time: trip.planned_departure_at, timeLabel: 'Depart', marker: 'rounded-full border-2 border-primary-on' },
+      { label: places.destination, time: trip.planned_arrival_at, timeLabel: 'Due', marker: 'bg-primary-on' },
+    ]
+    return (
+      <div className="flex flex-col gap-3">
+        <section aria-label="Next trip" className="rounded-[22px] bg-primary p-[18px] text-primary-on">
+          <div className="flex flex-wrap items-center justify-between gap-x-3">
+            <span className="text-footnote font-semibold uppercase tracking-wide text-primary-on/70">Next trip</span>
+            <ViewTrip reference={trip.trip_reference} onClick={onViewTrip} />
+          </div>
+          <ol aria-label="Route" className="mb-[18px] mt-3 flex flex-col gap-4">
+            {stops.map((stop) => (
+              <li key={stop.timeLabel} className="grid grid-cols-[16px_1fr_auto] gap-x-3">
+                <span aria-hidden className={cn('mt-1.5 size-2.5', stop.marker)} />
+                <span className="min-w-0">
+                  <span className="block truncate text-title-3">{stop.label.name}</span>
+                  {stop.label.detail !== null && <span className="block truncate text-subhead text-primary-on/70">{stop.label.detail}</span>}
+                </span>
+                {stop.time !== null && (
+                  <span className="text-right">
+                    <span className="block text-title-3 tabular-nums">{formatTime(stop.time)}</span>
+                    <span className="block text-subhead text-primary-on/70">{stop.timeLabel}</span>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+          {trip.planned_departure_at !== null && (
+            <p className="-mt-2 mb-3 text-footnote text-primary-on/70">{formatDateTime(trip.planned_departure_at)}</p>
+          )}
+          {current !== null && (
+            <button type="button" onClick={() => onStartPhase(current)} className={CARD_ACTION}>Start Trip</button>
+          )}
+        </section>
+        <Exceptions exceptions={exceptions} />
+      </div>
+    )
+  }
+
+  const eta = trip.planned_arrival_at === null ? null : formatTime(trip.planned_arrival_at)
+  const where = current === null ? null : phaseLocation(sorted, current)
+  const heading = current === null ? 'All phases complete' : driving ? places.destination.name : PHASE_NAMES[current.phase_type]
   const context = driving
-    ? [where, eta && `ETA ${eta}`].filter(Boolean).join(' · ')
-    : where
+    ? [places.destination.detail, eta && `ETA ${eta}`].filter(Boolean).join(' · ')
+    : where === 'Origin' ? places.origin.name : where === 'Destination' ? places.destination.name : where
 
   return (
     <div className="flex flex-col gap-3">
-      <section
-        aria-label="Current trip"
-        className="flex flex-col gap-4 rounded-3xl bg-surface-container-lowest p-5 shadow-level-2"
-      >
-        {/* Wraps rather than truncating: at accessibility sizes the reference is the one
-            line here a driver may need to read out to dispatch. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <p className="font-mono text-subhead tabular-nums text-surface-on-variant">
-            {trip.trip_reference}
-          </p>
-          <Chip kind={kind} className="shrink-0">{label}</Chip>
+      <section aria-label="Current trip" className="rounded-[22px] bg-primary px-[18px] pb-4 pt-[18px] text-primary-on">
+        {/* Wraps at the large accessibility text sizes rather than pushing the trip
+            reference off the card. */}
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
+          <span className="flex items-center gap-2">
+            <span aria-hidden className="size-2 rounded-full bg-success" />
+            <span className="text-footnote font-semibold uppercase tracking-wide">
+              {driving ? 'In transit' : current === null ? 'Complete' : 'Underway'}
+            </span>
+          </span>
+          <ViewTrip reference={trip.trip_reference} onClick={onViewTrip} />
         </div>
+        <p className="mt-2 text-title-1 tracking-tight">{heading}</p>
+        {context && <p className="text-subhead text-primary-on/70">{context}</p>}
 
-        <div>
-          <h2 className="text-title-1 text-surface-on">
-            {current === null ? 'All Phases Complete' : PHASE_NAMES[current.phase_type]}
-          </h2>
-          {context && <p className="mt-1 text-subhead text-surface-on-variant">{context}</p>}
+        {/* One segment per phase in the plan; the count beside it is the same fact in words. */}
+        <div aria-hidden className="mb-1.5 mt-4 grid gap-1" style={{ gridTemplateColumns: `repeat(${driverPhases.length}, minmax(0, 1fr))` }}>
+          {driverPhases.map((phase) => {
+            const done = phase.status === 'completed' || phase.status === 'overridden'
+            const isCurrent = phase.phase_event_id === current?.phase_event_id
+            return (
+              <span
+                key={phase.phase_event_id}
+                className={cn('h-1 rounded-full', done ? 'bg-primary-on' : isCurrent ? 'bg-secondary' : 'bg-primary-on/20')}
+              />
+            )
+          })}
         </div>
+        <p className="mb-4 text-footnote text-primary-on/70">
+          Phase {position} of {driverPhases.length}{next !== null && ` · next, ${PHASE_NAMES[next.phase_type]}`}
+        </p>
 
-        {/* One segment per phase in the plan: where the trip is, without the list. The
-            count beside it is the same fact for anyone who can't read the segments. */}
-        <div className="flex items-center gap-3">
-          <div className="flex flex-1 gap-1" aria-hidden>
-            {driverPhases.map((phase) => {
-              const done = phase.status === 'completed' || phase.status === 'overridden'
-              const isCurrent = phase.phase_event_id === current?.phase_event_id
-              return (
-                <span
-                  key={phase.phase_event_id}
-                  className={cn(
-                    'h-1.5 flex-1 rounded-full',
-                    done ? 'bg-secondary' : isCurrent ? 'bg-secondary/40' : 'bg-surface-container-highest',
-                  )}
-                />
-              )
-            })}
-          </div>
-          <p className="shrink-0 text-footnote tabular-nums text-surface-on-variant">
-            Phase {position} of {driverPhases.length}
-          </p>
-        </div>
-
-        {/* A held trip must not offer the next phase — any submit while on hold 409s —
-            and that outranks driving too: a driver on hold has been told to stop. */}
-        {onHold ? (
-          <HoldNotice />
-        ) : driving ? (
-          // While driving, the driving screen IS the primary action — not the arrival
-          // phase's capture steps, which can't be completed for hours yet.
-          <Button
-            size="lg"
-            iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
-            onClick={onContinueDriving}
-          >
-            Continue Driving
-          </Button>
-        ) : (
-          current !== null && (
-            <Button
-              size="lg"
-              iconRight={<ArrowRight className="h-5 w-5" strokeWidth={2} aria-hidden />}
-              onClick={() => onStartPhase(current)}
-            >
-              Start {PHASE_NAMES[current.phase_type]}
-            </Button>
-          )
+        {driving ? (
+          <button type="button" onClick={onContinueDriving} className={CARD_ACTION}>Continue Driving</button>
+        ) : current !== null && (
+          <button type="button" onClick={() => onStartPhase(current)} className={CARD_ACTION}>
+            Start {PHASE_NAMES[current.phase_type]}
+          </button>
         )}
       </section>
-
-      <button
-        type="button"
-        onClick={onViewTrip}
-        // An iOS grouped-list row, not a blue text link: ink label, grey disclosure
-        // chevron, on the same white face as the card above so the two read as one
-        // group. Flat (no shadow) — it is a row of the card's group, not a second card.
-        className="flex min-h-[52px] items-center justify-between rounded-2xl bg-surface-container-lowest px-5 text-body font-semibold text-surface-on transition-colors duration-100 active:bg-surface-container-low"
-      >
-        View Trip
-        <ChevronRight className="h-5 w-5 text-surface-on-variant" strokeWidth={2.25} aria-hidden />
-      </button>
+      <Exceptions exceptions={exceptions} />
     </div>
   )
 }

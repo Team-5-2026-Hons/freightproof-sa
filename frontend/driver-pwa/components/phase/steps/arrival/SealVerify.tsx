@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
+import { StatusBanner } from '@/components/ui/StatusBanner'
+import { CircleDashed, Lock, Unlink, type LucideIcon } from 'lucide-react'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { isValidSealFormat, normalizeSeal } from '@/lib/utils/seal-format'
@@ -29,47 +30,44 @@ interface SealVerifyProps {
 const AS_FOUND_INSTRUCTION =
   'Before anything is opened, record the seal exactly as you find it at the gate.'
 
-const MISSING_PHOTO_INSTRUCTION =
-  'Photograph where the seal should be. A missing seal is recorded as a finding, the same as any other.'
-const PRESENT_PHOTO_INSTRUCTION =
-  'Photograph the seal as found, before it is broken.'
-
-const CONDITIONS: readonly { value: SealCondition; label: string }[] = [
-  { value: 'intact', label: 'Intact' },
-  { value: 'damaged', label: 'Damaged' },
-  { value: 'missing', label: 'Missing' },
+const CONDITIONS: readonly { value: SealCondition; label: string; Icon: LucideIcon }[] = [
+  { value: 'intact', label: 'Intact', Icon: Lock },
+  { value: 'damaged', label: 'Damaged', Icon: Unlink },
+  { value: 'missing', label: 'Missing', Icon: CircleDashed },
 ]
+
+const NOTE_ID = 'arrival-seal-note'
 
 interface ConditionChoiceProps {
   value: SealCondition | null
   onChange: (condition: SealCondition) => void
 }
 
-// Large touch targets, one tap each — a driver reading a physical seal at a gate is not
-// the place for a dropdown. role="radiogroup"/"radio" mirrors native select-one
-// semantics for assistive tech; Button's own `lg` size (min-h-[52px], w-full) is the
-// app's documented large-touch-target treatment (see Button.tsx's own comment).
+// Large tiles, one tap each — a driver reading a physical seal at a gate is not the place
+// for a dropdown. role="radiogroup"/"radio" mirrors native select-one semantics.
 function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
   return (
-    // auto-fit on a rem minimum, not a fixed 3 columns: the three choices sit in a row at
-    // normal text sizes and stack once Dynamic Type makes "Damaged" wider than a third of
-    // the screen — at AX sizes a fixed grid pushed the word out of its own button.
-    <div role="radiogroup" aria-label="Seal condition" className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2">
-      {CONDITIONS.map((condition) => {
-        const selected = value === condition.value
+    // auto-fit on a rem minimum, not a fixed 3 columns: the three sit in a row at normal
+    // text sizes and stack once Dynamic Type makes "Damaged" wider than a third of the
+    // screen — at AX sizes a fixed grid pushed the word out of its own tile.
+    <div role="radiogroup" aria-label="Seal condition" className="grid grid-cols-[repeat(auto-fit,minmax(6.5rem,1fr))] gap-2.5">
+      {CONDITIONS.map(({ value: condition, label, Icon }) => {
+        const selected = value === condition
         return (
-          <Button
-            key={condition.value}
+          <button
+            key={condition}
             type="button"
             role="radio"
             aria-checked={selected}
-            variant={selected ? 'primary' : 'secondary'}
-            size="lg"
-            className={cn(!selected && 'text-surface-on')}
-            onClick={() => onChange(condition.value)}
+            onClick={() => onChange(condition)}
+            className={cn(
+              'flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-[18px] text-body font-semibold transition-transform duration-100 active:scale-[0.97]',
+              selected ? 'bg-surface-on text-surface' : 'bg-fill text-surface-on',
+            )}
           >
-            {condition.label}
-          </Button>
+            <Icon className="size-6" strokeWidth={1.9} aria-hidden />
+            {label}
+          </button>
         )
       })}
     </div>
@@ -130,6 +128,11 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
     onUpdate({ sealNumberAtArrival: normalized })
   }
 
+  // The waiting swipe names the next missing thing, in the order the screen asks for them.
+  const waitingLabel = draft.sealCondition === null
+    ? 'Choose the seal condition'
+    : !numberSatisfied ? 'Add the seal number' : 'Add the photo first'
+
   return (
     <StepLayout
       phase={phase}
@@ -141,44 +144,50 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
         ...(isMissing ? [] : [{ label: 'Seal number', met: numberSatisfied }]),
         { label: 'Seal photo', met: hasPhoto },
       ]}
-      // Always "Swipe to Submit": the label must never leak the comparison result, in any
-      // condition.
-      action={<SwipeToConfirm label="Swipe to Submit" onConfirm={onComplete} disabled={!isReady} />}
+      // One label in every condition: it must never leak the comparison result.
+      action={<SwipeToConfirm label="Swipe to Record Seal" waitingLabel={waitingLabel} onConfirm={onComplete} disabled={!isReady} />}
     >
+      <section className="flex flex-col gap-2.5">
+        <h2 className="text-subhead font-semibold text-surface-on-variant">Seal condition</h2>
+        <ConditionChoice value={draft.sealCondition} onChange={handleConditionChange} />
+      </section>
 
+      {isMissing ? (
+        <StatusBanner tone="attention" title="Recorded as a finding">
+          A missing seal is evidence like any other. Photograph where it should be.
+        </StatusBanner>
+      ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-footnote font-semibold text-surface-on-variant">
-            Seal condition
-          </p>
-          <ConditionChoice value={draft.sealCondition} onChange={handleConditionChange} />
-        </div>
-
-        {!isMissing && (
-          <>
-            <Input
-              label="Seal number at arrival"
-              placeholder="Type the seal number you see"
-              value={input}
-              onChange={(e) => handleInputChange(e.target.value)}
-            />
-            {showFormatHint && (
-              <p className="text-subhead text-error">
-                Seal number must look like AB-1234 (two letters, four digits).
-              </p>
-            )}
-          </>
-        )}
-
-        <div className="flex flex-col gap-3 border-t border-outline-variant/40 pt-6">
-          <p className="text-body leading-relaxed text-surface-on-variant">
-            {isMissing ? MISSING_PHOTO_INSTRUCTION : PRESENT_PHOTO_INSTRUCTION}
-          </p>
-          <CameraCapture
-            label="Seal photo"
-            dataUrl={draft.sealPhotoDataUrl}
-            onCapture={handleSealPhoto}
+          <Input
+            label="Seal number you see"
+            placeholder="AB-1234"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-describedby={NOTE_ID}
+            aria-invalid={showFormatHint || undefined}
+            value={input}
+            onChange={(e) => handleInputChange(e.target.value)}
+            // Set like a plate, as at departure: larger, tracked out, each character distinct.
+            className={cn('text-title-3 tracking-wider', showFormatHint && 'ring-2 ring-error focus-visible:ring-error')}
           />
+          {/* Blind entry is the point: the number must come off the seal itself. */}
+          <p id={NOTE_ID} className={cn('text-footnote', showFormatHint ? 'font-medium text-error' : 'text-surface-on-variant')}>
+            {showFormatHint
+              ? 'Seal number must look like AB-1234 (two letters, four digits).'
+              : 'Type what is printed. Don’t copy it from paperwork.'}
+          </p>
         </div>
+      )}
+
+      <CameraCapture
+        label="Seal photo"
+        actionLabel={isMissing ? 'Photograph the door latch' : 'Photograph the seal'}
+        hint={isMissing ? 'Where the seal should be' : 'As found, before it is broken'}
+        dataUrl={draft.sealPhotoDataUrl}
+        capturedAt={draft.capturedAt}
+        onCapture={handleSealPhoto}
+      />
     </StepLayout>
   )
 }

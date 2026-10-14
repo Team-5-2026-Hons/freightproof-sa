@@ -32,7 +32,7 @@ interface ChipProps extends VariantProps<typeof chipVariants> {
   children: ReactNode
   animated?: boolean
   className?: string
-  // Native title tooltip — used by AnchorBadge to surface a full event hash on hover
+  // Native title tooltip — e.g. to surface a full value on hover
   // without cluttering the compact pill label itself.
   title?: string
 }

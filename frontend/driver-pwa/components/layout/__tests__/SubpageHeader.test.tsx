@@ -2,6 +2,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { SubpageHeader } from '../SubpageHeader'
+import { getEdgeBackHandler } from '@/lib/navigation/edge-back'
 
 const mockPush = vi.fn()
 const mockBack = vi.fn()
@@ -76,6 +77,30 @@ describe('SubpageHeader', () => {
     expect(caption).toHaveClass('sr-only')
   })
 
+  it('centres the title in the bar with the subtitle beneath it', () => {
+    render(<SubpageHeader title="In Transit" subtitle="TRP-2026-0041" />)
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'In Transit' })
+    expect(heading.parentElement).toHaveClass('text-center')
+    // Tabular figures, not monospace: the overhaul's identifiers keep the system face (design system 0).
+    expect(screen.getByText('TRP-2026-0041')).toHaveClass('tabular-nums')
+    expect(screen.getByText('TRP-2026-0041')).not.toHaveClass('font-mono')
+  })
+
+  it('registers its back action for the left-edge swipe while mounted', () => {
+    // Arrange
+    const onBack = vi.fn()
+    const { unmount } = render(<SubpageHeader title="Log Exception" onBack={onBack} />)
+
+    // Act
+    getEdgeBackHandler()?.()
+
+    // Assert
+    expect(onBack).toHaveBeenCalledTimes(1)
+    unmount()
+    expect(getEdgeBackHandler()).toBeNull()
+  })
+
   it('renders the back button as an ink chevron in a light round well, with no visible text', () => {
     render(<SubpageHeader title="Log Exception" backLabel="In Transit" />)
 
@@ -94,5 +119,15 @@ describe('SubpageHeader', () => {
 
     expect(screen.getByRole('heading', { name: 'FP-20260804-31F49BDE' })).toBeInTheDocument()
     expect(screen.queryByText('Trip reference')).not.toBeInTheDocument()
+  })
+})
+
+describe('SubpageHeader bar variant (overhaul 6.2/6.3)', () => {
+  it('test_centres_the_title_in_the_bar_without_a_subtitle', () => {
+    render(<SubpageHeader title="Checkpoint" titleVariant="bar" backLabel="In Transit" onBack={() => {}} />)
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'Checkpoint' })
+    expect(heading).toHaveClass('text-headline')
+    expect(heading.parentElement).toHaveClass('text-center')
   })
 })

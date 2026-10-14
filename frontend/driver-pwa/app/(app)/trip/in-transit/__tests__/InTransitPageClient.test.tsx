@@ -1,4 +1,4 @@
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import InTransitPageClient from '../InTransitPageClient'
 import { ROUTES } from '@/lib/constants/routes'
@@ -7,6 +7,7 @@ import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
+import { mockPrecincts } from '@shared/lib/mocks/precincts'
 import type { PhaseSubmissionOutcome, PhaseSubmissionRequest } from '@/lib/submission/phase-submitter'
 
 const mockUseTrip = vi.fn()
@@ -79,6 +80,14 @@ vi.mock('@/lib/submission/phase-submitter', () => ({
 // The map has its own suite (components/map/__tests__/DriverMap.test.tsx) covering the
 // whole degradation ladder. Stubbed here so this suite is about the hub, while still
 // surfacing the fix the hub feeds it — the one thing the hub owns.
+// "Heading to" names the destination from the driver's trip list (useTripPlaces).
+vi.mock('@/lib/hooks/useMyTrips', () => ({
+  useMyTrips: () => ({
+    trips: [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB — Linbro Park', destination_precinct_name: 'FedEx DBN — Riverhorse Valley' }],
+    isLoading: false, loadError: null, reload: vi.fn(),
+  }),
+}))
+
 vi.mock('@/components/map/DriverMap', () => ({
   DriverMap: ({ position }: { position: { lat: number; lng: number } | null }) => (
     <div data-testid="driver-map">{position === null ? 'no-fix' : `${position.lat},${position.lng}`}</div>
@@ -203,9 +212,15 @@ afterEach(() => {
 })
 
 async function confirmArrival(): Promise<PhaseSubmissionRequest> {
-  fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+  fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
   await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledTimes(1))
   return mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+}
+
+
+/** The open-exception cards, counted inside their section — no count eyebrow is drawn. */
+function openExceptionCards() {
+  return within(screen.getByRole('region', { name: 'Open exceptions' })).getAllByRole('button')
 }
 
 describe('InTransitPageClient exceptions list (5b)', () => {
@@ -227,7 +242,7 @@ describe('InTransitPageClient exceptions list (5b)', () => {
 
     render(<InTransitPageClient />)
 
-    expect(screen.getByText('3 open exceptions')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(3)
     expect(screen.getByText(/pallet crushed during pothole impact/i)).toBeInTheDocument()
     expect(screen.queryByText(/stale snapshot exception/i)).not.toBeInTheDocument()
   })
@@ -245,7 +260,7 @@ describe('InTransitPageClient exceptions list (5b)', () => {
 
     render(<InTransitPageClient />)
 
-    expect(screen.getByText('1 open exception')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(1)
     expect(screen.queryByText(/already handled/i)).not.toBeInTheDocument()
   })
 })
@@ -266,14 +281,14 @@ describe('InTransitPageClient expandable cards (5c)', () => {
     })
   })
 
-  it('renders each card as a button, collapsed with line-clamp-2 and aria-expanded=false', () => {
+  it('renders each card as a button, collapsed to one clamped line and aria-expanded=false', () => {
     render(<InTransitPageClient />)
 
     const card = screen.getByRole('button', { expanded: false })
     const description = screen.getByText(/a very long dispatcher note/i)
 
     expect(card).toContainElement(description)
-    expect(description).toHaveClass('line-clamp-2')
+    expect(description).toHaveClass('line-clamp-1')
   })
 
   it('shows that a card expands, and marks it as an alert without a thick side stripe', () => {
@@ -293,12 +308,12 @@ describe('InTransitPageClient expandable cards (5c)', () => {
     fireEvent.click(card)
 
     expect(card).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText(/a very long dispatcher note/i)).not.toHaveClass('line-clamp-2')
+    expect(screen.getByText(/a very long dispatcher note/i)).not.toHaveClass('line-clamp-1')
 
     fireEvent.click(card)
 
     expect(card).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText(/a very long dispatcher note/i)).toHaveClass('line-clamp-2')
+    expect(screen.getByText(/a very long dispatcher note/i)).toHaveClass('line-clamp-1')
   })
 })
 
@@ -314,7 +329,42 @@ describe('InTransitPageClient driving screen', () => {
     expect(screen.getByRole('button', { name: 'Panic' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /log exception/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /arrive at destination/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /swipe to arrive/i })).toBeInTheDocument()
+  })
+
+  it('test_shows_where_the_truck_is_heading_and_when_it_is_due', () => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, planned_arrival_at: '2026-05-09T17:30:00Z' }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByText('Heading to')).toBeInTheDocument()
+    expect(screen.getByText('FedEx DBN')).toBeInTheDocument()
+    expect(screen.getByText('Riverhorse Valley')).toBeInTheDocument()
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument()
+  })
+
+  it('test_offers_navigate_to_a_destination_the_phone_can_place', () => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, destination_precinct_id: String(mockPrecincts[1].id) }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByRole('link', { name: /navigate/i })).toHaveAttribute('href', expect.stringContaining('destination='))
+  })
+
+  it('test_offers_no_navigate_when_the_destination_is_unknown', () => {
+    render(<InTransitPageClient />)
+
+    expect(screen.queryByRole('link', { name: /navigate/i })).toBeNull()
+  })
+
+  it('test_keeps_a_way_back_over_the_map', () => {
+    render(<InTransitPageClient />)
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
   })
 
   it('keeps Panic outside the region that scrolls, so it can never be scrolled away', () => {
@@ -534,9 +584,9 @@ describe('InTransitPageClient arrival attestation', () => {
     mockPreviewPhaseLocation.mockResolvedValue(mismatch)
 
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
 
-    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
+    await screen.findByText('320 m apart')
     fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
     await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(
       'trip-1', IN_TRANSIT_PHASE.phase_event_id,
@@ -555,7 +605,7 @@ describe('InTransitPageClient arrival attestation', () => {
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
     try {
       render(<InTransitPageClient />)
-      fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+      fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
 
       await screen.findByText('Location not verified while offline.')
       await screen.findByText('We could not compare your location with the truck. Your action can still be recorded.')
@@ -622,7 +672,7 @@ describe('InTransitPageClient exception visibility (FP-150)', () => {
     expect(screen.queryByText(/positions disagree/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/off the planned route/i)).not.toBeInTheDocument()
     // Singular: one visible exception, not three.
-    expect(screen.getByText('1 open exception')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(1)
   })
 
   it('still shows dispatcher-raised exceptions, which the driver is meant to act on', () => {
@@ -654,6 +704,31 @@ describe('InTransitPageClient exception visibility (FP-150)', () => {
 
     // The empty state is the common case, and it must read as "nothing to see" rather
     // than "0 open exceptions" hinting that something was filtered away.
-    expect(screen.queryByText(/open exception/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Open exceptions' })).not.toBeInTheDocument()
+  })
+})
+
+describe('InTransitPageClient at accessibility text sizes', () => {
+  beforeEach(() => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, destination_precinct_id: String(mockPrecincts[1].id) }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+  })
+  afterEach(() => { document.documentElement.style.fontSize = '' })
+
+  it('test_moves_navigate_off_the_short_map_into_the_sheet', () => {
+    document.documentElement.style.fontSize = '28px'
+
+    render(<InTransitPageClient />)
+
+    const navigate = screen.getByRole('link', { name: /navigate/i })
+    expect(navigate.closest('section[aria-label="Your position"]')).toBeNull()
+  })
+
+  it('test_keeps_navigate_on_the_map_at_normal_sizes', () => {
+    render(<InTransitPageClient />)
+
+    const navigate = screen.getByRole('link', { name: /navigate/i })
+    expect(navigate.closest('section[aria-label="Your position"]')).not.toBeNull()
   })
 })

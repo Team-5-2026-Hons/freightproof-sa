@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useStatusBarOverride } from '@/lib/hooks/useStatusBarOverride'
 
 interface AuthFrameProps {
   /** Shows the round back button when given. */
@@ -22,6 +23,8 @@ interface AuthFrameProps {
 // sign-in, and ThemeManager has nothing to fight. The sign-in screens are always dark so
 // the flow reads as one continuous, deliberate surface from the photo welcome onward.
 export function AuthFrame({ onBack, backLabel = 'Back', className, children }: AuthFrameProps) {
+  // The scoped class can't reach the native status bar; this keeps its glyphs light.
+  useStatusBarOverride('dark')
   return (
     <div className="dark">
       <main

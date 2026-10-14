@@ -1,14 +1,16 @@
 // frontend/driver-pwa/app/(app)/trips/__tests__/page.test.tsx
 //
 // Regression cover for the reported bug: a driver with one activated trip and two
-// un-activated assignments saw Active=1, Upcoming=0, Past=0 — the Upcoming and Past tabs
-// read mock fixtures filtered by the signed-in driver's real UUID, which matched no
-// fixture, so real trips could never appear there however many existed.
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+// un-activated assignments saw only the active one — the other groups read mock fixtures
+// filtered by the signed-in driver's real UUID, which matched no fixture. Rewritten for
+// the overhaul (3.1): one non-scrolling page — Now, Upcoming and Past previews, each
+// with "See all" — instead of three tabs; the grouping it protects is unchanged.
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import type { TripId } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
+import { ROUTES } from '@/lib/constants/routes'
 import TripsPage from '../page'
 
 // Real-data mode: demo mode short-circuits to fixtures and would prove nothing here.
@@ -23,19 +25,14 @@ vi.mock('@/lib/hooks/useAuth', () => ({
   useAuth: () => ({ user: { id: 'driver-real-uuid' } }),
 }))
 
+vi.mock('@/lib/hooks/useTrip', () => ({
+  useTrip: () => ({ trip: null }),
+}))
+
 const mockFetchMyTrips = vi.fn()
 vi.mock('@/lib/api/trips', () => ({
   fetchMyTrips: () => mockFetchMyTrips(),
 }))
-
-// @radix-ui/react-tabs activates a trigger on mousedown (for perceived responsiveness),
-// not on click — fireEvent.click alone never reaches Radix's selection handler, so fire
-// the fuller pointer sequence a real click produces. Mirrors components/ui/__tests__/Tabs.test.tsx.
-function switchToTab(name: RegExp): void {
-  const trigger = screen.getByRole('tab', { name })
-  fireEvent.mouseDown(trigger)
-  fireEvent.click(trigger)
-}
 
 function makeTrip(overrides: Partial<DriverTripSummary> & { status: CoarseTripStatus }): DriverTripSummary {
   return {
@@ -60,151 +57,118 @@ function makeTrip(overrides: Partial<DriverTripSummary> & { status: CoarseTripSt
 
 // The exact shape reported: one activated trip, two assignments not yet started.
 const ACTIVE = makeTrip({ status: 'active', trip_reference: 'FP-ACTIVE' })
-const UPCOMING_A = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-A' })
-const UPCOMING_B = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-B' })
-const CLOSED = makeTrip({
-  status: 'closed', trip_reference: 'FP-CLOSED', actual_arrival_at: '2026-07-01T10:00:00Z',
-})
+const UPCOMING_A = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-A', planned_departure_at: '2026-08-07T06:00:00Z', origin_precinct_name: 'Durban Depot' })
+const UPCOMING_B = makeTrip({ status: 'created', trip_reference: 'FP-UPCOMING-B', planned_departure_at: '2026-08-06T06:00:00Z', origin_precinct_name: 'Pretoria Depot' })
+const CLOSED_OLD = makeTrip({ status: 'closed', trip_reference: 'FP-CLOSED-OLD', planned_departure_at: '2026-06-01T06:00:00Z', origin_precinct_name: 'Kimberley Depot', actual_arrival_at: '2026-06-01T20:00:00Z' })
+const CLOSED_NEW = makeTrip({ status: 'closed', trip_reference: 'FP-CLOSED-NEW', planned_departure_at: '2026-07-01T06:00:00Z', origin_precinct_name: 'Polokwane Depot', actual_arrival_at: '2026-07-01T20:00:00Z' })
 
-describe('trips list page', () => {
+function section(name: string): HTMLElement {
+  return screen.getByRole('region', { name })
+}
+
+describe('trips page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('counts an activated trip and two un-activated assignments as Active 1 / Upcoming 2', async () => {
+  it('test_shows_the_active_trip_up_front_and_both_assignments_as_upcoming', async () => {
     mockFetchMyTrips.mockResolvedValue([UPCOMING_B, UPCOMING_A, ACTIVE])
 
     render(<TripsPage />)
 
-    // Tab labels carry their own count, so asserting on the tab proves the grouping.
-    expect(await screen.findByRole('tab', { name: /Active 1/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Upcoming 2/i })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Past 0/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Current trip/ })).toHaveTextContent('Johannesburg Depot → Cape Town Depot')
+    expect(within(section('Upcoming')).getAllByRole('listitem').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('shows only the activated trip on the Active tab', async () => {
-    mockFetchMyTrips.mockResolvedValue([UPCOMING_B, UPCOMING_A, ACTIVE])
+  it('test_groups_terminal_trips_into_past', async () => {
+    mockFetchMyTrips.mockResolvedValue([CLOSED_OLD])
 
     render(<TripsPage />)
 
-    expect(await screen.findByText('FP-ACTIVE')).toBeInTheDocument()
-    // A 'created' trip is an assignment, not an active trip — it must not appear here.
-    expect(screen.queryByText('FP-UPCOMING-A')).not.toBeInTheDocument()
-    expect(screen.queryByText('FP-UPCOMING-B')).not.toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Past' })).toHaveTextContent('Kimberley Depot → Cape Town Depot')
   })
 
-  it('lists both un-activated assignments on the Upcoming tab', async () => {
-    mockFetchMyTrips.mockResolvedValue([UPCOMING_B, UPCOMING_A, ACTIVE])
-    render(<TripsPage />)
-    await screen.findByText('FP-ACTIVE')
-
-    switchToTab(/Upcoming/i)
-
-    expect(screen.getByText('FP-UPCOMING-A')).toBeInTheDocument()
-    expect(screen.getByText('FP-UPCOMING-B')).toBeInTheDocument()
-    expect(screen.queryByText('FP-ACTIVE')).not.toBeInTheDocument()
-  })
-
-  it('groups terminal trips into Past', async () => {
-    mockFetchMyTrips.mockResolvedValue([ACTIVE, CLOSED])
-    render(<TripsPage />)
-    await screen.findByText('FP-ACTIVE')
-
-    switchToTab(/Past/i)
-
-    expect(screen.getByText('FP-CLOSED')).toBeInTheDocument()
-  })
-
-  it('renders the server-resolved precinct names, not a truncated UUID', async () => {
-    mockFetchMyTrips.mockResolvedValue([ACTIVE])
+  it('test_renders_the_server_resolved_precinct_names_not_a_uuid', async () => {
+    mockFetchMyTrips.mockResolvedValue([UPCOMING_A])
 
     render(<TripsPage />)
 
-    expect(
-      await screen.findByText('Johannesburg Depot → Cape Town Depot'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Durban Depot → Cape Town Depot')).toBeInTheDocument()
   })
 
-  it('warns on the Upcoming tab that an active trip must be finished first', async () => {
+  it('test_warns_that_the_active_trip_must_be_finished_first', async () => {
     mockFetchMyTrips.mockResolvedValue([ACTIVE, UPCOMING_A])
+
     render(<TripsPage />)
-    await screen.findByText('FP-ACTIVE')
 
-    switchToTab(/Upcoming/i)
-
-    expect(screen.getByText(/Finish your active trip/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Finish your current trip before starting the next one/)).toBeInTheDocument()
   })
 
-  it('opens a trip by id rather than routing every row to the session trip', async () => {
+  it('test_opens_a_trip_by_id_rather_than_routing_every_row_to_the_session_trip', async () => {
     mockFetchMyTrips.mockResolvedValue([UPCOMING_A])
     render(<TripsPage />)
-    await screen.findByRole('tab', { name: /Upcoming 1/i })
-    switchToTab(/Upcoming/i)
 
-    fireEvent.click(screen.getByText('FP-UPCOMING-A'))
+    fireEvent.click(await screen.findByText('Durban Depot → Cape Town Depot'))
 
-    expect(mockPush).toHaveBeenCalledWith(`/trips/detail?id=${UPCOMING_A.id}`)
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.tripDetailById('trip-FP-UPCOMING-A'))
   })
 
-  it('lists upcoming trips soonest departure first, whatever order the server sent', async () => {
-    const aug5 = makeTrip({
-      status: 'created', trip_reference: 'FP-AUG-05', planned_departure_at: '2026-08-05T08:00:00Z',
-    })
-    const aug6 = makeTrip({
-      status: 'created', trip_reference: 'FP-AUG-06', planned_departure_at: '2026-08-06T08:00:00Z',
-    })
-    // Server order is the wrong way round — the page must not preserve it.
-    mockFetchMyTrips.mockResolvedValue([aug6, aug5])
-    render(<TripsPage />)
-    await screen.findByRole('tab', { name: /Upcoming 2/i })
-    switchToTab(/Upcoming/i)
-
-    const rendered = screen.getAllByText(/^FP-AUG-/).map((el) => el.textContent)
-
-    expect(rendered).toEqual(['FP-AUG-05', 'FP-AUG-06'])
-  })
-
-  it('lists past trips most recent departure first', async () => {
-    const july = makeTrip({
-      status: 'closed', trip_reference: 'FP-JULY', planned_departure_at: '2026-07-01T08:00:00Z',
-    })
-    const august = makeTrip({
-      status: 'closed', trip_reference: 'FP-AUGUST', planned_departure_at: '2026-08-01T08:00:00Z',
-    })
-    mockFetchMyTrips.mockResolvedValue([july, august])
-    render(<TripsPage />)
-    await screen.findByRole('tab', { name: /Past 2/i })
-    switchToTab(/Past/i)
-
-    const rendered = screen.getAllByText(/^FP-(JULY|AUGUST)$/).map((el) => el.textContent)
-
-    expect(rendered).toEqual(['FP-AUGUST', 'FP-JULY'])
-  })
-
-  it('surfaces a load failure instead of claiming there are no trips', async () => {
-    mockFetchMyTrips.mockRejectedValue(new Error('offline'))
-    // Expected console.error from the page's own catch — silenced so it doesn't look
-    // like a test failure in the output.
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('test_lists_upcoming_soonest_first', async () => {
+    mockFetchMyTrips.mockResolvedValue([UPCOMING_A, UPCOMING_B])
 
     render(<TripsPage />)
 
-    await waitFor(() => {
-      expect(screen.getByText(/Could not load your trips/i)).toBeInTheDocument()
-    })
-    expect(screen.queryByText('No active trip')).not.toBeInTheDocument()
-    consoleError.mockRestore()
+    const rows = within(await screen.findByRole('region', { name: 'Upcoming' })).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Pretoria Depot')
   })
 
-  it('retries the fetch when the driver taps Try Again', async () => {
-    mockFetchMyTrips.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([ACTIVE])
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('test_lists_past_most_recent_first', async () => {
+    mockFetchMyTrips.mockResolvedValue([CLOSED_OLD, CLOSED_NEW])
+
     render(<TripsPage />)
-    await screen.findByText(/Could not load your trips/i)
 
-    fireEvent.click(screen.getByRole('button', { name: /Try Again/i }))
+    const rows = within(await screen.findByRole('region', { name: 'Past' })).getAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Polokwane Depot')
+  })
 
-    expect(await screen.findByText('FP-ACTIVE')).toBeInTheDocument()
-    consoleError.mockRestore()
+  it('test_see_all_opens_the_full_lists', async () => {
+    mockFetchMyTrips.mockResolvedValue([UPCOMING_A, CLOSED_OLD])
+    render(<TripsPage />)
+
+    fireEvent.click(within(await screen.findByRole('region', { name: 'Upcoming' })).getByRole('button', { name: /See all/ }))
+    fireEvent.click(within(section('Past')).getByRole('button', { name: /See all/ }))
+
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.tripsUpcoming)
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.tripsPast)
+  })
+
+  it('test_previews_only_what_fits_and_leaves_the_rest_to_see_all', async () => {
+    // jsdom cannot measure layout, so the page falls back to its default preview count.
+    const many = Array.from({ length: 8 }, (_, i) =>
+      makeTrip({ status: 'closed', trip_reference: `FP-P${i}`, planned_departure_at: `2026-07-0${i + 1}T06:00:00Z` }))
+    mockFetchMyTrips.mockResolvedValue(many)
+
+    render(<TripsPage />)
+
+    const rows = within(await screen.findByRole('region', { name: 'Past' })).getAllByRole('listitem')
+    expect(rows.length).toBeLessThan(8)
+  })
+
+  it('test_says_so_when_there_are_no_trips_at_all', async () => {
+    mockFetchMyTrips.mockResolvedValue([])
+
+    render(<TripsPage />)
+
+    expect(await screen.findByText('No trips yet')).toBeInTheDocument()
+  })
+
+  it('test_surfaces_a_load_failure_and_retries', async () => {
+    mockFetchMyTrips.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([UPCOMING_A])
+    render(<TripsPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Try Again' }))
+
+    expect(await screen.findByText('Durban Depot → Cape Town Depot')).toBeInTheDocument()
+    expect(mockFetchMyTrips).toHaveBeenCalledTimes(2)
   })
 })

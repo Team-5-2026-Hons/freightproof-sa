@@ -10,6 +10,8 @@ import { OtpInput } from '@/components/ui/OtpInput'
 import { AuthFrame, AuthHeading, AUTH_PILL, AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
 import { ROUTES } from '@/lib/constants/routes'
 import { takeReturnPath } from '@shared/lib/session/return-path'
+import { formatPhoneForDisplay } from '@/lib/utils/format-phone'
+
 
 // Kept in step with AuthContext's own list — see that file for why '/otp' isn't in ROUTES.
 const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
@@ -121,7 +123,12 @@ function OtpForm() {
     <AuthFrame onBack={() => router.push(ROUTES.loginPhone)} backLabel="Back to phone number">
       {/* "Code", not "OTP" — the same word the rest of the flow uses. */}
       <AuthHeading title="Enter the Code">
-        Sent to <span className="tabular-nums">{phone}</span> on WhatsApp.
+        {/* A refresh or a link can land here without the number; never "Sent to on WhatsApp." */}
+        {phone ? (
+          <>Sent to <span className="tabular-nums">{formatPhoneForDisplay(phone)}</span> on WhatsApp.</>
+        ) : (
+          'Sent to your phone on WhatsApp.'
+        )}
       </AuthHeading>
 
       <form onSubmit={handleVerify} className="mt-8 flex flex-col gap-4">

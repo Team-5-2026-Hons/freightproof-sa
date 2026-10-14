@@ -40,6 +40,54 @@ describe('CameraCapture captured branch', () => {
     expect(img.className).not.toContain('max-h-48')
     expect(img.closest('.aspect-video')).not.toBeNull()
   })
+
+  it('test_stamps_the_capture_time_when_known', () => {
+    const capturedAt = new Date(2026, 9, 14, 9, 58).toISOString()
+    render(<CameraCapture label="Seal photo" dataUrl={SAMPLE_DATA_URL} capturedAt={capturedAt} onCapture={vi.fn()} />)
+
+    expect(screen.getByText('Captured 09:58')).toBeInTheDocument()
+  })
+
+  it('test_marks_the_photo_as_captured', () => {
+    render(<CameraCapture label="Exit gate photo" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.getByText('Captured')).toBeInTheDocument()
+  })
+})
+
+describe('CameraCapture row variant (overhaul 6.3/6.4)', () => {
+  it('test_offers_an_optional_photo_as_one_compact_row', () => {
+    render(<CameraCapture variant="row" label="Photo (optional)" actionLabel="Add a photo" hint="Optional" dataUrl={null} onCapture={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: /Add a photo/ })).toBeInTheDocument()
+    expect(screen.getByText('Optional')).toBeInTheDocument()
+  })
+
+  it('test_shows_the_added_photo_with_retake', () => {
+    render(<CameraCapture variant="row" label="Photo (optional)" capturedHint="Sends with the report" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.getByAltText('Photo (optional)')).toBeInTheDocument()
+    expect(screen.getByText('Photo added')).toBeInTheDocument()
+    expect(screen.getByText('Sends with the report')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument()
+  })
+})
+
+describe('CameraCapture empty tile', () => {
+  it('test_names_what_to_photograph_with_a_hint_when_given', () => {
+    render(
+      <CameraCapture
+        label="Linehaul sheet photo"
+        actionLabel="Photograph the sheet"
+        hint="Fill the frame, keep the numbers sharp"
+        dataUrl={null}
+        onCapture={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Photograph the sheet/ })).toBeInTheDocument()
+    expect(screen.getByText('Fill the frame, keep the numbers sharp')).toBeInTheDocument()
+  })
 })
 
 // Audit fix: handleCapture previously had try/finally with NO catch — a permission

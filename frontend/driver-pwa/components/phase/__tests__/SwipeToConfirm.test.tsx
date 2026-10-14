@@ -315,6 +315,25 @@ describe('SwipeToConfirm — the confirm moment', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
 
+  it('test_names_what_just_happened_when_given_a_committed_label', () => {
+    // Arrange
+    render(<SwipeToConfirm label="Swipe to Depart" committedLabel="Departed" committedHint="Opening In Transit…" onConfirm={vi.fn()} />)
+
+    // Act
+    swipeTo(MAX_TRAVEL_PX)
+
+    // Assert — the green end state says the action in the past tense, and where it leads.
+    expect(screen.getByText('Departed')).toBeInTheDocument()
+    expect(screen.queryByText('Confirmed')).toBeNull()
+    expect(screen.getByText('Opening In Transit…')).toBeInTheDocument()
+  })
+
+  it('test_shows_no_hint_before_the_swipe_commits', () => {
+    render(<SwipeToConfirm label="Swipe to Depart" committedLabel="Departed" committedHint="Opening In Transit…" onConfirm={vi.fn()} />)
+
+    expect(screen.queryByText('Opening In Transit…')).toBeNull()
+  })
+
   it('ticks once as the drag crosses the commit point, not on every move past it', () => {
     // Arrange
     render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={vi.fn()} />)
@@ -327,6 +346,24 @@ describe('SwipeToConfirm — the confirm moment', () => {
 
     // Assert
     expect(vi.mocked(playHaptic).mock.calls.filter(([m]) => m === 'threshold')).toHaveLength(1)
+  })
+
+  it('never confirms when the system cancels the touch past the commit point', () => {
+    // Arrange — Control Center, a banner or a call takes the touch at 95%.
+    const onConfirm = vi.fn()
+    render(<SwipeToConfirm label="Swipe to Confirm" onConfirm={onConfirm} />)
+    const track = getTrack()
+
+    // Act
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    fireEvent.pointerMove(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
+    fireEvent.pointerCancel(track, { clientX: MAX_TRAVEL_PX * 0.95, pointerId: 1 })
+    settle()
+
+    // Assert
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(playHaptic).not.toHaveBeenCalledWith('confirm')
+    expect(getTrack()).toHaveAttribute('aria-valuenow', '0')
   })
 
   it('confirms a deliberate flick that is past halfway and carrying momentum', () => {
@@ -404,6 +441,33 @@ describe('SwipeToConfirm — the confirm moment', () => {
   })
 })
 
+describe('SwipeToConfirm — press reporting (overhaul 7.1b)', () => {
+  it('test_reports_the_finger_down_and_lifted', () => {
+    // Arrange
+    const onPressChange = vi.fn()
+    render(<SwipeToConfirm label="Send Panic" variant="danger" onConfirm={vi.fn()} onPressChange={onPressChange} />)
+    const track = getTrack()
+    onPressChange.mockClear()
+
+    // Act / Assert — down starts the pulse, a short release stops it.
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    expect(onPressChange).toHaveBeenLastCalledWith(true)
+    fireEvent.pointerUp(track, { clientX: 10, pointerId: 1 })
+    expect(onPressChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('test_reports_released_when_the_system_cancels_the_touch', () => {
+    const onPressChange = vi.fn()
+    render(<SwipeToConfirm label="Send Panic" variant="danger" onConfirm={vi.fn()} onPressChange={onPressChange} />)
+    const track = getTrack()
+
+    fireEvent.pointerDown(track, { clientX: 0, pointerId: 1 })
+    fireEvent.pointerCancel(track, { clientX: 0, pointerId: 1 })
+
+    expect(onPressChange).toHaveBeenLastCalledWith(false)
+  })
+})
+
 describe('SwipeToConfirm — waiting state', () => {
   it('reads as waiting, not switched off, while disabled', () => {
     // Arrange / Act
@@ -411,8 +475,27 @@ describe('SwipeToConfirm — waiting state', () => {
 
     // Assert — a full-strength neutral track with a legible label, never a 40% fade.
     const track = getTrack()
-    expect(track).toHaveClass('bg-surface-container-highest')
+    expect(track).toHaveClass('bg-fill')
     expect(track).not.toHaveClass('opacity-40')
     expect(screen.getByText('Swipe to Submit')).toHaveClass('text-surface-on-variant')
+  })
+
+  it('test_says_what_it_is_waiting_for_instead_of_the_action', () => {
+    // Arrange / Act
+    render(<SwipeToConfirm label="Swipe to Submit" waitingLabel="Add the sheet photo first" onConfirm={vi.fn()} disabled />)
+
+    // Assert — the track names the missing thing; the slider keeps its action as its name.
+    expect(screen.getByText('Add the sheet photo first')).toBeInTheDocument()
+    expect(screen.queryByText('Swipe to Submit')).toBeNull()
+    expect(getTrack()).toHaveAccessibleName('Swipe to Submit')
+  })
+
+  it('test_shows_the_action_again_once_ready', () => {
+    // Arrange / Act
+    render(<SwipeToConfirm label="Swipe to Submit" waitingLabel="Add the sheet photo first" onConfirm={vi.fn()} />)
+
+    // Assert
+    expect(screen.getByText('Swipe to Submit')).toBeInTheDocument()
+    expect(screen.queryByText('Add the sheet photo first')).toBeNull()
   })
 })

@@ -43,7 +43,7 @@ function makeDraft(overrides: Partial<ArrivalEvidence> = {}): ArrivalEvidence {
 }
 
 function typeSeal(value: string) {
-  fireEvent.change(screen.getByPlaceholderText('Type the seal number you see'), {
+  fireEvent.change(screen.getByLabelText('Seal number you see'), {
     target: { value },
   })
 }
@@ -90,19 +90,19 @@ describe('arrival SealVerify — blind entry', () => {
     expect(screen.queryByText(/No seal is on record/)).not.toBeInTheDocument()
   })
 
-  it('always offers the neutral "Swipe to Submit" label, never "Swipe to flag"', () => {
+  it('always offers the neutral "Swipe to Record Seal" label, never "Swipe to flag"', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'intact', sealNumberAtArrival: 'AB-1234' }) })
 
-    expect(screen.getByText('Swipe to Submit')).toBeInTheDocument()
+    expect(screen.getByText('Swipe to Record Seal')).toBeInTheDocument()
     expect(screen.queryByText('Swipe to flag')).not.toBeInTheDocument()
   })
 
   it('offers the same neutral label when the seal is damaged or missing', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'damaged', sealNumberAtArrival: 'AB-1234' }) })
-    expect(screen.getByText('Swipe to Submit')).toBeInTheDocument()
+    expect(screen.getByText('Swipe to Record Seal')).toBeInTheDocument()
 
     renderStep({ draft: makeDraft({ sealCondition: 'missing', sealNumberAtArrival: null }) })
-    expect(screen.getAllByText('Swipe to Submit').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Swipe to Record Seal').length).toBeGreaterThan(0)
   })
 
   it('records only the number typed, with no client-side verdict alongside it', () => {
@@ -129,7 +129,7 @@ describe('arrival SealVerify — seal condition choice', () => {
   it('blocks the swipe until a condition is chosen', () => {
     renderStep({ draft: makeDraft({ sealCondition: null, sealNumberAtArrival: 'AB-1234' }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('marks the chosen condition as checked and the others as not', () => {
@@ -166,13 +166,13 @@ describe('arrival SealVerify — seal number format gate', () => {
     chooseCondition('Intact')
     typeSeal('nope')
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('requires the number for a damaged seal, exactly as for an intact one', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'damaged', sealNumberAtArrival: null }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 })
 
@@ -180,7 +180,7 @@ describe('arrival SealVerify — missing seal', () => {
   it('hides the seal number input once "Missing" is chosen', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'missing' }) })
 
-    expect(screen.queryByPlaceholderText('Type the seal number you see')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Seal number you see')).not.toBeInTheDocument()
   })
 
   it('clears any previously typed seal number when the driver switches to "Missing"', () => {
@@ -195,7 +195,7 @@ describe('arrival SealVerify — missing seal', () => {
   it('allows the swipe with no number once the seal is missing and the photo is present', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'missing', sealNumberAtArrival: null }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'false')
   })
 
   it('still requires the photo when the seal is missing', () => {
@@ -203,13 +203,13 @@ describe('arrival SealVerify — missing seal', () => {
       draft: makeDraft({ sealCondition: 'missing', sealNumberAtArrival: null, sealPhotoDataUrl: null }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('tells the driver to photograph where the seal should be', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'missing' }) })
 
-    expect(screen.getByText(/Photograph where the seal should be/)).toBeInTheDocument()
+    expect(screen.getByText(/Photograph where it should be/)).toBeInTheDocument()
   })
 })
 
@@ -222,13 +222,13 @@ describe('arrival SealVerify seal photo gate', () => {
       draft: makeDraft({ sealCondition: 'intact', sealNumberAtArrival: 'AB-1234', sealPhotoDataUrl: null }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('allows the swipe once condition, number and photo are all present', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'intact', sealNumberAtArrival: 'AB-1234' }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Submit' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Swipe to Record Seal' })).toHaveAttribute('aria-disabled', 'false')
   })
 
   it('records the captured photo and clears any stale artifact id', () => {
@@ -270,5 +270,26 @@ describe('arrival SealVerify — what is still needed', () => {
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).not.toHaveTextContent('Seal number')
     expect(list).toHaveTextContent('Seal photo')
+  })
+})
+
+describe('SealVerify — the overhauled screen (8.1/8.2)', () => {
+  it('test_tells_the_driver_to_read_the_seal_not_the_paperwork', () => {
+    renderStep()
+
+    expect(screen.getByText(/Don’t copy it from paperwork/)).toBeInTheDocument()
+  })
+
+  it('test_records_a_missing_seal_as_a_finding_not_a_failure', () => {
+    renderStep({ draft: makeDraft({ sealCondition: 'missing' }) })
+
+    expect(screen.getByText('Recorded as a finding')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Seal photo' })).toBeInTheDocument()
+  })
+
+  it('test_says_what_is_still_missing_on_the_waiting_swipe', () => {
+    renderStep({ draft: makeDraft({ sealCondition: 'missing', sealPhotoDataUrl: null }) })
+
+    expect(screen.getByText('Add the photo first')).toBeInTheDocument()
   })
 })

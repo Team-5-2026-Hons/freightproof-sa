@@ -18,10 +18,10 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
   const showError = touched && error
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
       <label
         htmlFor={inputId}
-        className="text-footnote font-semibold text-surface-on-variant"
+        className="text-subhead text-surface-on-variant"
       >
         {label}
       </label>
@@ -31,21 +31,21 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
         onBlur={() => setTouched(true)}
         className={cn(
           // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
-          'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
-          'bg-muted border border-input',
-          'placeholder:text-muted-foreground/80 resize-none',
-          'focus:outline-none focus:border-ring focus:bg-card',
-          'transition-colors duration-150 min-h-[120px]',
+          // Overhaul field, as Input: a fill, no border; 16px+ text so iOS never zooms.
+          'w-full rounded-[14px] border-0 bg-fill px-4 py-3.5 text-body text-surface-on',
+          'placeholder:text-surface-on-variant resize-none',
+          'outline-none focus-visible:ring-2 focus-visible:ring-primary',
+          'transition-shadow duration-150 min-h-[104px]',
           'disabled:opacity-40 disabled:cursor-not-allowed',
-          showError && 'border-destructive focus:border-destructive',
+          showError && 'ring-2 ring-error focus-visible:ring-error',
           className,
         )}
         {...props}
       />
       {showError ? (
-        <p className="text-xs text-destructive font-medium">{error}</p>
+        <p className="text-footnote font-medium text-error">{error}</p>
       ) : helperText ? (
-        <p className="text-xs text-muted-foreground">{helperText}</p>
+        <p className="text-footnote text-surface-on-variant">{helperText}</p>
       ) : null}
     </div>
   )

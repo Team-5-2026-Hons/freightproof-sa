@@ -8,6 +8,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DriverMap } from '../DriverMap'
 import type { DriverPosition } from '@/lib/types/location'
+import { MAP_STYLES_QUIET } from '@/lib/tokens'
+
 
 // Mutable through a getter: DriverMap reads GOOGLE_MAPS_API_KEY as a module binding, and
 // the "key absent" and "key present" ladders are two different code paths in one suite.
@@ -255,7 +257,7 @@ describe('DriverMap — theme and handoff', () => {
     expect(options.styles!.length).toBeGreaterThan(0)
   })
 
-  it('keeps Google’s default styling in the light theme', async () => {
+  it('keeps Google’s light palette but hides points of interest in the light theme', async () => {
     // Arrange
     mockApiKey = 'a-real-key'
 
@@ -265,7 +267,7 @@ describe('DriverMap — theme and handoff', () => {
     // Assert
     await waitFor(() => expect(mapCtor).toHaveBeenCalled())
     const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
-    expect(options.styles).toBeNull()
+    expect(options.styles).toEqual(MAP_STYLES_QUIET)
   })
 
   it('restyles a live map when the theme flips (e.g. the automatic switch at sunset)', async () => {

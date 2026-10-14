@@ -1,13 +1,19 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { PackageSearch } from 'lucide-react'
+import { Truck } from 'lucide-react'
 import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { NowCard } from '@/components/home/NowCard'
+import { openDriverExceptions } from '@/lib/utils/trip-attention'
+import { DriverRecord } from '@/components/home/DriverRecord'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useMyTrips } from '@/lib/hooks/useMyTrips'
+import { driverRecord } from '@/lib/utils/driver-record'
+import { firstName, partOfDayGreeting } from '@/lib/utils/greeting'
+import { formatLongDate } from '@/lib/utils/format-time'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 // Route to the first step of the current phase's own recipe. Mirrors
@@ -23,7 +29,10 @@ function firstStepRoute(phase: PhaseDescriptor): string {
 
 export function HomeContent() {
   const router = useRouter()
-  const { trip, isLoading } = useTrip()
+  // The context list, not trip.exceptions: it includes everything logged this session.
+  const { trip, isLoading, exceptions } = useTrip()
+  const { user } = useAuth()
+  const { trips, isLoading: tripsLoading, loadError: tripsError } = useMyTrips()
 
   if (isLoading) {
     // Canonical loading state — the one LoadingScreen component every waiting screen in
@@ -32,27 +41,56 @@ export function HomeContent() {
     return <LoadingScreen label="Loading your trip" />
   }
 
+  const name = user ? firstName(user.full_name) : null
+  // The screen's visible heading (overhaul 2.1): today's date over the greeting. The tab's
+  // own "Home" title stays for screen readers only (AppShell).
+  const header = (
+    <div>
+      <p className="text-subhead text-surface-on-variant">{formatLongDate(new Date())}</p>
+      <p className="text-title-1 tracking-tight text-surface-on">
+        {partOfDayGreeting(new Date())}{name ? `, ${name}` : ''}
+      </p>
+    </div>
+  )
+  const record = !tripsLoading && tripsError === null ? <DriverRecord record={driverRecord(trips)} /> : null
+
   if (!trip) {
     return (
-      <main className="flex h-full flex-col gap-4 p-4">
-        <EmptyState
-          icon={<PackageSearch strokeWidth={1.5} aria-hidden />}
-          title="No active trip right now"
-          body="Your dispatcher hasn’t assigned you a trip yet."
-        />
+      <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
+        {header}
+        <section aria-label="No trip" className="flex flex-col items-center rounded-[22px] bg-fill px-6 pb-6 pt-7 text-center">
+          <span aria-hidden className="flex size-16 items-center justify-center rounded-full bg-surface">
+            <Truck className="size-8 text-surface-on" strokeWidth={1.7} />
+          </span>
+          <p className="mt-4 text-title-2 text-surface-on">No trip assigned</p>
+          <p className="mt-1.5 max-w-[290px] text-subhead text-surface-on-variant">
+            Your dispatcher assigns trips. The next one appears here the moment it’s ready.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.tripsPast)}
+            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-surface px-5 text-subhead font-semibold text-surface-on transition-transform duration-100 active:scale-95"
+          >
+            See past trips
+          </button>
+        </section>
+        {record}
       </main>
     )
   }
 
   return (
-    <main className="flex flex-col gap-4 p-4">
+    <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
+      {header}
       {/* Hold, driving and next-phase rules live in NowCard — see its header comment. */}
       <NowCard
         trip={trip}
+        exceptions={openDriverExceptions(exceptions)}
         onStartPhase={(phase) => router.push(firstStepRoute(phase))}
         onContinueDriving={() => router.push(ROUTES.inTransit)}
         onViewTrip={() => router.push(ROUTES.activeTripDetail)}
       />
+      {record}
     </main>
   )
 }

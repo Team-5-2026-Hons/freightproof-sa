@@ -162,13 +162,13 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
   it('is disabled until both the seal number and the seal photo are present', () => {
     renderStep({ draft: makeDraft() })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal photo is missing even though the number is valid', () => {
     renderStep({ draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: null }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal number is not validly formatted', () => {
@@ -176,7 +176,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'not-a-seal', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is enabled once the seal number is valid and the photo is captured', () => {
@@ -184,7 +184,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to Confirm' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'false')
   })
 })
 
@@ -202,7 +202,7 @@ describe('CaptureSeal — completing the swipe', () => {
       onComplete,
     })
 
-    const slider = screen.getByRole('slider', { name: 'Swipe to Confirm' })
+    const slider = screen.getByRole('slider', { name: 'Swipe to Save Seal' })
     fireEvent.keyDown(slider, { key: 'Enter' }) // arm
     fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
     act(() => {

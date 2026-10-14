@@ -9,7 +9,7 @@ function trip(status: Trip['status']): Trip {
   return { id: crypto.randomUUID(), status } as Trip
 }
 
-function exception(fields: Pick<TripException, 'review_status' | 'source'>): TripException {
+function exception(fields: Pick<TripException, 'review_status' | 'source'> & Partial<Pick<TripException, 'exception_type'>>): TripException {
   return { id: crypto.randomUUID(), ...fields } as TripException
 }
 
@@ -70,6 +70,17 @@ describe('tripNeedsAttention', () => {
   it('ignores a system detection on an otherwise ordinary trip', () => {
     // Arrange
     const list = [exception({ review_status: 'needs_review', source: 'system' })]
+
+    // Act
+    const result = tripNeedsAttention(trip('active'), list)
+
+    // Assert
+    expect(result).toBe(false)
+  })
+
+  it('ignores a dispatcher note — shown on Home, but never badged', () => {
+    // Arrange
+    const list = [exception({ review_status: 'needs_review', source: 'dispatcher', exception_type: 'dispatcher_note' })]
 
     // Act
     const result = tripNeedsAttention(trip('active'), list)

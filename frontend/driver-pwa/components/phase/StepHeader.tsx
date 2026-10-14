@@ -2,13 +2,16 @@
 
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ShieldAlert } from 'lucide-react'
-import { PHASE_NAMES, STEP_NAMES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'
+import { PHASE_NAMES, STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
-import { IconButton } from '@/components/ui/IconButton'
 import { cn } from '@/lib/utils'
 import { markTransition } from '@/lib/navigation/transition-direction'
+import { useScrolledPastTop } from '@/lib/hooks/useScrolledPastTop'
+import { useEdgeBackHandler } from '@/lib/navigation/edge-back'
+import { backTarget } from '@/lib/navigation/back-stack'
+import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
 
 interface StepHeaderProps {
   phase: PhaseDescriptor
@@ -19,98 +22,87 @@ interface StepHeaderProps {
 
 export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
   const router = useRouter()
+  const scrolled = useScrolledPastTop()
+  const session = useOptionalTrip()
 
-  // Derived straight from phase-meta rather than a hook (the old useStepIndicator has no
-  // equivalent here): a phase_type can occur more than once in one trip's plan, so
-  // "current/total" must come from THIS phase occurrence's own recipe, never from a
-  // lookup keyed only on type — the recipe itself is the same either way, but the
-  // component must not reintroduce a shared-lookup shape that assumes one row per type.
   const slugs = STEP_SLUGS[phase.phase_type]
-  const stepName = STEP_NAMES[phase.phase_type][stepIndex] ?? ''
   const phaseName = PHASE_NAMES[phase.phase_type]
-  const current = stepIndex + 1
   const total = slugs.length
 
-  // Mid-phase (not the first step): back goes to the previous step of the SAME phase
-  // occurrence, not out of it entirely. Drafts persist in localStorage keyed on
-  // phase_event_id (usePhaseDraft), so stepping back and forward again is always safe —
-  // including for a repeated phase_type, since that key never collides across occurrences.
+  // Where this phase sits in the whole trip (overhaul 4.x): "Phase 3 of 7". From the
+  // session trip's plan; without one (tests, a cold deep link mid-load) the header simply
+  // leaves the trip context out rather than guessing it.
+  const plan = session?.trip?.phases
+    ? [...session.trip.phases].sort((a, b) => a.sequence_number - b.sequence_number).filter((p) => p.phase_type !== 'trip_creation')
+    : null
+  const position = plan === null ? -1 : plan.findIndex((p) => p.phase_event_id === phase.phase_event_id)
+  const counter = [
+    position >= 0 && plan !== null ? `Phase ${position + 1} of ${plan.length}` : null,
+    // A one-step phase has nothing to count.
+    total > 1 ? `Step ${stepIndex + 1} of ${total}` : null,
+  ].filter(Boolean).join(' · ')
+
   function handleBack() {
     markTransition('back')
     if (stepIndex > 0) {
       router.push(phaseStepRoute(phase.phase_type, slugs[stepIndex - 1]))
     } else {
-      router.push(ROUTES.activeTripDetail)
+      router.push(backTarget(ROUTES.activeTripDetail))
     }
   }
+  useEdgeBackHandler(handleBack)
 
-  const backLabel = stepIndex > 0 ? 'Back to previous step' : 'Back to trip'
+  const backLabel = stepIndex > 0 ? 'Back to previous step' : 'Back'
 
   return (
-    // pt-safe clears the iOS status bar — phase steps are full-bleed
-    // (lib/navigation/full-bleed.ts), so this header owns the top of the device and
-    // would otherwise put the back arrow and panic button behind the notch. The 1rem
-    // that used to be pt-4 moves onto the inner row (see SubpageHeader for the same
-    // split, and why two padding-top utilities must not land on one node).
-    // border-b hairline rather than shadow-ambient-header, matching SubpageHeader — see
-    // that file for why the blurred shadow had to go. Kept identical here so the two
-    // sticky headers a driver moves between mid-trip don't change character — both use
-    // the shared .glass-nav material, since step content scrolls underneath.
-    <header className="glass-nav sticky top-0 z-sticky border-b border-outline-variant/25 pb-3 pt-safe px-4">
-      <div className="mb-3 flex items-center gap-3 pt-4">
-        {/* Same round ink chevron as SubpageHeader, so the two headers a driver moves
-            between mid-trip share one back affordance. 44px, the same touch minimum as
-            the panic button opposite it. */}
+    <header
+      className={cn(
+        'glass-nav sticky top-0 z-sticky border-b px-4 pb-3 pt-safe transition-[border-color] duration-200',
+        scrolled ? 'border-hairline' : 'border-transparent',
+      )}
+    >
+      {/* Back · phase (centred) · panic: the same three-column bar as the trip page, so
+          a driver moving between them keeps one back affordance in one place. */}
+      <div className="grid grid-cols-[2.75rem_1fr_2.75rem] items-center gap-2 pt-1">
         <button
           type="button"
           onClick={handleBack}
           aria-label={backLabel}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-surface-on transition-transform duration-100 active:scale-95 active:bg-surface-container-highest"
+          className="flex size-11 items-center justify-center rounded-full bg-fill text-surface-on transition-transform duration-100 active:scale-95 active:bg-surface-container-high"
         >
-          <ChevronLeft className="h-6 w-6 -translate-x-px" strokeWidth={2.25} aria-hidden />
+          <ChevronLeft className="size-6 -translate-x-px" strokeWidth={2.25} aria-hidden />
         </button>
-        {/* The step counter rides on the phase line rather than in its own column: with
-            a separate column the step name was squeezed to "Inspe…" (and then split
-            mid-word) at accessibility text sizes — and the step name is the one thing on
-            this screen the driver must be able to read. It now wraps on word boundaries. */}
-        <div className="flex-1 min-w-0">
-          <p className="truncate text-subhead text-surface-on-variant">
-            <span>{phaseName}</span>
-            <span aria-hidden> · </span>
-            <span className="tabular-nums">{current}/{total}</span>
-          </p>
-          <p className="text-title-3">{stepName}</p>
+        <div className="min-w-0 text-center">
+          <h2 className="truncate text-headline text-surface-on">{phaseName}</h2>
+          {counter !== '' && <p className="truncate text-footnote tabular-nums text-surface-on-variant">{counter}</p>}
         </div>
         {/* A driver under threat mid-phase (gate, loading bay) must reach panic without
-            first backing out to the trip hub. IconButton (size="md" = 44px, the minimum
-            touch target for a stressed, gloved hand): its cn() uses tailwind-merge, which
-            resolves the text-error/hover:bg-error-container override against IconButton's
-            own default text/hover classes correctly, so there's no risk of the default
-            color winning instead. */}
-        <IconButton
-          icon={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
+            first backing out to the trip. 44px, for a stressed, gloved hand. */}
+        <button
+          type="button"
           onClick={() => router.push(ROUTES.panic)}
           aria-label="Emergency — open panic alert"
-          // Round red-tinted well, the mirror of the back button's grey one: the pair
-          // frames the header symmetrically, and the tint keeps panic unmistakable.
-          className="rounded-full bg-error-container/60 text-error hover:bg-error-container active:bg-error-container"
-        />
+          className="flex size-11 items-center justify-center rounded-full bg-error-tint text-error transition-transform duration-100 active:scale-95"
+        >
+          <ShieldAlert className="size-5" strokeWidth={2.2} aria-hidden />
+        </button>
       </div>
-      {/* One segment per step of this phase: done steps solid, the step on screen tinted,
-          the rest empty. A fill bar measured current/total showed 100% the moment a
-          one-step phase opened — "finished" before the driver had done anything (M3). Same
-          visual language as the trip strip on Home. */}
-      <div className="flex gap-1" aria-hidden>
-        {slugs.map((slug, index) => (
-          <span
-            key={slug}
-            className={cn(
-              'h-1 flex-1 rounded-full transition-colors duration-300',
-              index < stepIndex ? 'bg-secondary' : index === stepIndex ? 'bg-secondary/40' : 'bg-surface-container-highest',
-            )}
-          />
-        ))}
-      </div>
+      {/* The whole trip, one segment per phase: done ink, this phase blue, the rest grey —
+          the same strip as Home and the trip page, so position reads the same everywhere. */}
+      {plan !== null && plan.length > 0 && (
+        <div data-trip-progress aria-hidden className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${plan.length}, minmax(0, 1fr))` }}>
+          {plan.map((p) => {
+            const done = p.status === 'completed' || p.status === 'overridden'
+            const isThis = p.phase_event_id === phase.phase_event_id
+            return (
+              <span
+                key={p.phase_event_id}
+                className={cn('h-1 rounded-full', isThis ? 'bg-secondary' : done ? 'bg-surface-on' : 'bg-surface-container-high')}
+              />
+            )
+          })}
+        </div>
+      )}
     </header>
   )
 }

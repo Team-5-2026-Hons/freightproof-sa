@@ -160,7 +160,7 @@ describe('Linehaul', () => {
 
     // "Linehaul sheet" also appears in the StepHeader's phase name, so the capture
     // control is identified by its own copy instead — unique to CameraCapture.
-    expect(screen.getByText(/take photo/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /photograph the sheet/i })).toBeInTheDocument()
   })
 
   it('disables the swipe until a photo exists', () => {

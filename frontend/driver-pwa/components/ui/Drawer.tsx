@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SPRING_FLICK, SPRING_SETTLE, animateSpring, projectMomentum, rubberband } from '@/lib/motion/spring'
@@ -40,8 +40,8 @@ interface DragSample {
 }
 
 // NOTE (deviation from @radix-ui/react-dialog): the drawer is kept mounted at
-// all times and only translated off-canvas via CSS — ProfilePanel (its one
-// remaining consumer) renders it unconditionally from AppShell and relies on that to
+// all times and only translated off-canvas via CSS — its consumers (the Profile
+// sheets, the sign-in number confirm) render it unconditionally and rely on that to
 // avoid remounting its contents on every open/close. Radix's Dialog.Content, ported with
 // `forceMount` to get the same "stays mounted while closed" contract, runs
 // `hideOthers(content)` in a mount-only effect (empty dep array) inside
@@ -55,6 +55,7 @@ interface DragSample {
 // close button kept as the way out for anyone who doesn't drag (HIG sheets: "Support
 // swiping to dismiss", "Include a grabber").
 export function Drawer({ open, onClose, side = 'right', children, title }: DrawerProps) {
+  const titleId = useId()
   // The sheet's live drag offset in px while a gesture or its spring owns the position;
   // null hands the position back to the CSS open/closed classes.
   const [dragOffset, setDragOffset] = useState<number | null>(null)
@@ -157,6 +158,15 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
     settleTo(dismiss ? height : 0, velocity, dismiss)
   }
 
+  // The system took the touch (Control Center, a notification, an incoming call): the
+  // driver never let go on purpose, so whatever the drag looked like, the sheet stays.
+  function handlePointerCancel(e: React.PointerEvent<HTMLDivElement>) {
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    settleTo(0, 0, false)
+  }
+
   const { container, open: openClass, closed } = panelClasses[side]
   const height = panelRef.current?.offsetHeight ?? 0
   // The scrim thins as the sheet is pulled down, so the page reappears in step with it.
@@ -183,6 +193,11 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
         // prop natively; both attributes are omitted entirely while open.
         aria-hidden={open ? undefined : true}
         inert={open ? undefined : true}
+        // A sheet is modal: tell assistive tech one has opened over the page, and name it
+        // by its title. Closed, aria-hidden above already removes it from the tree.
+        role="dialog"
+        aria-modal={open ? true : undefined}
+        aria-labelledby={title ? titleId : undefined}
         className={cn(
           'fixed bg-surface-container-lowest shadow-ambient z-modal',
           'overflow-y-auto',
@@ -201,12 +216,14 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
             className={cn(isSheet && 'touch-none select-none')}
           >
             {isSheet && <div className="mx-auto mt-2 h-1.5 w-9 rounded-full bg-outline-variant" aria-hidden />}
-            <div className={cn('flex items-center justify-between px-6', isSheet ? 'pb-2 pt-3' : 'border-b border-outline-variant/20 py-4')}>
-              <h2 className="text-headline text-surface-on">{title}</h2>
+            <div className={cn('flex items-center justify-between gap-3 px-6', isSheet ? 'pb-2 pt-3' : 'border-b border-outline-variant/20 py-4')}>
+              {/* min-w-0 + break-words: a long title at large text wraps, and the close
+                  button keeps its place instead of being pushed off the sheet. */}
+              <h2 id={titleId} className="min-w-0 break-words text-headline text-surface-on">{title}</h2>
               {/* w-11 (44px) meets the app's documented touch-target minimum (see
                   Button/IconButton/Switch) — the old w-8 (32px) was under it. -m-1.5
                   cancels the extra 12px so the layout box stays the 32px it always was:
@@ -216,7 +233,7 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
                 type="button"
                 onClick={onClose}
                 aria-label="Close drawer"
-                className="w-11 h-11 -m-1.5 flex items-center justify-center rounded-full text-surface-on-variant hover:bg-surface-container-low transition-colors"
+                className="w-11 h-11 -m-1.5 flex shrink-0 items-center justify-center rounded-full text-surface-on-variant hover:bg-surface-container-low transition-colors"
               >
                 <X className="w-5 h-5" strokeWidth={2} />
               </button>

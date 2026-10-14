@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Check, ChevronsRight } from 'lucide-react'
+import { Check, ChevronsRight, Lock } from 'lucide-react'
 import { getTapToConfirmPref } from '@/lib/constants/preferences'
 import { playHaptic } from '@/lib/haptics'
 import { SPRING_FLICK, SPRING_SETTLE, animateSpring, projectMomentum, rubberband, type SpringConfig } from '@/lib/motion/spring'
 import { cn } from '@/lib/utils'
 import { Spinner } from '@/components/ui/Spinner'
+import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 
 // Confirming a phase writes an immutable ledger row and can anchor to Hedera, so it must
 // never be reachable by a single accidental tap. Slide-to-confirm demands deliberate intent.
@@ -46,10 +47,21 @@ const VELOCITY_WINDOW_MS = 100
 // release as stationary rather than infinitely fast.
 const MIN_VELOCITY_SPAN_MS = 16
 
-// Track is h-16 (64px); thumb insets by TRACK_PADDING_PX on every side (56 + 4 + 4 = 64).
-// If the track height changes, THUMB_SIZE_PX must change with it to stay centred.
-const THUMB_SIZE_PX = 56
-const TRACK_PADDING_PX = 4
+// Track is h-16 (4rem); the thumb insets by TRACK_PADDING_REM on every side
+// (3.5 + 0.25 + 0.25 = 4). All three in rem, never px: on an iPhone 1rem follows the
+// driver's Text Size setting (globals.css), so a px thumb in a rem track sat off-centre
+// the moment the root grew past 16px — 56px in a 68px track, 4px gap above, 8px below.
+const THUMB_SIZE_REM = 3.5
+const TRACK_PADDING_REM = 0.25
+// jsdom and very old WebViews report no computed root size.
+const FALLBACK_ROOT_FONT_PX = 16
+
+/** The live px size of 1rem, so travel can be measured in the same unit the CSS uses. */
+function rootFontPx(): number {
+  if (typeof window === 'undefined') return FALLBACK_ROOT_FONT_PX
+  const size = parseFloat(window.getComputedStyle(document.documentElement).fontSize)
+  return Number.isFinite(size) && size > 0 ? size : FALLBACK_ROOT_FONT_PX
+}
 
 // How far the thumb may stretch past either end of its travel. rubberband() approaches its
 // `dimension` argument asymptotically, so this is the hard ceiling on the give: enough to
@@ -100,32 +112,44 @@ const VARIANT_CLASSES: Record<SwipeVariant, SwipeVariantClasses> = {
     thumb:         'bg-primary-on',
     glyph:         'text-primary',
   },
-  // Only ever rendered on the panic screen, whose whole page is bg-error — a bg-error track
-  // there was 1.0:1 against the page and simply did not exist (audit C1). The rail is a
-  // slot cut into the red instead: darkened red in light, deep red in dark (where the
-  // page is pale), with an inset shadow so it reads as recessed. The two themes need
-  // opposite moves, which is the case `dark:` variants exist for in this codebase.
+  // Only ever rendered on the panic screen. Since overhaul 7.1 that page is white (D5),
+  // so the track is the app's red at full strength with a white thumb — the one red
+  // control on the screen. The committed state stays red: "sent" is said by the screen
+  // that follows, not by turning an emergency control green.
   danger: {
-    track:         'bg-black/30 shadow-[inset_0_2px_6px_rgb(0_0_0/0.35)] dark:bg-error-on',
-    committedTrack:'bg-black/30 shadow-[inset_0_2px_6px_rgb(0_0_0/0.35)] dark:bg-error-on',
-    onTrack:       'text-error-on dark:text-error',
-    onCommitted:   'text-error-on dark:text-error',
-    spinner:       'border-error-on/30 border-t-error-on dark:border-error/30 dark:border-t-error',
-    thumb:         'bg-error-on dark:bg-error',
-    glyph:         'text-error dark:text-error-on',
+    track:         'bg-error',
+    committedTrack:'bg-error',
+    onTrack:       'text-error-on',
+    onCommitted:   'text-error-on',
+    spinner:       'border-error-on/30 border-t-error-on',
+    thumb:         'bg-error-on',
+    glyph:         'text-error',
   },
 }
 
 // The not-yet-ready look, shared by both variants (panic is never disabled in practice).
+// Overhaul 4.3: a fill track with a grey, locked thumb — the control is clearly there,
+// clearly not yet ready, and the label says why (waitingLabel).
 const WAITING_CLASSES = {
-  track: 'bg-surface-container-highest',
+  track: 'bg-fill',
   label: 'text-surface-on-variant',
-  thumb: 'bg-surface-container-lowest',
+  thumb: 'bg-surface-container-high',
   glyph: 'text-outline',
 } as const
 
 interface SwipeToConfirmProps {
   label: string
+  /** Shown on the track while disabled — what the step still needs ("Add the sheet photo first"). */
+  waitingLabel?: string
+  /** The green end state, in the past tense ("Departed"). Defaults to Confirmed. */
+  committedLabel?: string
+  /** One line under the committed track on what happens next ("Opening In Transit…"). */
+  committedHint?: string
+  /**
+   * Told whenever a finger goes down on the track or lifts (or the system cancels the
+   * touch) — the panic screen's red pulse runs exactly while the finger is down (7.1b).
+   */
+  onPressChange?: (pressed: boolean) => void
   onConfirm: () => void | Promise<void>
   disabled?: boolean
   variant?: SwipeVariant
@@ -138,6 +162,10 @@ interface VelocitySample {
 
 export function SwipeToConfirm({
   label,
+  waitingLabel,
+  committedLabel = 'Confirmed',
+  committedHint,
+  onPressChange,
   onConfirm,
   disabled = false,
   variant = 'primary',
@@ -153,6 +181,7 @@ export function SwipeToConfirm({
   const variantClasses = VARIANT_CLASSES[variant]
   const dispatchMs = variant === 'danger' ? PANIC_DISPATCH_MS : CONFIRM_DISPATCH_MS
 
+  const largeText = useAccessibilityTextSize()
   // Read once on mount, matching the "applies next time" note in settings.
   const [tapToConfirm] = useState(() => getTapToConfirmPref())
 
@@ -184,6 +213,15 @@ export function SwipeToConfirm({
       }
     }
   }, [])
+
+  // A ref, so a caller passing a fresh arrow each render doesn't re-fire the effect.
+  const onPressChangeRef = useRef(onPressChange)
+  onPressChangeRef.current = onPressChange
+  // isDragging IS "a finger is on the track": set on pointer-down, cleared on release and
+  // on a system cancel alike — so the report can never disagree with the gesture.
+  useEffect(() => {
+    onPressChangeRef.current?.(isDragging)
+  }, [isDragging])
 
   const moveThumb = useCallback((value: number) => {
     offsetRef.current = value
@@ -285,7 +323,8 @@ export function SwipeToConfirm({
   const measureTravel = useCallback(() => {
     const track = trackRef.current
     if (track) {
-      maxTravelRef.current = Math.max(track.offsetWidth - THUMB_SIZE_PX - TRACK_PADDING_PX * 2, 0)
+      const rem = rootFontPx()
+      maxTravelRef.current = Math.max(track.offsetWidth - (THUMB_SIZE_REM + TRACK_PADDING_REM * 2) * rem, 0)
     }
   }, [])
 
@@ -372,6 +411,22 @@ export function SwipeToConfirm({
     [isDragging, releaseVelocity, runConfirm, releaseToStart],
   )
 
+  // A cancel is the system taking the touch (Control Center, a notification banner, an
+  // incoming call), never the driver letting go. Treating it as a release would let an OS
+  // interruption at 90% write an immutable ledger row, so a cancel only ever goes home.
+  const handlePointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!isDragging) return
+      setIsDragging(false)
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      }
+      crossedThresholdRef.current = false
+      springTo(0, 0, SPRING_SETTLE)
+    },
+    [isDragging, springTo],
+  )
+
   const disarm = useCallback(() => {
     if (armTimeoutRef.current) {
       clearTimeout(armTimeoutRef.current)
@@ -413,8 +468,11 @@ export function SwipeToConfirm({
 
   let currentLabel = label
   if (isBusy) currentLabel = 'Submitting…'
-  else if (isCommitted) currentLabel = 'Confirmed'
+  else if (isCommitted) currentLabel = committedLabel
   else if (isArmed) currentLabel = 'Press Again to Confirm'
+  // Visible text only: the slider's accessible name stays the action, so a screen reader
+  // still hears what the control does, then aria-disabled says it can't yet.
+  const visibleLabel = disabled && waitingLabel !== undefined ? waitingLabel : currentLabel
 
   const hintVisible = showHint && !isDragging && !isCommitted && !isBusy
 
@@ -450,7 +508,7 @@ export function SwipeToConfirm({
         >
           {isBusy && <Spinner size="sm" className={variantClasses.spinner} />}
           {isCommitted && !isBusy && <Check className="h-5 w-5" strokeWidth={3} aria-hidden />}
-          <span className={cn('text-headline', labelClass)}>{currentLabel}</span>
+          <span className={cn('text-headline', labelClass)}>{visibleLabel}</span>
         </button>
       </div>
     )
@@ -472,7 +530,7 @@ export function SwipeToConfirm({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onKeyDown={handleKeyDown}
         className={cn(
           'relative h-16 w-full overflow-hidden rounded-full',
@@ -491,13 +549,17 @@ export function SwipeToConfirm({
             'pointer-events-none absolute inset-0 flex items-center justify-center gap-2',
             // Headline style (17pt semibold), Title Case from the caller — see Button for
             // why the uppercase voice went.
-            'px-16 text-center text-headline',
+            // Symmetric clearance for the thumb normally; at accessibility text sizes the
+            // thumb is big enough that symmetric padding left the label ~130px and three
+            // lines, so it takes everything right of the thumb instead.
+            largeText ? 'pl-[4.25rem] pr-3' : 'px-16',
+            'text-center text-headline',
             labelClass,
           )}
           style={{ opacity: labelOpacity }}
         >
           {isBusy && <Spinner size="sm" className={variantClasses.spinner} />}
-          {currentLabel}
+          {visibleLabel}
         </span>
 
         {/* No CSS transition on the thumb: the spring (or the finger) owns its position
@@ -508,9 +570,9 @@ export function SwipeToConfirm({
             thumbClass,
           )}
           style={{
-            left: TRACK_PADDING_PX,
-            height: THUMB_SIZE_PX,
-            width: THUMB_SIZE_PX,
+            left: `${TRACK_PADDING_REM}rem`,
+            height: `${THUMB_SIZE_REM}rem`,
+            width: `${THUMB_SIZE_REM}rem`,
             transform: `translateX(${offset}px)`,
           }}
         >
@@ -520,6 +582,8 @@ export function SwipeToConfirm({
               strokeWidth={3}
               aria-hidden
             />
+          ) : disabled ? (
+            <Lock className={cn('h-5 w-5', glyphClass)} strokeWidth={2.2} aria-hidden />
           ) : (
             <ChevronsRight className={cn('h-5 w-5', glyphClass)} strokeWidth={2.5} aria-hidden />
           )}
@@ -527,6 +591,13 @@ export function SwipeToConfirm({
       </div>
 
       {/* Absolutely positioned so appearing/disappearing never nudges the track. */}
+      {isCommitted && committedHint !== undefined && (
+        // mt-1.5: the line must fit inside the footer's 24px floor of bottom padding on a
+        // phone with no home-indicator inset, or it is clipped at the screen edge.
+        <p role="status" className="absolute top-full mt-1.5 text-center text-footnote leading-4 text-surface-on-variant">
+          {committedHint}
+        </p>
+      )}
       {hintVisible && (
         <p role="status" className="absolute top-full mt-2 text-center text-footnote text-surface-on-variant">
           Swipe all the way across to confirm

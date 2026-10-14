@@ -6,6 +6,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { peekTransition, resetTransition, type TransitionDirection } from '@/lib/navigation/transition-direction'
+import { recordScreen } from '@/lib/navigation/back-stack'
+import { useEdgeSwipeBack } from '@/lib/navigation/useEdgeSwipeBack'
 
 const ENTER_CLASS: Record<TransitionDirection, string | null> = {
   forward: 'animate-push-in',
@@ -15,21 +17,49 @@ const ENTER_CLASS: Record<TransitionDirection, string | null> = {
 
 // One instance per screen: keyed on the pathname by the template below, so it mounts —
 // and reads the pending direction — once for every navigation.
-function ScreenFrame({ children }: { children: ReactNode }) {
+function ScreenFrame({ pathname, children }: { pathname: string; children: ReactNode }) {
   // Read once, as this screen mounts: the direction belongs to the navigation that
-  // brought us here, not to anything that happens while we're on screen.
-  const [direction] = useState<TransitionDirection>(() => peekTransition())
+  // brought us here, not to anything that happens while we're on screen. Cleared when the
+  // slide finishes, so the classes below exist only for those 320ms.
+  const [direction, setDirection] = useState<TransitionDirection>(() => peekTransition())
+  const swipe = useEdgeSwipeBack()
 
   useEffect(() => {
     resetTransition()
+    // The query (trip detail's ?id=) is only readable from the live URL; it is taken only
+    // when the URL already shows this screen, so a late history update can't mislabel it.
+    const url = window.location.pathname === pathname ? pathname + window.location.search : pathname
+    recordScreen(pathname, url, direction)
+    // Mount-only: direction is this screen's arrival, read once (see useState above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const enterClass = ENTER_CLASS[direction]
+  const dragging = swipe.offset !== null
+
   return (
-    // `relative` + an animated `left`, not a transform: a transform would make this
-    // wrapper the containing block for every position:fixed child (LoadingScreen is
-    // fixed inset-0), re-anchoring them to the sliding box for the length of the
-    // animation. `left` on a relative box moves it without that side effect.
-    <div className={cn('relative', ENTER_CLASS[direction])}>
+    // A transform, so the slide runs on the compositor instead of re-laying-out the whole
+    // screen every frame (`left` stuttered on mid-range Android). A transform makes this
+    // box the containing block for position:fixed children (LoadingScreen is fixed
+    // inset-0), so while it runs the box is held at least viewport-tall — inset-0 then
+    // still covers the screen — and both classes drop on animationend, handing fixed
+    // children back to the viewport the moment the slide stops. An edge swipe moves the
+    // same box the same way, under the same rule.
+    <div
+      {...swipe.handlers}
+      className={cn(
+        enterClass,
+        (enterClass !== null || dragging) && 'min-h-dvh',
+        // Vertical scrolling stays the browser's; a horizontal drag from the edge is ours.
+        swipe.armed && 'touch-pan-y',
+        dragging && 'bg-surface shadow-level-4',
+      )}
+      style={dragging ? { transform: `translate3d(${swipe.offset}px, 0, 0)` } : undefined}
+      onAnimationEnd={(e) => {
+        // Only this frame's own slide: a child's animation (a spinner, a fade) bubbles here too.
+        if (e.target === e.currentTarget) setDirection('none')
+      }}
+    >
       {children}
     </div>
   )
@@ -41,5 +71,5 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 // animate; keying the frame on the full pathname gives every screen change a fresh mount.
 export default function AppTemplate({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  return <ScreenFrame key={pathname}>{children}</ScreenFrame>
+  return <ScreenFrame key={pathname} pathname={pathname}>{children}</ScreenFrame>
 }

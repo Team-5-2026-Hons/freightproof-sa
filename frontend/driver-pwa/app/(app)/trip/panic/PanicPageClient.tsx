@@ -1,24 +1,29 @@
 // frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldAlert, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, MapPin, Route, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { contextPhaseEventId } from '@/lib/phase/derive'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { CallDispatch } from '@/components/trip/CallDispatch'
 import { Button } from '@/components/ui/Button'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { markTransition } from '@/lib/navigation/transition-direction'
+import { cn } from '@/lib/utils'
 
-// The outlined secondary button inverted for this page's red ground: transparent face,
-// white label and edge, a faint white wash on press.
-const ON_RED_OUTLINE =
-  'border-error-on bg-transparent text-error-on hover:bg-error-on/10 active:bg-error-on/15'
+type LocationStatus = 'finding' | 'found' | 'unavailable'
+
+const LOCATION_LABEL: Record<LocationStatus, string> = {
+  finding: 'Finding…',
+  found: 'Found',
+  unavailable: 'Not available',
+}
 
 export default function PanicPageClient() {
   const router = useRouter()
@@ -27,6 +32,32 @@ export default function PanicPageClient() {
   const { enqueueException } = useOfflineQueue()
   const [sending, setSending] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
+  // A finger is on the swipe: the red pulse runs and the copy says how to back out (7.1b).
+  const [pressed, setPressed] = useState(false)
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('finding')
+  const hasTrip = trip !== null
+
+  // One reading as the screen opens, to say honestly whether the phone can place the
+  // driver — and to warm the GPS so the send's own bounded capture is quick. Display
+  // only: the alert still takes, and sends, its own fix, exactly as before.
+  useEffect(() => {
+    if (!hasTrip) return
+    let live = true
+    capture()
+      .then((fix) => { if (live) setLocationStatus(fix === null ? 'unavailable' : 'found') })
+      .catch((err: unknown) => {
+        console.warn('Panic screen: location warm-up failed', err)
+        if (live) setLocationStatus('unavailable')
+      })
+    return () => { live = false }
+  }, [hasTrip, capture])
+
+  function cancel() {
+    markTransition('back')
+    // Explicit replace, not router.back(): this page is reachable by cold load or deep
+    // link, where there may be no history to pop.
+    router.replace(ROUTES.inTransit)
+  }
 
   async function handlePanic() {
     setSending(true)
@@ -39,6 +70,7 @@ export default function PanicPageClient() {
     // goes without location rather than waiting. No preview and no acknowledgement
     // flow here, ever (P6): panic is sent, not checked.
     const fix = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
+    const triggeredAt = new Date().toISOString()
     const description = 'Driver activated panic button.'
     const clientReportId = crypto.randomUUID()
     // Tracks whether the alert actually reached the backend vs. was only queued
@@ -48,7 +80,7 @@ export default function PanicPageClient() {
     try {
       await logException('panic_button', {
         description,
-        triggeredAt: new Date().toISOString(),
+        triggeredAt,
         gpsLat: fix?.latitude ?? null,
         gpsLng: fix?.longitude ?? null,
         ...(fix ? { driverCapturedAt: fix.capturedAt, driverAccuracyMetres: fix.accuracy } : {}),
@@ -95,7 +127,9 @@ export default function PanicPageClient() {
       }
       queued = true
     }
-    router.replace(ROUTES.panicSubmittedUrl(queued))
+    // The sent/saved screen states this alert's own facts: when, and whether a position
+    // went with it.
+    router.replace(ROUTES.panicSubmittedUrl(queued, { at: triggeredAt, located: fix !== null }))
   }
 
   if (isLoading) {
@@ -106,29 +140,19 @@ export default function PanicPageClient() {
 
   if (!trip) {
     return (
-      <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error p-6">
-        <div className="flex flex-col items-center text-center text-error-on">
-          <TriangleAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
-          <h1 className="mb-2 text-2xl font-bold">Unable to verify trip</h1>
-          <p className="text-lg leading-relaxed opacity-90">
+      <main className="flex min-h-dvh flex-col bg-surface px-5 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[calc(env(safe-area-inset-top)+4rem)]">
+        <div className="flex flex-1 flex-col items-center text-center">
+          <span className="flex size-24 items-center justify-center rounded-full bg-error-tint text-error">
+            <TriangleAlert className="size-11" strokeWidth={1.7} aria-hidden />
+          </span>
+          <h1 className="mt-6 text-title-1 tracking-tight text-surface-on">Unable to verify trip</h1>
+          <p className="mt-2.5 text-body text-surface-on-variant">
             We could not confirm this panic alert against your active trip.
             Contact dispatch directly for emergency assistance.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          // This state is reachable via cold load, deep link, or refresh —
-          // there may be no meaningful back-history, so router.back() could
-          // land anywhere (or nowhere). Use an explicit replace so the label's
-          // promise ("Back to In Transit") is actually guaranteed.
-          onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
-          // The white-faced outlined button would be a glaring slab on this screen's
-          // bg-error backdrop, so on red it inverts: transparent face, error-on label and
-          // edge. Full-strength error-on, not /70 (3.8:1 on the red, below 4.5:1 for 17pt
-          // text): a frightened driver must be able to read the way out.
-          className={ON_RED_OUTLINE}
-        >
+        <CallDispatch />
+        <Button type="button" variant="fill" size="pill" className="mt-2.5" onClick={cancel}>
           Back to In Transit
         </Button>
       </main>
@@ -136,49 +160,84 @@ export default function PanicPageClient() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-8 bg-error px-6 pt-6 pb-safe">
-      <div className="flex flex-col items-center text-center text-error-on">
-        <ShieldAlert className="mb-4 h-14 w-14" strokeWidth={1.5} aria-hidden />
-        <h1 className="mb-2 text-title-1">Panic Alert</h1>
-        {/* Same three facts as before, in half the words — read by someone who may be
-            frightened: what to do, that it goes at once, and what goes with it. */}
-        <p className="max-w-xs text-body leading-relaxed">
-          Swipe to alert your dispatcher. It sends immediately, with your location if your
-          phone can find it in time.
+    // White, with one red control (D5, Tim 14 Oct): the screen stays calm and readable;
+    // the urgency lives in the swipe and, while a finger is on it, the pulse.
+    <main className="relative flex min-h-dvh flex-col bg-surface">
+      {pressed && (
+        // See-through and inert (pointer-events-none): every word and control stays
+        // readable and usable under it. Reduced motion holds it at a steady tint.
+        <div
+          data-panic-pulse
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-overlay animate-panic-pulse bg-error/10 shadow-[inset_0_0_120px_40px_rgb(var(--fp-error)/0.45)] motion-reduce:animate-none"
+        />
+      )}
+
+      <header className="px-4 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
+        <button
+          type="button"
+          onClick={cancel}
+          aria-label="Cancel, back to In Transit"
+          className="flex size-11 items-center justify-center rounded-full bg-fill text-surface-on active:scale-95"
+        >
+          <ChevronLeft className="size-6 -translate-x-px" strokeWidth={2.25} aria-hidden />
+        </button>
+      </header>
+
+      <div className="flex flex-col items-center px-7 pt-7 text-center">
+        <span className="flex size-28 items-center justify-center rounded-full bg-error-tint">
+          <span className="flex size-20 items-center justify-center rounded-full bg-error text-error-on">
+            <ShieldAlert className="size-10" strokeWidth={1.9} aria-hidden />
+          </span>
+        </span>
+        <h1 className="mt-6 text-large-title font-extrabold tracking-tight text-error">Panic alert</h1>
+        {/* Read by someone who may be frightened: what to do, that it goes at once, and
+            what goes with it — then, with a finger down, only how to back out. */}
+        <p aria-live="polite" className="mt-2.5 text-body text-surface-on-variant">
+          {pressed
+            ? 'Keep going. Let go to cancel.'
+            : 'Swipe to alert your dispatcher. It sends at once, with your location if your phone can find it in time.'}
         </p>
         {sending && (
-          <p className="mt-2 text-sm opacity-75" role="status">
+          <p className="mt-2 text-subhead font-semibold text-surface-on" role="status">
             Sending alert…
           </p>
         )}
         {saveFailed && (
-          <p className="mt-3 rounded-xl bg-error-on px-4 py-3 text-sm font-semibold text-error" role="alert">
+          <p className="mt-3 rounded-xl bg-error-tint px-4 py-3 text-subhead font-semibold text-error" role="alert">
             This alert was not sent or saved. Contact dispatch directly, free device storage, then try again.
           </p>
         )}
       </div>
-      {/* This was durationMs={3000} under HoldButton — longer than the 2000ms default,
-          signalling the highest-stakes action in the app. SwipeToConfirm has no duration
-          concept (deliberateness now comes from the drag distance/threshold, or two
-          discrete key presses on the keyboard path), so that extra weighting is dropped;
-          the panic flow still uses variant="danger" to keep it visually distinct. */}
-      <SwipeToConfirm
-        label="Send Panic"
-        onConfirm={handlePanic}
-        variant="danger"
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        // Same reasoning as the !trip branch above: this page is reachable via cold
-        // load or deep link, where router.back() has no meaningful history to pop —
-        // replace to the in-transit hub so Cancel always lands somewhere sensible.
-        onClick={() => { markTransition('back'); router.replace(ROUTES.inTransit) }}
-        // Outlined in error-on, not filled white — see the !trip branch above.
-        className={ON_RED_OUTLINE}
-      >
-        Cancel
-      </Button>
+
+      <dl className="mx-5 mt-7 divide-y divide-hairline rounded-[18px] bg-fill px-4">
+        <div className="grid min-h-12 grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+          <MapPin className="size-5 text-surface-on" strokeWidth={1.9} aria-hidden />
+          <dt className="text-body text-surface-on">Your location</dt>
+          <dd className={cn('text-subhead', locationStatus === 'found' ? 'font-semibold text-success-ink' : 'text-surface-on-variant')}>
+            {LOCATION_LABEL[locationStatus]}
+          </dd>
+        </div>
+        <div className="grid min-h-12 grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+          <Route className="size-5 text-surface-on" strokeWidth={1.9} aria-hidden />
+          <dt className="text-body text-surface-on">Trip</dt>
+          <dd className="text-subhead tabular-nums text-surface-on-variant">{trip.trip_reference}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-auto px-4 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-8">
+        {/* No duration weighting: deliberateness comes from the drag distance and
+            threshold (or two key presses on the keyboard path). */}
+        <SwipeToConfirm
+          label="Swipe to Send Panic"
+          onConfirm={handlePanic}
+          onPressChange={setPressed}
+          variant="danger"
+        />
+        <Button type="button" variant="fill" size="pill" className="mt-3" onClick={cancel}>
+          Cancel
+        </Button>
+      </div>
     </main>
   )
 }

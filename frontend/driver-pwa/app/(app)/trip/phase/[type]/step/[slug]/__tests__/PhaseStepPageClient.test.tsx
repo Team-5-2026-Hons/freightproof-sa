@@ -408,7 +408,7 @@ describe('final step — hands the submission off and returns the driver Home', 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
-    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
+    await screen.findByText('320 m apart')
     expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
       lat: FRESH_LOCATION.latitude, lng: FRESH_LOCATION.longitude,
       accuracy_metres: FRESH_LOCATION.accuracy, captured_at: FRESH_LOCATION.capturedAt,
@@ -522,7 +522,7 @@ describe('offline-queued submit', () => {
       FRESH_LOCATION.capturedAt, null,
     ))
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'success', body: expect.stringContaining('stored on this device') }),
+      expect.objectContaining({ kind: 'success', body: expect.stringContaining('Stored on this device') }),
     )
     // Not cleared and not rolled back: the queue holds the evidence and will replay it,
     // so re-offering the step would only invite a second copy of the same submission.

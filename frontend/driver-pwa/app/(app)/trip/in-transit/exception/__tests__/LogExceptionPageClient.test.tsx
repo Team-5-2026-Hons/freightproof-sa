@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import LogExceptionPageClient from '../LogExceptionPageClient'
 import { REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
@@ -91,7 +91,7 @@ function queueAccepts(photoPersisted = true) {
 }
 
 function enterRequiredDescription(value = REQUIRED_DESCRIPTION) {
-  fireEvent.change(screen.getByLabelText('Description'), { target: { value } })
+  fireEvent.change(screen.getByLabelText('Describe what happened'), { target: { value } })
 }
 
 describe('LogExceptionPageClient required description', () => {
@@ -107,13 +107,13 @@ describe('LogExceptionPageClient required description', () => {
     fireEvent.click(screen.getByText('Cargo damage'))
 
     const submit = screen.getByText('Submit Exception')
-    expect(screen.getByLabelText('Description')).toBeRequired()
+    expect(screen.getByLabelText('Describe what happened')).toBeRequired()
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Description'), { target: { value: '   ' } })
+    fireEvent.change(screen.getByLabelText('Describe what happened'), { target: { value: '   ' } })
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Description'), {
+    fireEvent.change(screen.getByLabelText('Describe what happened'), {
       target: { value: 'Pallet crushed at rear door' },
     })
     expect(submit).toBeEnabled()
@@ -433,8 +433,8 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     fireEvent.click(screen.getByText('Trailer'))
     expect(screen.getByText(FRONT_TRAILER.registration)).toBeInTheDocument()
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
-    expect(screen.getByText('Trailer')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(REAR_TRAILER.registration)).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio', { name: 'Trailer' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('radio', { name: REAR_TRAILER.registration })).toHaveAttribute('aria-checked', 'true')
     fireEvent.click(screen.getByText('Submit Exception'))
 
     await waitFor(() => expect(logException).toHaveBeenCalled())
@@ -484,11 +484,15 @@ describe('LogExceptionPageClient asks which vehicle broke down', () => {
     chooseBreakdown()
     fireEvent.click(screen.getByText('Trailer'))
     fireEvent.click(screen.getByText(REAR_TRAILER.registration))
+    // A chosen category collapses to one row (overhaul 6.4); Change reopens the list.
+    fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
     fireEvent.click(screen.getByText('Cargo damage'))
     expect(screen.queryByText('Which vehicle broke down?')).not.toBeInTheDocument()
     // Back on breakdown, the earlier answer is gone and has to be given again.
+    fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
     fireEvent.click(screen.getByText('Vehicle breakdown'))
     expect(screen.getByText('Submit Exception')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
     fireEvent.click(screen.getByText('Cargo damage'))
     fireEvent.click(screen.getByText('Submit Exception'))
 
@@ -577,7 +581,7 @@ describe('LogExceptionPageClient photo capture (FP-150)', () => {
 
     render(<LogExceptionPageClient />)
     fireEvent.click(screen.getByText('Cargo damage'))
-    fireEvent.change(screen.getByPlaceholderText(/describe what happened/i), {
+    fireEvent.change(screen.getByLabelText('Describe what happened'), {
       target: { value: 'Pallet crushed on the left side' },
     })
     fireEvent.click(screen.getByText('Photo (optional)'))
@@ -711,5 +715,39 @@ describe('LogExceptionPageClient — what is still needed (audit C4)', () => {
     const list = screen.getByRole('list', { name: 'Needed to continue' })
     expect(list).toHaveTextContent('What happened')
     expect(list).toHaveTextContent('Description')
+  })
+})
+
+describe('LogExceptionPageClient — the category list (overhaul 6.3/6.4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTrip.mockReturnValue({ trip: RIGID_TRIP, logException: vi.fn() })
+  })
+
+  it('test_offers_every_category_as_a_radio', () => {
+    render(<LogExceptionPageClient />)
+
+    const group = screen.getByRole('radiogroup', { name: 'What happened' })
+
+    expect(within(group).getAllByRole('radio')).toHaveLength(5)
+  })
+
+  it('test_collapses_to_the_chosen_category_with_a_way_to_change_it', () => {
+    render(<LogExceptionPageClient />)
+
+    fireEvent.click(screen.getByText('Cargo damage'))
+
+    expect(screen.queryByRole('radiogroup', { name: 'What happened' })).toBeNull()
+    expect(screen.getByText('Cargo damage')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /change what happened/i })).toBeInTheDocument()
+  })
+
+  it('test_reopens_the_list_with_the_choice_still_marked', () => {
+    render(<LogExceptionPageClient />)
+    fireEvent.click(screen.getByText('Cargo damage'))
+
+    fireEvent.click(screen.getByRole('button', { name: /change what happened/i }))
+
+    expect(screen.getByRole('radio', { name: 'Cargo damage' })).toHaveAttribute('aria-checked', 'true')
   })
 })

@@ -5,8 +5,18 @@ import {
   DARK_SCHEME_QUERY,
   applyTheme,
   getThemePref,
+  resolveTheme,
   subscribeThemePref,
 } from '@/lib/theme'
+import { syncStatusBarToTheme } from '@/lib/status-bar'
+
+// The DOM class and the native status bar move together, so the clock and battery glyphs
+// always contrast with the screen under them.
+function applyCurrentTheme(): void {
+  const pref = getThemePref()
+  applyTheme(pref)
+  syncStatusBarToTheme(resolveTheme(pref))
+}
 
 /**
  * Keeps <html>'s theme class correct while the app is open. Renders nothing.
@@ -18,21 +28,19 @@ import {
 export function ThemeManager() {
   useEffect(() => {
     // Re-assert on mount: localStorage isn't always readable when the inline script runs.
-    applyTheme(getThemePref())
+    applyCurrentTheme()
 
-    const unsubscribe = subscribeThemePref(() => applyTheme(getThemePref()))
+    const unsubscribe = subscribeThemePref(applyCurrentTheme)
 
     // matchMedia is absent in jsdom and older WebViews; preference still works, just
     // stops tracking the OS.
     if (typeof window.matchMedia !== 'function') return unsubscribe
 
     const media = window.matchMedia(DARK_SCHEME_QUERY)
-    const handleSchemeChange = () => applyTheme(getThemePref())
-
-    media.addEventListener('change', handleSchemeChange)
+    media.addEventListener('change', applyCurrentTheme)
 
     return () => {
-      media.removeEventListener('change', handleSchemeChange)
+      media.removeEventListener('change', applyCurrentTheme)
       unsubscribe()
     }
   }, [])

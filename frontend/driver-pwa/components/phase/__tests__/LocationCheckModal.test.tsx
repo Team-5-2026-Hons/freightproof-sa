@@ -48,7 +48,10 @@ describe('LocationCheckModal', () => {
   it('explains a measured mismatch and requires a reason before continuing with an exception', () => {
     const { onRetry, onContinue } = renderModal({ assessment: measuredMismatch })
 
-    expect(screen.getByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')).toBeInTheDocument()
+    expect(screen.getByText('Phone to truck')).toBeInTheDocument()
+    expect(screen.getByText('320 m apart')).toBeInTheDocument()
+    expect(screen.getByText('Allowed')).toBeInTheDocument()
+    expect(screen.getByText('100 m')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(screen.getByText('Please provide a reason before continuing.')).toBeInTheDocument()
     expect(onContinue).not.toHaveBeenCalled()
@@ -67,7 +70,7 @@ describe('LocationCheckModal', () => {
     })
 
     expect(screen.getByText('Truck was recorded outside the expected precinct.')).toBeInTheDocument()
-    expect(screen.queryByText(/apart\. Limit:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Phone to truck')).not.toBeInTheDocument()
   })
 
   it('states the driver-outside-precinct warning distinctly from the truck one', () => {

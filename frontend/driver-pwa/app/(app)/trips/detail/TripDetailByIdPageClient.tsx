@@ -16,9 +16,11 @@ import { Button } from '@/components/ui/Button'
 import { TruckLoader } from '@/components/ui/TruckLoader'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+import { StatusBanner } from '@/components/ui/StatusBanner'
 import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
 import { markTransition } from '@/lib/navigation/transition-direction'
+import { useBack } from '@/lib/navigation/useBack'
 
 // Route to the first step of the selected phase's own recipe.
 function firstStepRoute(phase: PhaseDescriptor): string {
@@ -30,6 +32,8 @@ function firstStepRoute(phase: PhaseDescriptor): string {
 
 export default function TripDetailByIdPageClient() {
   const router = useRouter()
+  // Back to where the driver came from (Home or Trips); Trips on a cold start.
+  const goBack = useBack(ROUTES.trips)
   const searchParams = useSearchParams()
   const tripId = searchParams.get(TRIP_ID_PARAM)
   const { notify } = useToast()
@@ -136,22 +140,15 @@ export default function TripDetailByIdPageClient() {
   // as siblings above it. They used to sit outside its <main>, which on this full-bleed
   // route meant they painted under the iOS status bar and pushed a viewport-tall screen
   // off the bottom of the display — see TripDetailViewProps.notice for the full reason.
-  const notice = (notYetStarted || isStarting) ? (
+  // The upcoming page already says when the trip starts and where; the notice is only
+  // for what it can't know — the activation gate refusing this trip — and the brief
+  // "Starting trip" moment after Start is tapped.
+  const notice = (block !== null && notYetStarted) || isStarting ? (
     <div className="flex flex-col gap-3">
-      {notYetStarted && (
-        <p
-          className={
-            block !== null
-              ? 'rounded-xl bg-tertiary-container px-4 py-3 text-sm text-tertiary-on-container'
-              : 'rounded-xl bg-secondary-container px-4 py-3 text-sm text-secondary-on-container'
-          }
-        >
-          {block !== null
-            ? activationBlockMessage(block)
-            : 'This trip hasn’t started yet. Complete Activation below to begin it.'}
-        </p>
+      {block !== null && notYetStarted && (
+        <StatusBanner tone="attention" title="Can’t start this trip yet">{activationBlockMessage(block)}</StatusBanner>
       )}
-      {/* sm: this one shares the notice block with the activation copy above it, so it
+      {/* sm: this one shares the notice block with the gate message above it, so it
           can't take a full screen's worth of truck. */}
       {isStarting && <TruckLoader size="sm" label="Starting trip" className="self-center" />}
     </div>
@@ -160,7 +157,7 @@ export default function TripDetailByIdPageClient() {
   return (
     <TripDetailView
       trip={trip}
-      onBack={() => router.push(ROUTES.trips)}
+      onBack={goBack}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
       onSelectPhase={openPhase}
       notice={notice}

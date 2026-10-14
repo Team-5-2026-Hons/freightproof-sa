@@ -33,6 +33,13 @@ const buttonVariants = cva(
         // its own tone alongside the base scale-dip.
         secondary: 'bg-surface-container-lowest text-surface-on border border-outline-variant hover:bg-surface-container-low active:bg-surface-container-low disabled:bg-surface-container-low disabled:text-surface-on-variant',
         danger:    'bg-error-container text-error-on-container hover:opacity-90 disabled:opacity-40',
+        // Overhaul secondary action (Directions, Edit, Retake, See all): a grey face, no
+        // hairline — on a white page the fill itself is the edge, as in Uber's app.
+        fill:      'bg-fill text-surface-on active:bg-surface-container-high disabled:text-surface-on-variant',
+        // The confirm step of an irreversible action only (Sign Out in its sheet). The
+        // entry point stays the quieter `danger` tint, so red at full strength means
+        // "this is the last tap".
+        destructive: 'bg-error text-error-on active:opacity-90 disabled:opacity-40',
       },
       size: {
         // 44px is the app's documented touch-target minimum (see IconButton/Switch/
@@ -42,6 +49,13 @@ const buttonVariants = cva(
         sm: 'px-4 py-2 text-subhead min-h-[44px] gap-1.5',
         md: 'px-6 py-3 text-body min-h-[44px] gap-2',
         lg: 'px-6 py-4 text-body min-h-[52px] gap-2 w-full',
+        // Overhaul capsules. Added, not changed: sign-in uses `lg` and must stay
+        // pixel-identical, so the existing sizes keep their 14px corners. The base
+        // `rounded-xl` loses to these `rounded-full`s in cn()'s merge.
+        pill:      'px-6 text-body min-h-[56px] gap-2 w-full rounded-full',
+        // Inline row action. The renders drew it at 36pt; it ships at the 44pt HIG
+        // minimum, because a gloved thumb in a cab outranks the drawing.
+        'pill-sm': 'px-4 text-subhead min-h-[44px] gap-1.5 rounded-full',
       },
     },
     defaultVariants: {

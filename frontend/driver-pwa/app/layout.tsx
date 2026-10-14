@@ -3,6 +3,7 @@ import './globals.css'
 import { AuthProvider } from '@/lib/context/AuthContext'
 import { ToastProvider } from '@/lib/context/ToastContext'
 import { ThemeManager } from '@/components/theme/ThemeManager'
+import { TextSizeCap } from '@/components/theme/TextSizeCap'
 import { THEME_INIT_SCRIPT } from '@/lib/theme'
 
 // Server Component (not 'use client') so viewport/metadata below can be statically exported.
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* First child of <body>: runs before paint, avoiding a white flash. See lib/theme.ts. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <ThemeManager />
+        <TextSizeCap />
         <AuthProvider>
           <ToastProvider>
             {children}

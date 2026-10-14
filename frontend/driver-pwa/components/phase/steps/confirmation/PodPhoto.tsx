@@ -41,13 +41,22 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
     <StepLayout
       phase={phase}
       stepIndex={stepIndex}
-      intro="Photograph the delivered cargo."
-      requirements={[{ label: 'Proof of delivery photo', met: hasPhoto }]}
-      action={<SwipeToConfirm label="Swipe to Confirm" onConfirm={onComplete} disabled={!hasPhoto} />}
+      intro="Show the delivered cargo where it was left."
+      requirements={[{ label: 'Delivery photo', met: hasPhoto }]}
+      action={
+        <SwipeToConfirm
+          label="Swipe to Save Photo"
+          waitingLabel="Add the delivery photo first"
+          onConfirm={onComplete}
+          disabled={!hasPhoto}
+        />
+      }
     >
       <CameraCapture
-        label="Proof of delivery photo"
+        label="Delivery photo"
+        hint="Whole load in frame"
         dataUrl={draft.podPhotoDataUrl}
+        capturedAt={draft.capturedAt}
         onCapture={handleCapture}
       />
     </StepLayout>

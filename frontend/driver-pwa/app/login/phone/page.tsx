@@ -11,6 +11,8 @@ import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect'
 import { AuthFrame, AuthHeading, AUTH_PILL, AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
 import { ROUTES } from '@/lib/constants/routes'
 import { DEFAULT_COUNTRY_CODE, type CountryCode } from '@/lib/constants/country-codes'
+import { groupNationalNumber } from '@/lib/utils/format-phone'
+
 
 // Supabase's error message when shouldCreateUser: false blocks an unregistered
 // phone number — matched case-insensitively to surface a driver-friendly message.
@@ -23,14 +25,6 @@ const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/
 // — strip exactly one so it isn't duplicated alongside the dial code.
 function toE164(dialCode: string, localNumber: string): string {
   return dialCode + localNumber.replace(/^0/, '')
-}
-
-// Groups the national number 2-3-4 (81 046 3076) for the confirm sheet, the way the
-// driver says it aloud, so a transposed digit is easy to spot. Only for display: what is
-// sent is always the plain E.164 string.
-function groupLocalNumber(localNumber: string): string {
-  const digits = localNumber.replace(/^0/, '')
-  return [digits.slice(0, 2), digits.slice(2, 5), digits.slice(5)].filter(Boolean).join(' ')
 }
 
 export default function PhoneLoginPage() {
@@ -145,7 +139,7 @@ export default function PhoneLoginPage() {
           <p className="flex items-center gap-2 text-title-1 tabular-nums text-surface-on">
             <span aria-hidden>{country.flag}</span>
             <span>
-              {country.dialCode} {groupLocalNumber(localNumber)}
+              {country.dialCode} {groupNationalNumber(localNumber)}
             </span>
           </p>
           <p className="text-body text-surface-on-variant">

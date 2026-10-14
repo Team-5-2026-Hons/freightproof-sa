@@ -14,6 +14,18 @@ export const QR_CANVAS_COLOURS = {
   light: '#ffffff',
 } as const
 
+/**
+ * The Appearance tiles' miniature screens (components/settings/ThemeSelect). Literal
+ * light and dark faces, not tokens: each tile shows what a choice LOOKS like, so it must
+ * not change with the current theme. Kept as full class strings so Tailwind's content
+ * scan (which includes lib/) emits them. System is split light|dark because it is both.
+ */
+export const THEME_PREVIEW_CLASSES = {
+  system: 'bg-[linear-gradient(90deg,#f3f3f3_50%,#1c1c1e_50%)]',
+  light: 'bg-[#f3f3f3]',
+  dark: 'bg-[#1c1c1e]',
+} as const
+
 // Google Maps JS API styling for the dark theme. The basemap does not follow the app's
 // theme on its own, so at night the map stayed a bright white panel in an otherwise dark
 // screen — a glare source in a dark cab, the exact situation the dark theme exists for.
@@ -40,4 +52,13 @@ export const MAP_STYLES_DARK: google.maps.MapTypeStyle[] = [
   { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3948' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#515c6d' }] },
+]
+
+// Points of interest are noise on an evidence map: restaurant and school pins competed with
+// the one thing the map is for — where the truck is. Applied in both themes, under the dark
+// palette at night. Roads, place names and Google's attribution stay.
+export const MAP_STYLES_QUIET: google.maps.MapTypeStyle[] = [
+  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
 ]

@@ -55,24 +55,28 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
     <StepLayout
       phase={phase}
       stepIndex={stepIndex}
-      intro="Enter the seal number printed on the physical seal and photograph it. The seal number is locked in the journey hash."
+      intro="Type the number printed on the seal, then photograph it. The number is locked into the journey record."
       requirements={[
         { label: 'Seal number', met: sealFormatValid },
         { label: 'Seal photo', met: draft.sealPhotoDataUrl !== null },
       ]}
-      action={<SwipeToConfirm label="Swipe to Confirm" onConfirm={onComplete} disabled={!isReady} />}
-    >
-        <SealInput
-          sealNumber={draft.sealNumber}
-          sealPhotoDataUrl={draft.sealPhotoDataUrl}
-          onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
-          onSealPhotoCapture={handleSealPhoto}
+      action={
+        <SwipeToConfirm
+          label="Swipe to Save Seal"
+          waitingLabel="Add number and photo"
+          onConfirm={onComplete}
+          disabled={!isReady}
         />
-        {showSealFormatHint && (
-          <p className="text-subhead text-error">
-            Seal number must look like AB-1234 (two letters, four digits).
-          </p>
-        )}
+      }
+    >
+      <SealInput
+        sealNumber={draft.sealNumber}
+        sealPhotoDataUrl={draft.sealPhotoDataUrl}
+        sealPhotoCapturedAt={draft.capturedAt}
+        formatError={showSealFormatHint ? 'Seal number must look like AB-1234 (two letters, four digits).' : undefined}
+        onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
+        onSealPhotoCapture={handleSealPhoto}
+      />
     </StepLayout>
   )
 }

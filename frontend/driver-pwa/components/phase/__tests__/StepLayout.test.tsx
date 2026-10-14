@@ -67,24 +67,21 @@ describe('StepLayout', () => {
 })
 
 describe('StepHeader progress (via StepLayout)', () => {
-  it('does not show a one-step phase as already complete when it opens', () => {
-    // Arrange / Act — arrival has a single step.
-    const { container } = render(<StepLayout phase={arrival} stepIndex={0} />)
+  it('test_titles_the_step_with_what_to_do', () => {
+    render(<StepLayout phase={departure} stepIndex={0} />)
 
-    // Assert — the only segment is the "on screen now" tint, never the solid "done" fill.
-    const segments = container.querySelectorAll('header [aria-hidden] > span')
-    expect(segments).toHaveLength(1)
-    expect(segments[0]).toHaveClass('bg-secondary/40')
-    expect(segments[0]).not.toHaveClass('bg-secondary')
+    expect(screen.getByRole('heading', { level: 1, name: 'Capture the seal' })).toBeInTheDocument()
   })
+})
 
-  it('fills the steps already done and tints the current one', () => {
-    // Arrange / Act — departure's second step.
-    const { container } = render(<StepLayout phase={departure} stepIndex={1} />)
+describe('StepLayout at accessibility text sizes', () => {
+  it('test_stops_pinning_the_footer_so_it_never_covers_the_step', () => {
+    document.documentElement.style.fontSize = '33px'
+    const phase = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure')!
 
-    // Assert
-    const segments = container.querySelectorAll('header [aria-hidden] > span')
-    expect(segments[0]).toHaveClass('bg-secondary')
-    expect(segments[1]).toHaveClass('bg-secondary/40')
+    const { container } = render(<StepLayout phase={phase} stepIndex={0} action={<button>Go</button>} />)
+
+    expect(container.querySelector('footer')).not.toHaveClass('sticky')
+    document.documentElement.style.fontSize = ''
   })
 })

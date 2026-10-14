@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/brand/LogoMark'
 import { AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
 import { ROUTES } from '@/lib/constants/routes'
+import { useStatusBarOverride } from '@/lib/hooks/useStatusBarOverride'
 
 // Full-bleed hero photo, served from public/. Set to null to fall back to the drawn dusk
 // road (DuskRoad) instead of requesting a file that isn't there.
@@ -25,6 +26,8 @@ const WELCOME_MARK_SIZE_PX = 52
 
 export default function WelcomePage() {
   const router = useRouter()
+  // The photo is dark at the top whatever the theme, so the status-bar glyphs stay light.
+  useStatusBarOverride('dark')
 
   return (
     // Always dark (see AuthFrame for the scoped-class mechanism). Not AuthFrame itself:

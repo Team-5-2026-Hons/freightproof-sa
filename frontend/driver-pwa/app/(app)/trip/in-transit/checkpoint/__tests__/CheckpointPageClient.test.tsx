@@ -60,8 +60,7 @@ vi.mock('@/components/phase/SwipeToConfirm', () => ({
 }))
 
 function fillCaptures() {
-  // By role: the checklist above the swipe repeats these labels as plain list items.
-  fireEvent.click(screen.getByRole('button', { name: 'Selfie' }))
+  // By role: the checklist above the swipe repeats the label as a plain list item.
   fireEvent.click(screen.getByRole('button', { name: 'Cargo photo' }))
 }
 
@@ -76,7 +75,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to Confirm'))
+    fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockSubmitCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -90,7 +89,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to Confirm'))
+    fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalledWith('trip-1', expect.objectContaining({
@@ -106,7 +105,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to Confirm'))
+    fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
 
     await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
     expect(mockEnqueueCheckpoint).toHaveBeenCalled()
@@ -118,7 +117,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
 
     render(<CheckpointPageClient />)
     fillCaptures()
-    fireEvent.click(screen.getByText('Swipe to Confirm'))
+    fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
 
     // Audit fix: the 4xx branch previously showed "check your connection" — misleading
     // exactly where the code knows retrying won't help.
@@ -174,17 +173,49 @@ describe('CheckpointPageClient swipe placement (0px-wide swipe bug)', () => {
     // wrapper that collapsed the real track.
     render(<CheckpointPageClient />)
 
-    const wrapper = screen.getByRole('button', { name: 'Swipe to Confirm' }).parentElement
+    const wrapper = screen.getByRole('button', { name: 'Swipe to Log Checkpoint' }).parentElement
 
     expect(wrapper).toHaveClass('w-full')
   })
 
-  it('lists the selfie and cargo photo as still needed', () => {
+  it('lists the cargo photo as still needed, and nothing else', () => {
     render(<CheckpointPageClient />)
 
     const list = screen.getByRole('list', { name: 'Needed to continue' })
 
-    expect(list).toHaveTextContent('Selfie')
     expect(list).toHaveTextContent('Cargo photo')
+    expect(list).not.toHaveTextContent('Selfie')
+  })
+})
+
+describe('CheckpointPageClient — cargo photo only (overhaul 6.2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+  })
+
+  it('test_asks_for_no_selfie', () => {
+    render(<CheckpointPageClient />)
+
+    expect(screen.queryByRole('button', { name: 'Selfie' })).toBeNull()
+  })
+
+  it('test_is_ready_with_the_cargo_photo_alone', () => {
+    render(<CheckpointPageClient />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cargo photo' }))
+
+    expect(screen.getByRole('button', { name: 'Swipe to Log Checkpoint' })).toBeEnabled()
+  })
+
+  it('test_submits_no_selfie', async () => {
+    mockSubmitCheckpoint.mockResolvedValue({ id: 'cp-1' })
+    render(<CheckpointPageClient />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cargo photo' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to Log Checkpoint' }))
+
+    await waitFor(() => expect(mockSubmitCheckpoint).toHaveBeenCalled())
+    expect(mockSubmitCheckpoint.mock.calls[0][1]).not.toHaveProperty('selfieDataUrl')
   })
 })

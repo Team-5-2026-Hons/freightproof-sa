@@ -19,7 +19,7 @@ import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
 const TRIP_ID = '7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b'
-const SWIPE_LABEL = 'Close Trip'
+const SWIPE_LABEL = 'Swipe to Close Trip'
 
 // StepHeader calls useRouter — stub it so the component mounts under jsdom.
 vi.mock('next/navigation', () => ({
@@ -142,7 +142,7 @@ describe('Closed — blocked on the destination warehouse scan', () => {
       />,
     )
 
-    expect(screen.queryByText('Trip Complete')).toBeNull()
+    expect(screen.queryByText('Delivered')).toBeNull()
   })
 
   it('restores the swipe once the warehouse session closes', () => {
@@ -150,5 +150,14 @@ describe('Closed — blocked on the destination warehouse scan', () => {
     const swipe = renderStep(makeDraft(), null)
 
     expect(swipe).toBeEnabled()
+  })
+})
+
+describe('Closed — the delivered screen (overhaul 9.5)', () => {
+  it('test_says_delivered_and_that_closing_finishes_the_trip', () => {
+    renderStep(makeDraft())
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Delivered' })).toBeInTheDocument()
+    expect(screen.getByText(/Close the trip to finish/)).toBeInTheDocument()
   })
 })

@@ -17,7 +17,7 @@ import { Loader2, MapPinOff, Navigation, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GOOGLE_MAPS_API_KEY } from '@/lib/constants/env'
 import { DARK_CLASS } from '@/lib/theme'
-import { MAP_STYLES_DARK } from '@/lib/tokens'
+import { MAP_STYLES_DARK, MAP_STYLES_QUIET } from '@/lib/tokens'
 import { formatTime } from '@/lib/utils/format-time'
 import { Button } from '@/components/ui/Button'
 import type { DriverPosition } from '@/lib/types/location'
@@ -81,7 +81,9 @@ function nativeMapsUrl(position: DriverPosition): string {
 // default (light) styling.
 function themedMapStyles(): google.maps.MapTypeStyle[] | null {
   if (typeof document === 'undefined') return null
-  return document.documentElement.classList.contains(DARK_CLASS) ? MAP_STYLES_DARK : null
+  return document.documentElement.classList.contains(DARK_CLASS)
+    ? [...MAP_STYLES_DARK, ...MAP_STYLES_QUIET]
+    : MAP_STYLES_QUIET
 }
 
 function formatCoordinate(value: number): string {
@@ -205,6 +207,12 @@ export interface DriverMapProps {
   onRetry?: () => void
   className?: string
   /**
+   * Placement override for the live map's "Open in Maps" chip, for a screen that floats
+   * its own controls where the chip normally sits (In Transit's Back button, top left).
+   * Whatever the placement, it must stay clear of Google's logo and attribution.
+   */
+  handoffClassName?: string
+  /**
    * Sizing for the fallback cards (no fix / coordinates), when it must differ from the
    * map's own. A fixed-height map strip needs an explicit height for the Maps API to draw
    * into, but the fallback cards carry text and a button that would overflow that height.
@@ -216,7 +224,7 @@ export interface DriverMapProps {
 /** Whether the Maps JS API is usable right now. */
 type MapState = 'loading' | 'ready' | 'unavailable'
 
-export function DriverMap({ position, capturedAt, onRetry, className, fallbackClassName = className }: DriverMapProps) {
+export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className }: DriverMapProps) {
   const [mapState, setMapState] = useState<MapState>('loading')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -361,7 +369,10 @@ export function DriverMap({ position, capturedAt, onRetry, className, fallbackCl
         <a
           href={nativeMapsUrl(position)}
           rel="noopener noreferrer"
-          className="glass-nav absolute left-2 top-2 flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 text-footnote font-semibold text-surface-on shadow-level-2 transition-opacity duration-100 active:opacity-60"
+          className={cn(
+            'glass-nav absolute left-2 top-2 flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 text-footnote font-semibold text-surface-on shadow-level-2 transition-opacity duration-100 active:opacity-60',
+            handoffClassName,
+          )}
         >
           <Navigation className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
           Open in Maps
