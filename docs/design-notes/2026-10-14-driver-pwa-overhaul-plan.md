@@ -206,7 +206,7 @@ Each stage: get Tim's feedback on its renders → write that stage's detailed ta
     - A new Stage 8 walk passes in light and dark: POD → QR → (receiver signature seeded into the stored draft, test-only, since demo can't sign) → signed (no image) → reconciliation → delivered → Close Trip → Home.
 
   Original scope: delivery photo, QR plate, receiver signed, reconciliation rows, "Delivered" close screen that ends on the trip record (3.4).
-- [x] **Stage 9: Polish pass. DONE 14 Oct (device run pending Tim, see below).** What shipped:
+- [x] **Stage 9: Polish pass. DONE 14 Oct.** What shipped:
   - **Audit.** A scripted audit (scratchpad `audit.cjs`) covers 25 screens: every tab, See-all lists, Profile and its sheets, trip pages, vehicle sheet, In Transit, checkpoint, exception (+ breakdown), panic (+ sent/saved), seal (+ missing), count, POD and the QR. Each screen is checked for horizontal overflow, targets under 44pt, unnamed buttons, controls pushed off-screen and clipped text. Final run: **0 findings in all 7 passes**:
     - light 393;
     - dark;
@@ -237,7 +237,7 @@ Each stage: get Tim's feedback on its renders → write that stage's detailed ta
     - Sign-in is pixel-identical (6/6).
     - Nav walk, flow walk and swipe measure all pass (the usual first-tap-while-compiling failure on run 1).
     - The Stage 6, 7 and 8 walks were re-run and pass.
-  - **Device.** `cap sync ios` was run (no tracked iOS files changed) and a signed Debug build succeeded (`xcodebuild -allowProvisioningUpdates`, generic iOS). Install via `devicectl` waited on the phone, which was "Preparing" and needs to be unlocked.
+  - **Device.** `cap sync ios` was run (no tracked iOS files changed) and a signed Debug build succeeded (`xcodebuild -allowProvisioningUpdates`, generic iOS). Installed on Tim's iPhone 13 and launched (14 Oct), after the phone finished preparing. `pod install` inside `cap sync` needs `LANG=en_US.UTF-8` in this shell. Tim's on-device check is still to come.
 
   Original scope: dark mode for every screen. Reduced motion, transparency and contrast. Dynamic Type at the largest size. 320px width. Device run on Tim's iPhone after `cap sync`.
 
