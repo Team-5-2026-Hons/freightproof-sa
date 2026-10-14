@@ -7,7 +7,6 @@ function trip(overrides: Partial<DriverTripSummary> = {}): DriverTripSummary {
   return {
     id: 't1' as DriverTripSummary['id'],
     trip_reference: 'TRP-2026-0038',
-    order_number: 'CG-1',
     status: 'created',
     trip_type: 'loaded',
     origin_precinct_id: null,

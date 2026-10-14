@@ -15,7 +15,6 @@ NAME_MAX_LENGTH = 255           # people.full_name, organisations.name — Strin
 EMAIL_MAX_LENGTH = 255          # users.email — String(255)
 PHONE_MAX_LENGTH = 20           # drivers.phone_number — String(20)
 LICENSE_MAX_LENGTH = 50         # drivers.license_number — String(50)
-ORDER_NUMBER_MAX_LENGTH = 100   # trips.order_number — String(100)
 REFERENCE_MAX_LENGTH = 100      # pulsit_trip_reference_id, parcel_perfect_reference
 CHECKPOINT_TYPE_MAX_LENGTH = 50  # checkpoints.checkpoint_type — String(50)
 SHORT_NOTE_MAX_LENGTH = 255     # trip_stops.notes — String(255)
@@ -57,9 +56,6 @@ PhoneStr = Annotated[
 ]
 LicenseStr = Annotated[
     str, StringConstraints(min_length=1, max_length=LICENSE_MAX_LENGTH), AfterValidator(clean_text)
-]
-OrderNumberStr = Annotated[
-    str, StringConstraints(min_length=1, max_length=ORDER_NUMBER_MAX_LENGTH), AfterValidator(clean_text)
 ]
 ReferenceStr = Annotated[
     str, StringConstraints(min_length=1, max_length=REFERENCE_MAX_LENGTH), AfterValidator(clean_text)

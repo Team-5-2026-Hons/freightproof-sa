@@ -73,7 +73,7 @@ Three roles actively use FreightProof. Several others are operational touchpoint
 
 The dispatcher creates trips, monitors the evidence trail as it accumulates, and investigates exceptions. They use the web application on a desktop or tablet. They are the only role that sees the full system: all active trips, all exceptions, all blockchain receipts, the full trip history, and SLA reporting.
 
-Critically, the dispatcher still uses Pulsit for live route monitoring and geofencing, and still uses Parcel Perfect for manifest management. FreightProof adds a trip creation step, but this is designed to be mostly selection and confirmation rather than re-entry of data. For contractual work (recurring standing arrangements, the bulk of Load Factor's business), the dispatcher can create a trip from a template in under a minute. For ad-hoc orders, the dispatcher enters the order number supplied by the client and selects the assigned driver, horse, and trailers.
+Critically, the dispatcher still uses Pulsit for live route monitoring and geofencing, and still uses Parcel Perfect for manifest management. FreightProof adds a trip creation step, designed as selection and confirmation rather than re-entry of data. The dispatcher types the client's Parcel Perfect manifest number. FreightProof pulls the client, the route, the planned times and every waybill and parcel from the manifest. The dispatcher adds only the driver, horse and trailers, plus a precinct or a time on the rare occasion the manifest lacks one. A repositioning move with no cargo is created as an empty leg.
 
 The dispatcher is the only role that sees the full Parcel Perfect manifest and waybill details for a trip — including all client consignments, loading order, weights, and any exceptions. This is a deliberate design boundary: manifest contents (what is inside the truck) never reach the driver, because knowledge of high-value cargo (electronics, cell phones) significantly increases theft and security risk.
 
@@ -116,7 +116,7 @@ A depot-to-depot trip moves through five handshakes. Each handshake produces a s
 
 | # | Handshake | What gets captured | Evidence weight |
 |---|---|---|---|
-| 0 | Trip Creation | Dispatcher creates trip from order number. Driver, horse, trailer(s), consignment references (one per client), loading priority order, Pulsit trip ID, route, and expected gate precincts locked in a journey hash anchored to blockchain. | Baseline commitment |
+| 0 | Trip Creation | Dispatcher creates the trip from the client's Parcel Perfect manifest number. Client, route, planned times and every waybill and parcel come from the manifest; driver, horse and trailer(s) are LFG's choice. The manifest key, a hash of the manifest snapshot and the planned times are locked in a journey hash anchored to blockchain. | Baseline commitment |
 | 1 | Origin Gate-In | Pulsit geofence confirms vehicle at precinct. Driver photographs gate entry event. GPS cross-reference: phone, horse, each trailer tracker. Driver match confirmed. | Medium — entry confirmed |
 | 2 | Loading Handshake | Cargo Handlers load and scan into Parcel Perfect. Driver receives and verifies the digitised linehaul document (unit count, seal, vehicle details — no contents). Warehouse rep signs physical vehicle waybill; driver photographs it. Seal number captured and photographed. Pickup receipt anchored to blockchain. | High — departure signature and seal locked |
 | 3 | Origin Gate-Out | Driver photographs gate exit event. Seal verified by guard. Pulsit geofence confirms departure. Trip transitions to in-transit. | Medium — confirmed departure with intact seal |
@@ -144,24 +144,27 @@ In both models, the manifest of what is on the truck is communicated operations-
 
 **Who:** Dispatcher
 
-Bruce was explicit: "the journey actually starts by virtue of an order." The order number is the root reference for everything that follows. It is what the client (FedEx) uses to track the trip, what Load Factor uses to invoice, and what the precinct is told to expect when the driver arrives.
+Every booking reaches Load Factor on the day: the client creates the manifest in Parcel Perfect around 12:00, and LFG confirms the vehicle then (Bruce, 28 Jul §8–9). The **manifest** is the whole load for one departure, and LFG's Master Waybill references the client's manifest number (5 May §4.1, 28 Jul §5). A FreightProof trip is that Master Waybill made digital: one departure, pointing at one client manifest.
 
-The dispatcher opens FreightProof and creates a trip linked to that order number. For a contractual recurring trip (standing agreement, which is most of Load Factor's volume), a template auto-fills the client, the route, and the typical vehicle profile. For an ad-hoc order, the dispatcher enters it manually.
+The dispatcher opens FreightProof and types the manifest number. FreightProof previews the manifest from Parcel Perfect and shows what it found: the client, the route, the planned times, every waybill with its parcel count and weight, and anything that blocks creation (for example, the manifest already being on another trip). On Create, the server pulls it again and verifies that its hash still matches the preview before locking the snapshot.
 
-What the dispatcher selects or enters:
+What comes from the manifest:
 
-- Order number (from client) — the root reference
-- Client consignment reference(s) from Parcel Perfect — one per client, for multi-client trips
-- Loading order and priority for each consignment (e.g. urgent FedEx at the door, Courier Guy at the bulkhead)
-- Assigned driver (from Load Factor's registered driver list; IDVS verification is re-run at this point)
-- Assigned horse (truck cab) and trailer(s) — each with its own Pulsit tracker device ID
-- Pulsit trip reference ID (the trip the dispatcher has already created in Pulsit)
-- Expected origin and destination precincts — associated with the principal (e.g. FedEx), not with a specific security company
-- Planned route and slot times (pulled from Parcel Perfect)
+- The client, the origin and destination hubs (resolved to the client's precincts), the planned departure and arrival, every waybill and its parcels, and the client's own reference where the manifest carries one
+
+What the dispatcher enters:
+
+- Assigned driver (from Load Factor's registered driver list)
+- Assigned horse (truck cab) and trailer(s), each with its own Pulsit tracker device ID
+- A precinct, only where a manifest hub is not linked to one; planned times where the manifest has none, or an explicit override of its times
+
+Driver and vehicles are never taken from the manifest: they are LFG's decision, and the client's copy of them is usually not there yet at 12:00. A trip with no cargo (a repositioning move) is created as an **empty leg**, with origin, destination and times entered by hand. Loading priority per consignment and the Pulsit trip reference remain part of the target design, but the current build does not capture them at creation.
+
+> **Assumed contract.** Parcel Perfect's API has no manifest lookup today; it exposes `getSingleWaybill` only. The manifest pull runs against a mocked, assumed data contract. Against live Parcel Perfect the screen says so and offers an empty leg instead.
 
 The horse and trailer are modelled as separate entities. An 18-metre vehicle is registered as one horse and two trailers (12-metre and 6-metre). Trailers can be decoupled and reassigned mid-route, so each trailer has its own Pulsit tracker device ID and is verified independently at every gate check. Any mid-route substitution becomes a visible exception in the evidence trail rather than an invisible operational adjustment.
 
-On submission, FreightProof creates a journey lock hash — a cryptographic snapshot of everything committed to this trip (order number, driver, vehicles, cargo references, route, precinct gates, timestamps) — and anchors it to Hedera HCS. From this moment, anything that deviates from the committed trip is recorded as an exception. In parallel, FreightProof sends a pre-notification to the origin precinct — addressed to the principal's contact, not to the security company directly — confirming expected driver, vehicle, and arrival time.
+On submission, FreightProof creates a journey lock hash — a cryptographic snapshot of everything committed to this trip (the manifest key, a SHA-256 of the manifest as pulled, driver, vehicles, route, planned times and timestamps — hashes and identifiers only, never the manifest itself) — and anchors it to Hedera HCS. From this moment, anything that deviates from the committed trip is recorded as an exception. In parallel, FreightProof sends a pre-notification to the origin precinct — addressed to the principal's contact, not to the security company directly — confirming expected driver, vehicle, and arrival time.
 
 **Return legs:** A return leg is a new trip, not a continuation of the outbound trip. The dispatcher creates it as a separate entry. If the vehicle returns empty, that fact is recorded on the return trip and is visible to LFG management — empty-leg cost is absorbed by LFG, so visibility drives rotation planning (ensuring the truck is available and positioned for the following night's departure). Scheduling return loads is out of scope for FreightProof; the system records and evidences the return, it does not orchestrate it.
 
@@ -340,7 +343,7 @@ The dispatcher does not see a live map in FreightProof. The live map lives in Pu
 
 ## 6.2 Trip history and search
 
-Every completed trip is stored and searchable. The dispatcher can filter by date range, driver, vehicle (horse or trailer), route, client, order number, and exception type. A disputed delivery from three months ago is resolved by pulling the trip record, not by relying on human memory or paper records that may have been lost or altered.
+Every completed trip is stored and searchable. The dispatcher can filter by date range, driver, vehicle (horse or trailer), route, client, Parcel Perfect manifest number, and exception type. A disputed delivery from three months ago is resolved by pulling the trip record, not by relying on human memory or paper records that may have been lost or altered.
 
 ## 6.3 SLA reporting
 
@@ -373,7 +376,7 @@ STATUS: IN TRANSIT
 
 | FreightProof does | Stays in the existing system |
 |---|---|
-| Trip creation and driver/vehicle/cargo assignment tied to an order number | Route planning, geofencing, ETA (Pulsit) |
+| Trip creation from the client's Parcel Perfect manifest, with driver and vehicle assignment | Route planning, geofencing, ETA (Pulsit) |
 | Handshake capture at all five points (photos, waybill photos, seal numbers) | Live GPS map and tracking (Pulsit) |
 | Multi-client manifest reconciliation across origin and destination Parcel Perfect instances | Parcel-level scan-in and scan-out (Parcel Perfect) |
 | Digitised linehaul document generation for the driver | Full manifest management (Parcel Perfect, dispatcher view only) |
@@ -406,6 +409,7 @@ Parcel Perfect is queried at trip creation, at the loading handshake, and at the
 
 | Data requested | When and why |
 |---|---|
+| The client's manifest: header (client, hubs, planned times, client reference, notes) and every waybill with its parcels | Trip creation: the trip is built from it, and a snapshot of it is locked into the journey hash (assumed contract; see Handshake 0) |
 | Consignment record (ID, client, origin, destination, unit count, declared value) | Trip creation: establishes what is committed to the trip |
 | Full manifest (unit/parcel breakdown, barcode, delivery stop assignment) | Loading handshake: pulled when loading is confirmed complete; shown to the dispatcher; the driver sees only the generated linehaul (unit count + seal) |
 | Scan-in status at destination | Unloading handshake: reconciled against origin manifest; the fundamental count check |
@@ -623,6 +627,12 @@ This section records the current build state as of June 2026 (iteration 2 in pro
 ---
 
 # 15. Appendix: Key Changes by Version
+
+## 15.0 v7 amendment — manifest-first trip creation (FP-281, 1 October 2026)
+
+| Section affected | Change type | What changed |
+|---|---|---|
+| §3.1, Handshake 0, §4 table, §6.2, §7, §8.1 | **Replace** | Trips are created from the client's Parcel Perfect manifest number; the order number is no longer the trip's root reference and is removed from the system. The journey lock covers the manifest key, a hash of the manifest snapshot and the planned times. Empty legs are created without a manifest. Manifest lookup runs on a mocked, assumed contract: live PP has none. Design: `docs/superpowers/specs/2026-09-30-manifest-first-trip-creation-design.md`. |
 
 ## 15.1 v6 → v7 changes (Bruce van Wyk meeting, 24 June 2026)
 

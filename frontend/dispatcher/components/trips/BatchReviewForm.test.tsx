@@ -39,8 +39,8 @@ function warning(id: string, type: TripException['exception_type']): TripExcepti
 const EXCEPTIONS = [warning('ex-1', 'cargo_damage'), warning('ex-2', 'gps_mismatch')]
 
 function fillForm(): void {
-  fireEvent.change(screen.getByLabelText('Review note'), { target: { value: '  Looked at both  ' } })
-  fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'no_action_required' } })
+  fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: '  Looked at both  ' } })
+  fireEvent.change(screen.getByLabelText('Outcome (required)'), { target: { value: 'no_action_required' } })
 }
 
 function renderForm(onDone = vi.fn(), onCancel = vi.fn()) {
@@ -71,11 +71,36 @@ describe('BatchReviewForm', () => {
     expect(mockedBatch.mock.calls[0][0].exception_ids).toEqual(['ex-1', 'ex-2'])
   })
 
-  it('lists each row it will review, one line per exception', () => {
+  it('summarises the batch by type and keeps every row one click away', () => {
     renderForm()
 
-    expect(screen.getByText(/Cargo Damage/)).toBeInTheDocument()
-    expect(screen.getByText(/Gps Mismatch/)).toBeInTheDocument()
+    expect(screen.getByText('Cargo Damage × 1 · GPS mismatch × 1')).toBeInTheDocument()
+    const list = screen.getByText('Show all 2').closest('details')!
+    expect(list).not.toHaveAttribute('open')
+    expect(list.querySelectorAll('li')).toHaveLength(2)
+    // Raw record ids mean nothing to a dispatcher and made the list a wall of wrapped UUIDs.
+    expect(screen.queryByText(/Record ex-1/)).not.toBeInTheDocument()
+  })
+
+  it('counts repeated types together', () => {
+    render(<BatchReviewForm tripId={TRIP_ID} exceptions={[warning('a', 'gps_mismatch'), warning('b', 'gps_mismatch'), warning('c', 'cargo_damage')]} onDone={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByText('GPS mismatch × 2 · Cargo Damage × 1')).toBeInTheDocument()
+  })
+
+  it('says why other unreviewed records are left out, and freezes that count with the list', () => {
+    const view = render(<BatchReviewForm tripId={TRIP_ID} exceptions={EXCEPTIONS} excludedCount={2} onDone={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText(/2 other unreviewed records are not included: critical, or claimed by a colleague/)).toBeInTheDocument()
+
+    view.rerender(<BatchReviewForm tripId={TRIP_ID} exceptions={EXCEPTIONS} excludedCount={5} onDone={vi.fn()} onCancel={vi.fn()} />)
+
+    expect(screen.getByText(/2 other unreviewed records/)).toBeInTheDocument()
+  })
+
+  it('stays silent about exclusions when there are none', () => {
+    renderForm()
+
+    expect(screen.queryByText(/not included: critical/)).not.toBeInTheDocument()
   })
 
   it('submits exactly the listed ids with one note and outcome', async () => {
@@ -101,13 +126,13 @@ describe('BatchReviewForm', () => {
     const submit = screen.getByRole('button', { name: /Review 2 exceptions/ })
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Review note'), { target: { value: 'Note only' } })
+    fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: 'Note only' } })
     expect(submit).toBeDisabled()
 
-    fireEvent.change(screen.getByLabelText('Outcome'), { target: { value: 'no_action_required' } })
+    fireEvent.change(screen.getByLabelText('Outcome (required)'), { target: { value: 'no_action_required' } })
     expect(submit).toBeEnabled()
 
-    fireEvent.change(screen.getByLabelText('Review note'), { target: { value: '   ' } })
+    fireEvent.change(screen.getByLabelText('Review note (required)'), { target: { value: '   ' } })
     expect(submit).toBeDisabled()
     expect(mockedBatch).not.toHaveBeenCalled()
   })
@@ -121,7 +146,7 @@ describe('BatchReviewForm', () => {
 
     await waitFor(() => expect(notify).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error', title: 'A colleague got there first' })))
     expect(onDone).not.toHaveBeenCalled()
-    expect(screen.getByLabelText('Review note')).toHaveValue('  Looked at both  ')
+    expect(screen.getByLabelText('Review note (required)')).toHaveValue('  Looked at both  ')
   })
 
   it("toasts the server's detail on 422", async () => {

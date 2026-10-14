@@ -26,6 +26,7 @@ import {
   yAxisHeading,
 } from './chartStyle'
 
+// All four cards share one source line: they are the same attested steps, grouped four ways.
 const COPY = FLEET_COPY.activity.patterns
 // Averages under 10 need two decimals to tell 0.14 from 0.43; bigger ones only one.
 const SMALL_AVERAGE = 10
@@ -161,6 +162,7 @@ export function PatternStrip({ set, eventNoun, isLoading, isRefreshing, error, o
             key={spec.id}
             title={spec.title}
             question={COPY.question(eventNoun)}
+            source={COPY.source}
             basis={COPY.basis(total, eventNoun)}
             caveat={spec.id === 'month_of_year' ? monthNote : undefined}
             isLoading={isLoading}

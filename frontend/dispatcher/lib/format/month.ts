@@ -4,8 +4,8 @@
 // Months are "YYYY-MM-01" strings, zero-padded so they also sort as plain strings.
 
 import type { MonthRange } from '@/lib/types/month-range'
+import { OPERATIONS_TIMEZONE } from '@shared/lib/utils/datetime'
 
-const OPERATIONS_TIME_ZONE = 'Africa/Johannesburg'
 const MONTHS_PER_YEAR = 12
 const MONTH_DIGITS = 2
 
@@ -13,7 +13,7 @@ const MONTH_DIGITS = 2
 export const DEFAULT_RANGE_MONTHS = 3
 
 const OPERATIONS_MONTH_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: OPERATIONS_TIME_ZONE,
+  timeZone: OPERATIONS_TIMEZONE,
   year: 'numeric',
   month: '2-digit',
 })

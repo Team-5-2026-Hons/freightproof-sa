@@ -42,9 +42,14 @@ from app.core.config import settings
 # and blockchain_receipts because it points at both; exceptions and checkpoints
 # precede merkle_batches for the same reason. The receiver-handover chain comes first:
 # verifications point at confirmations and tokens, attempts and confirmations at
-# tokens, and tokens at phase_events and trip_stops. Both facts (coverage and order)
-# are checked against the models by tests/unit/test_dev_reset_lifecycle.py.
+# tokens, and tokens at phase_events and trip_stops. Audit packs go first of all: access
+# events point at packs, packs at consignments and trip-scoped receipts, and incident
+# declarations at exceptions. Both facts (coverage and order) are checked against the
+# models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
+    "audit_pack_access_events",
+    "audit_packs",
+    "incident_declarations",
     "receiver_identity_verifications",
     "handover_token_attempts",
     "handover_confirmations",
@@ -63,6 +68,16 @@ _DELETE_ORDER = [
     "trip_trailers",
     "trip_stops",
 ]
+
+# evidence_artifacts.phase_event_id -> phase_events and the phase_events -> evidence_artifacts
+# columns form a cycle, so no delete order satisfies both. The nullable half is cleared first.
+# _SEVERED_BEFORE_DELETE names the edge so tests/unit/test_dev_reset_lifecycle.py can exempt
+# exactly that edge from its ordering check, and nothing else.
+_CLEAR_ATTRIBUTION = (
+    "UPDATE evidence_artifacts SET phase_event_id = NULL, evidence_role = NULL "
+    "WHERE phase_event_id IS NOT NULL"
+)
+_SEVERED_BEFORE_DELETE = frozenset({("evidence_artifacts", "phase_events")})
 
 # Trip-scoped receipts only. Vehicle/driver receipts carry trip_id IS NULL and are
 # referenced by vehicle_events / driver_events, which are reference-side audit rows.
@@ -100,6 +115,9 @@ async def reset() -> None:
     try:
         async with async_session() as db:
             before = await _counts(db, _REFERENCE_TABLES)
+
+            result = await db.execute(text(_CLEAR_ATTRIBUTION))
+            print(f"  {'evidence attribution':<24} {_deleted(result)} cleared")
 
             for table in _DELETE_ORDER:
                 result = await db.execute(text(f"DELETE FROM {table}"))  # noqa: S608

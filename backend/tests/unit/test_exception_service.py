@@ -37,14 +37,13 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import (
+from app.orchestration.exceptions.review import (
     claim_exception,
-    pick_breakdown_vehicle,
-    raise_exception,
     review_exception,
     review_exceptions_batch,
 )
-from app.orchestration.review_policy import initial_review_status
+from app.orchestration.exceptions.creation import pick_breakdown_vehicle, raise_exception
+from app.orchestration.exceptions.review_policy import initial_review_status
 
 _OUTBOX_KEY = "realtime_outbox"
 
@@ -477,7 +476,8 @@ async def test_raise_exception_without_a_client_report_id_is_unaffected(db_sessi
 # failure path returns None and logs a warning, never raises: the offline queue discards
 # a report on any 4xx, and a breakdown must never be lost over its vehicle.
 
-_SERVICE_LOGGER = "app.orchestration.exception_service"
+# pick_breakdown_vehicle logs through its own module's logger since the exceptions split.
+_SERVICE_LOGGER = "app.orchestration.exceptions.creation"
 
 
 def _pick(

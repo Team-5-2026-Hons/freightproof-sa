@@ -8,7 +8,7 @@ tests/integration/test_phases.py and tests/integration/test_arrival_phase.py
 already use, not reinvented here.
 
 Nothing in this module calls db_session.commit() to reach ANCHORED: `_dispatch_anchor`
-(app/orchestration/phase_service.py) only queues the Hedera submit on the session's
+(app/orchestration/phases/anchor_dispatch.py) only queues the Hedera submit on the session's
 after_commit hook, and the shared `override_get_db` fixture below never commits mid-
 request, so every advance_*/override_phase call in this file only ever gets as far as
 setting `event_hash` in-request — matching production's real split between "evidence
@@ -41,10 +41,14 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration.phase_service import (
-    _PHASE_RECEIPT_TYPES, anchor_phase_event, receipt_type_for, recover_phase_anchor,
+from app.orchestration.phases.anchor_execution import (
+    _PHASE_RECEIPT_TYPES,
+    anchor_phase_event,
+    receipt_type_for,
 )
-from app.orchestration.verification_service import reconstruct_pending_phase_payload, verify_subject
+from app.orchestration.phases.anchor_recovery import recover_phase_anchor
+from app.orchestration.verification.phase_payloads import reconstruct_pending_phase_payload
+from app.orchestration.verification.service import verify_subject
 
 from tests.conftest import auth_header, make_token
 # override_get_db is autouse and never referenced by name below, so importing it is

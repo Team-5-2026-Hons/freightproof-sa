@@ -10,8 +10,7 @@
 
 import { MONTH_ABBREVIATIONS, addMonths } from '@/lib/format/month'
 import type { Grain } from '@shared/lib/types/fleet-analytics'
-
-const OPERATIONS_TIME_ZONE = 'Africa/Johannesburg'
+import { sastCalendarDay } from '@shared/lib/utils/datetime'
 
 /** Mirrors the backend's MAX_TREND_BUCKETS: one year of weeks. */
 export const MAX_TREND_BUCKETS = 53
@@ -32,13 +31,6 @@ const PRESET_WEEKS = { last_4_weeks: 4, last_12_weeks: 12, last_26_weeks: 26 } a
 const PRESET_MONTHS = { last_3_months: 3, last_6_months: 6, last_12_months: 12 } as const
 const PRESET_YEARS = { last_3_years: 3 } as const
 const MONTHS_IN_A_YEAR = 12
-
-const TODAY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: OPERATIONS_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
 
 export type PresetId =
   | 'last_4_weeks' | 'last_12_weeks' | 'last_26_weeks'
@@ -79,14 +71,8 @@ export interface ResolvedPeriod {
 
 /** The SAST calendar date at `now`. */
 export function todaySast(now: Date = new Date()): string {
-  const parts = TODAY_FORMATTER.formatToParts(now)
-  const part = (type: Intl.DateTimeFormatPartTypes): string | undefined =>
-    parts.find((entry) => entry.type === type)?.value
-  const year = part('year')
-  const month = part('month')
-  const day = part('day')
-  if (!year || !month || !day) throw new Error('Unable to resolve the operations date')
-  return `${year}-${month}-${day}`
+  // A valid Date always yields a day; keeps the parameter so callers can ask about any instant.
+  return sastCalendarDay(now)!
 }
 
 function toDate(date: string): Date {

@@ -14,7 +14,7 @@ from decimal import Decimal
 import pytest
 
 from app.core.geo import haversine_metres
-from app.orchestration.dev_truck_service import (
+from app.dev.services.truck import (
     FIFTY_KM_METRES,
     SCENARIO_LABELS,
     THREE_KM_METRES,
@@ -24,7 +24,7 @@ from app.orchestration.dev_truck_service import (
     destination_point,
     scenario_distance_metres,
 )
-from app.schemas.dev import (
+from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
     SCENARIO_INSIDE_TOLERANCE,

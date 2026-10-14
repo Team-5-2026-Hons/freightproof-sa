@@ -8,10 +8,11 @@
 // tri-state seal_condition choice this component adds: 'missing' hides the number
 // requirement but never relaxes the photo requirement.
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { SealVerify } from '../SealVerify'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { ArrivalEvidence } from '@/lib/types/evidence-draft'
+import type { PhaseEventId } from '@shared/lib/types/phase'
 
 // StepHeader (rendered by the step) calls useRouter — stub it so the component mounts
 // under jsdom.
@@ -27,6 +28,19 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
     <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
   ),
+}))
+
+// The hook is the seam under test here: what matters is the phase id and role each step
+// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
+const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
+  mockUseArtifactUpload: vi.fn(),
+  mockUploadNow: vi.fn().mockResolvedValue(null),
+}))
+vi.mock('@/lib/hooks/useArtifactUpload', () => ({
+  useArtifactUpload: (...args: unknown[]) => {
+    mockUseArtifactUpload(...args)
+    return { uploadNow: mockUploadNow }
+  },
 }))
 
 function makeDraft(overrides: Partial<ArrivalEvidence> = {}): ArrivalEvidence {
@@ -291,5 +305,31 @@ describe('SealVerify — the overhauled screen (8.1/8.2)', () => {
     renderStep({ draft: makeDraft({ sealCondition: 'missing', sealPhotoDataUrl: null }) })
 
     expect(screen.getByText('Add the photo first')).toBeInTheDocument()
+  })
+})
+
+describe('arrival SealVerify evidence attribution', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('captures with this phase and the step\'s role', () => {
+    const phase = makePhase('arrival', { phase_event_id: 'phase-event-88' as PhaseEventId })
+    render(
+      <SealVerify
+        tripId="t1"
+        phase={phase}
+        stepIndex={0}
+        draft={makeDraft({ sealPhotoDataUrl: null })}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    // By role: the redesign also names "Seal photo" in the Needed-to-continue list.
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    expect(mockUseArtifactUpload).toHaveBeenCalledWith('t1', 'phase-event-88')
+    expect(mockUploadNow).toHaveBeenCalledWith(
+      'data:image/jpeg;base64,Seal photo', 'photo', expect.any(String), 'seal_photo',
+    )
   })
 })

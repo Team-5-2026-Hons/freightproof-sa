@@ -11,7 +11,7 @@ The sequential replay case (tests/unit/test_exception_service.py's
 test_raise_exception_replays_the_same_client_report_id) proves the pre-check branch
 works; it proves nothing about two attempts genuinely landing together. This module
 opens two independent connections, lets both attempt the same insert, and proves the
-savepoint recovery path in exception_service.raise_exception actually returns the
+savepoint recovery path in exceptions.creation.raise_exception actually returns the
 winner to the loser instead of surfacing an IntegrityError (or, worse, poisoning the
 loser's transaction so nothing after it can run).
 """
@@ -35,7 +35,7 @@ from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import raise_exception
+from app.orchestration.exceptions.creation import raise_exception
 
 
 async def _seed(session: AsyncSession) -> dict:

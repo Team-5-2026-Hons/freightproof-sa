@@ -23,6 +23,13 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('reserves room for the close icon beside a long recorded-location title', () => {
+  render(<Modal open onClose={vi.fn()} title="Recorded locations: a very long precinct name that wraps"><p>body</p></Modal>)
+
+  expect(screen.getByRole('button', { name: 'Close modal' })).toHaveClass('shrink-0')
+  expect(screen.getByRole('heading')).toHaveClass('min-w-0', 'break-words')
+})
+
 it('keeps the fitted width and a plain dim backdrop by default', () => {
   render(<Modal open onClose={vi.fn()} title="Default"><p>body</p></Modal>)
 
@@ -191,4 +198,23 @@ it('still closes via the close button and Escape', () => {
 
   fireEvent(dialog, new Event('cancel', { cancelable: true }))
   expect(close).toHaveBeenCalledTimes(2)
+})
+
+it('never draws the focus ring around the dialog itself, which regains focus when a nested modal closes', () => {
+  render(<Modal open onClose={vi.fn()} title="Outer">body</Modal>)
+
+  expect(screen.getByRole('dialog')).toHaveClass('focus-visible:outline-none')
+})
+
+it('scrolls its body, not the dialog, so the scrollbar stays inside the rounded corners and the header stays in view', () => {
+  render(<Modal open onClose={vi.fn()} title="Long form" footer={<button type="button">Save</button>}><p>body copy</p></Modal>)
+
+  const dialog = screen.getByRole('dialog')
+  expect(dialog).toHaveClass('overflow-hidden')
+  expect(dialog).not.toHaveClass('overflow-y-auto')
+  const body = screen.getByText('body copy').parentElement!
+  expect(body).toHaveClass('overflow-y-auto')
+  // Header and footer sit outside the scroller.
+  expect(body).not.toContainElement(screen.getByRole('heading', { name: 'Long form' }))
+  expect(body).not.toContainElement(screen.getByRole('button', { name: 'Save' }))
 })

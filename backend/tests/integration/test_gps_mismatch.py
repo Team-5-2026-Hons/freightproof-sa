@@ -58,9 +58,14 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration import action_location_service
+from app.orchestration.evidence.action_location import (
+    _find_existing_separation,
+    record_separation_finding,
+)
+from app.orchestration.phases.findings import _raise_position_disagreement_if_unrecorded
+from app.orchestration.evidence import action_location as evidence_action_location
 from app.schemas.action_location import ActionLocationAssessment
-from app.orchestration import phase_service
+from app.orchestration.phases import findings as phase_findings
 
 # Imported for their fixture side effects as much as their bodies — `override_get_db`
 # is autouse in its defining module and stays autouse here, which is what points the
@@ -328,14 +333,14 @@ async def test_concurrent_separation_finding_attempts_recover_the_partial_unique
         ids = await _seed_committed_separation_race_world(seed_session)
 
     barrier = asyncio.Barrier(2)
-    original_find = action_location_service._find_existing_separation
+    original_find = _find_existing_separation
 
     async def synchronized_find(*args, **kwargs):
         existing = await original_find(*args, **kwargs)
         await barrier.wait()
         return existing
 
-    monkeypatch.setattr(action_location_service, "_find_existing_separation", synchronized_find)
+    monkeypatch.setattr(evidence_action_location, "_find_existing_separation", synchronized_find)
     assessment = ActionLocationAssessment(
         policy_version="test-policy", evaluated_at=datetime.now(UTC),
         driver_lat=float(_ORIGIN_LAT), driver_lng=float(_ORIGIN_LNG),
@@ -353,7 +358,7 @@ async def test_concurrent_separation_finding_attempts_recover_the_partial_unique
         async with AsyncSession(test_engine, expire_on_commit=False) as session:
             trip = await session.get(Trip, ids["trip_id"])
             assert trip is not None
-            await action_location_service.record_separation_finding(
+            await record_separation_finding(
                 session, trip=trip, phase_event_id=ids["event_id"], checkpoint_id=None,
                 assessment=assessment,
             )
@@ -577,7 +582,7 @@ async def test_a_pulsit_outage_raises_nothing(
     trip, driver, _org, _stop = corroboration_trip
 
     with patch(
-        "app.orchestration.corroboration_service.get_pulsit_client",
+        "app.orchestration.evidence.corroboration.get_pulsit_client",
         side_effect=RuntimeError("Pulsit unreachable"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -714,7 +719,7 @@ async def test_the_raise_is_idempotent_against_the_phase_event_itself(
     await _complete_activation(client, trip, driver)
     event = await _load_event(db_session, trip, PhaseType.ACTIVATION)
 
-    await phase_service._raise_position_disagreement_if_unrecorded(
+    await _raise_position_disagreement_if_unrecorded(
         db_session, trip=trip, event=event,
     )
     await db_session.flush()
@@ -741,7 +746,7 @@ async def test_a_resolved_finding_does_not_reappear_on_the_next_resync(
     exc.review_status = ExceptionReviewStatus.REVIEWED
     await db_session.flush()
 
-    await phase_service._raise_position_disagreement_if_unrecorded(
+    await _raise_position_disagreement_if_unrecorded(
         db_session, trip=trip, event=event,
     )
     await db_session.flush()
@@ -766,7 +771,7 @@ async def test_a_failure_recording_the_finding_leaves_the_handshake_successful(
     await _stage(_HORSE_DEVICE, _FAR_AWAY_LAT, _FAR_AWAY_LNG)
 
     with patch.object(
-        phase_service, "_phone_tracker_separation_metres",
+        phase_findings, "_phone_tracker_separation_metres",
         side_effect=RuntimeError("separation maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)
@@ -789,7 +794,7 @@ async def test_a_failure_building_the_assessment_leaves_the_handshake_successful
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
 
     with patch.object(
-        action_location_service, "build_phase_assessment",
+        evidence_action_location, "build_phase_assessment",
         side_effect=RuntimeError("assessment maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)

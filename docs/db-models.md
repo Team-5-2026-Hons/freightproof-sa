@@ -5,6 +5,8 @@
 > `backend/app/db/models/` and `backend/app/schemas/`; for lifecycle terminology, use
 > [the maintained phase-model reference](phase-model-explained.md).
 
+> **Partially updated 2026-10-01 (FP-281):** the `trips` and `precincts` tables below show the PP manifest columns, and the `parcel_manifest_snapshot` row notes its use. Everything else is still the May 2026 record.
+
 > **Original audience:** All team members. Preserve this record for historical context;
 > do not use it as the current migration or orchestration authority.
 >
@@ -154,6 +156,7 @@ A physical depot or warehouse. Every trip has an origin and destination precinct
 | `latitude` | Numeric(10,7) | not null |
 | `longitude` | Numeric(10,7) | not null |
 | `geofence_radius_metres` | Integer | default 200; used by Pulsit geofence checks |
+| `pp_hub_code` | String(10) | nullable; the PP hub this precinct stands for (e.g. `JNB`). Unique per principal where set (FP-281) |
 | `created_at` / `updated_at` | TimestampTZ | trigger-managed |
 
 ---
@@ -242,7 +245,10 @@ One row per depot-to-depot journey.
 |---|---|---|
 | `id` | UUID PK | |
 | `trip_reference` | String(50) | unique, human-readable (e.g. `FP-2026-001`) |
-| `order_number` | String(100) | Parcel Perfect or client order ref |
+| `order_number` | String(100) | **nullable and no longer written** (FP-281). Dropped by a later clean-up migration |
+| `pp_manifest_issuer_account` | String(6) | nullable; PP account of the client that issued the manifest (FP-281) |
+| `pp_manifest_origin_hub` | String(10) | nullable; PP hub the manifest leaves from |
+| `pp_manifest_number` | Integer | nullable. The three manifest columns are all set or all null (`ck_trips_pp_manifest_all_or_none`) |
 | `operator_organization_id` | UUID FK → organizations | |
 | `client_organization_id` | UUID FK → organizations | |
 | `driver_id` | UUID FK → drivers | current assigned driver |
@@ -263,9 +269,9 @@ One row per depot-to-depot journey.
 | `closed_at` | DateTime | nullable; set when status → `closed` or `cancelled` |
 | `created_at` / `updated_at` | TimestampTZ | trigger-managed |
 
-**Indexes:** `(driver_id)`, `(status)`, `(order_number)`, `(created_at DESC)`
+**Indexes:** `(driver_id)`, `(status)`, `(order_number)` (until the clean-up migration), `(created_at DESC)`, and unique `uq_trips_pp_manifest` on `(operator_organization_id, pp_manifest_issuer_account, pp_manifest_origin_hub, pp_manifest_number) WHERE status <> 'cancelled'`: one non-cancelled trip per manifest.
 
-> **Journey lock:** `journey_lock_hash` is a SHA-256 of the committed trip parameters (vehicle, driver, origin, destination, consignment references) at creation. It is anchored to Hedera HCS. If the current record hash no longer matches the Hedera transaction, tampering is detected. **Never modify trip parameters after creation without raising an explicit exception event.**
+> **Journey lock:** `journey_lock_hash` is a SHA-256 of the committed trip parameters (vehicle, driver, origin, destination, consignment references) at creation. It is anchored to Hedera HCS. If the current record hash no longer matches the Hedera transaction, tampering is detected. **Never modify trip parameters after creation without raising an explicit exception event.** Since FP-281 the lock is a fixed key set covering the manifest key, the SHA-256 of the H0 manifest snapshot and the planned times; the order number is no longer in it.
 
 ---
 
@@ -373,7 +379,7 @@ One row per handshake per trip. H0 (trip_creation), H2 (loading), H5 (unloading)
 | `parcel_count_origin` | Integer | nullable |
 | `parcel_count_destination` | Integer | nullable |
 | `driver_visual_count` | Integer | nullable |
-| `parcel_manifest_snapshot` | JSONB | nullable; immutable snapshot of parcel list at this handshake |
+| `parcel_manifest_snapshot` | JSONB | nullable; immutable snapshot of parcel list at this handshake. Written since FP-281 on the trip-creation (H0) `PhaseEvent` row only: the PP manifest as pulled at creation. Dispatcher-only |
 | **Photo artifact FKs** | | deferred FKs (ALTER TABLE) |
 | `seal_photo_artifact_id` | UUID FK → evidence_artifacts | nullable |
 | `waybill_photo_artifact_id` | UUID FK → evidence_artifacts | nullable |

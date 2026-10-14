@@ -37,25 +37,33 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import scan_service
-from app.orchestration.phase_plan import ANCHORED_PHASES
-from app.orchestration.phase_service import (
-    _BACKGROUND_ANCHOR_TASKS,
-    _PHASE_RECEIPT_TYPES,
-    advance_activation, advance_arrival, advance_confirmation, advance_departure,
-    advance_in_transit, advance_loading,
-    advance_unloading, compute_activation_canonical_payload_v2,
-    compute_arrival_canonical_payload_v2, compute_confirmation_canonical_payload_v1,
-    compute_confirmation_canonical_payload_v2, compute_departure_canonical_payload_v1,
-    compute_departure_canonical_payload_v2, compute_in_transit_canonical_payload_v2,
-    compute_loading_canonical_payload_v2, compute_override_canonical_payload_v2,
+from app.orchestration.consignments.scans import ingest_scans
+from app.orchestration.phases.plan import ANCHORED_PHASES
+from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+from app.orchestration.phases.anchor_execution import _PHASE_RECEIPT_TYPES, receipt_type_for
+from app.orchestration.phases.advance_activation import advance_activation
+from app.orchestration.phases.advance_arrival import advance_arrival
+from app.orchestration.phases.advance_confirmation import advance_confirmation
+from app.orchestration.phases.advance_departure import advance_departure
+from app.orchestration.phases.advance_in_transit import advance_in_transit
+from app.orchestration.phases.advance_loading import advance_loading
+from app.orchestration.phases.advance_unloading import advance_unloading
+from app.orchestration.phases.payloads import (
+    compute_activation_canonical_payload_v2,
+    compute_arrival_canonical_payload_v2,
+    compute_confirmation_canonical_payload_v1,
+    compute_confirmation_canonical_payload_v2,
+    compute_departure_canonical_payload_v1,
+    compute_departure_canonical_payload_v2,
+    compute_in_transit_canonical_payload_v2,
+    compute_loading_canonical_payload_v2,
+    compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
-    override_phase,
-    receipt_type_for,
-    recover_phase_anchor,
 )
-from app.orchestration.phase_service import anchor_phase_event
-from app.orchestration.verification_service import verify_subject
+from app.orchestration.phases.override import override_phase
+from app.orchestration.phases.anchor_recovery import recover_phase_anchor
+from app.orchestration.phases.anchor_execution import anchor_phase_event
+from app.orchestration.verification.service import verify_subject
 from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
     ActivationCompleteRequest, ArrivalCompleteRequest, ConfirmationCompleteRequest,
@@ -103,7 +111,7 @@ def stub_evidence_storage_hash(monkeypatch):
         return "a" * 64
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _stored_hash,
     )
 
 
@@ -136,7 +144,7 @@ async def trip_fixture(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -539,7 +547,7 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop0_id),
         direction=ScanDirection.OUT, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop0_id, direction=ScanDirection.OUT,
     )
     await feed.close_session(
@@ -580,12 +588,12 @@ async def test_advance_confirmation_anchors_even_on_a_scan_mismatch(
     )
     # Only 2 of 3 scanned in at destination — the mismatch this test exists to
     # anchor. Staged/ingested/closed BEFORE advance_unloading, not after: UNLOADING
-    # now gates on this stop's IN-direction scan session (phase_gate.GATED_PHASES).
+    # now gates on this stop's IN-direction scan session (phases.blocking.GATED_PHASES).
     await feed.stage_scans(
         consignment_reference=consignment.parcel_perfect_reference, stop_reference=str(stop1_id),
         direction=ScanDirection.IN, barcodes=barcodes[:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop1_id, direction=ScanDirection.IN,
     )
     await feed.close_session(
@@ -989,7 +997,7 @@ async def test_verify_subject_detects_replaced_storage_bytes(
         return "b" * 64 if s3_key == seal.s3_key else "a" * 64
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _stored_hash,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _stored_hash,
     )
     stub_service = MagicMock()
 
@@ -1015,7 +1023,7 @@ async def test_verify_subject_treats_missing_storage_object_as_mismatch(
         raise EvidenceObjectNotFoundError("missing")
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _missing,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _missing,
     )
     stub_service = MagicMock()
 
@@ -1040,7 +1048,7 @@ async def test_verify_subject_treats_storage_outage_as_error_not_tampering(
         raise EvidenceStorageUnavailableError("unavailable")
 
     monkeypatch.setattr(
-        "app.orchestration.verification_service.hash_stored_evidence_file", _unavailable,
+        "app.orchestration.verification.phase_payloads.hash_stored_evidence_file", _unavailable,
     )
     stub_service = MagicMock()
 

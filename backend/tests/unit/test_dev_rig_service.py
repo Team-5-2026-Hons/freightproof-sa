@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from app.orchestration.dev_rig_service import (
+from app.dev.services.rig import (
     UNCOUPLED_TRAILER_MIN_OFFSET_METRES,
     midpoint,
     uncoupled_offset_metres,

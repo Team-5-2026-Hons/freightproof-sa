@@ -7,12 +7,12 @@ import { MapPinOff } from 'lucide-react'
 import { TopBar } from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { AdminOnly } from '@/components/auth/AdminOnly'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
+import { PrecinctDetailSkeleton } from '@/components/precincts/PrecinctDetailSkeleton'
 import { EventTimeline } from '@/components/blockchain/EventTimeline'
 import { PrecinctAnalyticsSummary } from '@/components/analytics/PrecinctAnalyticsSummary'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -54,9 +54,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Precinct" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <PrecinctDetailSkeleton />
       </div>
     )
   }

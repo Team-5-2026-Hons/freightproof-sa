@@ -1,7 +1,7 @@
 """Integration tests: departure/confirmation phase completion anchors to
 Hedera HCS. The anchor moved whole from loading to
 departure — see DepartureCompleteRequest/advance_departure in
-app/schemas/phases.py and app/orchestration/phase_service.py.
+app/schemas/phases.py and app/orchestration/phases/advance_departure.py.
 
 Mirrors tests/integration/test_trips_anchor.py's approach (patch HederaService
 at the app.blockchain.anchor_service import boundary) applied to the
@@ -80,7 +80,7 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -95,7 +95,7 @@ async def seed_trip(db_session):
     # call. IN_TRANSIT (P4) is included and stays PENDING like every other
     # driver-facing row: it is opened by advance_departure and closed by the
     # driver's own arrival submission — see advance_in_transit's docstring in
-    # phase_service.py.
+    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -212,7 +212,8 @@ async def _drain_anchors(db_session, dispatched) -> None:
     """Commit first — the override of get_db in these tests doesn't commit, so the
     after_commit hook that dispatches the anchor hasn't fired yet — then run every queued
     anchor exactly as the worker would."""
-    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS, anchor_phase_event
+    from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
+    from app.orchestration.phases.anchor_execution import anchor_phase_event
 
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
@@ -435,6 +436,12 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
             assert receiver_artifact.file_hash == hashlib.sha256(signature_bytes).hexdigest()
         else:
             signature_id = await upload("signature")
+            # Completion rejects a driver's own upload as the receiver confirmation (D8b), so
+            # this case models an image with no driver id, as a pre-attribution receiver image
+            # is. What it exercises is anchoring and verification, not who produced the image.
+            legacy_signature = await db_session.get(EvidenceArtifact, uuid.UUID(signature_id))
+            legacy_signature.captured_by_driver_id = None
+            await db_session.flush()
         event_id = await complete("confirmation", {
             "pod_photo_artifact_id": selected_artifact_id,
             "pod_signature_artifact_id": signature_id,

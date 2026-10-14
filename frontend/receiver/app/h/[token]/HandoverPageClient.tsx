@@ -14,6 +14,7 @@ import {
   confirmHandover,
   fetchScan,
   recordConsent,
+  recordConsentDecline,
   resolveVerification,
   startVerification,
   type HandoverScan,
@@ -245,7 +246,9 @@ export function HandoverPageClient({ token }: { token: string }) {
   const handleConsentDecline = useCallback(async () => {
     setConsentBusy(true)
     try {
-      await recordConsent(token, consentPayloadText(), false)
+      // A decline, not a consent with no document: agreeing without an ID is a different
+      // decision from refusing the check, and the record must not blur them.
+      await recordConsentDecline(token, consentPayloadText())
     } catch (err: unknown) {
       // Declining must still leave the receiver able to confirm the delivery.
       console.warn('[handover] consent decline record failed:', err)

@@ -14,10 +14,16 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
 # Caps decoded bytes so an anonymous caller can't spend our Storage bill or memory
-# (well under artifact_service.MAX_FILE_SIZE_BYTES). Base64 field is bounded separately
+# (well under evidence.artifacts.MAX_FILE_SIZE_BYTES). Base64 field is bounded separately
 # (4/3 inflation) so an oversized body is rejected before decoding.
 MAX_SIGNATURE_BYTES = 512 * 1024
 MAX_SIGNATURE_B64_CHARS = (MAX_SIGNATURE_BYTES * 4) // 3 + 4
+
+# Same ceilings as HandoverConfirmRequest below: the identity resolve compares what the
+# receiver typed at consent time, which is later submitted at confirm time under those
+# limits, so a longer value could never match anything the confirm route would accept.
+MAX_RECEIVER_NAME_LENGTH = 120
+MAX_RECEIVER_ID_NUMBER_LENGTH = 60
 
 _PNG_DATA_URL_PREFIX = "data:image/png;base64,"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -109,7 +115,26 @@ class HandoverConsentRequest(BaseModel):
     """
 
     consent_text: str = Field(min_length=1, max_length=4000)
+    # False records a refusal: no consent is stored and no vendor session may follow.
+    # Required, with no default: a receiver page cached from before this field existed
+    # sends its decline without it, so a default of True would store that refusal as
+    # agreement. A missing decision is rejected (422) and the stale page has to reload.
+    consented: bool
     has_document: bool = True  # False routes to selfie-only tier, not a refusal
+
+
+class HandoverResolveRequest(BaseModel):
+    """What the receiver typed, for the identity cross-check against the vendor's document.
+
+    A body, not query parameters: a name and an ID number in a URL are written to the
+    access log, proxy logs and platform logs. Defaults stay empty (not required) so a
+    receiver whose storage was cleared across the vendor redirect can still resolve;
+    empty simply compares as "nothing typed". Still no session identifier: the server
+    uses the one it stored itself.
+    """
+
+    receiver_name: str = Field(default="", max_length=MAX_RECEIVER_NAME_LENGTH)
+    receiver_id_number: str = Field(default="", max_length=MAX_RECEIVER_ID_NUMBER_LENGTH)
 
 
 class HandoverVerifyResponse(BaseModel):

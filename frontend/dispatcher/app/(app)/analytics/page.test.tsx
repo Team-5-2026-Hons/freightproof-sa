@@ -239,6 +239,37 @@ describe('Analytics page', () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/analytics?tab=problems', { scroll: false }))
   })
 
+  it('says where the page\'s figures come from, including the simulated feeds', async () => {
+    renderPage()
+
+    expect(await screen.findByText(/Every figure comes from FreightProof/)).toBeInTheDocument()
+    expect(screen.getByText(/simulated and mock feeds until live credentials arrive/)).toBeInTheDocument()
+    // The existing scope note stays beside it, not replaced by it.
+    expect(screen.getByText(/Trends count closed trips/)).toBeInTheDocument()
+  })
+
+  it('opens the incident map on Today when the address says so, and asks only for today', async () => {
+    searchParams = new URLSearchParams('tab=routes&map=today')
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Incident map' })
+    const today = todaySast()
+    await waitFor(() => expect(
+      mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('/incidents?')),
+    ).toEqual([`/api/v1/analytics/fleet/incidents?start=${today}&end=${today}`]))
+    expect(screen.getByRole('radio', { name: 'Today' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('leaves the incident map on This period when the address does not ask for Today', async () => {
+    searchParams = new URLSearchParams('tab=routes')
+
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'Incident map' })
+    expect(screen.getByRole('radio', { name: 'This period' })).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('gives Routes & sites the general list when it is returned to with a View by period', async () => {
     searchParams = new URLSearchParams('tab=routes&grain=week&period=last_26_weeks')
 

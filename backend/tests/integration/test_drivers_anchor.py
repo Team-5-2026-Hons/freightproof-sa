@@ -119,7 +119,7 @@ async def test_create_driver_does_not_anchor_pii(
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new_callable=AsyncMock,
             return_value=fake_driver_id,
         ),
@@ -205,7 +205,7 @@ async def test_create_driver_hedera_timeout_returns_504(
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new_callable=AsyncMock,
             return_value=fake_driver_id,
         ),
@@ -240,7 +240,7 @@ async def test_create_driver_hedera_service_error_returns_502(
 
     with (
         patch(
-            "app.orchestration.driver_service.create_driver_auth_user",
+            "app.orchestration.fleet.drivers.create_driver_auth_user",
             new_callable=AsyncMock,
             return_value=fake_driver_id,
         ),

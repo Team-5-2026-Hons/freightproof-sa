@@ -160,7 +160,7 @@ def test_a_valid_checkpoint_still_passes() -> None:
 
 def test_checkpoint_driver_captured_at_rejects_a_naive_timestamp() -> None:
     """A naive value would silently compare as if it were UTC in
-    corroboration_service — rejected outright rather than assumed."""
+    evidence.corroboration — rejected outright rather than assumed."""
     with pytest.raises(ValidationError, match="timezone-aware"):
         DriverCheckpointCreateBody(
             checkpoint_type="manual", driver_captured_at="2026-09-06T14:00:00",

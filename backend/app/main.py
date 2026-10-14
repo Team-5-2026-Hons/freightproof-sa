@@ -18,18 +18,24 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.artifacts import router as artifacts_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
+from app.api.v1.endpoints.audit_packs import declarations_router as incident_declarations_router
+from app.api.v1.endpoints.audit_packs import packs_router as audit_packs_by_id_router
+from app.api.v1.endpoints.audit_packs import router as audit_packs_router
+from app.api.v1.endpoints.audit_packs import trip_packs_router as trip_audit_packs_router
+from app.api.v1.endpoints.audit_packs_public import router as audit_packs_public_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
 from app.api.v1.endpoints.checkpoints import router as checkpoints_router
-from app.api.v1.endpoints.dev_pulsit import move_truck_enabled
-from app.api.v1.endpoints.dev_pulsit import router as dev_pulsit_router
-from app.api.v1.endpoints.dev_tracker import router as dev_tracker_router
-from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
-from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
+from app.dev.endpoints.pulsit import move_truck_enabled
+from app.dev.endpoints.pulsit import router as dev_pulsit_router
+from app.dev.endpoints.tracker import router as dev_tracker_router
+from app.dev.endpoints.triggers import dev_panel_enabled
+from app.dev.endpoints.triggers import router as dev_triggers_router
 from app.api.v1.endpoints.drivers import router as drivers_router
 from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_dispatcher_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
+from app.api.v1.endpoints.parcels import router as parcels_router
 from app.api.v1.endpoints.handover import public_router as handover_public_router
 from app.api.v1.endpoints.handover import router as handover_router
 from app.api.v1.endpoints.phases import router as phases_router
@@ -108,10 +114,16 @@ app.include_router(exceptions_dispatcher_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")
+app.include_router(parcels_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(audit_packs_router, prefix="/api/v1")
+app.include_router(trip_audit_packs_router, prefix="/api/v1")
+app.include_router(audit_packs_by_id_router, prefix="/api/v1")
+app.include_router(incident_declarations_router, prefix="/api/v1")
+app.include_router(audit_packs_public_router, prefix="/api/v1")
 
 # Dev trigger panel. Gated on DEV_PANEL_ENABLED only, not _IS_PRODUCTION —
 # the deployed demo runs ENVIRONMENT="production" and still needs this panel.

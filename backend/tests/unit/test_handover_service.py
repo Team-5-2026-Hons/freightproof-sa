@@ -28,7 +28,7 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration.handover_service import (
+from app.orchestration.handover.capability import (
     HandoverRedemptionResult,
     issue_capability_token,
     redeem_capability_token,

@@ -34,22 +34,34 @@ from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
-from app.orchestration import phase_service, scan_service
-from app.orchestration.phase_plan import PlanStop, build_phase_plan
-from app.orchestration.phase_service import (
-    _BACKGROUND_ANCHOR_TASKS, _load_phase_event, _schedule_anchor_after_dispatch_failure,
-    advance_activation, advance_arrival, advance_confirmation, advance_departure, advance_in_transit,
-    advance_loading, advance_unloading,
-    anchor_phase_event,
-    complete_phase, current_phase_event, is_before_scheduled_day, next_phase, operating_day,
+from app.orchestration.phases.findings import _raise_scan_shortfall_if_unrecorded
+from app.orchestration.phases.payloads import compute_confirmation_canonical_payload_v2
+from app.orchestration.phases.override import override_phase
+from app.orchestration.consignments.scans import ingest_scans
+from app.orchestration.phases.plan import PlanStop, build_phase_plan
+from app.orchestration.phases.anchor_dispatch import (
+    _BACKGROUND_ANCHOR_TASKS,
+    _schedule_anchor_after_dispatch_failure,
 )
+from app.orchestration.phases.loaders import _load_phase_event
+from app.orchestration.phases.advance_activation import advance_activation
+from app.orchestration.phases.advance_arrival import advance_arrival
+from app.orchestration.phases.advance_confirmation import advance_confirmation
+from app.orchestration.phases.advance_departure import advance_departure
+from app.orchestration.phases.advance_in_transit import advance_in_transit
+from app.orchestration.phases.advance_loading import advance_loading
+from app.orchestration.phases.advance_unloading import advance_unloading
+from app.orchestration.phases.anchor_execution import anchor_phase_event
+from app.orchestration.phases.service import complete_phase
+from app.orchestration.phases.queries import current_phase_event, next_phase
+from app.orchestration.phases.scheduling import is_before_scheduled_day, operating_day
 from app.schemas.phases import (
     ActivationCompleteRequest, ArrivalCompleteRequest, ConfirmationCompleteRequest,
     DepartureCompleteRequest, InTransitCompleteRequest, LoadingCompleteRequest, UnloadingCompleteRequest,
 )
 from tests.conftest import FakeMockStateStore
 
-# Activation is gated on the trip actually being due (phase_service._reject_if_not_due),
+# Activation is gated on the trip actually being due (phases.scheduling._reject_if_not_due),
 # and a trip carrying no schedule at all is deliberately unstartable. Every fixture below
 # therefore books its trip for today — which is what these fixtures always meant: a trip a
 # driver is about to run. Computed per-run, not pinned to a literal date, so the suite
@@ -61,7 +73,7 @@ _SCHEDULED_TODAY = datetime.now(UTC)
 def stub_hedera_service(monkeypatch):
     """advance_loading/advance_confirmation anchor to Hedera via anchor_subject(),
     which builds its own HederaService() when they don't pass one in (they
-    don't — same no-injection shape as trip_service.create_trip). These tests
+    don't — same no-injection shape as trips.creation.create_trip). These tests
     use a real (rolled-back) db_session but must not touch the real Hedera SDK,
     so the SDK wrapper class is patched at the import boundary anchor_service
     uses it through, matching tests/integration/test_trips_anchor.py.
@@ -148,7 +160,7 @@ async def trip_fixture(db_session):
     single-consignment trip: trip_creation (h0), activation/loading/departure/
     in_transit at stop 0, unloading/confirmation at stop 1. h0 is seeded here
     directly as COMPLETED — matching create_trip's inline completion of h0
-    once its Hedera anchor succeeds (see trip_service.create_trip), not the
+    once its Hedera anchor succeeds (see trips.creation.create_trip), not the
     PENDING status _build_phase_events initially assigns every row including
     h0. Only h0.status is set, not its anchor bookkeeping fields
     (completed_at/blockchain_receipt_id/event_hash/anchor_status) — these
@@ -530,7 +542,7 @@ async def test_advance_loading_full_scan_out_completes_with_no_exception(db_sess
         consignment_reference="PP-1", stop_reference=str(stop_id),
         direction=ScanDirection.OUT, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop_id, direction=ScanDirection.OUT,
     )
     # The warehouse closes its session once its own scan is done — what
@@ -582,7 +594,7 @@ async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session
         consignment_reference="PP-1", stop_reference=str(stop_id),
         direction=ScanDirection.OUT, barcodes=barcodes[:2],  # short — 2 of 3
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop_id, direction=ScanDirection.OUT,
     )
     await feed.close_session(
@@ -636,7 +648,7 @@ async def test_scan_shortfall_backstop_records_again_after_review(db_session, tr
     db_session.add(consignment)
     await db_session.flush()
 
-    wrote_first = await phase_service._raise_scan_shortfall_if_unrecorded(
+    wrote_first = await _raise_scan_shortfall_if_unrecorded(
         db_session, trip_id=trip.id, event=event, consignment=consignment,
         scanned_out=0, expected=3,
     )
@@ -650,7 +662,7 @@ async def test_scan_shortfall_backstop_records_again_after_review(db_session, tr
 
     # Same call, same arguments — proves the recurrence is recorded because the
     # prior row was reviewed, not because anything about the shortfall changed.
-    wrote_second = await phase_service._raise_scan_shortfall_if_unrecorded(
+    wrote_second = await _raise_scan_shortfall_if_unrecorded(
         db_session, trip_id=trip.id, event=event, consignment=consignment,
         scanned_out=0, expected=3,
     )
@@ -1502,7 +1514,7 @@ async def test_overridden_departure_then_arrival_records_unverified_not_mismatch
     )).scalar_one()
     await _advance_to_loading(db_session, trip, driver, phases)
 
-    await phase_service.override_phase(
+    await override_phase(
         db_session, trip_id=trip.id, phase_event_id=phases["departure"].id,
         operator_organization_id=trip.operator_organization_id, user_id=user.id,
         note="Driver phone wiped at the depot; departure captured on paper.",
@@ -2101,7 +2113,7 @@ async def test_current_phase_and_current_stop_track_the_ledger(db_session, trip_
 # trip-wide `phase_type == LOADING` (or DEPARTURE) lookup either raises
 # MultipleResultsFound the instant advance_unloading runs on ANY leg, or —
 # worse — silently compares against the wrong leg's row without raising
-# anything at all. _find_departure_for_leg (phase_service.py) fixes this by
+# anything at all. _find_departure_for_leg (phases/seals.py) fixes this by
 # always resolving the latest DEPARTURE strictly before the calling phase's
 # own sequence_number — the departure that opened THIS leg.
 
@@ -2168,7 +2180,7 @@ async def cross_dock_trip_fixture(db_session):
     assert len(plan) == 13  # the exact shape this fixture exists to reproduce
 
     # Deterministic emission order per build_phase_plan's own rule (verified
-    # against phase_plan.py directly): trip_creation, activation, then per
+    # against phases/plan.py directly): trip_creation, activation, then per
     # stop loading/departure/in_transit or arrival/unloading, closing on confirmation.
     names = [
         "trip_creation", "activation", "loading_1", "departure_1", "in_transit_1",
@@ -2447,7 +2459,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
 
     # The warehouse scans every parcel out, in full, at the stop it's actually
     # picked up at, then closes every session this trip's loading/confirmation
-    # rows are gated on. B's dropoff at stop1 is now UNLOADING, which phase_gate
+    # rows are gated on. B's dropoff at stop1 is now UNLOADING, which phases.blocking
     # gates on ScanDirection.IN — so its IN session at stop1 must close too,
     # even though no actual barcodes are staged for it (nothing downstream
     # reads B's scan-in count: it never feeds the final CONFIRMATION at stop2).
@@ -2457,10 +2469,10 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
             consignment_reference=reference, stop_reference=str(stop_id),
             direction=ScanDirection.OUT, barcodes=barcodes_by_consignment[reference],
         )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop0_id, direction=ScanDirection.OUT,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop1_id, direction=ScanDirection.OUT,
     )
     for reference, stop_id, direction in (
@@ -2849,7 +2861,7 @@ async def test_anchor_phase_event_fails_open_on_hedera_trouble(
     """
     trip, driver, phases = trip_fixture
     monkeypatch.setattr(
-        "app.orchestration.phase_service.anchor_subject",
+        "app.orchestration.phases.anchor_execution.anchor_subject",
         AsyncMock(side_effect=hedera_exception),
     )
     payload = {"phase_event_id": str(phases["departure"].id)}
@@ -2974,7 +2986,7 @@ async def test_a_broker_failure_schedules_a_local_anchor_fallback(
     monkeypatch.setattr("app.tasks.blockchain.anchor_phase_event_task", _BrokenBroker)
     inline_calls: list[uuid.UUID] = []
     monkeypatch.setattr(
-        "app.orchestration.phase_service._schedule_anchor_after_dispatch_failure",
+        "app.orchestration.phases.anchor_dispatch._schedule_anchor_after_dispatch_failure",
         lambda **kwargs: inline_calls.append(kwargs["phase_event_id"]),
     )
 
@@ -3157,7 +3169,7 @@ async def ready_to_load(db_session, store) -> dict[str, Any]:
         stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
         barcodes=built["barcodes"],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -3182,7 +3194,7 @@ async def short_scanned_ready_to_load(db_session, store) -> dict[str, Any]:
         stop_reference=str(built["stop"].id), direction=ScanDirection.OUT,
         barcodes=built["barcodes"][:2],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -3200,7 +3212,7 @@ async def unscanned_ready_to_load(db_session, store) -> dict[str, Any]:
     own guard (`if events and (missing or unexpected)`) fires on nothing, so
     no exception row exists going into advance_loading."""
     built = await _build_scan_ready_trip(db_session)
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=built["trip"].id, trip_stop_id=built["stop"].id,
         direction=ScanDirection.OUT,
     )
@@ -3214,7 +3226,7 @@ async def unscanned_ready_to_load(db_session, store) -> dict[str, Any]:
 async def test_loading_completes_without_a_driver_count(db_session, store, ready_to_load):
     """The driver never enters the warehouse and may arrive after loading finished.
     A count he cannot honestly produce must not be what closes the phase."""
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=ready_to_load["trip"].id,
         driver_id=ready_to_load["driver"].id,
@@ -3232,7 +3244,7 @@ async def test_loading_completes_without_a_driver_count(db_session, store, ready
 async def test_loading_stamps_parcel_count_origin_from_scans(
     db_session, store, ready_to_load,
 ):
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=ready_to_load["trip"].id,
         driver_id=ready_to_load["driver"].id,
@@ -3249,7 +3261,7 @@ async def test_loading_stamps_parcel_count_origin_from_scans(
 async def test_loading_raises_no_exception_for_a_matching_scan(
     db_session, store, ready_to_load,
 ):
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=ready_to_load["trip"].id,
         driver_id=ready_to_load["driver"].id,
@@ -3270,7 +3282,7 @@ async def test_a_legacy_payload_with_a_count_is_accepted_and_ignored(
 ):
     """A loading queued offline under the old schema replays with the field present.
     Accepting and ignoring it is what stops the queue poisoning itself forever."""
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=ready_to_load["trip"].id,
         driver_id=ready_to_load["driver"].id,
@@ -3294,7 +3306,7 @@ async def test_a_short_scan_produces_exactly_one_exception(
     second row for the same fact — its dedup compares descriptions verbatim, so a
     differently-worded duplicate would sail past it and the dispatcher would see the
     same short count twice."""
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=short_scanned_ready_to_load["trip"].id,
         driver_id=short_scanned_ready_to_load["driver"].id,
@@ -3319,7 +3331,7 @@ async def test_a_session_closed_with_nothing_scanned_still_raises(
     """The backstop's whole reason for existing. scan_service guards on
     `if events and ...`, so a session closed with zero scans raises nothing there —
     and a truck that loaded nothing is the most serious short count of all."""
-    await phase_service.advance_loading(
+    await advance_loading(
         db_session,
         trip_id=unscanned_ready_to_load["trip"].id,
         driver_id=unscanned_ready_to_load["driver"].id,
@@ -3426,7 +3438,7 @@ async def _stage_and_ingest(
         consignment_reference=consignment_reference, stop_reference=str(stop_id),
         direction=direction, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip_id, trip_stop_id=stop_id, direction=direction,
     )
     await feed.close_session(
@@ -3532,7 +3544,7 @@ async def _build_confirmation_ready_trip(db_session, *, scan_in_count: int) -> d
     )
 
     # BEFORE advance_unloading, not after: UNLOADING now gates on this stop's
-    # IN-direction scan session (phase_gate.GATED_PHASES), matching the physical
+    # IN-direction scan session (phases.blocking.GATED_PHASES), matching the physical
     # order — the warehouse scans parcels off the truck before the driver can
     # close out unloading.
     await _stage_and_ingest(
@@ -3717,7 +3729,7 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
     )
     # stop1 has no consignment of its own (pickup_stop_id never points here), so
     # loading_2's gate sees no expected parcel set and is never blocked — no
-    # staging needed, matching phase_gate's own "no Consignment -> not blocked" rule.
+    # staging needed, matching phases.blocking's own "no Consignment -> not blocked" rule.
     await advance_loading(
         db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading_2"].id,
         payload=LoadingCompleteRequest(phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4())),
@@ -3739,7 +3751,7 @@ async def xdock_ready_to_confirm(db_session, store) -> dict[str, Any]:
         payload=await _seal_payload(db_session, trip.id, seal_number_at_arrival="AB-2222"),
     )
     # BEFORE advance_unloading, not after: UNLOADING at stop2 now gates on this
-    # consignment's IN-direction scan session there (phase_gate.GATED_PHASES).
+    # consignment's IN-direction scan session there (phases.blocking.GATED_PHASES).
     await _stage_and_ingest(
         db_session, feed, consignment_reference=consignment.parcel_perfect_reference,
         stop_id=stop2.id, direction=ScanDirection.IN, trip_id=trip.id, barcodes=barcodes,
@@ -3763,7 +3775,7 @@ async def test_confirmation_derives_scan_in_count_from_parcels(
 ):
     """The count comes from the warehouse, not from the driver's own number echoed
     back — which is what made the old three-way check circular."""
-    await phase_service.advance_confirmation(
+    await advance_confirmation(
         db_session,
         trip_id=ready_to_confirm["trip"].id,
         driver_id=ready_to_confirm["driver"].id,
@@ -3786,7 +3798,7 @@ async def test_confirmation_derives_scan_in_count_from_parcels(
 async def test_confirmation_raises_nothing_when_both_scans_agree(
     db_session, store, ready_to_confirm,
 ):
-    await phase_service.advance_confirmation(
+    await advance_confirmation(
         db_session,
         trip_id=ready_to_confirm["trip"].id,
         driver_id=ready_to_confirm["driver"].id,
@@ -3814,7 +3826,7 @@ async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch(
 ):
     """3 scanned out at origin, 2 scanned in at destination. This is the theft case,
     and it is the single most important assertion in this plan."""
-    result = await phase_service.advance_confirmation(
+    result = await advance_confirmation(
         db_session,
         trip_id=ready_to_confirm_short["trip"].id,
         driver_id=ready_to_confirm_short["driver"].id,
@@ -3855,7 +3867,7 @@ async def test_crossdock_reconciles_against_the_pickup_stop_not_the_preceding_le
     STOP 1's scan-out. A leg-based lookup finds stop 2's loading row instead and
     manufactures a mismatch on a healthy trip — on FP-DEMO-XDOCK-0001, the trip a
     reviewer is walked through."""
-    result = await phase_service.advance_confirmation(
+    result = await advance_confirmation(
         db_session,
         trip_id=xdock_ready_to_confirm["trip"].id,
         driver_id=xdock_ready_to_confirm["driver"].id,
@@ -3885,7 +3897,7 @@ async def test_a_stop_with_no_consignments_skips_reconciliation(
 ):
     """No manifest baseline means nothing to compare — never 'compare against nothing
     and manufacture a mismatch'."""
-    await phase_service.advance_confirmation(
+    await advance_confirmation(
         db_session,
         trip_id=empty_leg_ready_to_confirm["trip"].id,
         driver_id=empty_leg_ready_to_confirm["driver"].id,
@@ -3916,7 +3928,7 @@ async def test_a_stop_with_no_consignments_skips_reconciliation(
 async def test_confirmation_with_no_driver_visual_count_completes_and_stores_null(
     db_session, store, ready_to_confirm,
 ):
-    result = await phase_service.advance_confirmation(
+    result = await advance_confirmation(
         db_session,
         trip_id=ready_to_confirm["trip"].id,
         driver_id=ready_to_confirm["driver"].id,
@@ -3942,7 +3954,7 @@ async def test_confirmation_with_no_driver_visual_count_completes_and_stores_nul
     # must land on the SAME hash — the None key stayed present, not omitted.
     pod_photo = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_photo_id"])
     pod_signature = await db_session.get(EvidenceArtifact, ready_to_confirm["pod_signature_id"])
-    expected_payload = phase_service.compute_confirmation_canonical_payload_v2(
+    expected_payload = compute_confirmation_canonical_payload_v2(
         phase_event_id=event.id, trip_id=ready_to_confirm["trip"].id,
         pp_scan_in_count=event.parcel_count_destination,
         driver_visual_count=event.driver_visual_count,
@@ -3959,7 +3971,7 @@ async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch_with_no_visual_
 ):
     """The three-way mismatch verdict is unchanged when driver_visual_count is
     absent — it has only ever compared scanned_out to scanned_in."""
-    result = await phase_service.advance_confirmation(
+    result = await advance_confirmation(
         db_session,
         trip_id=ready_to_confirm_short["trip"].id,
         driver_id=ready_to_confirm_short["driver"].id,

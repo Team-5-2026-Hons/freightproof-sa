@@ -240,7 +240,7 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,

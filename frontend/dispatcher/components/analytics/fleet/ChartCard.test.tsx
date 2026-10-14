@@ -9,6 +9,7 @@ type Props = ComponentProps<typeof ChartCard>
 
 const QUESTION = 'Are we getting busier?'
 const BASIS = 'Closed trips, by the day they first departed · 16 trips'
+const SOURCE = 'Closed trips only, from our trip records, dated by the first attested departure.'
 const INFO_BUTTON = 'About this chart: Trips over time'
 
 function renderCard(overrides: Partial<Props> = {}) {
@@ -16,6 +17,7 @@ function renderCard(overrides: Partial<Props> = {}) {
     title: 'Trips over time',
     question: QUESTION,
     basis: BASIS,
+    source: SOURCE,
     isLoading: false,
     error: null,
     onRetry: vi.fn(),
@@ -107,7 +109,7 @@ describe('ChartCard', () => {
     const dialog = screen.getByRole('dialog', { name: 'Trips over time' })
     expect(within(dialog).getByText('the chart')).toBeInTheDocument()
     expect(within(dialog).getByText('the legend')).toBeInTheDocument()
-    expect(within(dialog).getByText('Based on only 3 trips — read with care')).toBeInTheDocument()
+    expect(within(dialog).getByText('Based on only 3 trips, read with care')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Close modal' }))
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText('the chart')).toBeInTheDocument()
@@ -250,8 +252,31 @@ describe('ChartCard info popover', () => {
   it('shows the low-sample warning on the card face, without opening it', () => {
     renderCard({ sampleSize: 3 })
 
-    expect(screen.getByText('Based on only 3 trips — read with care')).toBeInTheDocument()
+    expect(screen.getByText('Based on only 3 trips, read with care')).toBeInTheDocument()
     expect(screen.queryByText(QUESTION)).toBeNull()
     expect(screen.getByText('the chart')).toBeInTheDocument()
+  })
+
+  it('names the figure\'s source inside the "i", labelled, and never on the card face', () => {
+    renderCard()
+
+    // Clean card faces (fleet spec D22): the source must not be visible before the "i" is opened.
+    expect(screen.queryByText(SOURCE)).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: INFO_BUTTON }))
+
+    const popover = screen.getByRole('region', { name: INFO_BUTTON })
+    expect(within(popover).getByText(SOURCE)).toBeInTheDocument()
+    expect(within(popover).getByText('Source:')).toBeInTheDocument()
+  })
+
+  it('puts the source after the note and before the faded-bucket footnote', () => {
+    renderCard({ note: 'Top-right = busy and risky.', timeAxis: true })
+    fireEvent.click(screen.getByRole('button', { name: INFO_BUTTON }))
+
+    const popover = screen.getByRole('region', { name: INFO_BUTTON })
+    const text = popover.textContent ?? ''
+
+    expect(text.indexOf('Top-right')).toBeLessThan(text.indexOf('Source:'))
+    expect(text.indexOf('Source:')).toBeLessThan(text.indexOf('Faded:'))
   })
 })

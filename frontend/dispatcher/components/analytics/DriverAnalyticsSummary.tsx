@@ -65,6 +65,7 @@ export function DriverAnalyticsSummary({ driverId }: DriverAnalyticsSummaryProps
 
   return (
     <AnalyticsSummaryFrame
+      source={ANALYTICS_COPY.sources.driver}
       range={range}
       onRangeChange={setRange}
       isLoading={drivers.isLoading}

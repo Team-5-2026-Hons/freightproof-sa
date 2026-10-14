@@ -128,7 +128,7 @@ async def test_duplicate_driver_id_number_in_same_org_is_refused(client: AsyncCl
         }
 
     with patch(
-        "app.orchestration.driver_service.create_driver_auth_user",
+        "app.orchestration.fleet.drivers.create_driver_auth_user",
         new_callable=AsyncMock,
     ) as mock_auth:
         mock_auth.side_effect = lambda **kwargs: uuid.uuid4()

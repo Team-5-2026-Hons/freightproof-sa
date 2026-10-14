@@ -7,6 +7,7 @@ import type { Vehicle } from './vehicle'
 import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
+import type { PPManifestRef } from './pp-manifest'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -39,7 +40,12 @@ export interface TripStop {
 export interface TripChecklistItem {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null for empty legs and trips created
+  // without one. It replaces the order number, which FreightProof no longer captures.
+  pp_manifest: PPManifestRef | null
+  // Sent on active-list rows (TripSummary). History rows do not carry it, so a row with no
+  // manifest cannot be proven to be an empty leg (see lib/format/manifest.ts).
+  trip_type?: TripType
   status: CoarseTripStatus
   driver: { full_name: string }
   horse: { registration: string }
@@ -66,7 +72,7 @@ export interface TripHistoryListItem extends TripChecklistItem {
 export interface TripSummary extends TripChecklistItem {
   id: TripId
   trip_reference: string
-  order_number: string
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   driver: Driver
@@ -124,7 +130,9 @@ export interface ConsignmentRead {
 export interface Trip {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null. The snapshot of it is not here:
+  // it is dispatcher-only, on GET /trips/{id}/manifest (spec §7.3).
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   journey_lock_hash: string | null
@@ -176,7 +184,6 @@ export interface TripConsignmentInput {
 }
 
 export interface TripCreatePayload {
-  order_number: string
   trip_type: TripType
   driver_id: string
   horse_id: string

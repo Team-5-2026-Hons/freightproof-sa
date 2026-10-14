@@ -131,7 +131,7 @@ describe('ActivityTab', () => {
 
     renderTab()
 
-    expect(await within(await waitFor(() => card('Trips over time'))).findByText('Based on only 3 trips — read with care')).toBeInTheDocument()
+    expect(await within(await waitFor(() => card('Trips over time'))).findByText('Based on only 3 trips, read with care')).toBeInTheDocument()
   })
 
   it('keeps the question and trip count behind the info button', async () => {
@@ -214,5 +214,17 @@ describe('ActivityTab', () => {
     if (seventh === null) throw new Error('no 07:00 row')
     expect(within(seventh).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['07:00–08:00', '7', '14', '0.50'])
     expect(within(byHour).getAllByRole('row')[1]).toHaveTextContent('00:00–01:00')
+  })
+
+  it('names where Trips over time comes from, inside its i popover', async () => {
+    serve(makeActivity([1, 2, 3], [0, 0, 1], [0, 0, 0], [1, 2, 4]), makePatterns({ 7: 3 }, { 12: 3 }))
+    renderTab()
+    const element = await waitFor(() => card('Trips over time'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Trips over time' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Closed trips only')
   })
 })

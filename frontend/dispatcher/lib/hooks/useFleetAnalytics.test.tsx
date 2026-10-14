@@ -92,6 +92,42 @@ describe('useFleetQuery', () => {
     expect(result.current.data).toEqual({ value: 2 })
   })
 
+  it('refetches silently without dimming the card', async () => {
+    const live = deferred<Answer>()
+    mockedGet.mockResolvedValueOnce({ value: 1 }).mockReturnValueOnce(live.promise)
+    const { result } = renderHook(() => useFleetQuery<Answer>('/first'))
+    await waitFor(() => expect(result.current.data).toEqual({ value: 1 }))
+
+    act(() => result.current.refetchSilent())
+
+    // The whole point: the previous answer stays and nothing reports itself as busy.
+    expect(result.current.data).toEqual({ value: 1 })
+    expect(result.current.isRefreshing).toBe(false)
+    expect(result.current.isLoading).toBe(false)
+    await act(async () => { live.resolve({ value: 2 }) })
+    expect(result.current.data).toEqual({ value: 2 })
+    expect(result.current.isRefreshing).toBe(false)
+  })
+
+  it('drops a silent reply that a newer request has already overtaken', async () => {
+    const silent = deferred<Answer>()
+    const newer = deferred<Answer>()
+    mockedGet.mockResolvedValueOnce({ value: 1 })
+      .mockReturnValueOnce(silent.promise)
+      .mockReturnValueOnce(newer.promise)
+    const { result, rerender } = renderHook(
+      ({ path }) => useFleetQuery<Answer>(path), { initialProps: { path: '/first' } },
+    )
+    await waitFor(() => expect(result.current.data).toEqual({ value: 1 }))
+
+    act(() => result.current.refetchSilent())
+    rerender({ path: '/second' })
+    await act(async () => { newer.resolve({ value: 3 }) })
+    await act(async () => { silent.resolve({ value: 2 }) })
+
+    expect(result.current.data).toEqual({ value: 3 })
+  })
+
   it('refetches on demand after a failure', async () => {
     mockedGet.mockRejectedValueOnce(new Error('transient')).mockResolvedValue({ value: 3 })
     const { result } = renderHook(() => useFleetQuery<Answer>('/first'))

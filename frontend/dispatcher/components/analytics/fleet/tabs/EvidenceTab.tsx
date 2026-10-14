@@ -72,6 +72,7 @@ function TrackerCard({ evidence, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.tracker.title}
+      source={COPY.tracker.source}
       question={COPY.tracker.question}
       basis={`${COPY.tracker.agreement(fmtShare(overall), confirmed, checked)}. ${COPY.tracker.basis(checked, unwitnessed)}`}
       note={ANALYTICS_COPY.facilityRateNote}
@@ -146,6 +147,7 @@ function OverridesCard({ evidence, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.overrides.title}
+      source={COPY.overrides.source}
       question={COPY.overrides.question}
       basis={COPY.overrides.basis(overridden, steps)}
       note={COPY.overrides.note}
@@ -210,6 +212,7 @@ function SignoffCard({ evidence, grain, today }: TabCardProps) {
     <ChartCard
       className="lg:col-span-2"
       title={COPY.signoff.title}
+      source={COPY.signoff.source}
       question={COPY.signoff.question}
       basis={COPY.signoff.basis(scans, confirmations)}
       note={COPY.signoff.flags(flags.same_phone_count, flags.rejected_attempt_count)}

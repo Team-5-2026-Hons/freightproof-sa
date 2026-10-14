@@ -25,12 +25,14 @@ from app.core.limits import EVIDENCE_WRITE, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
 from app.db.session import get_db
-from app.orchestration.exception_service import (
-    claim_exception,
+from app.orchestration.exceptions.creation import raise_exception
+from app.orchestration.exceptions.queries import (
     get_exception_detail,
     list_exception_history,
     list_review_queue,
-    raise_exception,
+)
+from app.orchestration.exceptions.review import (
+    claim_exception,
     release_exception,
     review_exception,
     review_exceptions_batch,

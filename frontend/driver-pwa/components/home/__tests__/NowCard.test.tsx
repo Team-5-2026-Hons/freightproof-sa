@@ -22,7 +22,7 @@ const inTransit = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'in_transit
 
 function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Trip {
   return {
-    id: 'trip-1' as unknown as TripId, trip_reference: 'TRP-2026-0099', order_number: 'ORD-99', status: 'active',
+    id: 'trip-1' as unknown as TripId, trip_reference: 'TRP-2026-0099', pp_manifest: null, status: 'active',
     trip_type: 'loaded', journey_lock_hash: null, idvs_check_status: 'verified',
     origin_precinct_id: 'precinct-jhb', destination_precinct_id: 'precinct-dbn', stops: [], consignments: [],
     pulsit_trip_reference_id: null, planned_departure_at: '2026-05-09T10:00:00Z', actual_departure_at: null,

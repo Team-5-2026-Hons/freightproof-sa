@@ -25,8 +25,10 @@ from app.db.models.enums import (
 from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Trip, TripStop
-from app.orchestration.handover_service import issue_capability_token
-from app.orchestration.receiver_verification_service import (
+from app.db.session import get_db
+from app.main import app
+from app.orchestration.handover.capability import issue_capability_token
+from app.orchestration.handover.receiver_verification import (
     PROVIDER_DIDIT,
     WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
     ingest_webhook_decision,
@@ -235,7 +237,7 @@ async def test_late_decision_path_survives_a_fresh_load(db_session, terminal_ver
 
 
 async def test_sweep_terminalises_a_stale_pending_row(db_session, pending_verification):
-    from app.orchestration.receiver_verification_service import sweep_abandoned_verifications
+    from app.orchestration.handover.receiver_verification import sweep_abandoned_verifications
 
     swept = await sweep_abandoned_verifications(db_session, older_than_seconds=-1)
 
@@ -245,7 +247,7 @@ async def test_sweep_terminalises_a_stale_pending_row(db_session, pending_verifi
 
 
 async def test_sweep_leaves_a_fresh_pending_row_alone(db_session, pending_verification):
-    from app.orchestration.receiver_verification_service import sweep_abandoned_verifications
+    from app.orchestration.handover.receiver_verification import sweep_abandoned_verifications
 
     swept = await sweep_abandoned_verifications(db_session, older_than_seconds=86_400)
 
@@ -285,3 +287,102 @@ def test_a_missing_timestamp_fails_closed():
 
 def test_an_unparseable_timestamp_fails_closed():
     assert webhook_timestamp_is_fresh("not-a-number") is False
+
+
+# ── The route itself (stage 3a characterisation) ─────────────────────────────
+#
+# Added before endpoints/handover.py was thinned: the helpers above are tested directly,
+# but the route's own decisions (which 401, which 200, what is written) were not.
+
+_WEBHOOK_URL = "/api/v1/handover/webhooks/didit"
+_INVALID_SIGNATURE = {"detail": "Invalid signature."}
+
+
+@pytest_asyncio.fixture
+async def webhook_route(db_session, monkeypatch):
+    """Point the app at the test transaction and give the webhook its secret."""
+    async def _get_db():
+        yield db_session
+
+    monkeypatch.setattr(settings, "IDVS_WEBHOOK_SECRET", _SECRET)
+    app.dependency_overrides[get_db] = _get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+
+
+def _signed(body: bytes, *, skew_seconds: int = 0, secret: str = _SECRET) -> dict[str, str]:
+    timestamp = int(datetime.now(UTC).timestamp()) - skew_seconds
+    return {"x-signature": _sign(body, secret), "x-timestamp": str(timestamp)}
+
+
+async def test_the_webhook_route_refuses_a_wrong_signature_and_writes_nothing(
+    client, webhook_route, db_session, pending_verification,
+):
+    body = json.dumps({"session_id": pending_verification.provider_session_id, "status": "Declined"}).encode()
+
+    res = await client.post(_WEBHOOK_URL, content=body, headers=_signed(body, secret="wrong-secret"))
+
+    assert res.status_code == 401
+    assert res.json() == _INVALID_SIGNATURE
+    await db_session.refresh(pending_verification)
+    assert pending_verification.status == ReceiverVerificationStatus.PENDING
+
+
+async def test_the_webhook_route_refuses_a_missing_signature_header(client, webhook_route):
+    body = b"{}"
+
+    res = await client.post(
+        _WEBHOOK_URL, content=body, headers={"x-timestamp": str(int(datetime.now(UTC).timestamp()))},
+    )
+
+    assert res.status_code == 401
+    assert res.json() == _INVALID_SIGNATURE
+
+
+async def test_the_webhook_route_refuses_a_validly_signed_but_stale_delivery(
+    client, webhook_route, db_session, pending_verification,
+):
+    body = json.dumps({"session_id": pending_verification.provider_session_id, "status": "Declined"}).encode()
+
+    res = await client.post(
+        _WEBHOOK_URL, content=body,
+        headers=_signed(body, skew_seconds=WEBHOOK_MAX_CLOCK_SKEW_SECONDS + 60),
+    )
+
+    assert res.status_code == 401
+    assert res.json() == _INVALID_SIGNATURE
+    await db_session.refresh(pending_verification)
+    assert pending_verification.status == ReceiverVerificationStatus.PENDING
+
+
+async def test_the_webhook_route_answers_200_ignored_for_a_signed_body_that_is_not_json(
+    client, webhook_route,
+):
+    body = b"this is not json"
+
+    res = await client.post(_WEBHOOK_URL, content=body, headers=_signed(body))
+
+    assert res.status_code == 200
+    assert res.json() == {"status": "ignored"}
+
+
+async def test_the_webhook_route_applies_a_signed_decision(
+    client, webhook_route, db_session, pending_verification,
+):
+    body = json.dumps({"session_id": pending_verification.provider_session_id, "status": "Declined"}).encode()
+
+    res = await client.post(_WEBHOOK_URL, content=body, headers=_signed(body))
+
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok"}
+    await db_session.refresh(pending_verification)
+    assert pending_verification.status == ReceiverVerificationStatus.FAILED
+
+
+async def test_the_webhook_route_answers_200_ok_for_an_unknown_session(client, webhook_route):
+    body = json.dumps({"session_id": f"sess-{uuid.uuid4().hex}", "status": "Approved"}).encode()
+
+    res = await client.post(_WEBHOOK_URL, content=body, headers=_signed(body))
+
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok"}

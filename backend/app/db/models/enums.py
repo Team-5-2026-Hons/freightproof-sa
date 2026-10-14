@@ -97,14 +97,14 @@ class ExceptionType(str, enum.Enum):
     PARCEL_COUNT_MISMATCH  = "parcel_count_mismatch"
     GPS_MISMATCH           = "gps_mismatch"
     # A DISTINCT finding from GPS_MISMATCH. GPS_MISMATCH is "the vehicle tracker disagrees with the
-    # PRECINCT" (FP-145, geofence_service); this is "the driver's OWN PHONE
-    # disagrees with the vehicle tracker" (proximity_service.evaluate_proximity) —
+    # PRECINCT" (FP-145, evidence.geofence); this is "the driver's OWN PHONE
+    # disagrees with the vehicle tracker" (evidence.proximity.evaluate_proximity) —
     # independent questions that can both fire, or either alone, on the same
-    # handshake. See orchestration/action_location_service.record_separation_finding.
+    # handshake. See evidence.action_location.record_separation_finding.
     DRIVER_VEHICLE_SEPARATION = "driver_vehicle_separation"
     # A THIRD independent question, distinct from both of the above: "does the
     # DRIVER'S OWN PHONE agree with the STOP'S PRECINCT?" (ActionLocationAssessment.
-    # driver_in_precinct, geofence_service). Closes a gap neither existing type can
+    # driver_in_precinct, evidence.geofence). Closes a gap neither existing type can
     # catch: DRIVER_VEHICLE_SEPARATION only fires once a real phone-to-tracker
     # distance was measured (proximity == "separated"), so a driver's phone that is
     # measurably outside the fence produces NOTHING today if the truck's tracker fix
@@ -112,25 +112,25 @@ class ExceptionType(str, enum.Enum):
     # nothing. GPS_MISMATCH cannot catch it either: it only ever judges the TRACKER's
     # position, never the phone's. Only ever evaluated for a phase anchored to a stop
     # (never IN_TRANSIT, never a checkpoint — see build_phase_assessment). See
-    # orchestration/action_location_service.record_driver_location_finding.
+    # evidence.action_location.record_driver_location_finding.
     DRIVER_LOCATION_MISMATCH = "driver_location_mismatch"
     # A FOURTH position question: is a TRAILER where its own HORSE is? Raised only when
     # the horse was measured inside the stop's precinct, the trailer was measured
     # outside it, and the two trackers are further apart than
     # TRAILER_HORSE_MAX_SEPARATION_METRES. That is a decoupled trailer, one of the
     # strongest theft signals the system can see. Kept apart from GPS_MISMATCH, which
-    # is about the horse. See phase_service._raise_trailer_decoupling_if_unrecorded.
+    # is about the horse. See phases.findings._raise_trailer_decoupling_if_unrecorded.
     TRAILER_LOCATION_MISMATCH = "trailer_location_mismatch"
     # On the ROAD, not at a stop: a trailer tracker is further than
     # TRAILER_HORSE_MAX_SEPARATION_METRES from its horse's tracker while the trip is
     # on an in-transit leg. No fence is involved, which is what keeps it apart from
-    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See road_check_service.
+    # TRAILER_LOCATION_MISMATCH (trailer vs the stop's precinct). See evidence.road_check.
     TRAILER_SEPARATED_IN_TRANSIT = "trailer_separated_in_transit"
     # The horse's tracker is outside its stop's precinct while that stop's departure is
-    # still pending: the truck moved without a recorded seal. See road_check_service.
+    # still pending: the truck moved without a recorded seal. See evidence.road_check.
     MOVED_BEFORE_DEPARTURE = "moved_before_departure"
     # A known tracker returned no position. A gap in the record, not a verdict: nothing
-    # else is inferred from it. See road_check_service.
+    # else is inferred from it. See evidence.road_check.
     TRACKER_SILENT = "tracker_silent"
     ROUTE_DEVIATION       = "route_deviation"
     VEHICLE_SUBSTITUTION   = "vehicle_substitution"
@@ -171,6 +171,17 @@ class ArtifactType(str, enum.Enum):
     DOCUMENT = "document"
 
 
+class EvidenceRole(str, enum.Enum):
+    """What a capture was taken for. Each value is the stem of the phase column that
+    records the submitted copy (<value>_artifact_id) and of its anchored hash key
+    (<value>_sha256), so it is frozen like those names."""
+    LINEHAUL_PHOTO = "linehaul_photo"
+    SEAL_PHOTO     = "seal_photo"
+    WAYBILL_PHOTO  = "waybill_photo"
+    POD_PHOTO      = "pod_photo"
+    POD_SIGNATURE  = "pod_signature"
+
+
 class BlockchainReceiptType(str, enum.Enum):
     JOURNEY_LOCK        = "journey_lock"
     PICKUP              = "pickup"
@@ -195,6 +206,8 @@ class BlockchainReceiptType(str, enum.Enum):
     DRIVER_UPDATED      = "driver_updated"
     PRECINCT_CREATED    = "precinct_created"
     PRECINCT_UPDATED    = "precinct_updated"
+    # The seal on an issued audit pack: hash of its manifest and PDF hashes.
+    AUDIT_PACK_ISSUED   = "audit_pack_issued"
 
 
 class SubjectType(str, enum.Enum):
@@ -205,6 +218,7 @@ class SubjectType(str, enum.Enum):
     DRIVER_EVENT    = "driver_event"
     PHASE_EVENT     = "phase_event"
     PRECINCT_EVENT  = "precinct_event"
+    AUDIT_PACK      = "audit_pack"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -360,3 +374,23 @@ class HandoverTokenRejectionReason(str, enum.Enum):
     WRONG_TRIP       = "wrong_trip"
     WRONG_STOP       = "wrong_stop"
     UNKNOWN          = "unknown"
+
+
+class AuditPackAccessEventType(str, enum.Enum):
+    """What someone holding an audit-pack link did — the issuing dispatcher sees these,
+    so a leaked link shows up as views nobody expected. DENIED_* rows record attempts on
+    a link that no longer works, which is exactly when a leak would show itself."""
+
+    VIEWED          = "viewed"
+    PDF_DOWNLOADED  = "pdf_downloaded"
+    PHOTO_VIEWED    = "photo_viewed"
+    VERIFY_RUN      = "verify_run"
+    DENIED_EXPIRED  = "denied_expired"
+    DENIED_REVOKED  = "denied_revoked"
+
+
+def enum_text(value: enum.Enum | str) -> str:
+    """The text an enum column stores. str() on a (str, Enum) member gives
+    'PhaseType.DEPARTURE', not 'departure' — and a row still in the session holds the
+    member while a freshly loaded one holds the plain string, so both must map the same."""
+    return str(value.value) if isinstance(value, enum.Enum) else value

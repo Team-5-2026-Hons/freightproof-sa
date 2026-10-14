@@ -171,7 +171,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: TRIP_ID as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,

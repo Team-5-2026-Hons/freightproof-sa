@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.orchestration.consignment_service import ConsignmentSyncResult
+from app.orchestration.consignments.sync import ConsignmentSyncResult
 from app.tasks.parcel_perfect import _sync_all_active
 
 

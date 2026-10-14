@@ -54,6 +54,21 @@ describe('TripInformation stop previews', () => {
   })
 })
 
+describe('TripInformation route list', () => {
+  it('ends the last stop without a divider, so the audit section below is separated by one rule, not two', () => {
+    renderInformation()
+
+    const rows = [...screen.getByRole('heading', { name: 'Route' }).parentElement!.querySelectorAll(':scope > div')]
+
+    expect(rows.length).toBeGreaterThan(1)
+    expect(rows.every(row => row.classList.contains('border-b'))).toBe(true)
+    // `last:border-0` is a pseudo-class variant: it removes the rule on the final row only, which is
+    // checked live in the browser; here it must be present and the row really must be the last child.
+    expect(rows.every(row => row.classList.contains('last:border-0'))).toBe(true)
+    expect(rows.at(-1)!.nextElementSibling).toBeNull()
+  })
+})
+
 describe('TripInformation cancel trigger', () => {
   it('calls onCancelTrip rather than opening its own cancellation dialog', async () => {
     // Same reasoning as the precinct preview above: below the dock width this panel

@@ -20,7 +20,7 @@ from app.db.models.enums import (
     ExceptionType,
 )
 from app.db.models.transit import TripException
-from app.orchestration.review_policy import dispatcher_authored_review, initial_review_status
+from app.orchestration.exceptions.review_policy import dispatcher_authored_review, initial_review_status
 
 
 async def test_exception_without_explicit_status_defaults_to_needs_review(db_session, seeded):

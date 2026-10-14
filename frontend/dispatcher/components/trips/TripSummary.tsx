@@ -14,8 +14,10 @@ import { VehicleModal } from './VehicleModal'
 import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
+import { TRIP_PANELS } from '@/lib/trips/panel-query'
 
-export type TripPanel = 'information' | 'manifest' | 'exceptions'
+export { TRIP_PANELS } from '@/lib/trips/panel-query'
+export type TripPanel = (typeof TRIP_PANELS)[keyof typeof TRIP_PANELS]
 interface Props {
   facts: TripHeaderFacts
   precincts: Precinct[]
@@ -25,9 +27,14 @@ interface Props {
   returnTo: string
   onBack: () => void
   onPanel: (panel: TripPanel) => void
+  /** Collapses the header to its title row; the facts below it stay mounted. */
+  compact?: boolean
+  /** Makes the "N need review" chip a control that lands on the first unreviewed row in the
+   *  timeline. Absent before the record loads, when there is no row to land on. */
+  onShowFirstUnreviewed?: () => void
 }
 
-export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel }: Props) {
+export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false, onShowFirstUnreviewed }: Props): React.JSX.Element {
   const [driverOpen, setDriverOpen] = useState(false)
   // One shared modal instance for the horse and however many trailers there are, holding
   // which one is currently open rather than a boolean per vehicle.
@@ -41,7 +48,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
-          <p className="mt-1 text-xs text-on-surf-v">Order {facts.orderNumber}</p>
+          <p className="mt-1 text-xs tabular-nums tracking-[0.03em] text-on-surf-v">{facts.manifestLabel}</p>
           {/* Not blue: the design system reserves --sec for links, actions and
               identifiers (trip ids, timestamps). A route is a description of two places,
               so colouring it like a link invited clicks it never answered. */}
@@ -49,11 +56,12 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Chip type={status.chipType} label={status.label} />
-          {facts.needsReviewCount > 0 && <Chip type="exception" label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} />}
+          {facts.needsReviewCount > 0 && <NeedsReviewChip label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} onShow={onShowFirstUnreviewed} />}
           <ForensicControls />
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
+      <div className={compact ? 'hidden' : 'mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4'}>
         <SummaryCell label="Driver">
           {driver
             ? <>
@@ -80,12 +88,12 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           buttons, so the docked header does not keep this row's own `mt-4` as dead
           space above the panel column once the buttons it was spacing are gone. */}
       <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2 xl:hidden">
-        <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
-        <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Manifest</Button>
-        <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
+        <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.information)}>Info</Button>
+        <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.manifest)}>Cargo</Button>
+        <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel(TRIP_PANELS.exceptions)}>
           {facts.exceptionsTotal === null
-            ? `${facts.needsReviewCount} need review`
-            : `${facts.exceptionsTotal} exceptions · ${facts.needsReviewCount} need review`}
+            ? `Exceptions · ${facts.needsReviewCount} need review`
+            : `Exceptions · ${facts.exceptionsTotal} recorded · ${facts.needsReviewCount} need review`}
         </Button>
       </nav>
       {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} returnTo={returnTo} />}
@@ -144,4 +152,17 @@ function SummaryFact({ fact, pendingLabel }: { fact: HeaderFact | null; pendingL
       {fact.note && <p className="mt-0.5 text-xs text-on-surf-v">{fact.note}</p>}
     </SummaryCell>
   )
+}
+
+const SHOW_FIRST_ACTION = 'Show the first in the timeline'
+
+/** The header's review count. With somewhere to go it is the shortest way to the work: one press
+ *  lands on the first unreviewed row, opened and focused, through the same path as "Show in
+ *  timeline". The down chevron is the only visual change; the words stay the count. */
+function NeedsReviewChip({ label, onShow }: { label: string; onShow?: () => void }) {
+  if (!onShow) return <Chip type="exception" label={label} />
+  return <button type="button" onClick={onShow} aria-label={`${label}. ${SHOW_FIRST_ACTION}`}
+    className="rounded-md transition-[filter] duration-150 hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sec motion-reduce:transition-none">
+    <Chip type="exception">{label}<Ic n="chev" s={10} className="ml-1 rotate-90" /></Chip>
+  </button>
 }

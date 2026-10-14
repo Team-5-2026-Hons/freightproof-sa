@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.core.geo import EARTH_RADIUS_METRES, haversine_metres
+from app.core.geo import EARTH_RADIUS_METRES, format_distance, haversine_metres
 
 # Cape Town city centre.
 CAPE_TOWN = (-33.9249, 18.4241)
@@ -198,3 +198,30 @@ def test_near_antipodal_pair_returns_finite_distance_not_domain_error():
     # Assert
     assert math.isfinite(distance)
     assert distance == pytest.approx(expected_metres, rel=1e-3)
+
+
+# Expected strings were captured from the original phases.findings formatter
+# before it was replaced, so they pin existing behaviour rather than a fresh opinion.
+@pytest.mark.parametrize(
+    ("metres", "expected"),
+    [
+        (0, "0 m"),
+        (299.6, "300 m"),
+        (999.4, "999 m"),
+        # round(999.6) is 1000, so the sub-kilometre branch prints "1000 m"; pinned as is.
+        (999.6, "1000 m"),
+        (1000, "1.0 km"),
+        (1549, "1.5 km"),
+        (25_000, "25.0 km"),
+    ],
+)
+def test_format_distance_switches_units_at_one_kilometre(metres: float, expected: str) -> None:
+    result = format_distance(metres)
+
+    assert result == expected
+
+
+def test_format_distance_accepts_an_int_input() -> None:
+    result = format_distance(300)
+
+    assert result == "300 m"

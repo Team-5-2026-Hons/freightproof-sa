@@ -30,8 +30,8 @@ export const FLEET_COPY = {
       custom: 'Custom range…',
     },
     tooManyBuckets: {
-      week: 'Too many weeks for this period — choose Month',
-      month: 'Too many months for this period — choose Year',
+      week: 'Too many weeks for this period: choose Month',
+      month: 'Too many months for this period: choose Year',
       year: 'Too many years for this period',
     } satisfies Record<Grain, string>,
     grainSwitched: (chosen: Grain, shown: Grain): string =>
@@ -43,6 +43,10 @@ export const FLEET_COPY = {
 
   tiles: {
     ariaLabel: 'Headline numbers, right now',
+    // D8: one line for the whole row rather than an "i" per tile: each tile is a whole-tile
+    // link, and a button inside a link is invalid HTML. The four tiles share one kind of source.
+    source:
+      'Counted live from this system’s trips, exception reports, and the driver and vehicle records dispatchers keep. No refresh delay.',
     needsAttention: 'Needs attention',
     loadError: "Couldn't load the headline numbers.",
     retry: 'Retry',
@@ -80,6 +84,7 @@ export const FLEET_COPY = {
     axis: { trips: 'Trips', cancelledTrips: 'Cancelled trips', avgPerDay: 'Avg per day' },
     trips: {
       title: 'Trips over time',
+      source: 'Closed trips only, from our trip records, dated by the driver’s first attested departure step in our phase ledger.',
       question: 'Are we getting busier?',
       basis: (count: number): string =>
         `Closed trips, by the day they first departed · ${count} ${count === 1 ? 'trip' : 'trips'}`,
@@ -93,6 +98,7 @@ export const FLEET_COPY = {
     },
     cancellations: {
       title: 'Cancellations over time',
+      source: 'Trip records: cancelled trips, by when they were cancelled, against every trip that ended in the same period.',
       question: 'How often are trips abandoned?',
       basis: (cancelled: number, ended: number): string =>
         `${cancelled} cancelled out of ${ended} trips that ended, by the day they ended`,
@@ -108,6 +114,7 @@ export const FLEET_COPY = {
     },
     patterns: {
       title: 'Busy patterns',
+      source: 'Attested departure and in-transit steps drivers completed in the app (our phase ledger), by the time each was recorded. Steps a dispatcher completed are left out. Unlike the other charts, this one counts trips of any status.',
       question: (eventNoun: string): string => `Average ${eventNoun} a day`,
       intro: 'When are we busiest? Averages per day in South African time, over this section’s own period.',
       period: 'Pattern period',
@@ -134,6 +141,7 @@ export const FLEET_COPY = {
     axis: { onTime: '% on time', trips: 'Trips' },
     punctuality: {
       title: 'On-time departures and arrivals',
+      source: 'Planned times entered at trip creation, against the driver’s attested departure and the trip’s recorded final arrival. Only trips that had planned times are counted.',
       question: 'Are we getting more punctual?',
       basis: (departures: number, arrivals: number): string =>
         `Closed trips by the day they first departed · ${departures} departures and ${arrivals} arrivals with a planned time. On time means on or before the plan.`,
@@ -148,6 +156,7 @@ export const FLEET_COPY = {
     },
     lateness: {
       title: 'How late is late',
+      source: 'Planned times entered at trip creation, against the driver’s attested departure and the trip’s recorded final arrival. Only trips that had planned times are counted.',
       question: 'A little late often, or very late sometimes?',
       basis: (count: number, noun: string): string =>
         `${count} ${noun} with a planned time, over the whole period. On time means on or before the plan; early means more than 15 minutes ahead of it.`,
@@ -165,10 +174,11 @@ export const FLEET_COPY = {
     },
     spread: {
       title: 'Plans vs reality',
+      source: 'Planned departure and arrival from trip creation, against the attested first departure and the recorded final arrival. Only closed trips with both planned times and an arrival are counted.',
       question: 'Are our planned times realistic?',
       basis: (count: number): string =>
         `${count} closed trips with a planned departure and arrival, over the whole period (View by doesn't change it)`,
-      note: 'Faster than planned usually means the plan was too generous — it is not a measure of driving speed.',
+      note: 'Faster than planned usually means the plan was too generous. It is not a measure of driving speed.',
       empty: 'No closed trip in this period had a full plan to compare with.',
       early: (count: number, typical: string | null): string =>
         `${count} finished early${typical === null ? '' : ` (typically ${typical})`}`,
@@ -209,6 +219,7 @@ export const FLEET_COPY = {
     // the rate lives in the tooltip and the table, where the trip count sits beside it.
     perTrip: {
       title: 'Problems over time',
+      source: 'Exception reports in our ledger on closed trips, raised by drivers, dispatchers or automatic checks. Dispatcher notes are left out.',
       question: 'Are things getting better or worse?',
       basis: (problems: number, trips: number): string =>
         `${problems} warning and critical problems on ${trips} closed trips, by the day they first departed. Hover a bar for the rate per trip.`,
@@ -222,14 +233,16 @@ export const FLEET_COPY = {
     },
     theft: {
       title: 'Theft warning signs',
+      source: 'Seal, trailer-separation, parcel, waybill, panic and receiver-ID reports in our ledger, on closed trips. The trailer check runs on the simulated Pulsit tracker feed; parcel and waybill counts come from the parcel feeds.',
       question: 'Is theft risk going up?',
       basis: (count: number): string =>
-        `${count} seal, parcel, waybill, panic or receiver ID signs on closed trips. A seal that could not be checked is a paperwork gap, not a theft sign, so it is left out.`,
+        `${count} seal, trailer-separation, parcel, waybill, panic or receiver ID signs on closed trips. A seal that could not be checked is a paperwork gap, not a theft sign, so it is left out.`,
       total: 'Theft signs',
       lower: 'theft signs',
     },
     byType: {
       title: 'Most common problems',
+      source: 'Exception reports in our ledger on closed trips, raised by drivers, dispatchers or automatic checks. Dispatcher notes are left out.',
       question: 'Which problems happen most?',
       basis: (count: number): string => `${count} problems on closed trips in this period, by type and who raised them`,
       empty: 'No problems were recorded on closed trips in this period.',
@@ -239,6 +252,7 @@ export const FLEET_COPY = {
     },
     byStep: {
       title: 'Where in the trip',
+      source: 'Exception reports in our ledger on closed trips, raised by drivers, dispatchers or automatic checks. Dispatcher notes are left out.',
       question: 'At which step do problems happen?',
       basis: (count: number): string => `${count} problems on closed trips, by the trip step they were raised at`,
       empty: 'No problems were recorded on closed trips in this period.',
@@ -257,6 +271,7 @@ export const FLEET_COPY = {
     },
     risky: {
       title: 'Risky times of day',
+      source: 'Our own ledger: driving minutes between each attested departure and arrival, split by South African quarter of the day, against problems linked to the driving step, by when the server received them. Any severity, closed trips only.',
       question: 'Is any time of day riskier than its share of driving?',
       basis: (hours: string, problems: number): string =>
         `${hours} of driving and ${problems} problems raised while driving, by South African time of day`,
@@ -281,6 +296,7 @@ export const FLEET_COPY = {
     openQueue: 'Open the review queue',
     waitingNow: {
       title: 'Waiting now, by age',
+      source: 'Reviews dispatchers recorded in this system: when each problem was raised, when it was reviewed and the outcome chosen. Trips of any status, not just closed ones. The queue charts count critical problems only; the outcomes chart counts any severity. Migration-marked reviews are left out.',
       question: 'How long have critical problems been waiting for review?',
       basis: (count: number): string => `${count} critical problems waiting for review right now`,
       band: 'Waiting',
@@ -289,6 +305,7 @@ export const FLEET_COPY = {
     },
     queue: {
       title: 'Is the pile growing?',
+      source: 'Reviews dispatchers recorded in this system: when each problem was raised, when it was reviewed and the outcome chosen. Trips of any status, not just closed ones. The queue charts count critical problems only; the outcomes chart counts any severity. Migration-marked reviews are left out.',
       question: 'Are critical problems being reviewed as fast as they arrive?',
       basis: 'Critical problems still waiting for review at the end of each period (or now, for one still running)',
       waiting: 'waiting at the end',
@@ -296,6 +313,7 @@ export const FLEET_COPY = {
     },
     speed: {
       title: 'How fast critical problems get reviewed',
+      source: 'Reviews dispatchers recorded in this system: when each problem was raised, when it was reviewed and the outcome chosen. Trips of any status, not just closed ones. The queue charts count critical problems only; the outcomes chart counts any severity. Migration-marked reviews are left out.',
       question: 'How long does a critical problem wait for a dispatcher?',
       basis: (count: number): string => `${count} critical problems reviewed in this period, by the day they were reviewed`,
       empty: 'No critical problems were reviewed in this period.',
@@ -305,6 +323,7 @@ export const FLEET_COPY = {
     },
     outcomes: {
       title: 'What reviews concluded',
+      source: 'Reviews dispatchers recorded in this system: when each problem was raised, when it was reviewed and the outcome chosen. Trips of any status, not just closed ones. The queue charts count critical problems only; the outcomes chart counts any severity. Migration-marked reviews are left out.',
       question: 'What do dispatchers find when they review?',
       basis: (count: number): string => `${count} reviews of any severity concluded in this period`,
       note: 'A large "data discrepancy" share means automatic checks are raising false alarms.',
@@ -328,6 +347,7 @@ export const FLEET_COPY = {
     axis: { checks: 'Checks', overridden: '% of steps overridden', scanned: '% scanned by receiver' },
     tracker: {
       title: 'Tracker agreement',
+      source: 'The tracker check stored on each attested stop step of a closed trip; the driving step never gets a verdict. Truck positions come from a simulated Pulsit feed, not live trackers.',
       question: "Does the truck's tracker agree with where the driver said they were?",
       basis: (checked: number, unwitnessed: number): string =>
         `${checked} stop steps on closed trips checked against the tracker, and ${unwitnessed} with no tracker reading`,
@@ -341,16 +361,18 @@ export const FLEET_COPY = {
     },
     overrides: {
       title: 'Overrides over time',
+      source: 'How many of every step on closed trips a dispatcher completed for the driver, from our phase ledger.',
       question: 'How often does a dispatcher complete a step for the driver?',
       basis: (overridden: number, steps: number): string =>
         `${overridden} of ${steps} steps on closed trips were overridden by a dispatcher`,
-      note: "An override skips the driver's photos, seal and tracker check — the weakest evidence we hold.",
+      note: "An override skips the driver's photos, seal and tracker check: the weakest evidence we hold.",
       empty: 'No closed trips departed in this period.',
       lower: 'of steps overridden',
       columns: { steps: 'Steps', overridden: 'Overridden', share: 'Share' },
     },
     signoff: {
       title: 'Receiver sign-off',
+      source: 'Attested sign-off steps on closed trips, the receiver QR scans recorded against them, and rejected scan attempts.',
       question: 'How often does the receiver confirm the delivery on their own phone?',
       basis: (scans: number, confirmations: number): string =>
         `${scans} of ${confirmations} sign-offs on closed trips were scanned by the receiver`,
@@ -374,6 +396,7 @@ export const FLEET_COPY = {
     lane: (origin: string, destination: string): string => `${origin} → ${destination}`,
     sites: {
       title: 'Busiest sites',
+      source: 'Attested loading and unloading steps on closed trips, at the precincts set up in this system. An empty run’s unloading is not counted as a delivery.',
       question: 'Which sites see the most of our trucks?',
       basis: (count: number): string => `${count} pickups and deliveries on closed trips in this period`,
       empty: 'No pickups or deliveries on closed trips in this period.',
@@ -386,6 +409,7 @@ export const FLEET_COPY = {
     },
     laneTimes: {
       title: 'Driving time per lane',
+      source: 'Each closed trip’s attested first departure to its recorded final arrival.',
       question: 'How long does each route take, on a normal day and a bad one?',
       basis: (count: number): string =>
         `${count} closed trips with a recorded arrival, timed from first departure to final arrival`,
@@ -399,6 +423,7 @@ export const FLEET_COPY = {
     },
     laneRisk: {
       title: 'Lane risk',
+      source: 'Closed trips per lane and their exception reports, dispatcher notes left out. A trip without a known origin and destination is on no lane.',
       question: 'Which lanes are both busy and risky?',
       basis: (count: number): string =>
         `${count} lanes with closed trips in this period. Problems leave out dispatcher notes.`,
@@ -413,14 +438,26 @@ export const FLEET_COPY = {
     },
     incidents: {
       title: 'Incident map',
+      // A stop's tracker mismatch saves the driver's own fix (orchestration/phases/findings.py);
+      // only the road check saves the tracker's (orchestration/evidence/road_check.py).
+      source: 'The position saved with each report: the driver’s phone for driver reports and for tracker mismatches at a stop; the simulated tracker for checks on the road. Any trip status; dispatcher notes are left out.',
       question: 'Where do problems happen?',
       basis: (count: number): string =>
         `${count} reports with a location in this period, any trip status. Dispatcher notes are left out.`,
+      // The map's own window, so asking for today doesn't empty the sites and lanes charts
+      // beside it (few closed trips depart on the day).
+      window: { label: 'Show reports from', today: 'Today', period: 'This period' },
+      basisToday: (count: number, day: string): string =>
+        `${count} reports with a location today (${day}, South African time), any trip status. Dispatcher notes are left out.`,
+      emptyToday: 'No reports with a location yet today (South African time).',
+      // Names every writer that actually saves a position: driver in-transit and phase reports
+      // (driver-pwa LogExceptionPageClient, TripContext), panic (PanicPageClient) and the
+      // automatic road check (orchestration/evidence/road_check.py).
       empty:
-        'No reports with a location in this period. Today only panic-button reports send a location; more report types will appear once the driver app sends one with every report.',
+        'No reports with a location in this period. Driver reports, panic alerts and automatic tracker checks send one; older reports and reports from a phone without a GPS fix have none.',
       unlocated: (count: number): string =>
         `${count} ${count === 1 ? 'report' : 'reports'} in this period had no location.`,
-      mapUnavailable: 'Map unavailable — every pin is listed in the table below.',
+      mapUnavailable: 'Map unavailable. Every pin is listed in the table below.',
       // The table shows ten at a time, and a row finds its pin on the map.
       loadMore: (count: number): string => `Load ${count} more`,
       showing: (shown: number, total: number): string => `Showing ${shown} of ${total}`,
@@ -431,7 +468,15 @@ export const FLEET_COPY = {
     },
   },
 
+  // D10 option C: the integrations that stand behind several figures all run on simulated or
+  // mock feeds until live credentials arrive. Said once here, at page level, rather than
+  // lengthening every card's Source line, and it is where a presenter would point.
+  dataNote:
+    "Every figure comes from FreightProof's own records of trips run on this system, test and demo trips included. "
+    + 'The tracker, parcel and waybill, and receiver-ID checks behind some figures run on simulated and mock feeds until live credentials arrive.',
+
   chart: {
+    sourceLabel: 'Source',
     aboutChart: (title: string): string => `About this chart: ${title}`,
     // The last line of every time-axis card's "i" popover.
     partialFootnote: 'Faded: a part week, month or year at either end of the period, or one still running.',
@@ -441,6 +486,6 @@ export const FLEET_COPY = {
     retry: 'Retry',
     loadError: "Couldn't load this chart.",
     notEnoughTitle: 'Not enough data yet',
-    lowSample: (count: number): string => `Based on only ${count} trips — read with care`,
+    lowSample: (count: number): string => `Based on only ${count} trips, read with care`,
   },
 } as const

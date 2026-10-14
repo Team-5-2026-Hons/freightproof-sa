@@ -10,6 +10,7 @@ import { Ic } from '@/components/ui/Ic'
 import { BlockchainBadge } from './BlockchainBadge'
 import { ForensicOnly } from './ForensicOnly'
 import { describeChange } from '@/lib/forensic/describeChange'
+import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 import type {
   BlockchainReceipt, DriverEvent, PrecinctEvent, VehicleEvent,
 } from '@shared/lib/types/blockchain'
@@ -74,10 +75,7 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
               <div className="text-[13px] font-[600] text-on-surf">{describeEvent(e)}</div>
               <div className="shrink-0 flex items-center gap-[4px] text-[12px] font-[600] tabular-nums tracking-[0.03em] text-sec">
                 <Ic n="clock" s={11} className="text-sec shrink-0" />
-                {new Date(e.created_at).toLocaleString('en-ZA', {
-                  day: '2-digit', month: 'short', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
+                {fmtSastDateTime(e.created_at) ?? '—'}
               </div>
             </div>
             {/* What changed — visible to every dispatcher, not just forensic mode */}

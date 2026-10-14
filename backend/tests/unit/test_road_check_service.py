@@ -6,7 +6,7 @@ from decimal import Decimal
 from app.db.models.enums import ExceptionSeverity, ExceptionType
 from app.db.models.organisations import Precinct
 from app.integrations.pulsit import PulsitFixStatus
-from app.orchestration.road_check_service import (
+from app.orchestration.evidence.road_check import (
     RigReading,
     RigRole,
     RoadStage,
@@ -148,5 +148,5 @@ def test_separation_rule_does_not_run_at_a_stop():
         max_separation_metres=_MAX_SEPARATION,
     )
 
-    # Trailer separation at a stop is TRAILER_LOCATION_MISMATCH's job (phase_service).
+    # Trailer separation at a stop is TRAILER_LOCATION_MISMATCH's job (phases.findings).
     assert findings == []

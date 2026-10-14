@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analytics.fleet.periods import Grain, Period
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
-from app.orchestration.fleet_analytics_service import (
+from app.orchestration.analytics.fleet import (
     check_period,
     get_activity,
     get_evidence,

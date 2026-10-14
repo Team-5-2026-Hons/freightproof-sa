@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { TripSummary } from './TripSummary'
@@ -23,7 +23,7 @@ vi.mock('@/lib/hooks/useAuth', () => ({
 const trip = mockTrips[0]!
 const facts = tripHeaderFacts(trip, null)!
 
-function renderSummary() {
+function renderSummary(onPanel = vi.fn()) {
   return render(
     <ForensicModeProvider>
       <TripSummary
@@ -32,13 +32,23 @@ function renderSummary() {
         driver={mockDrivers[0]!}
         returnTo="/trips/trip-1"
         onBack={vi.fn()}
-        onPanel={vi.fn()}
+        onPanel={onPanel}
       />
     </ForensicModeProvider>,
   )
 }
 
 describe('TripSummary vehicle and driver previews', () => {
+  it('offers only Info, Cargo and Exceptions and navigates with supported panel values', async () => {
+    const onPanel = vi.fn()
+    renderSummary(onPanel)
+    const nav = screen.getByRole('navigation', { name: 'Trip sections' })
+    expect(within(nav).getAllByRole('button')).toHaveLength(3)
+    await userEvent.click(within(nav).getByRole('button', { name: 'Info' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Cargo' }))
+    await userEvent.click(within(nav).getByRole('button', { name: /Exceptions/i }))
+    expect(onPanel.mock.calls).toEqual([['information'], ['manifest'], ['exceptions']])
+  })
   it('opens a vehicle preview instead of navigating away when the horse is clicked', async () => {
     renderSummary()
 
@@ -69,5 +79,32 @@ describe('TripSummary vehicle and driver previews', () => {
     expect(screen.getByRole('link', { name: 'View driver' })).toHaveAttribute(
       'href', `/fleet/drivers/${mockDrivers[0]!.id}?returnTo=%2Ftrips%2Ftrip-1`,
     )
+  })
+})
+
+describe('TripSummary: the "need review" chip', () => {
+  const owed = { ...facts, needsReviewCount: 3 }
+  function renderChip(onShowFirstUnreviewed?: () => void) {
+    return render(
+      <ForensicModeProvider>
+        <TripSummary facts={owed} precincts={mockPrecincts} driver={null} returnTo="/trips/trip-1" onBack={vi.fn()} onPanel={vi.fn()} onShowFirstUnreviewed={onShowFirstUnreviewed} />
+      </ForensicModeProvider>,
+    )
+  }
+
+  it('is a control that lands on the first unreviewed row when the page can reveal one', async () => {
+    const onShow = vi.fn()
+    renderChip(onShow)
+
+    await userEvent.click(screen.getByRole('button', { name: '3 exceptions need review. Show the first in the timeline' }))
+
+    expect(onShow).toHaveBeenCalledOnce()
+  })
+
+  it('stays a plain count while there is nothing to land on', () => {
+    renderChip()
+
+    expect(screen.getByText('3 exceptions need review')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /need review\. Show the first/ })).toBeNull()
   })
 })

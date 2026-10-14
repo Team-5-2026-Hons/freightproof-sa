@@ -6,7 +6,7 @@ to one outer connection via join_transaction_mode="create_savepoint" and rolls b
 at the end, so two sessions drawn from it share a transaction and can never actually
 race for the same row — a test written against it would pass no matter what
 redeem_capability_token does. This module opens two independent connections against
-the same committed token and proves the conditional UPDATE in handover_service is the
+the same committed token and proves the conditional UPDATE in handover.capability is the
 real gate: exactly one of the two concurrent attempts must succeed.
 """
 
@@ -24,7 +24,7 @@ from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
-from app.orchestration.handover_service import issue_capability_token, redeem_capability_token
+from app.orchestration.handover.capability import issue_capability_token, redeem_capability_token
 
 
 async def _seed(session: AsyncSession) -> dict:

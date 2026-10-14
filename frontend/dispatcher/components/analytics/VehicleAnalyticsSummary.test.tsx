@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
@@ -258,5 +258,20 @@ describe('VehicleAnalyticsSummary — trailer note', () => {
     renderSummary()
 
     expect(screen.queryByText(ANALYTICS_COPY.trailerNote)).not.toBeInTheDocument()
+  })
+
+  it('says where the figures come from, whether they loaded, were empty or failed', () => {
+    const line = /Closed trips this vehicle ran/
+
+    renderSummary()
+    expect(screen.getByText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ rows: [] })
+    expect(screen.getByText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ error: 'Server unavailable' })
+    expect(screen.getByText(line)).toBeInTheDocument()
   })
 })

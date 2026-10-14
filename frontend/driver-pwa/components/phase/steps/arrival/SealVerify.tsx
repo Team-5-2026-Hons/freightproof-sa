@@ -80,7 +80,7 @@ function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
 // event server-side and raises a CRITICAL exception on any mismatch or compromise; the
 // driver is never told the verdict — the swipe label stays neutral in every condition.
 export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: SealVerifyProps) {
-  const { uploadNow } = useArtifactUpload(tripId)
+  const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
   const isMissing = draft.sealCondition === 'missing'
   // Local, mirroring departure/CaptureSeal's own field — keeps typing responsive without
   // waiting on the parent's usePhaseDraft round-trip, same as every other seal input in
@@ -103,7 +103,7 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   function handleSealPhoto(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ sealPhotoDataUrl: dataUrl, sealPhotoArtifactId: null, capturedAt })
-    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+    void uploadNow(dataUrl, 'photo', capturedAt, 'seal_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
     })
   }

@@ -16,7 +16,7 @@ from app.core.exceptions import ResourceNotFoundError
 from app.core.limits import EVIDENCE_WRITE
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration.location_service import record_location_pings
+from app.orchestration.evidence.location import record_location_pings
 from app.schemas.locations import LocationPingBatch, LocationPingBatchResult
 from app.schemas.people import DriverRead
 

@@ -23,6 +23,10 @@ _RLS_FROM_0003 = frozenset({
     "organizations", "parcels", "phase_events", "precincts", "sla_configs",
     "trailer_gps_snapshots", "trip_templates", "trip_trailers", "trips", "users", "vehicles",
 })
+# Tables created after the lockdown, each enabling RLS in its own migration.
+_RLS_FROM_OWN_MIGRATION = frozenset({
+    "audit_pack_access_events", "audit_packs", "incident_declarations",  # tim_add_audit_packs
+})
 # Alembic's own bookkeeping table: not a model, but just as exposed.
 _NON_MODEL_TABLES = frozenset({"alembic_version"})
 
@@ -42,7 +46,9 @@ _LOCKDOWN = _load_migration(_VERSIONS / "2026_09_23_ciaran_lock_down_data_api.py
 def test_every_model_table_is_closed_to_the_data_api() -> None:
     model_tables = frozenset(Base.metadata.tables)
 
-    uncovered = model_tables - _RLS_FROM_0003 - frozenset(_LOCKDOWN.LOCKED_DOWN_TABLES)
+    uncovered = (
+        model_tables - _RLS_FROM_0003 - frozenset(_LOCKDOWN.LOCKED_DOWN_TABLES) - _RLS_FROM_OWN_MIGRATION
+    )
 
     assert uncovered == frozenset(), f"no RLS on {sorted(uncovered)}: enable it in the table's migration"
 

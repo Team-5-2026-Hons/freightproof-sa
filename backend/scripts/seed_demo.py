@@ -5,7 +5,7 @@ vehicles (three horses, four trailers), three precincts. Trips are created throu
 dispatcher UI, or by scripts/seed_trips.py for shapes the wizard cannot build yet.
 
 Drivers, vehicles and precincts are created through the same orchestration functions
-the dispatcher UI calls (driver_service.create_driver and friends), not as raw rows.
+the dispatcher UI calls (fleet.drivers.create_driver and friends), not as raw rows.
 That matters on an evidence platform: each of those functions writes the record's
 creation event and anchors it to Hedera, so a seeded horse has the same history and
 receipt as one a dispatcher registered by hand. Raw inserts would leave fleet records
@@ -15,7 +15,7 @@ Organizations and the dispatcher have no such create path, so they stay direct.
 Identifiers (licence numbers, registrations, Pulsit device ids, precinct names) are
 deliberately unchanged from the earlier version: scripts/seed_trips.py looks rows up by
 them, and the precinct addresses match the depot addresses the Parcel Perfect mock
-fixtures state (app/integrations/parcel_perfect.py, "Demo depot geography"), so a
+fixtures state (app/integrations/parcel_perfect/waybill_fixtures.py, "Demo depot geography"), so a
 waybill's route never contradicts the trip's own stops.
 
 Requires working Hedera settings: anchoring is fail-closed, so a missing key would
@@ -54,9 +54,9 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
 from app.integrations.supabase_admin import create_dispatcher_auth_user
-from app.orchestration.driver_service import create_driver
-from app.orchestration.precinct_service import create_precinct
-from app.orchestration.vehicle_service import create_vehicle
+from app.orchestration.fleet.drivers import create_driver
+from app.orchestration.fleet.precincts import create_precinct
+from app.orchestration.fleet.vehicles import create_vehicle
 from app.schemas.organisations import PrecinctCreateBody
 from app.schemas.people import DriverCreateBody
 from app.schemas.vehicles import VehicleCreateBody
@@ -109,6 +109,7 @@ class _SeedPrecinct:
     address: str
     latitude: Decimal
     longitude: Decimal
+    pp_hub_code: str
 
 
 # Four, not two: scripts/seed_trips.py gives each demo trip its own driver, so the
@@ -155,11 +156,11 @@ _VEHICLES = [
 # change across all three files and their tests.
 _PRECINCTS = [
     _SeedPrecinct("Cape Town Depot (Epping)", "12 Gunners Circle, Epping Industria, Cape Town",
-                  Decimal("-33.9249"), Decimal("18.4241")),
+                  Decimal("-33.9249"), Decimal("18.4241"), "CPT"),
     _SeedPrecinct("Bloemfontein Depot (Hamilton)", "8 Reid Street, Hamilton, Bloemfontein",
-                  Decimal("-29.0852"), Decimal("26.1596")),
+                  Decimal("-29.0852"), Decimal("26.1596"), "BFN"),
     _SeedPrecinct("Johannesburg Depot (Linbro)", "1 Depot Street, Linbro Park, Johannesburg",
-                  Decimal("-26.2041"), Decimal("28.0473")),
+                  Decimal("-26.2041"), Decimal("28.0473"), "JNB"),
 ]
 
 
@@ -274,22 +275,29 @@ async def _seed_vehicles(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
 
 async def _seed_precincts(db: AsyncSession, dispatcher_id: uuid.UUID) -> None:
     for spec in _PRECINCTS:
-        existing = await db.execute(
-            select(Precinct).where(Precinct.name == spec.name,
-                                   Precinct.principal_organization_id == _CLIENT_ORG_ID)
+        query = select(Precinct).where(
+            Precinct.name == spec.name, Precinct.principal_organization_id == _CLIENT_ORG_ID,
         )
-        if existing.scalar_one_or_none() is not None:
-            continue
-        # Owned by the client (the principal whose depots these are). is_shared=True:
-        # the client's depots must stay visible to the operator dispatcher under
-        # per-org precinct scoping.
-        body = PrecinctCreateBody(
-            name=spec.name, address=spec.address,
-            latitude=float(spec.latitude), longitude=float(spec.longitude), is_shared=True,
-        )
-        await create_precinct(db, _CLIENT_ORG_ID, body, dispatcher_id)
-        await db.commit()
-        print(f"  precinct     {spec.name} — anchored")
+        precinct = (await db.execute(query)).scalar_one_or_none()
+        if precinct is None:
+            # Owned by the client (the principal whose depots these are). is_shared=True:
+            # the client's depots must stay visible to the operator dispatcher under
+            # per-org precinct scoping.
+            body = PrecinctCreateBody(
+                name=spec.name, address=spec.address,
+                latitude=float(spec.latitude), longitude=float(spec.longitude), is_shared=True,
+            )
+            await create_precinct(db, _CLIENT_ORG_ID, body, dispatcher_id)
+            await db.commit()
+            print(f"  precinct     {spec.name} — anchored")
+            precinct = (await db.execute(query)).scalar_one()
+        if precinct.pp_hub_code != spec.pp_hub_code:
+            # Reference data for the PP mock, not evidence: set directly, not through
+            # create_precinct, so precinct anchoring is unchanged (FP-281 §7.2). Also
+            # runs on a database seeded before hub codes existed.
+            precinct.pp_hub_code = spec.pp_hub_code
+            await db.commit()
+            print(f"  precinct     {spec.name} — hub {spec.pp_hub_code}")
 
 
 async def seed(password: str) -> None:

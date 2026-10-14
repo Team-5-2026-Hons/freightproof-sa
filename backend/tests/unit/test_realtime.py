@@ -33,6 +33,13 @@ def test_realtime_kind_includes_exception_reviewed() -> None:
     assert RealtimeKind.EXCEPTION_REVIEWED.value == "exception_reviewed"
 
 
+def test_evidence_uploaded_is_an_info_kind_by_default() -> None:
+    event = TripEvent(id=uuid4(), kind=RealtimeKind.EVIDENCE_UPLOADED)
+
+    assert RealtimeKind.EVIDENCE_UPLOADED.value == "evidence_uploaded"
+    assert event.severity is realtime.EventSeverity.INFO
+
+
 def test_channel_key_uses_org_prefix():
     org_id = uuid4()
 

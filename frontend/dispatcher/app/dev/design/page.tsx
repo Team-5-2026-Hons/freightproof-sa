@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { TOKENS, type TokenKey } from '@shared/lib/tokens'
 import { Z } from '@shared/lib/z-index'
+import { TimelineScenarios } from './_timeline-scenarios/TimelineScenarios'
 
 const COLOR_GROUPS: { label: string; keys: TokenKey[] }[] = [
   { label: 'Primary — Tarmac Black', keys: ['primary', 'primaryContainer', 'onPrimary', 'onPrimaryContainer'] },
@@ -239,6 +240,8 @@ export default function TokensPage() {
           ))}
         </div>
       </section>
+
+      <TimelineScenarios />
 
       <footer className="border-t border-outline-variant/30 pt-4 mt-8">
         <p className="text-xs text-surface-on-variant">

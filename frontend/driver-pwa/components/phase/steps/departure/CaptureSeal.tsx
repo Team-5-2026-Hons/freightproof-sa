@@ -30,7 +30,7 @@ interface CaptureSealProps {
 // (advance_departure) is now tri-state, so its absence records as "not collected"
 // rather than as an anomaly.
 export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: CaptureSealProps) {
-  const { uploadNow } = useArtifactUpload(tripId)
+  const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
   const sealNumber = draft.sealNumber ?? ''
   // The backend 422s any seal not matching XX-#### at submit (departure's last step) —
   // validate here, where the driver can still fix it.
@@ -43,7 +43,7 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
   function handleSealPhoto(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ sealPhotoDataUrl: dataUrl, sealPhotoArtifactId: null, capturedAt })
-    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+    void uploadNow(dataUrl, 'photo', capturedAt, 'seal_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
     })
   }

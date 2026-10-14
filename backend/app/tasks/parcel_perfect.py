@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.db.models.enums import TripStatus
 from app.db.models.trips import Consignment, Trip
-from app.orchestration.consignment_service import fetch_and_sync_consignment
+from app.orchestration.consignments.sync import fetch_and_sync_consignment
 from app.tasks import celery
 
 logger = logging.getLogger(__name__)

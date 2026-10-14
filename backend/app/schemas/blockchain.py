@@ -1,4 +1,4 @@
-"""Pydantic v2 schemas for BlockchainReceipt, MerkleBatch, MerkleBatchLeaf."""
+"""Pydantic v2 schemas for BlockchainReceipt and MerkleBatchLeaf."""
 
 import re
 from datetime import datetime
@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from app.db.models.enums import BlockchainReceiptType, MerkleBatchType, SubjectType, VerifyStatus
+from app.db.models.enums import BlockchainReceiptType, SubjectType, VerifyStatus
 
 _VALID_LEAF_SOURCE_TYPES = frozenset({"checkpoint", "exception", "artifact"})
 _DATA_HASH_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -36,51 +36,6 @@ class BlockchainReceiptUpdate(BaseModel):
     hedera_consensus_timestamp: Optional[datetime] = None
 
 
-class BlockchainReceiptReadLegacy(BlockchainReceiptBase):
-    """Legacy receipt shape — uses trip_id from BlockchainReceiptBase.
-
-    Kept for backward compatibility with any internal code that predates
-    the subject_type/subject_id migration. New code should use
-    BlockchainReceiptRead instead.
-    """
-
-    id: UUID
-    hedera_topic_id: Optional[str] = None
-    hedera_tx_id: Optional[str] = None
-    hedera_sequence_number: Optional[int] = None
-    hedera_consensus_timestamp: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class MerkleBatchBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: UUID
-    batch_type: MerkleBatchType
-
-
-class MerkleBatchCreate(MerkleBatchBase):
-    pass
-
-
-class MerkleBatchUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    merkle_root: Optional[str] = None
-    leaf_count: Optional[int] = None
-    blockchain_receipt_id: Optional[UUID] = None
-
-
-class MerkleBatchRead(MerkleBatchBase):
-    id: UUID
-    merkle_root: Optional[str] = None
-    leaf_count: int
-    blockchain_receipt_id: Optional[UUID] = None
-    created_at: datetime
-    updated_at: datetime
-
-
 class MerkleBatchLeafBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -100,11 +55,6 @@ class MerkleBatchLeafCreate(MerkleBatchLeafBase):
                 f"source_type must be one of {sorted(_VALID_LEAF_SOURCE_TYPES)}, got '{v}'"
             )
         return v
-
-
-class MerkleBatchLeafRead(MerkleBatchLeafBase):
-    id: UUID
-    created_at: datetime
 
 
 class BlockchainReceiptRead(BaseModel):

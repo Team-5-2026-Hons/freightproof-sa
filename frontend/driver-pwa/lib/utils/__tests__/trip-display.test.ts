@@ -6,7 +6,6 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
   return {
     id: 't1' as DriverTripSummary['id'],
     trip_reference: 'TRP-2026-0035',
-    order_number: 'FX-1',
     status: 'closed',
     trip_type: 'loaded',
     origin_precinct_id: null,

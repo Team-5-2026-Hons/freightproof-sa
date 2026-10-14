@@ -38,3 +38,10 @@ export function Skeleton({ variant = 'block', lines = 1, className }: SkeletonPr
 
   return <div className={cn(base, 'h-10', className)} />
 }
+
+/** A single rounded placeholder bar. Size it with height and width classes, e.g.
+ *  `<SkeletonBar className="h-3 w-24" />`. Separate from `Skeleton`, whose block variant
+ *  carries its own fixed height that a size class could not reliably override. */
+export function SkeletonBar({ className }: { className?: string }) {
+  return <div aria-hidden className={cn('animate-pulse rounded-full bg-surface-container-high', className)} />
+}

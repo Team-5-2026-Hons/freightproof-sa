@@ -85,6 +85,17 @@ export function buildPinPopup(pin: IncidentPin, returnTo?: string, onOpen?: (hre
   return root
 }
 
+/** The identity of a set of pins: their report ids, sorted and joined.
+ *
+ *  The map redraws and refits only when this changes. A live refetch that returns the same
+ *  reports, in any order, therefore leaves the view exactly where the dispatcher put it,
+ *  which matters most during a demo, when a report raised anywhere in the organisation would
+ *  otherwise make the map jump. Ids alone: a pin's position and severity are fixed when it is
+ *  raised, so the set of ids is the whole identity. */
+export function pinSignature(pins: readonly IncidentPin[]): string {
+  return pins.map((pin) => pin.exception_id).sort().join(',')
+}
+
 function pinIcon(L: typeof import('leaflet'), severity: ExceptionSeverity): DivIcon {
   const style = PIN_STYLE[severity]
   return L.divIcon({
@@ -169,6 +180,13 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
     }
   }, [])
 
+  // Read inside the pin effect, which runs on the signature rather than the array: a silent
+  // refetch hands over a new array every time, and depending on it directly would redraw and
+  // refit the map on every live event. Same ref-to-latest pattern as useLiveResource.
+  const pinsRef = useRef(pins)
+  useEffect(() => { pinsRef.current = pins }, [pins])
+
+  const signature = pinSignature(pins)
   useEffect(() => {
     let cancelled = false
 
@@ -178,6 +196,7 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
       if (!ready || map === null || layer === null) return
       const L = await import('leaflet')
       if (cancelled) return
+      const pins = pinsRef.current
       layer.clearLayers()
       markersRef.current.clear()
       for (const pin of pins) {
@@ -202,7 +221,7 @@ export function IncidentMap({ pins, selection = null, returnTo }: IncidentMapPro
 
     void placePins()
     return () => { cancelled = true }
-  }, [pins, ready, returnTo, router])
+  }, [signature, ready, returnTo, router])
 
   // A row chosen in the table: bring the map into view, fly to that pin and open its popup, as
   // if it had been clicked on the map itself.

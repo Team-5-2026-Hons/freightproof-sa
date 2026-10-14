@@ -24,7 +24,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.blockchain.hedera import HederaReceipt
 from app.db.models.enums import (
-    ArtifactType, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus, PhaseType, TripStatus, VehicleType,
+    ArtifactType, EvidenceRole, IdvsStatus, OrganizationType, ParcelStatus, PhaseStatus,
+    PhaseType, TripStatus, VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
@@ -36,7 +37,8 @@ from app.db.session import get_db
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
-from app.orchestration import scan_service
+from app.orchestration.consignments.scans import ingest_scans
+from app.orchestration.phases.override import override_phase
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
@@ -75,7 +77,7 @@ async def seed_trip(db_session):
         driver_id=driver.id, horse_id=horse.id,
         origin_precinct_id=origin.id, destination_precinct_id=dest.id,
         status=TripStatus.CREATED, idvs_check_status=IdvsStatus.VERIFIED,
-        # Activation is gated on the trip being due (phase_service._reject_if_not_due) and
+        # Activation is gated on the trip being due (phases.scheduling._reject_if_not_due) and
         # an unscheduled trip is deliberately unstartable, so this fixture books itself for
         # today — which is what it always meant: a trip a driver is about to run.
         planned_departure_at=datetime.now(UTC),
@@ -87,13 +89,13 @@ async def seed_trip(db_session):
     # Hand-built single-leg phase plan, mirroring what create_trip actually
     # produces: the plan generator writes every row `pending` at
     # trip creation, but create_trip then completes TRIP_CREATION (h0) inline
-    # once its Hedera anchor succeeds (see trip_service.create_trip) — so h0
+    # once its Hedera anchor succeeds (see trips.creation.create_trip) — so h0
     # is seeded COMPLETED here and every driver-facing row stays PENDING
     # before any endpoint call (the deleted _get_handshake_event no longer
     # creates them on demand). IN_TRANSIT (P4) is included and stays PENDING like
     # every other driver-facing row: it is opened by advance_departure and closed by
     # the driver's own arrival submission — see advance_in_transit's docstring in
-    # phase_service.py.
+    # phases/advance_in_transit.py.
     stop0 = TripStop(trip_id=trip.id, precinct_id=origin.id, sequence=0)
     stop1 = TripStop(trip_id=trip.id, precinct_id=dest.id, sequence=1)
     db_session.add_all([stop0, stop1])
@@ -117,7 +119,7 @@ async def seed_trip(db_session):
 async def seed_trip_with_consignment(db_session, seed_trip):
     """seed_trip plus a Consignment picked up at stop0 (sequence 0).
 
-    phase_gate.py only gates a (phase_type, stop) pair that has a Consignment row
+    phases/blocking.py only gates a (phase_type, stop) pair that has a Consignment row
     — "no Consignment" is the ungated case, not the blocked one (see its module
     docstring). No scan session is closed here, so the mock feed's default
     (nothing staged) reads as an OPEN session and loading stays blocked.
@@ -884,7 +886,7 @@ async def test_complete_addressing_trip_creation_row_returns_422(
 async def test_arrival_is_not_gated_on_the_destination_warehouse_scan(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """IN_TRANSIT is absent from phase_gate.GATED_PHASES and must stay absent. The
+    """IN_TRANSIT is absent from phases.blocking.GATED_PHASES and must stay absent. The
     destination warehouse has scanned nothing when the driver pulls up at the boom, so
     gating arrival on a scan that only happens AFTER arrival would deadlock the leg.
     UNLOADING carries that gate instead.
@@ -1215,7 +1217,7 @@ async def test_phase_list_reports_blocked_on_for_loading(
 async def test_phase_list_reports_null_blocked_on_for_departure(
     client: AsyncClient, db_session, seed_trip_with_consignment,
 ):
-    """departure is absent from phase_gate's _GATED_PHASES map entirely — never
+    """departure is absent from phases.blocking's GATED_PHASES map entirely — never
     blocked regardless of consignment or scan-session state."""
     trip, driver = seed_trip_with_consignment
     token = make_token(sub=str(driver.id), role="driver")
@@ -1267,7 +1269,7 @@ async def test_phase_list_query_count_is_independent_of_phase_count(
 async def completed_activation_trip(client: AsyncClient, db_session, seed_trip):
     """seed_trip with activation already completed under a known idempotency_key.
 
-    Activation is never gated by phase_gate (only loading/confirmation are), so this
+    Activation is never gated by phases.blocking (only loading/confirmation are), so this
     fixture is deliberately independent of any scan-session state — it exists purely
     to give the replay-ordering test a phase that is genuinely already resolved.
     """
@@ -1380,7 +1382,7 @@ async def completed_unloading_trip(
     destination stop, with a Consignment whose parcels are scanned OUT in full
     at origin (closed) but deliberately NOT YET scanned IN at destination —
     unloading now gates on the destination stop's IN-direction scan SESSION being
-    closed (phase_gate.py's GATED_PHASES), but a closed session is a separate
+    closed (phases/blocking.py's GATED_PHASES), but a closed session is a separate
     fact from actual scanned barcodes: the warehouse operator can close an empty
     session (nothing scanned yet) purely to satisfy the gate, and that is what
     happens below. No barcode DATA exists at destination until the test itself
@@ -1459,7 +1461,7 @@ async def completed_unloading_trip(
         consignment_reference=pp_reference, stop_reference=str(stop0.id),
         direction=ScanDirection.OUT, barcodes=barcodes,
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session, trip_id=trip.id, trip_stop_id=stop0.id, direction=ScanDirection.OUT,
     )
     await feed.close_session(
@@ -1554,7 +1556,7 @@ async def test_a_closed_phase_row_is_never_written_again(
         direction=ScanDirection.IN,
         barcodes=completed_unloading_trip["barcodes"],
     )
-    await scan_service.ingest_scans(
+    await ingest_scans(
         db_session,
         trip_id=completed_unloading_trip["trip_id"],
         trip_stop_id=completed_unloading_trip["delivery_stop_id"],
@@ -1763,3 +1765,285 @@ async def test_loading_complete_with_another_trips_linehaul_photo_returns_404(
 
     event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
     assert event.linehaul_photo_artifact_id is None
+
+
+# ── Completion validates the attribution of what it cites ───────────────────────
+
+async def _make_attributed_artifact(
+    db_session, trip_id, phase_event_id, role: EvidenceRole, *, driver_id=None,
+) -> str:
+    """An artifact as the upload route would store it. A fresh hash each time: the partial
+    unique index on (phase, role, hash) would otherwise reject a second photo."""
+    artifact = EvidenceArtifact(
+        id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.PHOTO,
+        s3_key=f"{trip_id}/{uuid.uuid4()}", s3_bucket="evidence-artifacts",
+        file_hash=uuid.uuid4().hex * 2, mime_type="image/jpeg", captured_at=datetime.now(UTC),
+        captured_by_driver_id=driver_id, phase_event_id=uuid.UUID(str(phase_event_id)), evidence_role=role,
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+    return str(artifact.id)
+
+
+async def _make_driver_artifact(db_session, trip_id, driver_id) -> str:
+    """Unattributed, but with a driver id: what a pre-attribution app's upload looks like."""
+    artifact_id = await _make_artifact(db_session, trip_id)
+    artifact = await db_session.get(EvidenceArtifact, uuid.UUID(artifact_id))
+    artifact.captured_by_driver_id = driver_id
+    await db_session.flush()
+    return artifact_id
+
+
+async def _complete_loading(client: AsyncClient, trip, token: str, **fields: Any):
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    return await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={"phase_type": "loading", "idempotency_key": str(uuid.uuid4()), **fields},
+        headers=auth_header(token),
+    )
+
+
+async def _walk_to_confirmation(client: AsyncClient, db_session, trip, token: str) -> None:
+    """Every driver phase up to, and not including, confirmation."""
+    await _walk_to_in_transit(client, db_session, trip, token)
+    await _complete_in_transit(client, trip, token)
+    await _complete_arrival(client, db_session, trip, token)
+    unloading_id = await _phase_id(client, trip.id, token, "unloading")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{unloading_id}/complete",
+        json={"phase_type": "unloading", "idempotency_key": str(uuid.uuid4())},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+async def _complete_confirmation(client: AsyncClient, trip, token: str, **artifact_ids: str):
+    confirmation_id = await _phase_id(client, trip.id, token, "confirmation")
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        MockService.return_value.submit_hash.return_value = _fake_hedera_receipt()
+        return await client.post(
+            f"/api/v1/trips/{trip.id}/phases/{confirmation_id}/complete",
+            json={
+                "phase_type": "confirmation", "driver_visual_count": 42,
+                "idempotency_key": str(uuid.uuid4()), **artifact_ids,
+            },
+            headers=auth_header(token),
+        )
+
+
+async def test_completion_citing_artifact_attributed_to_another_phase_returns_422(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    elsewhere = await _make_attributed_artifact(
+        db_session, trip.id, departure_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+    loading = await db_session.get(PhaseEvent, uuid.UUID(await _phase_id(client, trip.id, token, "loading")))
+    anchor_before = loading.anchor_status
+
+    resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=elsewhere)
+
+    assert resp.status_code == 422
+    await db_session.refresh(loading)
+    assert loading.status == PhaseStatus.PENDING
+    assert loading.linehaul_photo_artifact_id is None
+    assert loading.anchor_status == anchor_before  # nothing was queued for anchoring
+
+
+async def test_completion_citing_wrong_role_returns_422(client: AsyncClient, db_session, seed_trip):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    assert (await _complete_loading(client, trip, token)).status_code == 200
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    linehaul_role = await _make_attributed_artifact(
+        db_session, trip.id, departure_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+        json={
+            "phase_type": "departure", "seal_number": "AB-1234",
+            "seal_photo_artifact_id": linehaul_role, "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 422
+    departure = await db_session.get(PhaseEvent, uuid.UUID(departure_id))
+    assert departure.status == PhaseStatus.PENDING
+    assert departure.seal_photo_artifact_id is None
+
+
+async def test_completion_accepts_unattributed_artifact(client: AsyncClient, db_session, seed_trip):
+    """Older apps and queued entries upload without attribution and must still complete."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    unattributed = await _make_driver_artifact(db_session, trip.id, driver.id)
+
+    resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=unattributed)
+
+    assert resp.status_code == 200
+    loading = await db_session.get(PhaseEvent, uuid.UUID(await _phase_id(client, trip.id, token, "loading")))
+    assert str(loading.linehaul_photo_artifact_id) == unattributed
+
+
+async def test_completion_after_retake_records_the_cited_photo(client: AsyncClient, db_session, seed_trip):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    first = await _make_attributed_artifact(
+        db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+    second = await _make_attributed_artifact(
+        db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+
+    resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=second)
+
+    assert resp.status_code == 200
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert str(loading.linehaul_photo_artifact_id) == second
+    superseded = await db_session.get(EvidenceArtifact, uuid.UUID(first))
+    assert superseded is not None
+    assert (str(superseded.phase_event_id), superseded.evidence_role) == (loading_id, "linehaul_photo")
+
+
+async def test_confirmation_rejects_unattributed_driver_upload_as_receiver_confirmation(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_confirmation(client, db_session, trip, token)
+    pod_photo = await _make_artifact(db_session, trip.id)
+    drivers_own = await _make_driver_artifact(db_session, trip.id, driver.id)
+
+    resp = await _complete_confirmation(
+        client, trip, token, pod_photo_artifact_id=pod_photo, pod_signature_artifact_id=drivers_own,
+    )
+
+    assert resp.status_code == 422
+    confirmation = await db_session.get(PhaseEvent, uuid.UUID(await _phase_id(client, trip.id, token, "confirmation")))
+    assert confirmation.status == PhaseStatus.PENDING
+    assert confirmation.pod_signature_artifact_id is None
+
+
+async def test_confirmation_rejects_driver_pod_photo_as_receiver_confirmation(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_confirmation(client, db_session, trip, token)
+    confirmation_id = await _phase_id(client, trip.id, token, "confirmation")
+    pod_photo = await _make_attributed_artifact(
+        db_session, trip.id, confirmation_id, EvidenceRole.POD_PHOTO, driver_id=driver.id,
+    )
+    # Two distinct ids: the request schema already rejects one id in both fields.
+    another_pod_photo = await _make_attributed_artifact(
+        db_session, trip.id, confirmation_id, EvidenceRole.POD_PHOTO, driver_id=driver.id,
+    )
+
+    resp = await _complete_confirmation(
+        client, trip, token, pod_photo_artifact_id=pod_photo, pod_signature_artifact_id=another_pod_photo,
+    )
+
+    assert resp.status_code == 422
+    confirmation = await db_session.get(PhaseEvent, uuid.UUID(confirmation_id))
+    assert confirmation.status == PhaseStatus.PENDING
+
+
+async def test_confirmation_accepts_unattributed_artifact_without_driver_id(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """Receiver images stored before attribution existed, and fixtures, carry neither."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _walk_to_confirmation(client, db_session, trip, token)
+    pod_photo = await _make_artifact(db_session, trip.id)
+    receiver_image = await _make_artifact(db_session, trip.id)
+
+    resp = await _complete_confirmation(
+        client, trip, token, pod_photo_artifact_id=pod_photo, pod_signature_artifact_id=receiver_image,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "closed"
+
+
+async def test_completion_request_for_overridden_phase_returns_recorded_state(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """D26: a resolved phase replays as 200 BEFORE any check, so the offline queue drains —
+    even when the request cites an artifact that would be rejected on an open phase."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=uuid.UUID(loading_id),
+        operator_organization_id=trip.operator_organization_id, user_id=trip.created_by_user_id,
+        note="Driver phone lost",
+    )
+    contradictory = await _make_attributed_artifact(
+        db_session, trip.id, await _phase_id(client, trip.id, token, "departure"),
+        EvidenceRole.SEAL_PHOTO, driver_id=driver.id,
+    )
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    await db_session.refresh(loading)
+    anchor_before = loading.anchor_status
+
+    resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=contradictory)
+
+    assert resp.status_code == 200
+    await db_session.refresh(loading)
+    assert loading.status == PhaseStatus.OVERRIDDEN
+    assert loading.linehaul_photo_artifact_id is None
+    assert loading.anchor_status == anchor_before
+
+
+async def test_completion_request_for_completed_phase_with_new_key_returns_recorded_state(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The offline queue mints a new idempotency key per queued entry, so the status check,
+    not key equality, is what stops a second completion."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    recorded = await _make_attributed_artifact(
+        db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+    other = await _make_attributed_artifact(
+        db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO, driver_id=driver.id,
+    )
+    assert (await _complete_loading(client, trip, token, linehaul_photo_artifact_id=recorded)).status_code == 200
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    await db_session.refresh(loading)
+    anchor_before = loading.anchor_status
+
+    resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=other)
+
+    assert resp.status_code == 200
+    await db_session.refresh(loading)
+    assert str(loading.linehaul_photo_artifact_id) == recorded
+    assert loading.anchor_status == anchor_before
+
+
+async def test_completion_of_pending_phase_on_cancelled_trip_returns_409(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    trip.status = TripStatus.CANCELLED
+    trip.closed_at = datetime.now(UTC)
+    await db_session.flush()
+
+    resp = await _complete_loading(client, trip, token)
+
+    assert resp.status_code == 409

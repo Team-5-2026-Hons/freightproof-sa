@@ -127,3 +127,17 @@ describe('Vehicle detail — right panel for a trailer', () => {
     expect(screen.queryByText(TIMELINE_ENTRY)).not.toBeInTheDocument()
   })
 })
+
+describe('Vehicle detail — loading', () => {
+  it('shows the header with its back button over a skeleton, not a spinner, while the record loads', () => {
+    mockedUseVehicleDetail.mockReturnValue({
+      data: null, isLoading: true, error: null, refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<VehicleDetailPage />)
+
+    expect(screen.getByRole('status', { name: 'Loading vehicle' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Vehicle')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+})

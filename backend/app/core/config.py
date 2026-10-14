@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     # Pulsit tracker fix describe the same place at roughly the same time. This is
     # a different question from GPS_TOLERANCE_METRES above (is the TRUCK inside its
     # precinct?) — a truck can be correctly inside its geofence while the driver's
-    # phone sits genuinely metres away. See orchestration/proximity_service.py.
+    # phone sits genuinely metres away. See orchestration/evidence/proximity.py.
     # Four independent settings rather than reusing GPS_TOLERANCE_METRES /
     # PULSIT_CORROBORATION_MAX_SKEW_SECONDS, so a future change to either of those
     # never silently drags this unrelated policy along with it.
@@ -107,6 +107,11 @@ class Settings(BaseSettings):
 
     # Encoded in the QR, so it must be reachable from mobile data when deployed.
     HANDOVER_RECEIVER_BASE_URL: str = "http://localhost:3002"
+
+    # Public origin of the client portal that serves audit-pack share links (/p/<token>)
+    # and seal checks (/v/<pack id>). Printed into issued PDFs, so it must be the real
+    # public address when deployed.
+    AUDIT_PACK_PORTAL_BASE_URL: str = "http://localhost:3003"
 
     # Server-side so a client can't downgrade the verification workflow.
     IDVS_WORKFLOW_ID: str = ""
@@ -150,14 +155,15 @@ class Settings(BaseSettings):
 
     @property
     def cors_allowed_origins(self) -> List[str]:
-        """Return ALLOWED_ORIGINS plus the native app and receiver origins.
+        """Return ALLOWED_ORIGINS plus the native app, receiver and audit-pack portal origins.
 
         Added here because an ALLOWED_ORIGINS env var replaces the whole default list.
         """
         origins = list(self.ALLOWED_ORIGINS)
         receiver_origin = self.HANDOVER_RECEIVER_BASE_URL.rstrip("/")
+        portal_origin = self.AUDIT_PACK_PORTAL_BASE_URL.rstrip("/")
 
-        for required in (*_NATIVE_APP_ORIGINS, receiver_origin):
+        for required in (*_NATIVE_APP_ORIGINS, receiver_origin, portal_origin):
             if required and required not in origins:
                 origins.append(required)
 

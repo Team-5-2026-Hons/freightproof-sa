@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from app.db.models.handover import HandoverCapabilityToken
-from app.orchestration.handover_service import (
+from app.orchestration.handover.capability import (
     expire_sibling_tokens,
     find_open_token,
     mark_token_opened,

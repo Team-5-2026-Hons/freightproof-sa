@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
+import { TRIP_RECORD_KINDS } from '@/lib/realtime/types'
 import { useAsyncData } from './useAsyncData'
 
 export interface TripsFilter {
@@ -28,7 +29,9 @@ export function useTrips(filter?: TripsFilter): UseTripsResult {
   )
   // Live: any trip changing (new trip, phase, exception, close) refreshes the list in
   // place so status chips and needs-review counts stay current without a reload.
-  useLiveResource('trip', 'any', refetchSilent)
+  // Evidence uploads change no list row, so they are filtered out; a reconnect still
+  // refetches because useLiveResource does not apply the filter to that path.
+  useLiveResource('trip', 'any', refetchSilent, { kinds: TRIP_RECORD_KINDS })
 
   const statusKey = filter?.status?.join(',') ?? ''
   const driverId = filter?.driverId ?? ''

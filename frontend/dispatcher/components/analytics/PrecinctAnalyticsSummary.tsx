@@ -54,6 +54,7 @@ export function PrecinctAnalyticsSummary({ precinctId }: PrecinctAnalyticsSummar
 
   return (
     <AnalyticsSummaryFrame
+      source={ANALYTICS_COPY.sources.precinct}
       range={range}
       onRangeChange={setRange}
       isLoading={facilities.isLoading}

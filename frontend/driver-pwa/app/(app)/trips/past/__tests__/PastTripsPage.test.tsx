@@ -16,7 +16,7 @@ vi.mock('@/lib/hooks/useGroupedTrips', () => ({
 
 function past(ref: string, at: string, origin: string): DriverTripSummary {
   return {
-    id: `id-${ref}` as DriverTripSummary['id'], trip_reference: ref, order_number: 'O', status: 'closed', trip_type: 'loaded',
+    id: `id-${ref}` as DriverTripSummary['id'], trip_reference: ref, status: 'closed', trip_type: 'loaded',
     origin_precinct_id: null, destination_precinct_id: null, origin_precinct_name: origin, destination_precinct_name: 'Cape Town Depot',
     planned_departure_at: at, actual_departure_at: at, planned_arrival_at: at, actual_arrival_at: at,
     needs_review_count: 0, created_at: at, updated_at: at,

@@ -350,7 +350,7 @@ async def test_review_queue_rows_carry_the_claimers_name(client, db_session, two
 
 
 async def test_trip_detail_omits_reviewer_names_unless_asked(db_session, two_orgs):
-    from app.orchestration.resource_service import get_trip_detail
+    from app.orchestration.trips.detail import get_trip_detail
     mine = two_orgs["mine"]
     mine["exception"].claimed_by_user_id = mine["user"].id
     await db_session.flush()

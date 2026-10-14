@@ -18,7 +18,7 @@ vi.mock('@/lib/hooks/useGroupedTrips', () => ({
 function trip(ref: string, status: DriverTripSummary['status']): DriverTripSummary {
   const at = '2026-05-09T10:00:00Z'
   return {
-    id: `id-${ref}` as DriverTripSummary['id'], trip_reference: ref, order_number: 'O', status, trip_type: 'loaded',
+    id: `id-${ref}` as DriverTripSummary['id'], trip_reference: ref, status, trip_type: 'loaded',
     origin_precinct_id: null, destination_precinct_id: null, origin_precinct_name: 'Durban Depot', destination_precinct_name: 'Cape Town Depot',
     planned_departure_at: at, actual_departure_at: null, planned_arrival_at: at, actual_arrival_at: null,
     needs_review_count: 0, created_at: at, updated_at: at,

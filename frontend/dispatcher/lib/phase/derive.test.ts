@@ -200,6 +200,18 @@ describe('departureSealForLeg', () => {
     expect(departureSealForLeg(plan, unloading)).toBe('AB-1111')
   })
 
+  // D40: the nearest preceding departure is this leg's departure even when it recorded no
+  // seal. Skipping it would hand leg 2 the seal that physically left with leg 1.
+  it("is null when this leg's own departure recorded no seal, not an earlier leg's seal", () => {
+    const plan = CROSS_DOCK_PHASE_PLAN.map(p =>
+      p.phase_type === 'departure'
+        ? { ...p, seal_number: p.sequence_number === 3 ? 'A' : null }
+        : p)
+    const unloading = plan.find(p => p.sequence_number === 11)!
+
+    expect(departureSealForLeg(plan, unloading)).toBeNull()
+  })
+
   it('is null when no preceding departure has recorded a seal yet', () => {
     const unloading = SINGLE_LEG_PHASE_PLAN.find(p => p.phase_type === 'unloading')!
 
@@ -312,8 +324,8 @@ describe('tripChipMeta', () => {
   })
 
   it('never produces a label longer than the widest one it renders today', () => {
-    // 'At Origin Gate' is 14 chars. Chip has no fixed width, but ChecklistRow's
-    // STATUS column is a fixed 120px, so a regression here would clip silently.
+    // 'At Origin Gate' is 14 chars. Chip has no fixed width, but the trip table's
+    // Status column has a fixed base width, so a regression here would clip silently.
     const widest = (['activation', 'loading', 'departure', 'in_transit', 'unloading',
                      'confirmation'] as const)
       .flatMap(phase => [tripChipMeta('active', phase), tripChipMeta('exception_hold', phase)])

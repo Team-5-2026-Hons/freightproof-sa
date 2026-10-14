@@ -14,6 +14,11 @@ from decimal import Decimal
 # frontend/dispatcher/lib/phase/geo.ts.
 EARTH_RADIUS_METRES = 6_371_008.8
 
+# Where a rendered distance crosses from metres to kilometres. A gap under a
+# kilometre printed as "0.3 km" reads as rounding noise, when 300 m is the
+# difference between standing at the gate and standing across the yard.
+KM_THRESHOLD_METRES = 1000
+
 _MIN_LATITUDE = -90.0
 _MAX_LATITUDE = 90.0
 _MIN_LONGITUDE = -180.0
@@ -72,3 +77,10 @@ def haversine_metres(
     root_h = min(1.0, math.sqrt(h))
 
     return 2 * EARTH_RADIUS_METRES * math.asin(root_h)
+
+
+def format_distance(metres: float) -> str:
+    """A distance in the units a dispatcher reads at a glance."""
+    if metres < KM_THRESHOLD_METRES:
+        return f"{round(metres)} m"
+    return f"{metres / KM_THRESHOLD_METRES:.1f} km"

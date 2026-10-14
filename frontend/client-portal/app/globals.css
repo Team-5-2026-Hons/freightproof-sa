@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* DESIGN_SYSTEM.md §5.2: IDs, hashes, times, coordinates, seals and counts are tabular. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+}
+
+@media print {
+  .no-print { display: none !important; }
+}

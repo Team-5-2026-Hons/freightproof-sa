@@ -21,11 +21,9 @@ from app.db.models.enums import (
 from app.db.models.events import PrecinctEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import User
-from app.orchestration.precinct_service import create_precinct, list_precincts, update_precinct
-from app.orchestration.verification_service import (
-    _hash_payload,
-    _reconstruct_precinct_event_payload,
-)
+from app.orchestration.fleet.precincts import create_precinct, list_precincts, update_precinct
+from app.orchestration.verification.fleet_events import _reconstruct_precinct_event_payload
+from app.orchestration.verification.service import _hash_payload
 from app.schemas.organisations import PrecinctCreateBody, PrecinctUpdateBody
 
 
@@ -85,7 +83,7 @@ async def test_create_precinct_saves_against_the_callers_org(db_session: AsyncSe
     own_org_id, _, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         created = await create_precinct(
@@ -107,7 +105,7 @@ async def test_create_precinct_writes_a_created_event_and_anchors_it(db_session:
     receipt = await _fake_receipt(db_session)
     anchor = AsyncMock(return_value=receipt)
 
-    with patch("app.orchestration.precinct_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.precincts.anchor_subject", new=anchor):
         created = await create_precinct(
             db=db_session, organization_id=own_org_id,
             data=_body(), current_user_id=user_id,
@@ -136,7 +134,7 @@ async def test_created_anchor_payload_carries_the_geofence_in_the_clear(db_sessi
     own_org_id, _, user_id = await _seed(db_session)
     anchor = AsyncMock(return_value=await _fake_receipt(db_session))
 
-    with patch("app.orchestration.precinct_service.anchor_subject", new=anchor):
+    with patch("app.orchestration.fleet.precincts.anchor_subject", new=anchor):
         await create_precinct(
             db=db_session, organization_id=own_org_id,
             data=_body(), current_user_id=user_id,
@@ -155,7 +153,7 @@ async def test_created_precinct_appears_in_list_for_its_own_org(db_session: Asyn
     own_org_id, _, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         created = await create_precinct(
@@ -173,7 +171,7 @@ async def test_created_precinct_is_private_to_its_org_by_default(db_session: Asy
     own_org_id, other_org_id, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         await create_precinct(
@@ -188,7 +186,7 @@ async def test_created_precinct_is_visible_cross_org_when_shared(db_session: Asy
     own_org_id, other_org_id, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         await create_precinct(
@@ -206,7 +204,7 @@ async def test_create_rejects_a_duplicate_name_within_the_same_org(db_session: A
     own_org_id, _, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         await create_precinct(
@@ -226,7 +224,7 @@ async def test_same_name_is_allowed_in_a_different_org(db_session: AsyncSession)
     own_org_id, other_org_id, user_id = await _seed(db_session)
 
     with patch(
-        "app.orchestration.precinct_service.anchor_subject",
+        "app.orchestration.fleet.precincts.anchor_subject",
         new=AsyncMock(return_value=await _fake_receipt(db_session)),
     ):
         await create_precinct(
@@ -241,7 +239,7 @@ async def test_same_name_is_allowed_in_a_different_org(db_session: AsyncSession)
     assert created.name == "Depot A"
 
 
-_ANCHOR = "app.orchestration.precinct_service.anchor_subject"
+_ANCHOR = "app.orchestration.fleet.precincts.anchor_subject"
 
 
 async def _create(db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, **overrides):

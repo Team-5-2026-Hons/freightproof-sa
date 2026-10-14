@@ -6,11 +6,11 @@ import { useRouter } from 'next/navigation'
 
 import { TopBar } from '@/components/ui/TopBar'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { AdminOnly } from '@/components/auth/AdminOnly'
-import { PrecinctCard } from '@/components/precincts/PrecinctCard'
+import { PrecinctCard, PRECINCT_GRID_CLASSES } from '@/components/precincts/PrecinctCard'
+import { PrecinctCardGridSkeleton } from '@/components/precincts/PrecinctCardSkeleton'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { useToast } from '@/lib/hooks/useToast'
@@ -23,6 +23,8 @@ type OwnerFilter = 'all' | 'mine' | 'shared'
 export default function PrecinctsPage(): React.JSX.Element {
   const router = useRouter()
   const { precincts, isLoading, error: fetchError, refetch } = usePrecincts()
+  // Skeleton cards only for the first load, so a refetch keeps the cards on screen.
+  const initialLoad = isLoading && precincts.length === 0
   const { user } = useAuth()
   const { notify } = useToast()
 
@@ -110,10 +112,8 @@ export default function PrecinctsPage(): React.JSX.Element {
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner size="lg" />
-          </div>
+        {initialLoad ? (
+          <PrecinctCardGridSkeleton />
         ) : fetchError ? (
           <EmptyState
             icon={<AlertCircle />}
@@ -147,7 +147,7 @@ export default function PrecinctsPage(): React.JSX.Element {
           />
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className={PRECINCT_GRID_CLASSES}>
               {visible.map((p) => (
                 <PrecinctCard
                   key={p.id}
