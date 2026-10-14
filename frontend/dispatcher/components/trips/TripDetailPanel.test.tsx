@@ -9,6 +9,8 @@ import { precinctLabel } from '@/lib/phase/trip-detail'
 import { cancelTrip } from '@/lib/api/client'
 import type { ArtifactId, EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
+import { listAuditPacks, listIncidentDeclarations, recordIncidentDeclaration } from '@/lib/api/auditPacks'
+import { ApiError } from '@/lib/api/client'
 
 // CancelTripDialog's cancelTrip call reaches the API client, which builds a Supabase
 // client at import time — same reason TripExceptionsPanel.test.tsx mocks this module.
@@ -30,6 +32,12 @@ vi.mock('@/lib/api/client', async () => {
   return { ...actual, cancelTrip: vi.fn() }
 })
 
+vi.mock('@/lib/api/auditPacks', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api/auditPacks')>('@/lib/api/auditPacks')
+  return { ...actual, listAuditPacks: vi.fn(), listIncidentDeclarations: vi.fn(), recordIncidentDeclaration: vi.fn() }
+})
+vi.mock('@/lib/hooks/useManifest', () => ({ useManifest: () => ({ manifest: null, isLoading: false, refetch: vi.fn() }) }))
+
 const mockedCancelTrip = vi.mocked(cancelTrip)
 
 // Supporting photos in the exceptions tab resolve through this map; most tests here never open that tab.
@@ -41,7 +49,7 @@ const trip = mockTrips[0]!
 // with the same stops/precincts fixture data, to exercise the trigger and dialog.
 const activeTrip = { ...trip, status: 'active' as const }
 
-function renderPanel(onChanged = vi.fn(), tripOverride = trip) {
+function renderPanel(onChanged = vi.fn(), tripOverride = trip, extra: Partial<React.ComponentProps<typeof TripDetailPanel>> = {}) {
   return { onChanged, ...render(
     <ToastProvider>
       <TripDetailPanel
@@ -56,6 +64,7 @@ function renderPanel(onChanged = vi.fn(), tripOverride = trip) {
         onFilter={vi.fn()}
         onChanged={onChanged}
         returnTo="/trips/trip-1"
+        {...extra}
       />
     </ToastProvider>,
   ) }
@@ -63,6 +72,111 @@ function renderPanel(onChanged = vi.fn(), tripOverride = trip) {
 
 beforeEach(() => {
   mockedCancelTrip.mockReset()
+  vi.mocked(listAuditPacks).mockReset().mockResolvedValue([])
+  vi.mocked(listIncidentDeclarations).mockReset().mockResolvedValue([])
+  vi.mocked(recordIncidentDeclaration).mockReset()
+})
+
+describe('TripDetailPanel Info audit section', () => {
+  it('places audit packs after trip information, inside the same surface', async () => {
+    renderPanel()
+
+    const info = screen.getByRole('heading', { name: 'Custody' })
+    const audit = screen.getByRole('region', { name: 'Audit packs' })
+    expect(audit).toHaveAttribute('id', 'trip-audit-packs')
+    expect(info.compareDocumentPosition(audit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Trip information' })).toContainElement(audit)
+    expect(await within(audit).findByText('No audit packs issued for this trip yet.')).toBeInTheDocument()
+  })
+
+  it('offers exactly Info, Cargo and Exceptions in the dock', async () => {
+    const media = vi.spyOn(window, 'matchMedia').mockReturnValue({ ...window.matchMedia(''), matches: true })
+    try {
+      renderPanel()
+      await screen.findByText('No audit packs issued for this trip yet.')
+      expect(screen.getAllByRole('tab')).toHaveLength(3)
+      expect(screen.getByRole('tab', { name: 'Info' })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Cargo' })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Exceptions/ })).toBeInTheDocument()
+      expect(screen.queryByRole('tab', { name: 'Audit packs' })).not.toBeInTheDocument()
+    } finally { media.mockRestore() }
+  })
+
+  it.each(['manifest', 'exceptions'] as const)('does not render audit packs in %s', panel => {
+    renderPanel(vi.fn(), trip, { panel })
+    expect(screen.queryByRole('region', { name: 'Audit packs' })).not.toBeInTheDocument()
+    expect(listAuditPacks).not.toHaveBeenCalled()
+  })
+
+  it('leaves Info usable while audit packs load', async () => {
+    vi.mocked(listAuditPacks).mockReturnValue(new Promise(() => {}))
+    renderPanel(vi.fn(), activeTrip)
+
+    expect(screen.getByText('Loading audit packs…')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel trip' }))
+    expect(screen.getByRole('dialog', { name: 'Cancel this trip?' })).toBeInTheDocument()
+  })
+
+  it.each([
+    [403, 'Admin dispatcher role required.', 'Only admin dispatchers can see and issue audit packs.'],
+    [503, 'Audit service unavailable.', 'Audit service unavailable.'],
+  ])('keeps trip information when audit loading returns %s', async (status, error, message) => {
+    vi.mocked(listAuditPacks).mockRejectedValue(new ApiError(Number(status), String(error)))
+    renderPanel()
+
+    expect(await screen.findByText(String(message))).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Custody' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Route' })).toBeInTheDocument()
+  })
+
+  it('restores focus when an audit dialog is dismissed', async () => {
+    renderPanel()
+    const trigger = screen.getByRole('button', { name: 'Issue audit pack' })
+    await userEvent.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Issue audit pack' })
+    expect(screen.getByRole('dialog', { name: 'Trip information' })).not.toContainElement(dialog)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('refreshes declarations without remounting Info or resetting the panel scroll, then focuses the new trigger', async () => {
+    vi.mocked(recordIncidentDeclaration).mockResolvedValue({
+      declaration_id: 'declaration-new', exception_id: null, saps_station: 'Test SAPS', saps_cas_number: null,
+      saps_officer: null, reported_to_saps_at: null, tracking_company_notified_at: null, insurer_notified_at: null,
+      client_notified_at: null, insurer_claim_reference: null, note: null, declared_by_name: 'Test Dispatcher',
+      declared_at: '2026-10-13T10:00:00Z', tier: 'declared',
+    })
+    vi.mocked(listIncidentDeclarations).mockResolvedValueOnce([]).mockResolvedValue([{
+      declaration_id: 'declaration-new', exception_id: null, saps_station: 'Test SAPS', saps_cas_number: 'TEST/2026',
+      saps_officer: null, reported_to_saps_at: null, tracking_company_notified_at: null, insurer_notified_at: null,
+      client_notified_at: null, insurer_claim_reference: null, note: null, declared_by_name: 'Test Dispatcher',
+      declared_at: '2026-10-13T10:00:00Z', tier: 'declared',
+    }])
+    renderPanel()
+    await screen.findByText('No audit packs issued for this trip yet.')
+    const info = screen.getByRole('heading', { name: 'Custody' })
+    const surface = screen.getByRole('dialog', { name: 'Trip information' })
+    const audit = screen.getByRole('region', { name: 'Audit packs' })
+    vi.spyOn(audit, 'getBoundingClientRect').mockReturnValue({
+      top: 300, left: 0, bottom: 1100, right: 400, height: 800, width: 400, x: 0, y: 300, toJSON: () => ({}),
+    })
+    // Native browsers clamp scrollTop if a keyed reload temporarily shortens the list.
+    vi.mocked(listAuditPacks).mockReturnValue(new Promise(() => {}))
+    surface.scrollTop = 240
+    const oldTrigger = screen.getByRole('button', { name: 'Record police details' })
+    await userEvent.click(oldTrigger)
+    const dialog = screen.getByRole('dialog', { name: 'Record police & notification details' })
+    await userEvent.type(within(dialog).getByLabelText('SAPS station'), 'Test SAPS')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save details' }))
+
+    expect(await screen.findByText('CAS TEST/2026')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Custody' })).toBe(info)
+    expect(audit).toHaveStyle({ minHeight: '800px' })
+    expect(screen.getByText('Loading audit packs…')).toBeInTheDocument()
+    expect(surface.scrollTop).toBe(240)
+    expect(oldTrigger).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Record police details' })).toHaveFocus())
+  })
 })
 
 describe('TripDetailPanel precinct preview placement', () => {
@@ -87,7 +201,7 @@ describe('TripDetailPanel precinct preview placement', () => {
 })
 
 describe('TripDetailPanel exception badge', () => {
-  it('does not inflate the exceptions tab badge when a polling merge repeats a record', () => {
+  it('does not inflate the exceptions tab badge when a polling merge repeats a record', async () => {
     const repeated = activeTrip.exceptions[0]
     if (!repeated) throw new Error('active trip exception fixture is missing')
     const originalMatchMedia = window.matchMedia
@@ -99,6 +213,7 @@ describe('TripDetailPanel exception badge', () => {
 
     try {
       renderPanel(vi.fn(), { ...activeTrip, exceptions: [repeated, { ...repeated }] })
+      await screen.findByText('No audit packs issued for this trip yet.')
       expect(screen.getByRole('tab', { name: 'Exceptions 1' })).toBeInTheDocument()
     } finally {
       window.matchMedia = originalMatchMedia

@@ -35,7 +35,7 @@ interface Props {
 /** One content surface for a subject's supporting detail. Docked it is a permanent
  *  full-height column that owns its own view switcher; below the dock width it falls
  *  back to the overlay the caller raises. */
-export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpen, ariaLabel, children }: Props) {
+export function DetailPanel({ tabs, active, onSelect, title, onClose, overlayOpen, ariaLabel, children }: Props): React.JSX.Element | null {
   const docked = useDocked()
   const panelId = 'detail-panel-content'
 

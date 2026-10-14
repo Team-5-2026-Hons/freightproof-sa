@@ -93,14 +93,14 @@ export function EvidencePhoto({ label, artifact, artifactId, loading = false, er
         <button type="button" onClick={() => setOpenKey(artifactKey)} aria-label={`Open ${label}`}
           className="block rounded-md overflow-hidden border border-outline-v/30 hover:border-outline-v transition-colors">
           {/* Signed URLs expire and cannot usefully be cached by the image optimiser. */}
-          <img key={retryAttempt} src={artifact.signed_url!} alt={label}
+          <img key={retryAttempt} src={artifact.signed_url!} alt={label} loading="lazy"
             onError={() => setFailedUrl(artifact.signed_url)} className={`${THUMBNAIL_CLASS[size]} object-cover`} />
         </button>
       )}
       {artifact && <ArtifactProvenance artifact={artifact} />}
       <Modal open={isOpen} onClose={() => setOpenKey(null)} title={label} size="lg">
         {imageFailed ? <div role="status">Image failed to load{onRetry && <button onClick={retry}>Retry {label}</button>}</div>
-          : artifact?.signed_url && <img src={artifact.signed_url} alt={label}
+          : artifact?.signed_url && <img src={artifact.signed_url} alt={label} loading="lazy"
             onError={() => setFailedUrl(artifact.signed_url)} className="max-w-full max-h-[70dvh] mx-auto object-contain rounded-md" />}
       </Modal>
     </div>

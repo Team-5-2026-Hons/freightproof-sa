@@ -14,8 +14,10 @@ import { VehicleModal } from './VehicleModal'
 import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
+import { TRIP_PANELS } from '@/lib/trips/panel-query'
 
-export type TripPanel = 'information' | 'manifest' | 'exceptions' | 'audit'
+export { TRIP_PANELS } from '@/lib/trips/panel-query'
+export type TripPanel = (typeof TRIP_PANELS)[keyof typeof TRIP_PANELS]
 interface Props {
   facts: TripHeaderFacts
   precincts: Precinct[]
@@ -25,9 +27,11 @@ interface Props {
   returnTo: string
   onBack: () => void
   onPanel: (panel: TripPanel) => void
+  /** Collapses the header to its title row; the facts below it stay mounted. */
+  compact?: boolean
 }
 
-export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel }: Props) {
+export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false }: Props): React.JSX.Element {
   const [driverOpen, setDriverOpen] = useState(false)
   // One shared modal instance for the horse and however many trailers there are, holding
   // which one is currently open rather than a boolean per vehicle.
@@ -53,7 +57,8 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           <ForensicControls />
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
+      <div className={compact ? 'hidden' : 'mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4'}>
         <SummaryCell label="Driver">
           {driver
             ? <>
@@ -80,12 +85,12 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           buttons, so the docked header does not keep this row's own `mt-4` as dead
           space above the panel column once the buttons it was spacing are gone. */}
       <nav aria-label="Trip sections" className="mt-4 flex flex-wrap gap-2 xl:hidden">
-        <Button variant="secondary" size="sm" onClick={() => onPanel('information')}>Trip information</Button>
-        <Button variant="secondary" size="sm" onClick={() => onPanel('manifest')}>Cargo</Button>
-        <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel('exceptions')}>
+        <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.information)}>Info</Button>
+        <Button variant="secondary" size="sm" onClick={() => onPanel(TRIP_PANELS.manifest)}>Cargo</Button>
+        <Button variant={facts.needsReviewCount ? 'primary' : 'secondary'} size="sm" onClick={() => onPanel(TRIP_PANELS.exceptions)}>
           {facts.exceptionsTotal === null
-            ? `${facts.needsReviewCount} need review`
-            : `${facts.exceptionsTotal} exceptions · ${facts.needsReviewCount} need review`}
+            ? `Exceptions · ${facts.needsReviewCount} need review`
+            : `Exceptions · ${facts.exceptionsTotal} recorded · ${facts.needsReviewCount} need review`}
         </Button>
       </nav>
       {driver && <DriverModal driver={driver} open={driverOpen} onClose={() => setDriverOpen(false)} returnTo={returnTo} />}

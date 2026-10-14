@@ -16,7 +16,6 @@ export interface RevealRequest {
 export const REVEAL_HIGHLIGHT_MS = 2000
 
 interface Pending {
-  frames: number[]
   timeout: ReturnType<typeof setTimeout> | null
 }
 
@@ -34,7 +33,7 @@ export function useExceptionReveal(
 ): { highlightedId: string | null } {
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const handledRequestId = useRef<number | null>(null)
-  const pending = useRef<Pending>({ frames: [], timeout: null })
+  const pending = useRef<Pending>({ timeout: null })
   // The callback is read at landing time, not captured: the page passes a fresh function every
   // render, and re-arming the effect on that would cancel a landing already in flight.
   const handler = useRef(onHandled)
@@ -44,24 +43,27 @@ export function useExceptionReveal(
     if (!request || request.requestId === handledRequestId.current) return
     handledRequestId.current = request.requestId
     const targetId = exceptionRowId(request.exceptionId)
+    const frames: number[] = []
     const land = (): void => {
       const row = document.getElementById(targetId)
-      if (!row) return
+      if (!row || row.closest('[hidden]')) return
       row.focus({ preventScroll: true })
       setHighlightedId(request.exceptionId)
       if (pending.current.timeout !== null) clearTimeout(pending.current.timeout)
       pending.current.timeout = setTimeout(() => setHighlightedId(null), REVEAL_HIGHLIGHT_MS)
       handler.current?.(targetId)
     }
-    pending.current.frames.push(window.requestAnimationFrame(() => {
-      pending.current.frames.push(window.requestAnimationFrame(land))
+    frames.push(window.requestAnimationFrame(() => {
+      frames.push(window.requestAnimationFrame(land))
     }))
+    // A view change can hide the row between frames. Cancel that landing, and retain the
+    // handled id so returning to Evidence does not replay a superseded navigation request.
+    return () => frames.forEach(frame => window.cancelAnimationFrame(frame))
   }, [request])
 
   useEffect(() => {
     const current = pending.current
     return () => {
-      current.frames.forEach(frame => window.cancelAnimationFrame(frame))
       if (current.timeout !== null) clearTimeout(current.timeout)
       // Forget what was handled, so a development double-mount (which runs this cleanup and then
       // the effect above again) lands the request instead of dropping it.

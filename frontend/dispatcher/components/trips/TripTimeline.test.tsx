@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TripTimeline } from './TripTimeline'
+import { useState } from 'react'
+import { TripTimeline, type TimelineView } from './TripTimeline'
 import { exceptionRowId } from '@/components/domain/ExceptionRow'
 import { VIEW_ON_MAP_LABEL } from '@/components/domain/LocationEvidencePanel'
 import { CHECK_WORDING } from '@/lib/phase/checks'
@@ -51,6 +52,156 @@ const evidence = {
 }
 
 type Overrides = Partial<React.ComponentProps<typeof TripTimeline>>
+
+function ViewTimeline({ trip, ...overrides }: { trip: Trip } & Overrides): React.JSX.Element {
+  const [view, setView] = useState<TimelineView>('evidence')
+  return <TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} {...overrides}
+    view={view} onViewChange={setView} />
+}
+
+describe('TripTimeline Evidence and Minimised views', () => {
+  it('uses the small segmented tabs and keeps keyboard switching local to each timeline', async () => {
+    render(<><ViewTimeline trip={closedTrip()} /><ViewTimeline trip={closedTrip()} /></>)
+    const selectors = screen.getAllByRole('tablist', { name: 'Timeline view' })
+    const secondEvidence = within(selectors[1]).getByRole('tab', { name: 'Evidence' })
+    const secondMinimised = within(selectors[1]).getByRole('tab', { name: 'Minimised' })
+    expect(secondEvidence).toHaveClass('text-[10px]')
+    secondEvidence.focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(secondMinimised).toHaveFocus()
+    expect(secondMinimised).toHaveAttribute('aria-selected', 'true')
+    expect(within(selectors[0]).getByRole('tab', { name: 'Evidence' })).toHaveAttribute('aria-selected', 'true')
+    expect(secondMinimised.id).not.toBe(within(selectors[0]).getByRole('tab', { name: 'Minimised' }).id)
+  })
+
+  it('defaults to Evidence and exposes a view selector', () => {
+    renderTimeline(closedTrip())
+    expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Minimised' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('table', { name: 'Minimised phase outcomes' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the same ordered cards in Minimised, each collapsed to its headline and exception count', async () => {
+    const trip = closedTrip()
+    const loading = phaseOf(trip, 'loading')
+    const item = exception('selected', { phase_event_id: loading.phase_event_id })
+    render(<ViewTimeline trip={{ ...trip, phases: [...trip.phases].reverse(), exceptions: [item, { ...item }] }} selectedExceptionId={item.id} />)
+    const evidenceOrder = trip.phases.map(phase => document.getElementById(`phase-${phase.phase_event_id}`))
+    expect(within(phaseGroup('Loading')).getAllByRole('listitem').length).toBeGreaterThan(0)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+
+    // Same cards, same anchors: Minimised only changes what a collapsed card shows.
+    expect(trip.phases.map(phase => document.getElementById(`phase-${phase.phase_event_id}`))).toEqual(evidenceOrder)
+    const card = phaseGroup('Loading')
+    expect(card).toHaveTextContent('Needs attention')
+    expect(card).toHaveTextContent('1 exception · 1 needs review')
+    expect(within(card).queryByRole('listitem')).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /Route Deviation/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    const ids = [...document.querySelectorAll('[id]')].map(element => element.id)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('opens a minimised card to the same full detail as in Evidence', async () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', parcel_count_origin: 16 } })
+    const phase = phaseOf(trip, 'loading')
+    trip.exceptions = [exception('loading-event', { phase_event_id: phase.phase_event_id })]
+    const artifacts = artifactMap(artifact('sheet', phase.phase_event_id, 'linehaul_photo', { captured_at: '2026-05-03T19:46:00Z' }))
+    render(<ViewTimeline trip={trip} artifactsById={artifacts} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+
+    openCard('Loading')
+
+    const card = phaseGroup('Loading')
+    expect(within(card).getByRole('img')).toBeInTheDocument()
+    expect(within(card).getByText('Description of loading-event')).toBeInTheDocument()
+    expect(card).toHaveTextContent('Needs attention')
+  })
+
+  it('keeps open cards and nested photo groups open across a view round trip, and closed cards closed', async () => {
+    const base = tripFor(TRIP_0040_ID)
+    const departure = phaseOf(base, 'departure')
+    const trip = { ...base, phases: base.phases.map(phase => phase.sequence_number >= departure.sequence_number
+      ? { ...phase, status: 'pending' as const, completed_at: null } : phase) }
+    const uploads = ['u1', 'u2', 'u3'].map(id => artifact(id, departure.phase_event_id, 'seal_photo'))
+    render(<ViewTimeline trip={trip} artifactsById={artifactMap(...uploads)} />)
+    const recorded = zone('Departure', 'Recorded')
+    await userEvent.click(within(recorded).getByRole('button', { name: '+2 more' }))
+    const photoGroup = within(recorded).getByRole('button', { name: 'Show fewer' })
+    const activationToggle = toggleOf('Activation')
+    expect(activationToggle).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+
+    expect(zone('Departure', 'Recorded')).toBe(recorded)
+    expect(within(recorded).getByRole('button', { name: 'Show fewer' })).toBe(photoGroup)
+    expect(within(recorded).getAllByRole('img')).toHaveLength(3)
+    expect(activationToggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('keeps In Transit open with no toggle in Evidence, and collapses it like any other card in Minimised', async () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('transit-event', { phase_event_id: phaseOf(trip, 'in_transit').phase_event_id })]
+    render(<ViewTimeline trip={trip} />)
+    expect(toggleOf('In Transit')).toBeNull()
+    expect(within(phaseGroup('In Transit')).getByText('Reached FedEx DBN')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+
+    const card = phaseGroup('In Transit')
+    expect(toggleOf('In Transit')).toHaveAttribute('aria-expanded', 'false')
+    expect(within(card).queryByText('Reached FedEx DBN')).not.toBeInTheDocument()
+    // Collapsing must not hide the signal: the headline and the count stay on the card.
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('1 exception')
+    openCard('In Transit')
+    expect(within(card).getByText('Reached FedEx DBN')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+    expect(toggleOf('In Transit')).toBeNull()
+    expect(within(card).getByText('Reached FedEx DBN')).toBeInTheDocument()
+  })
+
+  it('swaps the minimised count for the full verdict line once the card is opened', async () => {
+    const trip = closedTrip()
+    trip.exceptions = [exception('loading-event', { phase_event_id: phaseOf(trip, 'loading').phase_event_id })]
+    render(<ViewTimeline trip={trip} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    const card = phaseGroup('Loading')
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('1 exception · 1 needs review')
+
+    openCard('Loading')
+
+    expect(card.querySelector('[data-outcome]')).not.toHaveTextContent('1 exception · 1 needs review')
+    expect(card.querySelector('[data-outcome]')).toHaveTextContent('Needs attention')
+  })
+
+  it('keeps trip-level records visible in Minimised, with the same cap and panel link', async () => {
+    const item = exception('trip-note')
+    render(<ViewTimeline trip={closedTrip({}, { exceptions: [item, { ...item }] })} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    expect(within(screen.getByRole('region', { name: 'Trip-level events' })).getAllByRole('button', { name: /Route Deviation/ })).toHaveLength(1)
+  })
+
+  it('does not reopen a previously revealed card that the reader closed before a view round trip', async () => {
+    const trip = closedTrip()
+    const loading = phaseOf(trip, 'loading')
+    const record = exception('once-revealed', { phase_event_id: loading.phase_event_id })
+    trip.exceptions = [record]
+    const request = { exceptionId: record.id, phaseId: loading.phase_event_id, requestId: 1 }
+    const onRevealHandled = vi.fn()
+    const { rerender } = renderTimeline(trip, { revealRequest: request, onRevealHandled })
+    await waitFor(() => expect(onRevealHandled).toHaveBeenCalledOnce())
+    fireEvent.click(toggleOf('Loading')!)
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} view="minimised" revealRequest={request} onRevealHandled={onRevealHandled} />)
+    rerender(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} view="evidence" revealRequest={request} onRevealHandled={onRevealHandled} />)
+    expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'false')
+    expect(onRevealHandled).toHaveBeenCalledOnce()
+  })
+})
 
 describe('Task 10b timeline regressions', () => {
   it('collapses loading to ordered compact acts, expanding to full rows once', () => {

@@ -7,6 +7,7 @@
 // the cap would otherwise hide (D42).
 
 import type { ExceptionContactMethod, ExceptionSeverity, TripException } from '@shared/lib/types/exception'
+import { countLabel } from '@/lib/format/count'
 
 /** Rows shown per phase before "+n more" (design note O5: three everywhere). */
 export const EXCEPTION_ROW_CAP = 3
@@ -15,6 +16,14 @@ export const TRIP_LEVEL_SCOPE = 'trip-level'
 
 export function isTripLevelException(exception: TripException, phaseIds: ReadonlySet<string>): boolean {
   return !exception.phase_event_id || !phaseIds.has(exception.phase_event_id)
+}
+
+/** "2 exceptions · 1 needs review": how many a phase holds and how many still wait on a reviewer.
+ *  Reviewed records still count, so a phase never looks cleaner than it was. */
+export function exceptionCountLabel(exceptions: readonly TripException[]): string {
+  const needsReview = exceptions.filter(exception => exception.review_status === 'needs_review').length
+  const review = needsReview === 0 ? '' : ` · ${needsReview} ${needsReview === 1 ? 'needs' : 'need'} review`
+  return `${countLabel(exceptions.length, 'exception')}${review}`
 }
 
 const SEVERITY_RANK: Record<ExceptionSeverity, number> = { critical: 0, warning: 1, info: 2 }

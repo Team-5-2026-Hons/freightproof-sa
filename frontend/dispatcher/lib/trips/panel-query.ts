@@ -1,3 +1,6 @@
+export const TRIP_PANELS = { information: 'information', manifest: 'manifest', exceptions: 'exceptions' } as const
+export const LEGACY_AUDIT_PANEL = 'audit'
+
 /** What one navigation to a trip-detail panel asks of the URL. A field left out means
  *  "keep what the URL already says"; `null` means "clear it". */
 export interface TripPanelChange {
@@ -18,11 +21,13 @@ export interface TripPanelChange {
  */
 export function buildTripPanelQuery(current: string, change: TripPanelChange): string {
   const query = new URLSearchParams(current)
-  if (change.panel) query.set('panel', change.panel)
+  // Keep the old value readable on arrival, but never propagate it into new navigation.
+  const panel = change.panel === LEGACY_AUDIT_PANEL ? TRIP_PANELS.information : change.panel
+  if (panel) query.set('panel', panel)
   else query.delete('panel')
   if (change.filter) query.set('exceptions', change.filter)
-  applySelection(query, 'phase', change.phaseId, change.panel === 'exceptions')
-  applySelection(query, 'exception', change.exceptionId, change.panel === 'exceptions')
+  applySelection(query, 'phase', change.phaseId, panel === TRIP_PANELS.exceptions)
+  applySelection(query, 'exception', change.exceptionId, panel === TRIP_PANELS.exceptions)
   return query.toString()
 }
 

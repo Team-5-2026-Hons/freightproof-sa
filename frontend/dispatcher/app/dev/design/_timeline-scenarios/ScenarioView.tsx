@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { artifactsByIdOf, type TimelineScenario } from '@/components/domain/__fixtures__/phase-acts'
 import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
 import { TripExceptionsPanel, type ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
-import { TripTimeline } from '@/components/trips/TripTimeline'
+import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView } from '@/components/trips/TripTimeline'
 import type { RevealRequest } from '@/components/trips/useExceptionReveal'
 import { useDismissExceptionSelection } from '@/components/trips/useDismissExceptionSelection'
 import { uniqueExceptionsById } from '@/components/trips/exception-dedupe'
@@ -43,10 +43,25 @@ const DOCKED_PANEL_CLASS = 'sticky top-4 flex h-[720px] max-h-[calc(100vh-2rem)]
 export function ScenarioView({ scenario, position, preset }: Props) {
   const { trip } = scenario
   const docked = useDocked()
+  const [timelineExpanded, setTimelineExpanded] = useState(false)
+  const timelineRef = useRef<HTMLDivElement>(null)
+  const pendingReadingAnchor = useRef<string | null>(null)
+  const rememberReadingPhase = useCallback((): void => {
+    const root = timelineRef.current
+    // This preview uses the window reader; the real trip page uses its own scroller.
+    pendingReadingAnchor.current = readingPhaseAnchor(root, Math.max(0, root?.getBoundingClientRect().top ?? 0) + timelineToolbarHeight(root))
+  }, [])
+  const [timelineView, setTimelineView] = useState<TimelineView>(TIMELINE_VIEWS.evidence)
+  const changeTimelineView = useCallback((next: TimelineView): void => {
+    if (next === timelineView) return
+    rememberReadingPhase()
+    setTimelineView(next)
+  }, [timelineView, rememberReadingPhase])
   const [selection, setSelection] = useState<PanelSelection | null>(null)
   useDismissExceptionSelection(selection?.exceptionId ?? null, () => {
     setSelection(previous => previous ? { ...previous, exceptionId: null } : null)
   })
+  const overlayOpen = !docked && selection !== null
   const [filter, setFilter] = useState<ExceptionFilter>('needs_review')
   const [reveal, setReveal] = useState<RevealRequest | null>(null)
   const [pendingReveal, setPendingReveal] = useState<Omit<RevealRequest, 'requestId'> | null>(null)
@@ -64,26 +79,39 @@ export function ScenarioView({ scenario, position, preset }: Props) {
   }
 
   function showInTimeline(exceptionId: string, phaseId: string | null): void {
-    const request = { exceptionId, phaseId }
-    if (docked) {
-      setReveal(previous => ({ ...request, requestId: (previous?.requestId ?? 0) + 1 }))
-      return
-    }
+    pendingReadingAnchor.current = null
+    setPendingReveal({ exceptionId, phaseId })
     // The overlay's focus trap has to be gone before focus can move into the timeline.
-    setPendingReveal(request)
-    setSelection(null)
+    if (!docked) setSelection(null)
   }
 
   useEffect(() => {
-    if (!pendingReveal || selection !== null) return
+    if (!pendingReveal || overlayOpen) return
     const frame = window.requestAnimationFrame(() => {
       setReveal(previous => ({ ...pendingReveal, requestId: (previous?.requestId ?? 0) + 1 }))
       setPendingReveal(null)
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [pendingReveal, selection])
+  }, [pendingReveal, overlayOpen])
+
+  function toggleExpanded(): void {
+    rememberReadingPhase()
+    setTimelineExpanded(previous => !previous)
+  }
+
+  useEffect(() => {
+    if (!pendingReadingAnchor.current) return
+    const frames: number[] = []
+    frames.push(window.requestAnimationFrame(() => frames.push(window.requestAnimationFrame(() => {
+      const anchor = pendingReadingAnchor.current
+      pendingReadingAnchor.current = null
+      if (anchor) document.getElementById(anchor)?.scrollIntoView({ block: 'start' })
+    }))))
+    return () => frames.forEach(frame => window.cancelAnimationFrame(frame))
+  }, [timelineView, timelineExpanded])
 
   function jump(): void {
+    pendingReadingAnchor.current = null
     const active = currentTripPhase(trip)
     if (active) document.getElementById(`${PHASE_ANCHOR_PREFIX}${active.phase_event_id}`)?.scrollIntoView({ block: 'start' })
   }
@@ -95,7 +123,7 @@ export function ScenarioView({ scenario, position, preset }: Props) {
       onSelect={NO_OP}
       title="Trip exceptions"
       onClose={() => setSelection(null)}
-      overlayOpen={selection !== null}
+      overlayOpen={overlayOpen}
       ariaLabel="Trip detail"
     >
       <TripExceptionsPanel
@@ -122,7 +150,7 @@ export function ScenarioView({ scenario, position, preset }: Props) {
       <p className="mt-1 text-meta tabular-nums text-on-surf-v">Scenario id {scenario.id} · {trip.trip_reference} · {trip.phases.length} phases</p>
       <div className="mt-4 overflow-x-auto">
         <div className="flex items-start">
-          <div className="shrink-0 rounded-xl border border-outline-v/30 bg-surf-lowest" style={{ width: frameWidthPx(preset) }}>
+          <div ref={timelineRef} className="shrink-0 rounded-xl border border-outline-v/30 bg-surf-lowest" style={{ width: timelineExpanded ? '100%' : frameWidthPx(preset) }}>
             <TripTimeline
               trip={trip}
               precincts={scenario.precincts}
@@ -133,6 +161,10 @@ export function ScenarioView({ scenario, position, preset }: Props) {
               onChanged={NO_OP}
               lastUpdated={Date.parse(trip.updated_at)}
               onJump={jump}
+              view={timelineView}
+              onViewChange={changeTimelineView}
+              expanded={timelineExpanded}
+              onToggleExpanded={toggleExpanded}
               onOpenException={openException}
               selectedExceptionId={selection?.exceptionId ?? null}
               revealRequest={reveal}

@@ -29,6 +29,10 @@ describe('EvidencePhoto recovery', () => {
 })
 
 describe('EvidencePhoto thumbnail size', () => {
+  it('loads its thumbnail lazily', () => {
+    render(<EvidencePhoto label="Seal" artifact={artifact} />)
+    expect(screen.getByRole('img', { name: 'Seal' })).toHaveAttribute('loading', 'lazy')
+  })
   it('keeps the 96 px thumbnail by default, so every existing caller is unchanged', () => {
     render(<EvidencePhoto label="Seal" artifact={artifact} />)
 

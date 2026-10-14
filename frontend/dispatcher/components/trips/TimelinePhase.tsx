@@ -13,11 +13,11 @@ import { PhaseVerdictLine } from '@/components/domain/PhaseVerdictLine'
 import { TripCreatedDetail } from '@/components/domain/TripCreatedDetail'
 import { buildPhaseCardModel, type PhaseCardModel } from '@/lib/phase/card'
 import { isResolved, nodeTypeFor } from '@/lib/phase/derive'
-import { visibleExceptions } from '@/lib/phase/exception-rows'
+import { exceptionCountLabel, visibleExceptions } from '@/lib/phase/exception-rows'
 import { currentTripPhase, phaseStopLabel, precinctAtPhase, precinctLabel } from '@/lib/phase/trip-detail'
 import { PhaseCardBody, type RecordedProps } from './PhaseCardBody'
 import { nextTripStop } from './PhaseEvidence'
-import { PHASE_ANCHOR_PREFIX, PhaseTimelineItem } from './PhaseTimelineItem'
+import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR, PhaseTimelineItem } from './PhaseTimelineItem'
 
 const ANCHOR_FAILED_WARNING = 'Anchor failed — receipt still owed'
 
@@ -37,6 +37,8 @@ interface Props {
   highlightedExceptionId: string | null
   /** A "Show in timeline" addressed to this phase: opens the card and keeps its row visible. */
   reveal: { exceptionId: string; requestId: number } | null
+  /** Collapsed cards show a header and a verdict headline only; expanding them shows everything. */
+  minimised?: boolean
 }
 
 function receiptOf(trip: Trip, phase: PhaseDescriptor): BlockchainReceipt | undefined {
@@ -57,8 +59,8 @@ function exceptionRowsOf(model: PhaseCardModel, byId: ReadonlyMap<string, TripEx
  * it while collapsed, and the three zones as its body. This is where the pure model meets the
  * components; trip_creation keeps its own detail panel and has no verdict this round.
  */
-export function TimelinePhase(props: Props) {
-  const { trip, phase, precincts, exceptions, lookup, reveal } = props
+export function TimelinePhase(props: Props): React.JSX.Element {
+  const { trip, phase, precincts, exceptions, lookup, reveal, minimised = false } = props
   const model = buildPhaseCardModel({ trip, phase, precincts, artifacts: props.artifacts, exceptions, receipt: receiptOf(trip, phase), nowMs: props.nowMs })
   const baseNode = nodeTypeFor(phase, currentTripPhase(trip)?.phase_event_id ?? null, trip.status)
   const exceptionsById = new Map(exceptions.map(exception => [exception.id as string, exception]))
@@ -90,14 +92,21 @@ export function TimelinePhase(props: Props) {
         onChanged={props.onChanged}
       />
     )
+  const meta = isTransit ? `${recorded.stopName} → ${recorded.destinationName}` : phaseStopLabel(trip, phase, precincts)
+  const warning = phase.anchor_status === 'failed' ? ANCHOR_FAILED_WARNING : undefined
+  const compactActs = !isTransit && model.acts.length > 0
+  // A phase with no verdict (trip creation) has no header line to carry the count, so minimised
+  // says it here; every other minimised card carries it in its verdict.
+  const collapsedContent = minimised
+    ? (!model.verdict && exceptions.length > 0 ? <p className="mt-1.5 text-body font-semibold text-warn">{exceptionCountLabel(exceptions)}</p> : undefined)
+    : compactActs ? <PhaseActs {...recorded} acts={model.acts} phase={phase} live={false} density="compact" /> : undefined
 
   return (
-    <div role="group" aria-label={`${phaseName} phase${exceptions.length ? ' and exceptions' : ''}`}>
+    <div id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`} role="group" aria-label={`${phaseName} phase${exceptions.length ? ' and exceptions' : ''}`} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }} className="min-w-0">
       <PhaseTimelineItem
-        id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`}
         number={phase.sequence_number}
         label={phaseName}
-        meta={isTransit ? `${recorded.stopName} → ${recorded.destinationName}` : phaseStopLabel(trip, phase, precincts)}
+        meta={meta}
         timestamp={phase.completed_at}
         nodeType={model.verdict?.nodeType ?? baseNode}
         initialOpen={live}
@@ -107,10 +116,17 @@ export function TimelinePhase(props: Props) {
         // In transit is where theft signals arrive, so it is never worth hiding (D31): open with
         // no toggle while the leg is happening and after it (completed, exception or overridden).
         // A leg not yet started or not reached has no body and stays a collapsed dashed card.
-        alwaysOpen={isTransit && model.hasBody}
+        // Minimised is the reader's explicit ask for less: there the leg collapses like any other
+        // phase (still open while it is the live one), and its headline and count stay visible.
+        alwaysOpen={isTransit && model.hasBody && !minimised}
         verdict={model.verdict ? <PhaseVerdictLine verdict={model.verdict} /> : undefined}
-        collapsedContent={!isTransit && model.acts.length > 0 ? <PhaseActs {...recorded} acts={model.acts} phase={phase} live={false} density="compact" /> : undefined}
-        warning={phase.anchor_status === 'failed' ? ANCHOR_FAILED_WARNING : undefined}
+        // Minimised keeps the headline and how many exceptions the phase holds; the reasons and the
+        // event rail are one expand away. The count is plain text: the card header is already the
+        // expand button, so a second button cannot sit inside it.
+        collapsedVerdict={minimised && model.verdict
+          ? <PhaseVerdictLine verdict={{ ...model.verdict, reasons: exceptions.length ? [exceptionCountLabel(exceptions)] : [] }} /> : undefined}
+        collapsedContent={collapsedContent}
+        warning={warning}
         openRequestId={reveal?.requestId ?? null}
       >
         {body || undefined}

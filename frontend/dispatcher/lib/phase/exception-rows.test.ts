@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TripException } from '@shared/lib/types/exception'
-import { EXCEPTION_ROW_CAP, exceptionReviewLabel, visibleExceptions } from './exception-rows'
+import { EXCEPTION_ROW_CAP, exceptionCountLabel, exceptionReviewLabel, visibleExceptions } from './exception-rows'
 
 function exception(id: string, overrides: Partial<TripException> = {}): TripException {
   return {
@@ -82,5 +82,21 @@ describe('exceptionReviewLabel', () => {
       .toBe('Reviewed · evidence verified')
     expect(exceptionReviewLabel(exception('b', { review_status: 'reviewed', review_outcome: 'dispatcher_authored' })))
       .toBe('Dispatcher note')
+  })
+})
+
+describe('exceptionCountLabel', () => {
+  it('counts every record and names how many still need review', () => {
+    const rows = [exception('a', { review_status: 'needs_review' }), exception('b', { review_status: 'needs_review' }), exception('c')]
+
+    expect(exceptionCountLabel(rows)).toBe('3 exceptions · 2 need review')
+  })
+
+  it('uses singular wording for one record needing review', () => {
+    expect(exceptionCountLabel([exception('a', { review_status: 'needs_review' })])).toBe('1 exception · 1 needs review')
+  })
+
+  it('still counts reviewed records without saying any await review', () => {
+    expect(exceptionCountLabel([exception('a'), exception('b')])).toBe('2 exceptions')
   })
 })
