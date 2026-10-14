@@ -8,6 +8,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+import { useBack } from '@/lib/navigation/useBack'
 
 // Route to the first step of the selected phase's own recipe. Mirrors
 // PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
@@ -20,6 +21,8 @@ function firstStepRoute(phase: PhaseDescriptor): string {
 
 export default function ActiveTripPageClient() {
   const router = useRouter()
+  // Back to where the driver came from (Home or Trips); Trips on a cold start.
+  const goBack = useBack(ROUTES.trips)
   const { trip, isLoading } = useTrip()
 
   if (isLoading) {
@@ -37,7 +40,7 @@ export default function ActiveTripPageClient() {
   return (
     <TripDetailView
       trip={trip}
-      onBack={() => router.push(ROUTES.trips)}
+      onBack={goBack}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
       onSelectPhase={(phase) => router.push(firstStepRoute(phase))}
       // The real, session-derived trip shows only the single current phase —

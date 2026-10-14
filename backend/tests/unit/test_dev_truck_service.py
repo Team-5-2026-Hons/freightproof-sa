@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.core import polygon as geo_polygon
 from app.core.geo import haversine_metres
 from app.dev.services.truck import (
     FIFTY_KM_METRES,
@@ -24,6 +25,7 @@ from app.dev.services.truck import (
     destination_point,
     scenario_distance_metres,
 )
+from app.orchestration.evidence.geofence import TrackerFix, evaluate_geofence
 from app.dev.schemas import (
     SCENARIO_AT_STOP,
     SCENARIO_FIFTY_KM,
@@ -68,6 +70,8 @@ class _FakePrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
+        # A circle precinct unless a test sets an outline.
+        self.geofence_polygon: "list[list[float]] | None" = None
 
 
 # ── scenario_distance_metres — the Core scenario rule from task-3-brief.md ────────
@@ -266,3 +270,56 @@ def test_scenario_labels_cover_every_scenario() -> None:
     ):
         assert scenario in SCENARIO_LABELS
         assert SCENARIO_LABELS[scenario] != ""
+
+
+# ── outline precincts: scenarios judged against the outline, the way the verdict is ──
+
+# ~95 m × 111 m box around the Karoo origin.
+_KAROO_BOX = [[-32.2963, 22.5745], [-32.2963, 22.5755], [-32.2973, 22.5755], [-32.2973, 22.5745]]
+
+
+def _outline_precinct() -> _FakePrecinct:
+    precinct = _FakePrecinct()
+    precinct.geofence_polygon = _KAROO_BOX
+    return precinct
+
+
+@pytest.mark.parametrize(
+    ("scenario", "confirmed", "in_band"),
+    [
+        (SCENARIO_AT_STOP, True, False),
+        (SCENARIO_INSIDE_TOLERANCE, True, True),
+        (SCENARIO_OUTSIDE_TOLERANCE, False, False),
+        (SCENARIO_THREE_KM, False, False),
+    ],
+)
+def test_outline_scenarios_get_the_verdict_their_label_promises(scenario: str, confirmed: bool, in_band: bool) -> None:
+    target = build_scenario_target(
+        trip_stop_id="fake-stop-id",  # type: ignore[arg-type]
+        precinct=_outline_precinct(),  # type: ignore[arg-type]
+        scenario=scenario,  # type: ignore[arg-type]
+        tolerance_metres=_TOLERANCE_METRES,
+    )
+
+    assert target.latitude is not None and target.longitude is not None
+    verdict = evaluate_geofence(
+        TrackerFix(lat=target.latitude, lng=target.longitude),
+        _outline_precinct(),  # type: ignore[arg-type]
+        tolerance_metres=_TOLERANCE_METRES,
+    )
+    assert verdict.confirmed is confirmed
+    assert verdict.in_tolerance_band is in_band
+
+
+def test_outline_inside_tolerance_lands_the_intended_distance_outside_the_edge() -> None:
+    target = build_scenario_target(
+        trip_stop_id="fake-stop-id",  # type: ignore[arg-type]
+        precinct=_outline_precinct(),  # type: ignore[arg-type]
+        scenario=SCENARIO_INSIDE_TOLERANCE,
+        tolerance_metres=_TOLERANCE_METRES,
+    )
+
+    assert target.latitude is not None and target.longitude is not None
+    ring = [(c[0], c[1]) for c in _KAROO_BOX]
+    outside_by = geo_polygon.distance_to_boundary_metres(ring, (float(target.latitude), float(target.longitude)))
+    assert outside_by == pytest.approx(_TOLERANCE_METRES - TOLERANCE_BOUNDARY_MARGIN_METRES, abs=_DISTANCE_ASSERTION_TOLERANCE_METRES)

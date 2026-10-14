@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card'
 import { Chip } from '@/components/ui/Chip'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { StaticGeofenceThumbnail } from '@/components/map/StaticGeofenceThumbnail'
+import { describeGeofence } from '@/lib/map/polygon'
 import type { Precinct } from '@shared/lib/types/precinct'
 
 // GPS coordinates render to a fixed 5 decimal places (~1.1m precision at the equator)
@@ -29,6 +30,7 @@ export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) 
         latitude={precinct.latitude}
         longitude={precinct.longitude}
         radiusMetres={precinct.geofence_radius_metres}
+        polygon={precinct.geofence_polygon}
         name={precinct.name}
       />
 
@@ -55,7 +57,7 @@ export function PrecinctCard({ precinct, isOwned, onClick }: PrecinctCardProps) 
             value={`${precinct.latitude.toFixed(COORDINATE_DECIMAL_PLACES)}, ${precinct.longitude.toFixed(COORDINATE_DECIMAL_PLACES)}`}
             mono
           />
-          <InfoRow label="Geofence" value={`${precinct.geofence_radius_metres} m`} mono />
+          <InfoRow label="Geofence" value={describeGeofence(precinct)} mono />
           <InfoRow label="Sharing" value={isOwned ? 'Owned' : 'Shared with you'} />
         </div>
       </div>

@@ -1,11 +1,13 @@
 """Pydantic v2 schemas for Organization and Precinct."""
 
+import math
 from datetime import datetime
 from uuid import UUID
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from app.core import polygon as geo_polygon
 from app.db.models.enums import OrganizationType
 
 
@@ -46,6 +48,8 @@ class PrecinctBase(BaseModel):
     latitude: float
     longitude: float
     geofence_radius_metres: int = 200
+    # Set = the outline is the fence and the radius is not used for any verdict.
+    geofence_polygon: Optional[list[tuple[float, float]]] = None
     is_shared: bool = False
 
 
@@ -76,6 +80,72 @@ LatitudeFloat = Annotated[float, Field(ge=_LATITUDE_MIN, le=_LATITUDE_MAX)]
 LongitudeFloat = Annotated[float, Field(ge=_LONGITUDE_MIN, le=_LONGITUDE_MAX)]
 RadiusMetresInt = Annotated[int, Field(ge=_RADIUS_MIN_METRES, le=_RADIUS_MAX_METRES)]
 
+# --- Polygon geofence rules ---------------------------------------------------------
+# Enough corners for a real OSM site outline; bounds the anchored payload and the O(n²)
+# self-intersection check.
+_POLYGON_MAX_VERTICES = 500
+# A 20 m × 20 m box. Smaller is almost certainly a misclick, and GPS noise alone is wider.
+_POLYGON_MIN_AREA_M2 = 400.0
+# The largest circle the radius field allows. An outline can be shaped differently from a
+# circle but never be laxer than the laxest circle a dispatcher could already set.
+_POLYGON_MAX_AREA_M2 = math.pi * _RADIUS_MAX_METRES**2
+# The pin is the gate: the routing point and the label on every map. It may sit on the
+# boundary or just outside a building footprint, but not at a different site.
+PIN_MAX_OUTSIDE_POLYGON_METRES = 100.0
+# Numeric(10, 7) on the pin columns — the same precision for corners, so a corner and a
+# pin at the same spot compare equal and the anchored JSON has no float-noise digits.
+_COORDINATE_DECIMALS = 7
+
+
+def _normalise_polygon(value: list[tuple[float, float]]) -> list[list[float]]:
+    """Validate an outline and return it as rounded [lat, lng] lists.
+
+    Lists, not tuples: JSONB hands lists back, and the precinct diff compares the stored
+    value with the new one — a tuple would read as "changed" even when it isn't.
+    """
+    corners = [[round(lat, _COORDINATE_DECIMALS), round(lng, _COORDINATE_DECIMALS)] for lat, lng in value]
+    # A closed ring (first corner repeated) is accepted and opened, since GeoJSON sends it closed.
+    if len(corners) > geo_polygon.MIN_POLYGON_VERTICES and corners[0] == corners[-1]:
+        corners = corners[:-1]
+    ring = [(c[0], c[1]) for c in corners]
+    if len(ring) < geo_polygon.MIN_POLYGON_VERTICES:
+        raise ValueError(f"An outline needs at least {geo_polygon.MIN_POLYGON_VERTICES} distinct corners.")
+    if not geo_polygon.is_simple(ring):
+        raise ValueError("The outline crosses itself or repeats a corner.")
+    area = geo_polygon.area_square_metres(ring)
+    if area < _POLYGON_MIN_AREA_M2:
+        raise ValueError(f"The outline is too small ({area:.0f} m²); the minimum is {_POLYGON_MIN_AREA_M2:.0f} m².")
+    if area > _POLYGON_MAX_AREA_M2:
+        raise ValueError(
+            f"The outline is too large ({area / 1e6:.1f} km²); it may not exceed the largest "
+            f"allowed circle ({_POLYGON_MAX_AREA_M2 / 1e6:.1f} km²)."
+        )
+    return corners
+
+
+GeofencePolygon = Annotated[
+    list[tuple[LatitudeFloat, LongitudeFloat]],
+    Field(min_length=geo_polygon.MIN_POLYGON_VERTICES, max_length=_POLYGON_MAX_VERTICES + 1),
+    AfterValidator(_normalise_polygon),
+]
+
+
+def check_pin_fits_polygon(latitude: float, longitude: float, polygon: list[Any]) -> None:
+    """Raise ValueError when the pin is neither inside the outline nor near its edge.
+
+    Shared by PrecinctCreateBody and update_precinct (a PATCH may move only one of the two).
+    """
+    ring = [(float(c[0]), float(c[1])) for c in polygon]
+    point = (float(latitude), float(longitude))
+    if geo_polygon.contains(ring, point):
+        return
+    distance = geo_polygon.distance_to_boundary_metres(ring, point)
+    if distance > PIN_MAX_OUTSIDE_POLYGON_METRES:
+        raise ValueError(
+            f"The pin is {distance:.0f} m outside the outline; it must be inside it or within "
+            f"{PIN_MAX_OUTSIDE_POLYGON_METRES:.0f} m of its edge."
+        )
+
 
 class PrecinctCreateBody(BaseModel):
     """Fields an admin dispatcher submits when mapping a new precinct.
@@ -91,7 +161,14 @@ class PrecinctCreateBody(BaseModel):
     latitude: LatitudeFloat
     longitude: LongitudeFloat
     geofence_radius_metres: RadiusMetresInt = _RADIUS_DEFAULT_METRES
+    geofence_polygon: Optional[GeofencePolygon] = None
     is_shared: bool = False
+
+    @model_validator(mode="after")
+    def _pin_fits_polygon(self) -> "PrecinctCreateBody":
+        if self.geofence_polygon is not None:
+            check_pin_fits_polygon(self.latitude, self.longitude, self.geofence_polygon)
+        return self
 
 
 class PrecinctUpdateBody(BaseModel):
@@ -101,7 +178,7 @@ class PrecinctUpdateBody(BaseModel):
 
     Omissible is not the same as nullable: `Optional[X]` means the column accepts an
     explicit null; a bare `X = Field(default=None)` means omissible but not nullable.
-    Only `address` is genuinely nullable on the Precinct model — the rest would otherwise
+    Only `address` and `geofence_polygon` are genuinely nullable on the Precinct model — the rest would otherwise
     raise NotNullViolation at flush as a 500 instead of a 422.
     test_patch_schema_nullability_matches_the_precinct_model pins this against the model.
     """
@@ -113,6 +190,8 @@ class PrecinctUpdateBody(BaseModel):
     latitude: LatitudeFloat = Field(default=None)  # type: ignore[assignment]
     longitude: LongitudeFloat = Field(default=None)  # type: ignore[assignment]
     geofence_radius_metres: RadiusMetresInt = Field(default=None)  # type: ignore[assignment]
+    # Genuinely nullable: explicit null removes the outline and the circle applies again.
+    geofence_polygon: Optional[GeofencePolygon] = None
     is_shared: bool = Field(default=None)  # type: ignore[assignment]
 
 

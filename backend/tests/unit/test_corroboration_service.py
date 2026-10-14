@@ -68,6 +68,8 @@ class _PrecinctStub:
     latitude: Optional[Decimal]
     longitude: Optional[Decimal]
     geofence_radius_metres: Optional[int]
+    # A circle precinct: evaluate_geofence reads this to choose the shape.
+    geofence_polygon: Optional[list[list[float]]] = None
 
 
 def _make_precinct(

@@ -1,141 +1,142 @@
 // frontend/driver-pwa/components/trip/__tests__/TripDetailView.test.tsx
 //
-// Rewritten for the phase model. The old version fixed every trip at exactly five
-// handshakes and literally asserted "lists all five handshakes" — the fixed-length
-// assumption the whole refactor exists to remove. This version renders against
-// CROSS_DOCK_PHASE_PLAN (11 rows) and asserts N rows for an N-phase plan, so a
-// reintroduced fixed-length assumption fails loudly instead of silently passing on a
-// coincidentally-5-row fixture.
+// Rewritten for the overhaul (3.2 in progress, 3.3 upcoming, 3.4 record). Still renders
+// against CROSS_DOCK_PHASE_PLAN and asserts N rows for an N-phase plan, so a reintroduced
+// fixed-length assumption fails loudly; still pins every driving/hold rule the old view had.
 import { render, screen, fireEvent, within } from '@testing-library/react'
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { TripDetailView } from '../TripDetailView'
 import { currentPhase } from '@/lib/phase'
 import type { Trip, TripId } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
-import {
-  SINGLE_LEG_PHASE_PLAN,
-  CROSS_DOCK_PHASE_PLAN,
-  makePhasePlan,
-  type PlanStopInput,
-} from '@shared/lib/mocks/phase-trips'
+import type { Vehicle } from '@shared/lib/types/vehicle'
+import { SINGLE_LEG_PHASE_PLAN, CROSS_DOCK_PHASE_PLAN, makePhasePlan, type PlanStopInput } from '@shared/lib/mocks/phase-trips'
 
-// TripDetailView renders SubpageHeader, which calls useRouter() internally for its
-// router.back() fallback — stub it so the component mounts under jsdom without a real
-// Next.js app router context (mirrors components/layout/__tests__/SubpageHeader.test.tsx).
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }) }))
+vi.mock('@/components/layout/BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigation" /> }))
+
+let mockSummaries: { id: string; origin_precinct_name: string | null; destination_precinct_name: string | null }[] = []
+vi.mock('@/lib/hooks/useMyTrips', () => ({
+  useMyTrips: () => ({ trips: mockSummaries, isLoading: false, loadError: null, reload: vi.fn() }),
 }))
 
-// jsdom does not implement scrollIntoView (a well-known jsdom gap, not an app bug —
-// every real browser has it). PhaseProgressBar's useEffect calls it unconditionally
-// on the current phase's cell, so any render with an unresolved current phase
-// crashes with "scrollIntoView is not a function" unless this is stubbed.
-beforeAll(() => {
-  Element.prototype.scrollIntoView = vi.fn()
-})
-
-// Marks every phase up to and including `through` (by sequence_number) as completed —
-// mirrors the identical local helper in lib/phase/__tests__/derive.test.ts.
 function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescriptor[] {
   return plan.map((p) => (p.sequence_number <= through ? { ...p, status: 'completed' as const } : p))
 }
 
-function withEvidence(
-  plan: readonly PhaseDescriptor[],
-  phaseType: PhaseType,
-  patch: Partial<PhaseDescriptor>,
-): PhaseDescriptor[] {
-  return plan.map((p) => (p.phase_type === phaseType ? { ...p, ...patch } : p))
+/** Completes everything before the nth (0-based) phase of a type, making it current. */
+function upTo(plan: readonly PhaseDescriptor[], type: PhaseType, nth = 0): PhaseDescriptor[] {
+  const target = plan.filter((p) => p.phase_type === type)[nth]
+  return walk(plan, target.sequence_number - 1)
 }
+
+const HORSE = { id: 'h', registration: 'GP 12-34 ZX', vehicle_type: 'horse', make: null, model: null, year: null, licence_disc_expiry: null, gross_vehicle_mass_kg: null, length_m: null } as unknown as Vehicle
 
 function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Trip {
   return {
-    id: 'trip-1' as unknown as TripId,
-    trip_reference: 'TRP-2026-0099',
-    pp_manifest: null,
-    status: 'active',
-    trip_type: 'loaded',
-    journey_lock_hash: null,
-    idvs_check_status: 'verified',
-    origin_precinct_id: 'precinct-jhb',
-    destination_precinct_id: 'precinct-dbn',
-    stops: [],
-    consignments: [],
-    pulsit_trip_reference_id: null,
-    planned_departure_at: null,
-    actual_departure_at: null,
-    planned_arrival_at: null,
-    actual_arrival_at: null,
-    closed_at: null,
-    driver: null,
-    horse: null,
-    trailers: [],
-    phases,
-    current_phase: null,
-    current_stop: null,
-    exceptions: [],
-    blockchain_receipts: [],
-    warnings: [],
-    created_at: '2026-06-12T08:00:00Z',
-    updated_at: '2026-06-12T08:00:00Z',
+    id: 'trip-1' as unknown as TripId, trip_reference: 'TRP-2026-0099', pp_manifest: null, status: 'active',
+    trip_type: 'loaded', journey_lock_hash: null, idvs_check_status: 'verified',
+    origin_precinct_id: 'precinct-jhb', destination_precinct_id: 'precinct-dbn', stops: [], consignments: [],
+    pulsit_trip_reference_id: null, planned_departure_at: '2026-05-09T08:00:00Z', actual_departure_at: null,
+    planned_arrival_at: '2026-05-09T17:30:00Z', actual_arrival_at: null, closed_at: null, driver: null,
+    horse: HORSE, trailers: [], phases, current_phase: null, current_stop: null, exceptions: [],
+    blockchain_receipts: [], warnings: [], created_at: '2026-05-01T08:00:00Z', updated_at: '2026-05-01T08:00:00Z',
     ...overrides,
   }
 }
 
-// The "Phases" section's own row count — every mapped phase is a single top-level
-// Card, so children.length minus the leading <h2>Phases</h2> is exactly the number of
-// rendered rows. Avoids matching on PHASE_NAMES text, which repeats on a cross-dock
-// plan (e.g. two "Unloading" rows) and so can't be counted with getAllByText alone.
-function phasesSection(): HTMLElement {
-  return screen.getByText('Phases').closest('section')!
+function renderView(trip: Trip, extra: Partial<Parameters<typeof TripDetailView>[0]> = {}) {
+  const props = {
+    trip, onBack: vi.fn(), onInTransitHub: vi.fn(), onSelectPhase: vi.fn(), showAllPhases: false, ...extra,
+  }
+  render(<TripDetailView {...props} />)
+  return props
 }
 
-describe('TripDetailView', () => {
-  it('renders the trip reference, order number, and status chip regardless of variant', () => {
-    render(
-      <TripDetailView
-        trip={makeTrip(SINGLE_LEG_PHASE_PLAN)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
+function phaseRows(): HTMLElement[] {
+  return within(screen.getByRole('list', { name: 'Trip phases' })).getAllByRole('listitem')
+}
 
-    expect(screen.getByRole('heading', { name: 'TRP-2026-0099' })).toBeInTheDocument()
+beforeEach(() => {
+  mockSummaries = []
+})
+
+describe('TripDetailView — trip in progress (3.2)', () => {
+  it('test_names_the_screen_and_shows_the_reference_under_it', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
+
+    expect(screen.getByRole('heading', { name: 'Current trip' })).toBeInTheDocument()
+    expect(screen.getByText('TRP-2026-0099')).toBeInTheDocument()
   })
 
-  it('showAllPhases=true renders exactly N rows for an N-phase (13-row cross-dock) plan, only the current one tappable', () => {
-    expect(CROSS_DOCK_PHASE_PLAN).toHaveLength(13)
-    const onSelectPhase = vi.fn()
-    const plan = walk(CROSS_DOCK_PHASE_PLAN, 4) // through the first in_transit leg
-    const current = currentPhase(plan)!
+  it('test_back_calls_onBack', () => {
+    const props = renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={onSelectPhase}
-        showAllPhases
-      />,
-    )
+    fireEvent.click(screen.getByRole('button', { name: /^Back/ }))
 
-    const section = phasesSection()
-    // -1 for the <h2>Phases</h2> heading itself.
-    expect(section.children.length - 1).toBe(plan.length)
-
-    const buttons = within(section).getAllByRole('button')
-    expect(buttons).toHaveLength(1)
-    fireEvent.click(buttons[0])
-    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_event_id: current.phase_event_id }))
+    expect(props.onBack).toHaveBeenCalledOnce()
   })
 
-  it('resolves to the THIRD unloading occurrence (not the first) as the tappable row when the first two are complete', () => {
+  it('test_progress_comes_before_route', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
+
+    const progress = screen.getByRole('heading', { name: 'Progress' })
+    const route = screen.getByRole('heading', { name: 'Route' })
+
+    expect(progress.compareDocumentPosition(route) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('test_offers_to_start_the_current_phase_when_not_driving', () => {
+    const plan = upTo(SINGLE_LEG_PHASE_PLAN, 'loading')
+    const props = renderView(makeTrip(plan))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Loading' }))
+
+    expect(props.onSelectPhase).toHaveBeenCalledWith(currentPhase(plan))
+    expect(screen.queryByRole('button', { name: 'Continue Driving' })).toBeNull()
+  })
+
+  it('test_offers_the_driving_screen_while_in_transit_is_current', () => {
+    const props = renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'in_transit')))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue Driving' }))
+
+    expect(props.onInTransitHub).toHaveBeenCalledOnce()
+  })
+
+  it('test_offers_arrival_not_driving_once_in_transit_resolves', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'arrival')))
+
+    expect(screen.getByRole('button', { name: 'Start Arrival' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Continue Driving' })).toBeNull()
+  })
+
+  it('test_offers_the_driving_screen_on_the_second_leg_of_a_cross_dock_plan', () => {
+    renderView(makeTrip(upTo(CROSS_DOCK_PHASE_PLAN, 'in_transit', 1)))
+
+    expect(screen.getByRole('button', { name: 'Continue Driving' })).toBeInTheDocument()
+  })
+
+  it('test_a_held_trip_offers_no_action_and_says_why_even_mid_leg', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'in_transit'), { status: 'exception_hold' }))
+
+    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Continue Driving' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^Start / })).toBeNull()
+  })
+
+  it('test_all_steps_lists_every_phase_of_a_cross_dock_plan_only_current_tappable', () => {
+    const plan = upTo(CROSS_DOCK_PHASE_PLAN, 'loading')
+    renderView(makeTrip(plan), { showAllPhases: true })
+
+    expect(phaseRows()).toHaveLength(CROSS_DOCK_PHASE_PLAN.filter((p) => p.phase_type !== 'trip_creation').length)
+    expect(within(screen.getByRole('list', { name: 'Trip phases' })).getAllByRole('button')).toHaveLength(1)
+  })
+
+  it('test_the_third_unloading_is_the_tappable_row_once_the_first_two_are_done', () => {
     // Synthetic 4-stop plan where every stop after the first drops off cargo, so
-    // `unloading` occurs three times — mirrors lib/phase/__tests__/derive.test.ts's
-    // own regression fixture for the same phase_type-repetition hazard, proving the
-    // UI consumer (not just lib/phase's own derivation) resolves by sequence_number.
+    // `unloading` occurs three times (same fixture as before the overhaul): the UI must
+    // resolve the current row by sequence_number, not by phase type.
     const stops: PlanStopInput[] = [
       { trip_stop_id: 'stop-1', sequence: 1, picks_up: true, drops_off: false },
       { trip_stop_id: 'stop-2', sequence: 2, picks_up: false, drops_off: true },
@@ -143,282 +144,118 @@ describe('TripDetailView', () => {
       { trip_stop_id: 'stop-4', sequence: 4, picks_up: false, drops_off: true },
     ]
     const fullPlan = makePhasePlan('trip-3x-unloading', stops, '2026-01-01T00:00:00Z', 'test-3u')
-    const unloadingRows = fullPlan.filter((p) => p.phase_type === 'unloading')
-    expect(unloadingRows).toHaveLength(3)
+    const thirdUnloading = fullPlan.filter((p) => p.phase_type === 'unloading')[2]
+    const plan = upTo(fullPlan, 'unloading', 2)
+    const props = renderView(makeTrip(plan), { showAllPhases: true })
 
-    const thirdUnloading = unloadingRows[2]
-    const plan = walk(fullPlan, thirdUnloading.sequence_number - 1)
-    const onSelectPhase = vi.fn()
+    fireEvent.click(within(screen.getByRole('list', { name: 'Trip phases' })).getByRole('button'))
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={onSelectPhase}
-        showAllPhases
-      />,
-    )
-
-    fireEvent.click(within(phasesSection()).getAllByRole('button')[0])
-    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_event_id: thirdUnloading.phase_event_id }))
+    expect(props.onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_event_id: thirdUnloading.phase_event_id }))
   })
 
-  it('showAllPhases=false shows only the single current-phase card', () => {
-    const onSelectPhase = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0) // trip_creation resolved — current is activation
+  it('test_hold_makes_the_phase_list_static', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading'), { status: 'exception_hold' }), { showAllPhases: true })
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={onSelectPhase}
-        showAllPhases={false}
-      />,
-    )
-
-    expect(screen.queryByText('Phases')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /activation/i }))
-    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_type: 'activation' }))
+    expect(within(screen.getByRole('list', { name: 'Trip phases' })).queryByRole('button')).toBeNull()
   })
 
-  it('exception_hold suppresses the current-phase CTA and shows the hold notice (live view)', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+  it('test_all_steps_is_a_disclosure', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
+    const toggle = screen.getByRole('button', { name: 'All steps' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan, { status: 'exception_hold' })}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
+    fireEvent.click(toggle)
 
-    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
-    // No phase CTA — submits while held can only 409.
-    expect(screen.queryByRole('button', { name: /activation/i })).not.toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(phaseRows().length).toBeGreaterThan(0)
   })
 
-  it('exception_hold makes the current phase card non-tappable (showAllPhases)', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0)
+  it('test_an_anchored_phase_says_so_in_all_steps', () => {
+    const plan = upTo(SINGLE_LEG_PHASE_PLAN, 'loading').map((p) =>
+      p.phase_type === 'activation' ? { ...p, anchor_status: 'anchored' as const } : p)
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan, { status: 'exception_hold' })}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases
-      />,
-    )
+    renderView(makeTrip(plan), { showAllPhases: true })
 
-    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
-    expect(within(phasesSection()).queryAllByRole('button')).toHaveLength(0)
+    expect(screen.getByLabelText('Anchored on Hedera')).toBeInTheDocument()
   })
 
-  // The entry point to the driving screen keys on isDriving(), not on
-  // `phase_type === 'in_transit'`. The old check could never fire on a real trip — the
-  // backend closed the in_transit row the instant departure advanced, before driver-
-  // submitted arrival existed — which is exactly what made the driving screen unreachable.
-  it('shows the driving screen as the primary action while the truck is on the road', () => {
-    const onInTransitHub = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending, current
-    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+  it('test_no_anchor_copy_when_nothing_is_anchored_yet', () => {
+    const plan = upTo(SINGLE_LEG_PHASE_PLAN, 'loading').map((p) => ({ ...p, anchor_status: 'not_required' as const }))
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={onInTransitHub}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
+    renderView(makeTrip(plan), { showAllPhases: true })
 
-    fireEvent.click(screen.getByRole('button', { name: /continue driving/i }))
-    expect(onInTransitHub).toHaveBeenCalled()
+    expect(screen.queryByLabelText('Anchored on Hedera')).toBeNull()
+    expect(screen.queryByText(/Anchoring/)).toBeNull()
   })
 
-  it('replaces the arrival phase card with the driving entry while driving', () => {
-    const onSelectPhase = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending, current
+  it('test_route_uses_server_place_names_when_known', () => {
+    mockSummaries = [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB — Linbro Park', destination_precinct_name: 'FedEx DBN — Riverhorse Valley' }]
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={onSelectPhase}
-        showAllPhases={false}
-      />,
-    )
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
 
-    // The current phase's own capture card (in_transit carries no steps of its own, so
-    // this would otherwise fall through to nothing useful) must not be offered while the
-    // driver is moving — "Continue driving" takes its place instead.
-    expect(screen.queryByRole('button', { name: /in transit/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
+    const route = screen.getByRole('list', { name: 'Route' })
+    expect(route).toHaveTextContent('FedEx JHB')
+    expect(route).toHaveTextContent('Riverhorse Valley')
   })
 
-  it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
-    // in_transit resolved (the "Arrive at destination" swipe done), arrival current — the
-    // driver is standing at the destination doing seal-verify. This is the state the old
-    // case-2 fossil (V7) mistook for "still driving"; it must now show the arrival
-    // capture card instead.
-    const onSelectPhase = vi.fn()
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 4) // through in_transit — arrival swipe done
-    expect(currentPhase(plan)?.phase_type).toBe('arrival')
+  it('test_route_falls_back_to_origin_and_destination_never_a_uuid', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={onSelectPhase}
-        showAllPhases={false}
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /arrival/i }))
-    expect(onSelectPhase).toHaveBeenCalledWith(expect.objectContaining({ phase_type: 'arrival' }))
+    const route = screen.getByRole('list', { name: 'Route' })
+    expect(route).toHaveTextContent('Origin')
+    expect(route).toHaveTextContent('Destination')
   })
 
-  it('does not show the driving entry when the trip is not on the road', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 0) // current is activation
+  it('test_vehicle_row_opens_the_truck_and_trailers_sheet', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
+    fireEvent.click(screen.getByRole('button', { name: /GP 12-34 ZX/ }))
 
-    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Vehicles on this trip' })).toBeInTheDocument()
   })
 
-  it('shows the driving entry while in_transit is the unresolved current phase', () => {
-    // With the backend keeping in_transit pending during the drive, isDriving returns
-    // true while the driver is actively en route. This is exactly when the driving button
-    // should appear to take them to the map and checkpoint/exception screens.
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // departure resolved — in_transit pending
-    expect(currentPhase(plan)?.phase_type).toBe('in_transit')
+  it('test_renders_a_notice_when_given', () => {
+    renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')), { notice: <p>Starting trip</p> })
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
+    expect(screen.getByText('Starting trip')).toBeInTheDocument()
+  })
+})
 
-    expect(screen.getByRole('button', { name: /continue driving/i })).toBeInTheDocument()
+describe('TripDetailView — upcoming trip (3.3)', () => {
+  it('test_shows_what_the_trip_will_ask_for_and_offers_to_start_it', () => {
+    const plan = upTo(SINGLE_LEG_PHASE_PLAN, 'activation')
+    const props = renderView(makeTrip(plan, { status: 'created' }))
+
+    expect(screen.getByRole('heading', { name: 'Upcoming trip' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'What you’ll record' })).toBeInTheDocument()
+    expect(screen.getByText('Photo of the linehaul sheet')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Trip' }))
+
+    expect(props.onSelectPhase).toHaveBeenCalledWith(currentPhase(plan))
+  })
+})
+
+describe('TripDetailView — completed record (3.4)', () => {
+  const closed = () => makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 999), {
+    status: 'closed',
+    actual_departure_at: '2026-05-03T09:00:00Z',
+    planned_arrival_at: '2026-05-03T19:30:00Z',
+    actual_arrival_at: '2026-05-03T19:30:00Z',
+    closed_at: '2026-05-03T19:45:00Z',
   })
 
-  it('a held trip shows the hold notice instead of the driving entry, even mid-leg', () => {
-    // Genuinely mid-leg (in_transit pending, current) so this actually proves the hold
-    // outranks driving, rather than the hold notice winning by coincidence because the
-    // trip wasn't driving anyway.
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3)
+  it('test_is_a_read_only_record_with_its_outcome', () => {
+    renderView(closed())
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan, { status: 'exception_hold' })}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
-
-    expect(screen.getByText('Trip on hold')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Trip record' })).toBeInTheDocument()
+    expect(screen.getByText('Delivered on time')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Start |Continue Driving/ })).toBeNull()
   })
 
-  it('shows an AnchorBadge "Anchored" chip on a completed, Hedera-anchored departure row (showAllPhases)', () => {
-    const plan = withEvidence(walk(SINGLE_LEG_PHASE_PLAN, 3), 'departure', {
-      event_hash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
-      blockchain_receipt_id: 'bcr-0099-departure',
-    })
+  it('test_timeline_lists_every_phase', () => {
+    renderView(closed())
 
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases
-      />,
-    )
-
-    expect(screen.getByText('Anchored')).toBeInTheDocument()
-  })
-
-  it('shows no anchored/anchoring copy when nothing in the plan has an event_hash yet', () => {
-    const plan = walk(SINGLE_LEG_PHASE_PLAN, 3) // activation/loading/departure completed, none anchored
-
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases
-      />,
-    )
-
-    expect(screen.queryByText('Anchored')).not.toBeInTheDocument()
-    expect(screen.queryByText('Anchoring…')).not.toBeInTheDocument()
-  })
-
-  it('renders no "Evidence anchors" section in real-data mode even when a phase IS fully anchored', () => {
-    // The section was removed deliberately: anchoring is a background process the driver
-    // takes no action on, and a read-only pipeline row per anchored phase pushed the one
-    // actionable card off a screen that has to fit in a single viewport. This asserts the
-    // strongest version of that — fully anchored data present, section still absent — so
-    // reinstating it fails here rather than quietly regrowing the screen.
-    const plan = withEvidence(walk(SINGLE_LEG_PHASE_PLAN, 3), 'departure', {
-      event_hash: 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2',
-      blockchain_receipt_id: 'bcr-0099-departure',
-    })
-
-    render(
-      <TripDetailView
-        trip={makeTrip(plan)}
-        onBack={vi.fn()}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
-
-    expect(screen.queryByText('Evidence anchors')).not.toBeInTheDocument()
-    expect(screen.queryByText('Evidence hashed', { exact: false })).not.toBeInTheDocument()
-    expect(screen.queryByText('Submitted to Hedera HCS')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Anchor receipt recorded/)).not.toBeInTheDocument()
-  })
-
-  it('back button in SubpageHeader calls onBack', () => {
-    const onBack = vi.fn()
-    render(
-      <TripDetailView
-        trip={makeTrip(SINGLE_LEG_PHASE_PLAN)}
-        onBack={onBack}
-        onInTransitHub={vi.fn()}
-        onSelectPhase={vi.fn()}
-        showAllPhases={false}
-      />,
-    )
-
-    fireEvent.click(screen.getByText('← My Trips'))
-    expect(onBack).toHaveBeenCalled()
+    expect(phaseRows()).toHaveLength(SINGLE_LEG_PHASE_PLAN.filter((p) => p.phase_type !== 'trip_creation').length)
   })
 })

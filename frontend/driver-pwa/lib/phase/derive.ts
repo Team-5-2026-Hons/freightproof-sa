@@ -97,7 +97,7 @@ export function isAnchored(phase: PhaseDescriptor): boolean {
  * opened PENDING by `departure` and closed only by the driver's own arrival submission
  * (`advance_in_transit`). There is deliberately no second case for "current is
  * `unloading` and the preceding `in_transit` is resolved" — that was a fossil of an
- * auto-completing in_transit and would make Home offer "Continue driving" throughout
+ * auto-completing in_transit and would make Home offer "Continue Driving" throughout
  * unloading. Keyed on `sequence_number`, never `phase_type` alone (LENGTH IS DATA).
  */
 export function isDriving(phases: readonly PhaseDescriptor[]): boolean {

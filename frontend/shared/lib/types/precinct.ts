@@ -17,6 +17,9 @@ export interface Organization {
   created_at: string
 }
 
+/** One outline corner, [lat, lng] — lat-first like every other coordinate here. */
+export type LatLngPair = [number, number]
+
 export interface Precinct {
   id: PrecinctId
   name: string
@@ -25,6 +28,10 @@ export interface Precinct {
   latitude: number
   longitude: number
   geofence_radius_metres: number
+  // The property outline (an open ring of corners). Set = the outline IS the fence and the
+  // radius is not used for any verdict; null = the circle applies. The server always sends
+  // it; optional only so fixtures written before outlines existed stay valid.
+  geofence_polygon?: LatLngPair[] | null
   // Cross-org visibility opt-in. Visibility is not permission — a shared precinct is
   // still writable only by its owner.
   is_shared: boolean

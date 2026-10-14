@@ -509,7 +509,16 @@ export function LocationComparisonMap({ evidence, className }: Props) {
       // hosts this map renders the same BOUNDARY_REFERENCE_LABEL text as a legend line
       // beneath the map instead (see components/domain/LocationEvidencePanel.tsx).
       const boundary = validBoundary(evidence)
-      if (boundary !== null) {
+      if (boundary !== null && boundary.polygon) {
+        // An outline fence is drawn as itself, same dashed style as the circle.
+        L.polygon(boundary.polygon.map(([lat, lng]) => [lat, lng] as [number, number]), {
+          className: BOUNDARY_CIRCLE_CLASS,
+          weight: BOUNDARY_CIRCLE_WEIGHT,
+          fillOpacity: BOUNDARY_CIRCLE_FILL_OPACITY,
+          dashArray: BOUNDARY_CIRCLE_DASH,
+          interactive: false,
+        }).addTo(layerGroup)
+      } else if (boundary !== null) {
         const circle: Circle = L.circle([boundary.coords.lat, boundary.coords.lng], {
           radius: boundary.radiusMetres,
           className: BOUNDARY_CIRCLE_CLASS,

@@ -4,7 +4,7 @@
 // deleted handshake-flow.ts) so both the component and its regression tests can
 // import it without depending on a specific nav UI shell.
 
-import { Home, Truck, Settings, type LucideIcon } from 'lucide-react'
+import { Home, Truck, CircleUserRound, type LucideIcon } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
 
 export interface NavItem {
@@ -26,7 +26,10 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Home', href: ROUTES.home, icon: Home, matchPrefixes: [] },
   { label: 'Trips', href: ROUTES.trips, icon: Truck, matchPrefixes: ['/trips', '/trip'] },
-  { label: 'Settings', href: ROUTES.settings, icon: Settings, matchPrefixes: ['/settings'] },
+  // Settings merged into Profile (Oct 2026). BottomNav draws the driver's photo for this
+  // tab; the icon is the fallback for any surface that lists tabs without a photo. The old
+  // /settings path stays a match while it redirects here.
+  { label: 'Profile', href: ROUTES.profile, icon: CircleUserRound, matchPrefixes: ['/profile', '/settings'] },
 ]
 
 /** Exact match for '/', otherwise true if pathname is or is nested under any prefix. */

@@ -97,6 +97,8 @@ class StopRecord(_Frozen):
     lat: float
     lng: float
     geofence_radius_metres: int
+    # Set = the outline was the fence ([lat, lng] corners) and the radius is not used.
+    geofence_polygon: list[tuple[float, float]] | None = None
     slot_time: datetime | None
 
 

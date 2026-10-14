@@ -1,225 +1,117 @@
-// frontend/driver-pwa/app/(app)/trips/page.tsx
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+// Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
+
+import { useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Inbox, SlidersHorizontal } from 'lucide-react'
-import { mockTrips } from '@shared/lib/mocks/trips'
+import { Inbox } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
-import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { useAuth } from '@/lib/hooks/useAuth'
-import { fetchMyTrips } from '@/lib/api/trips'
-import type { DriverTripSummary } from '@/lib/types/driver-trip'
-import { Tabs } from '@/components/ui/Tabs'
+import { useGroupedTrips } from '@/lib/hooks/useGroupedTrips'
+import { useRowsThatFit } from '@/lib/hooks/useRowsThatFit'
+import { useTrip } from '@/lib/hooks/useTrip'
+import { tripDetailHref } from '@/lib/navigation/trip-href'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { SectionHeading } from '@/components/ui/SectionHeading'
 import { TruckLoader } from '@/components/ui/TruckLoader'
-import { TripTable } from '@/components/trip/TripTable'
-import { tripsForDriver, categorizeTrips, filterPastTrips, sortByDeparture } from '@/lib/utils/trip-filters'
+import { ActiveTripCard } from '@/components/trip/ActiveTripCard'
+import { TripList } from '@/components/trip/TripRow'
+import { TAB_BAR_SPACER } from '@/components/layout/AppShell'
+import { cn } from '@/lib/utils'
+import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
-type TabId = 'active' | 'upcoming' | 'past'
+// Matches TripRow's min-h-[76px] plus the 1px rule between rows.
+const TRIP_ROW_PX = 77
+// Upcoming is a glance — the next trip or two; Past takes whatever height is left.
+const UPCOMING_PREVIEW_WITH_ACTIVE = 1
+const UPCOMING_PREVIEW = 2
+// What Past shows before layout can be measured (first paint, jsdom).
+const PAST_PREVIEW_FALLBACK = 2
 
-const EMPTY_STATE_COPY: Record<TabId, { title: string; body: string }> = {
-  active:   { title: 'No active trip',   body: 'You have no trip in progress right now. Start one from Upcoming.' },
-  upcoming: { title: 'No upcoming trips', body: 'Your dispatcher hasn’t assigned you a future trip yet.' },
-  past:     { title: 'No matching trips', body: 'No past trips match these filters. Try widening the date range or clearing the search.' },
+function SeeAll({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <Button variant="fill" size="pill-sm" onClick={onClick} aria-label={`See all ${label} trips`}>
+      See all
+    </Button>
+  )
 }
 
-// Demo mode has no backend to call, so its rows are projected from the mock fixtures into
-// the same DriverTripSummary shape the real endpoint returns — one row type downstream,
-// so the tabs and filters below never branch on where the data came from.
-function demoTripsFor(driverId: string): DriverTripSummary[] {
-  return tripsForDriver(mockTrips, driverId as Parameters<typeof tripsForDriver>[1]).map((t) => ({
-    id: t.id,
-    trip_reference: t.trip_reference,
-    status: t.status,
-    trip_type: t.trip_type,
-    origin_precinct_id: t.origin_precinct_id,
-    destination_precinct_id: t.destination_precinct_id,
-    origin_precinct_name: null,
-    destination_precinct_name: null,
-    planned_departure_at: t.planned_departure_at,
-    actual_departure_at: t.actual_departure_at,
-    planned_arrival_at: t.planned_arrival_at,
-    actual_arrival_at: t.actual_arrival_at,
-    // Unreviewed critical rows only, matching the backend's needs_review_count: every
-    // exception starts needs_review, but the driver cannot review any of them.
-    needs_review_count: t.exceptions.filter(
-      (e) => e.review_status === 'needs_review' && e.severity === 'critical',
-    ).length,
-    created_at: t.created_at,
-    updated_at: t.updated_at,
-  }))
-}
-
+/**
+ * Trips (overhaul 3.1). One screen that never scrolls (Tim, 14 Oct): the trip underway,
+ * the next one or two, and as many past trips as fit above the tab bar — each list one
+ * tap from its full, scrolling version under "See all".
+ */
 export default function TripsPage() {
   const router = useRouter()
-  const { user } = useAuth()
-  const [tab, setTab] = useState<TabId>('active')
-  const [search, setSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  // Past-tab filters are collapsed by default to keep the list uncluttered.
-  const [filtersOpen, setFiltersOpen] = useState(false)
+  const { trip: sessionTrip } = useTrip()
+  const { active, upcoming, past, isLoading, loadError, reload } = useGroupedTrips()
+  const pastRef = useRef<HTMLDivElement>(null)
+  const pastFits = useRowsThatFit(pastRef, TRIP_ROW_PX, PAST_PREVIEW_FALLBACK)
 
-  // All three tabs now read one source: GET /trips/me, the driver's own trips in every
-  // status. They previously read mock fixtures filtered by the signed-in driver's real
-  // UUID, which matched no fixture and so rendered Upcoming and Past permanently empty
-  // however many trips the dispatcher had actually assigned.
-  const [trips, setTrips] = useState<DriverTripSummary[]>([])
-  const [isLoading, setIsLoading] = useState(!IS_DEMO_MODE)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const open = (trip: DriverTripSummary) => router.push(tripDetailHref(String(trip.id)))
+  const current = active[0] ?? null
+  const upcomingShown = upcoming.slice(0, current === null ? UPCOMING_PREVIEW : UPCOMING_PREVIEW_WITH_ACTIVE)
 
-  // Keyed on the driver's id, not the user OBJECT: AuthContext builds its provider value
-  // inline, so useAuth() hands back a fresh reference on every render. Depending on the
-  // object would make `load` a new function each render and re-fire the fetch effect in a
-  // loop; a primitive id only changes when the signed-in driver actually changes.
-  const driverId = user?.id ?? null
+  if (isLoading) {
+    return <div className="flex flex-1 items-center justify-center"><TruckLoader label="Loading your trips" /></div>
+  }
 
-  const demoTrips = useMemo(
-    () => (driverId !== null ? demoTripsFor(driverId) : []),
-    [driverId],
-  )
+  if (loadError !== null) {
+    return (
+      <div className="mx-4 mt-2 flex flex-col items-start gap-3 rounded-xl bg-error-tint px-4 py-3">
+        <p className="text-subhead text-error">{loadError}</p>
+        <Button variant="secondary" size="sm" onClick={reload}>Try Again</Button>
+      </div>
+    )
+  }
 
-  const load = useCallback(() => {
-    if (IS_DEMO_MODE) { setTrips(demoTrips); setIsLoading(false); return }
-    if (driverId === null) { setTrips([]); setIsLoading(false); return }
-    setIsLoading(true)
-    setLoadError(null)
-    fetchMyTrips()
-      .then(setTrips)
-      // Surfaced, never swallowed: an empty list and a failed fetch look identical
-      // otherwise, and "no upcoming trips" is a lie when the request simply didn't land.
-      .catch((err: unknown) => {
-        console.error('Failed to load the driver\'s trips', err)
-        setLoadError('Could not load your trips. Check your connection and try again.')
-      })
-      .finally(() => setIsLoading(false))
-  }, [driverId, demoTrips])
-
-  useEffect(() => { load() }, [load])
-
-  const { active, upcoming, past } = useMemo(() => {
-    const grouped = categorizeTrips(trips)
-    return {
-      // Soonest departure first, so the next trip the driver leaves on is the top card
-      // instead of wherever GET /trips/me happened to place it.
-      active: sortByDeparture(grouped.active),
-      upcoming: sortByDeparture(grouped.upcoming),
-      // Past runs the other way: history is read most-recent-first, and oldest-first
-      // would put a trip from months ago above the one finished this morning.
-      past: sortByDeparture(grouped.past, 'latest-first'),
-    }
-  }, [trips])
-
-  const filteredPast = useMemo(
-    () => filterPastTrips(past, { dateFrom: dateFrom || null, dateTo: dateTo || null, search }),
-    [past, dateFrom, dateTo, search],
-  )
-
-  const hasActiveTrip = active.length > 0
-  const tripsToShow = tab === 'active' ? active : tab === 'upcoming' ? upcoming : filteredPast
-
-  // Count of currently-set Past filters, shown as a badge on the Filter toggle
-  // so an applied-but-collapsed filter stays discoverable.
-  const activeFilterCount = [dateFrom, dateTo, search].filter((v) => v.trim() !== '').length
+  if (current === null && upcoming.length === 0 && past.length === 0) {
+    return (
+      <EmptyState
+        icon={<Inbox strokeWidth={1.5} aria-hidden />}
+        title="No trips yet"
+        body="Your dispatcher assigns trips. They appear here the moment they’re planned."
+      />
+    )
+  }
 
   return (
-    // No min-h-screen — AppShell (the only caller, via app/(app)/layout.tsx) already
-    // owns the fixed, locked-to-viewport frame and gives this page a sized,
-    // scrollable slot; see AppShell.tsx for why stacking a second min-h-screen here
-    // forced every visit to scroll regardless of how many trips there were to show.
-    <main className="flex flex-col gap-4 p-4">
-      <h1 className="text-xl font-semibold text-surface-on">My Trips</h1>
-
-      <Tabs
-        tabs={[
-          { id: 'active', label: 'Active', count: active.length },
-          { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
-          { id: 'past', label: 'Past', count: past.length },
-        ]}
-        active={tab}
-        onChange={(id) => {
-          const nextTab = id as TabId
-          setTab(nextTab)
-          // Filters are only visible on the Past tab; clear them on the way out
-          // so a stale, hidden filter can't silently narrow results on return.
-          if (nextTab !== 'past') {
-            setSearch('')
-            setDateFrom('')
-            setDateTo('')
-            setFiltersOpen(false)
-          }
-        }}
-      />
-
-      {tab === 'upcoming' && hasActiveTrip && (
-        <p className="rounded-xl bg-tertiary-container px-4 py-3 text-sm text-tertiary-on-container">
-          Finish your active trip before starting the next one.
-        </p>
+    <div className="flex min-h-0 flex-1 flex-col pt-3">
+      {current !== null && (
+        <ActiveTripCard summary={current} trip={sessionTrip} onOpen={() => open(current)} />
       )}
 
-      {tab === 'past' && (
-        <div className="flex flex-col gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            iconLeft={<SlidersHorizontal className="h-4 w-4" aria-hidden />}
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            Filter
-            {activeFilterCount > 0 && (
-              <span className="rounded-full bg-surface-container px-1.5 py-0.5 text-[10px] tabular-nums">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-          {filtersOpen && (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input type="date" label="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              <Input type="date" label="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              <Input label="Origin / destination" placeholder="e.g. Cape Town" value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
+      {upcoming.length > 0 && (
+        <section aria-labelledby="trips-upcoming" className="mt-5 shrink-0">
+          <SectionHeading
+            id="trips-upcoming"
+            title="Upcoming"
+            action={<SeeAll label="upcoming" onClick={() => router.push(ROUTES.tripsUpcoming)} />}
+          />
+          {current !== null && (
+            <p className="px-5 pt-1 text-footnote text-surface-on-variant">
+              Finish your current trip before starting the next one.
+            </p>
           )}
-        </div>
+          <TripList trips={upcomingShown} kind="upcoming" onSelect={open} />
+        </section>
       )}
 
-      {isLoading ? (
-        // In-page, not LoadingScreen: the heading and tabs above stay on screen while the
-        // list loads, so the loader belongs in the space the list will occupy rather than
-        // floating over the whole viewport.
-        <div className="flex justify-center py-16"><TruckLoader label="Loading your trips" /></div>
-      ) : loadError !== null ? (
-        <div className="flex flex-col items-start gap-3 rounded-xl bg-error-container px-4 py-3">
-          <p className="text-sm text-error-on-container">{loadError}</p>
-          <Button variant="secondary" size="sm" onClick={load}>Try again</Button>
-        </div>
-      ) : tripsToShow.length === 0 ? (
-        <EmptyState
-          icon={<Inbox strokeWidth={1.5} aria-hidden />}
-          title={EMPTY_STATE_COPY[tab].title}
-          body={EMPTY_STATE_COPY[tab].body}
-        />
-      ) : (
-        <TripTable
-          trips={tripsToShow}
-          // Every row addresses its own trip by id, including Active ones. The old
-          // Active-tab special case routed to /trips/active, which renders whatever
-          // trip the CONTEXT holds — fine when a driver could only ever have one
-          // non-terminal trip, wrong as soon as they have an active trip plus two
-          // upcoming assignments.
-          onSelect={(trip) =>
-            router.push(
-              IS_DEMO_MODE
-                ? ROUTES.tripDetail(String(trip.id))
-                : ROUTES.tripDetailById(String(trip.id)),
-            )
-          }
-        />
+      {past.length > 0 && (
+        <section aria-labelledby="trips-past" className="mt-4 flex min-h-0 flex-1 flex-col">
+          <SectionHeading
+            id="trips-past"
+            title="Past"
+            action={<SeeAll label="past" onClick={() => router.push(ROUTES.tripsPast)} />}
+          />
+          {/* Measured, not scrolled: only whole rows that fit are rendered. */}
+          <div ref={pastRef} className="min-h-0 flex-1 overflow-hidden">
+            <TripList trips={past.slice(0, pastFits)} kind="past" onSelect={open} />
+          </div>
+        </section>
       )}
-    </main>
+      {/* Clearance for the floating tab bar (see AppShell's TAB_BAR_SPACER). */}
+      <div aria-hidden className={cn('shrink-0', TAB_BAR_SPACER)} />
+    </div>
   )
 }

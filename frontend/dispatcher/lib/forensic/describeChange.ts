@@ -34,7 +34,17 @@ const FIELD_LABELS: Record<string, string> = {
   latitude: 'Latitude',
   longitude: 'Longitude',
   geofence_radius_metres: 'Geofence radius (m)',
+  geofence_polygon: 'Property outline',
   is_shared: 'Shared with other organisations',
+}
+
+// Keys holding a list of [lat, lng] corners. Hundreds of raw coordinates tell a reader
+// nothing; the corner count does, and the anchored payload keeps every coordinate.
+const OUTLINE_KEYS = new Set(['geofence_polygon'])
+
+function formatOutline(value: unknown): string {
+  if (value === null || value === undefined) return 'None (radius applies)'
+  return Array.isArray(value) ? `${value.length} corners` : formatPrimitive(value)
 }
 
 // Keys that are bookkeeping/meta, never real changed-field values.
@@ -111,6 +121,14 @@ export function describeChange(changedFields: Record<string, unknown>): ChangeRo
     // it conveys nothing meaningful even though it isn't PII itself.
     if (HASH_ONLY_KEYS.has(key)) {
       rows.push({ label: labelFor(key), value: 'Updated' })
+      continue
+    }
+
+    if (OUTLINE_KEYS.has(key)) {
+      rows.push({
+        label: labelFor(key),
+        value: isFromToShape(value) ? `${formatOutline(value.from)} → ${formatOutline(value.to)}` : formatOutline(value),
+      })
       continue
     }
 

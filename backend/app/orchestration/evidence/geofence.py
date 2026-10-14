@@ -11,6 +11,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
+from app.core import polygon as geo_polygon
 from app.core.config import settings
 from app.core.geo import haversine_metres
 
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 # _RADIUS_DEFAULT_METRES. The column is NOT NULL, so this is only a defensive guard for
 # a partially-built or detached Precinct in a test, not an expected runtime state.
 DEFAULT_GEOFENCE_RADIUS_METRES = 200
+
+
+class GeofenceShape(str, Enum):
+    """Which fence the verdict was measured against."""
+
+    CIRCLE = "circle"  # latitude/longitude + geofence_radius_metres
+    POLYGON = "polygon"  # geofence_polygon, the property outline
 
 
 class GeofenceVerdictReason(str, Enum):
@@ -50,6 +58,11 @@ class GeofenceVerdict:
 
     `radius_metres`/`tolerance_metres` report the values actually applied (after any
     None-fallback) so a reader can reconstruct the arithmetic.
+
+    `distance_metres` means different things per shape, both answering "how far is the
+    fix from counting as inside": for a CIRCLE it is the distance to the centre (compare
+    with radius_metres); for a POLYGON it is the distance outside the outline, 0.0 when
+    the fix is inside it (radius_metres is then None — there is no radius).
     """
 
     confirmed: bool
@@ -58,6 +71,7 @@ class GeofenceVerdict:
     tolerance_metres: int
     in_tolerance_band: bool
     reason: GeofenceVerdictReason
+    shape: GeofenceShape = GeofenceShape.CIRCLE
 
 
 def evaluate_geofence(
@@ -98,6 +112,9 @@ def evaluate_geofence(
             reason=GeofenceVerdictReason.NO_PRECINCT_COORDINATES,
         )
 
+    if precinct.geofence_polygon:
+        return _evaluate_polygon(fix, precinct.geofence_polygon, effective_tolerance)
+
     radius = (
         DEFAULT_GEOFENCE_RADIUS_METRES
         if precinct.geofence_radius_metres is None
@@ -118,4 +135,28 @@ def evaluate_geofence(
         tolerance_metres=effective_tolerance,
         in_tolerance_band=in_tolerance_band,
         reason=GeofenceVerdictReason.MEASURED,
+    )
+
+
+def _evaluate_polygon(
+    fix: TrackerFix, polygon: list[list[float]], tolerance_metres: int,
+) -> GeofenceVerdict:
+    """The outline version of the circle rule: inside counts; outside counts only within
+    the same GPS tolerance band, measured from the nearest edge instead of the centre."""
+    ring = [(float(corner[0]), float(corner[1])) for corner in polygon]
+    point = (float(fix.lat), float(fix.lng))
+
+    if geo_polygon.contains(ring, point):
+        outside_by = 0.0
+    else:
+        outside_by = geo_polygon.distance_to_boundary_metres(ring, point)
+
+    return GeofenceVerdict(
+        confirmed=outside_by <= tolerance_metres,
+        distance_metres=outside_by,
+        radius_metres=None,
+        tolerance_metres=tolerance_metres,
+        in_tolerance_band=0.0 < outside_by <= tolerance_metres,
+        reason=GeofenceVerdictReason.MEASURED,
+        shape=GeofenceShape.POLYGON,
     )

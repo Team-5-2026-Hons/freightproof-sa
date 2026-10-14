@@ -27,6 +27,11 @@ class DuplicateResourceError(Exception):
         self.value = value
 
 
+class InvalidGeofenceError(Exception):
+    """A precinct edit would leave its pin and outline inconsistent (e.g. a PATCH that
+    moves only the pin to a different site). Mapped to 422, like a schema failure."""
+
+
 class ExceptionAlreadyReviewedError(Exception):
     """Raised when a DIFFERENT dispatcher already reviewed this exception.
 

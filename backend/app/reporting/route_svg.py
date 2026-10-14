@@ -122,6 +122,8 @@ def render_route_svg(manifest: AuditPackManifest, *, width: int = 800, height: i
 
     points = [
         *((s.lat, s.lng) for s in stops),
+        # Outline corners too, so a large site is never clipped by the frame.
+        *(corner for s in stops for corner in (s.geofence_polygon or [])),
         *((f.lat, f.lng) for f in trail),
         *((f.lat, f.lng) for _, f in exception_fixes),
         *((f.lat, f.lng) for f in checkpoint_fixes),
@@ -134,14 +136,23 @@ def render_route_svg(manifest: AuditPackManifest, *, width: int = 800, height: i
 
     for stop in stops:
         x, y = frame.px(stop.lat, stop.lng)
-        radius = round(max(STOP_MIN_RADIUS_PX, stop.geofence_radius_metres * frame.scale), 1)
         name = escape(stop.precinct_name, quote=True)
+        if stop.geofence_polygon:
+            # The outline itself, to scale — the shape the verdicts were judged against.
+            corners = " ".join(f"{cx},{cy}" for cx, cy in (frame.px(lat, lng) for lat, lng in stop.geofence_polygon))
+            body.append(
+                f'<polygon class="stop" points="{corners}" data-name="{name}" '
+                'fill="#2e7d4f" fill-opacity="0.25" stroke="#2e7d4f" stroke-width="1.5"/>'
+            )
+            label_offset = STOP_MIN_RADIUS_PX
+        else:
+            label_offset = round(max(STOP_MIN_RADIUS_PX, stop.geofence_radius_metres * frame.scale), 1)
+            body.append(
+                f'<circle class="stop" cx="{x}" cy="{y}" r="{label_offset}" data-name="{name}" '
+                'fill="#2e7d4f" fill-opacity="0.25" stroke="#2e7d4f" stroke-width="1.5"/>'
+            )
         body.append(
-            f'<circle class="stop" cx="{x}" cy="{y}" r="{radius}" data-name="{name}" '
-            'fill="#2e7d4f" fill-opacity="0.25" stroke="#2e7d4f" stroke-width="1.5"/>'
-        )
-        body.append(
-            f'<text class="stop-label" x="{x + radius + 4}" y="{y + 4}" font-size="11" fill="#1d4d31">'
+            f'<text class="stop-label" x="{x + label_offset + 4}" y="{y + 4}" font-size="11" fill="#1d4d31">'
             f"{stop.sequence}. {name}</text>"
         )
 

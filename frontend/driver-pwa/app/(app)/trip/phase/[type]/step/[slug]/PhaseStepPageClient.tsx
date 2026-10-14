@@ -29,6 +29,7 @@ import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
+import { recordedPlace } from '@/lib/phase/recorded-place'
 import { stepComponentFor } from '@/components/phase/steps/registry'
 import { fetchLinehaul } from '@/lib/api/manifest'
 import { previewPhaseLocation } from '@/lib/api/phases'
@@ -167,10 +168,10 @@ export default function PhaseStepPageClient() {
   // submit in this state can only 409, so there's nothing to do here.
   if (activeTrip.status === 'exception_hold') {
     return (
-      <main className="flex min-h-dvh flex-col justify-center gap-4 p-6">
+      <main className="flex min-h-dvh flex-col justify-center gap-4 bg-surface p-5">
         <HoldNotice />
-        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
-          View trip
+        <Button variant="fill" size="pill" onClick={() => router.push(ROUTES.activeTripDetail)}>
+          View Trip
         </Button>
       </main>
     )
@@ -204,7 +205,7 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
   // Guarding on currentPhase deadlocked the trip — this screen demanded the ledger
   // already be on `unloading`, while the only thing that moves the ledger to `unloading`
   // is a submit from this screen. The driver was bounced back to the trip page every
-  // time they pressed "Arrive at destination". See lib/phase/derive.ts.
+  // time they pressed "Arrive at Destination". See lib/phase/derive.ts.
   const phase = actionablePhase(trip.phases)
   const steps = phase !== null ? stepsFor(phase) : []
   // Guard: the phase the driver is due on may not be the one this URL addresses — a stale
@@ -374,14 +375,21 @@ function usePhaseStepController<T extends PhaseEvidence>(
   }
 
   function notifyPhaseRecorded(notice: RecordedNotice) {
+    // The receipt (overhaul 5.4): when and where, then — only for evidence the server
+    // has actually accepted — its Hedera state as its own row. The swipe only says
+    // "Departed"/"Confirmed"; this toast is the honest record that it landed.
     const savedAt = formatTime(new Date())
-    const body =
-      notice === 'anchored'
-        ? `Saved . Evidence recorded and anchored to Hedera HCS.`
-        : notice === 'anchoring'
-          ? `Saved . Evidence recorded. Hedera anchoring in progress, track it on your trip screen.`
-          : `Saved . Evidence stored on this device.`
-    notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body })
+    if (notice === 'plain') {
+      notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body: `${savedAt} · Stored on this device` })
+      return
+    }
+    const place = recordedPlace(trip, phase)
+    notify({
+      kind: 'success',
+      title: `${PHASE_NAMES[phase.phase_type]} recorded`,
+      body: place === null ? savedAt : `${savedAt} · ${place}`,
+      anchor: notice,
+    })
   }
 
   function notifyTripOnHold() {
@@ -489,7 +497,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     }
   }
 
-  // The whole point of Workstream 1: synchronous, so the driver is on Home before the
+  // The whole point of Workstream 1: synchronous, so the driver is on the next screen before the
   // first byte of their evidence leaves the phone.
   function handOffSubmission(
     position: DriverPosition | null,
@@ -526,7 +534,11 @@ function usePhaseStepController<T extends PhaseEvidence>(
     // Order matters: mark before navigating, so Home's very first render already sees
     // this phase resolved rather than re-offering the step for a frame.
     markPhaseSyncing(phase.phase_event_id)
-    router.push(ROUTES.home)
+    // Departure is the one phase whose next screen is certain: the truck is now moving,
+    // so the driver lands on In Transit (Tim, 14 Oct). Every other phase goes Home, where
+    // the Now card offers whatever comes next. A failed departure rolls back from there
+    // too — In Transit's Arrive routes to the live step, so nothing can submit out of order.
+    router.push(phase.phase_type === 'departure' ? ROUTES.inTransit : ROUTES.home)
   }
 
   async function startLocationCheck(): Promise<void> {
@@ -723,7 +735,7 @@ function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff
 //
 // The phase DOES have a PhaseCompleteRequest variant again as of 2026-08-09
 // (InTransitCompleteRequest / advance_in_transit) and the driver does submit it — but
-// from the in-transit hub's "Arrive at destination" swipe, deliberately not from a step
+// from the in-transit hub's "Arrive at Destination" swipe, deliberately not from a step
 // page: a step recipe would perturb actionablePhase() and force a change to the shared
 // STEP_SLUGS contract. So the recipe stays empty, PhaseStepContent's guard still
 // redirects away before this phase can address a step page, and this file stays out of

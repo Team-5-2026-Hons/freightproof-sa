@@ -33,6 +33,20 @@ const mockCapture = vi.fn()
 // localStorage.
 const mockEnqueueException = vi.fn()
 
+/** The sent/saved screen's URL the panic page navigated to, as parameters. */
+function submittedParams(): URLSearchParams {
+  const url = mockRouterReplace.mock.calls.map((c) => String(c[0])).find((u) => u.startsWith(ROUTES.panicSubmitted))
+  expect(url).toBeDefined()
+  return new URL(url!, 'http://local').searchParams
+}
+
+/** Navigated to the sent screen — not the queued one — with this alert's own receipt. */
+function expectSentReceipt(): void {
+  const params = submittedParams()
+  expect(params.has('queued')).toBe(false)
+  expect(params.get('at')).toEqual(expect.any(String))
+}
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ back: mockRouterBack, replace: mockRouterReplace, push: vi.fn() }),
 }))
@@ -77,11 +91,11 @@ describe('PanicPage no-active-trip guard', () => {
     expect(screen.getByText(/send panic/i)).toBeInTheDocument()
   })
 
-  it('fallback "Return to in-transit" button uses router.replace, not router.back', () => {
+  it('fallback "Back to In Transit" button uses router.replace, not router.back', () => {
     mockUseTrip.mockReturnValue({ trip: null, isLoading: false, logException: vi.fn() })
 
     render(<PanicPage />)
-    fireEvent.click(screen.getByText(/return to in-transit/i))
+    fireEvent.click(screen.getByText(/back to in transit/i))
 
     expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.inTransit)
     expect(mockRouterBack).not.toHaveBeenCalled()
@@ -172,7 +186,7 @@ describe('PanicPage handlePanic sequencing', () => {
         driverCapturedAt: FIX.capturedAt, driverAccuracyMetres: 5,
       }),
     )
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+    expectSentReceipt()
   })
 
   it('still logs and navigates when location capture is unavailable', async () => {
@@ -190,7 +204,7 @@ describe('PanicPage handlePanic sequencing', () => {
       'panic_button',
       expect.objectContaining({ description: 'Driver activated panic button.', gpsLat: null, gpsLng: null }),
     )
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+    expectSentReceipt()
   })
 
   it('does not wait for a stalled location adapter beyond the capture budget', async () => {
@@ -211,7 +225,7 @@ describe('PanicPage handlePanic sequencing', () => {
     expect(logException).toHaveBeenCalledWith(
       'panic_button', expect.objectContaining({ description: 'Driver activated panic button.', gpsLat: null, gpsLng: null }),
     )
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmitted)
+    expectSentReceipt()
   })
 
   // Fix 2 (panic over-promise): when the backend call fails, the alert is queued
@@ -242,8 +256,8 @@ describe('PanicPage handlePanic sequencing', () => {
     const livePayload = logException.mock.calls[0][1] as { clientReportId: string }
     const queuedBody = mockEnqueueException.mock.calls[0][1] as { client_report_id: string }
     expect(queuedBody.client_report_id).toBe(livePayload.clientReportId)
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
-    expect(mockRouterReplace).toHaveBeenCalledWith(`${ROUTES.panicSubmitted}?queued=1`)
+    expect(mockRouterReplace).toHaveBeenCalledWith(expect.stringContaining('queued=1'))
+    expect(mockRouterReplace).toHaveBeenCalledWith(expect.stringMatching(/^\/trip\/panic\/submitted\?/))
   })
 
   it('shows that the alert was not saved when local storage refuses it', async () => {
@@ -258,7 +272,7 @@ describe('PanicPage handlePanic sequencing', () => {
     await settlePanic()
 
     expect(screen.getByRole('alert')).toHaveTextContent(/alert was not sent or saved/i)
-    expect(mockRouterReplace).not.toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
+    expect(mockRouterReplace).not.toHaveBeenCalledWith(expect.stringContaining('queued=1'))
   })
 
   it('queued body omits GPS entirely when capture failed — never a partial fix', async () => {
@@ -325,6 +339,101 @@ describe('PanicPage handlePanic sequencing', () => {
       description: 'Driver activated panic button.',
       client_report_id: expect.any(String),
     })
-    expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.panicSubmittedUrl(true))
+    expect(mockRouterReplace).toHaveBeenCalledWith(expect.stringContaining('queued=1'))
+  })
+})
+
+describe('PanicPage — the overhauled screen (7.1, 7.1b)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
+    // jsdom implements none of the Pointer Capture API; SwipeToConfirm calls all three.
+    HTMLElement.prototype.setPointerCapture = vi.fn()
+    HTMLElement.prototype.releasePointerCapture = vi.fn()
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
+  })
+
+  it('test_is_a_white_page_with_one_red_control', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', trip_reference: 'TRP-2026-0041' }, isLoading: false, logException: vi.fn() })
+    mockCapture.mockReturnValue(new Promise(() => {}))
+
+    render(<PanicPage />)
+
+    expect(screen.getByRole('main')).not.toHaveClass('bg-error')
+    expect(screen.getByRole('slider', { name: /send panic/i })).toHaveClass('bg-error')
+  })
+
+  it('test_says_it_is_finding_the_location_then_that_it_found_it', async () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', trip_reference: 'TRP-2026-0041' }, isLoading: false, logException: vi.fn() })
+    let resolveFix: (fix: typeof FIX) => void = () => {}
+    mockCapture.mockReturnValue(new Promise((resolve) => { resolveFix = resolve }))
+
+    render(<PanicPage />)
+    expect(screen.getByText('Finding…')).toBeInTheDocument()
+    await act(async () => { resolveFix(FIX) })
+
+    expect(screen.getByText('Found')).toBeInTheDocument()
+    expect(screen.getByText('TRP-2026-0041')).toBeInTheDocument()
+  })
+
+  it('test_pulses_red_while_the_finger_is_down_and_stops_when_it_lifts', () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123', trip_reference: 'TRP-2026-0041' }, isLoading: false, logException: vi.fn() })
+    mockCapture.mockReturnValue(new Promise(() => {}))
+    render(<PanicPage />)
+    const slider = screen.getByRole('slider', { name: /send panic/i })
+    expect(document.querySelector('[data-panic-pulse]')).toBeNull()
+
+    fireEvent.pointerDown(slider, { clientX: 0, pointerId: 1 })
+
+    // See-through and inert: the screen stays readable and every control still works.
+    const pulse = document.querySelector('[data-panic-pulse]')
+    expect(pulse).not.toBeNull()
+    expect(pulse).toHaveClass('pointer-events-none')
+    expect(screen.getByText('Keep going. Let go to cancel.')).toBeInTheDocument()
+
+    fireEvent.pointerUp(slider, { clientX: 5, pointerId: 1 })
+
+    expect(document.querySelector('[data-panic-pulse]')).toBeNull()
+    expect(screen.queryByText('Keep going. Let go to cancel.')).toBeNull()
+  })
+})
+
+describe('PanicPage — the receipt it hands on (7.2/7.3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockEnqueueException.mockReturnValue({ persisted: true, photoPersisted: false })
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function sendPanic(): Promise<void> {
+    const slider = screen.getByRole('slider', { name: /send panic/i })
+    fireEvent.keyDown(slider, { key: 'Enter' })
+    fireEvent.keyDown(slider, { key: 'Enter' })
+    act(() => { vi.advanceTimersByTime(180) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(REPORT_CAPTURE_BUDGET_MS) })
+  }
+
+  it('test_says_the_location_went_with_the_alert_when_it_did', async () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
+    mockCapture.mockResolvedValue(FIX)
+
+    render(<PanicPage />)
+    await sendPanic()
+
+    expect(submittedParams().get('loc')).toBe('1')
+  })
+
+  it('test_says_no_location_went_when_none_was_found', async () => {
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-123' }, isLoading: false, logException: vi.fn() })
+    mockCapture.mockResolvedValue(null)
+
+    render(<PanicPage />)
+    await sendPanic()
+
+    expect(submittedParams().get('loc')).toBe('0')
   })
 })

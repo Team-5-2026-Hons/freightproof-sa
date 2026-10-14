@@ -1,7 +1,7 @@
 // frontend/driver-pwa/components/phase/steps/departure/CaptureSeal.tsx
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SealInput } from '@/components/phase/SealInput'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
@@ -52,27 +52,31 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
   const isReady = sealFormatValid && draft.sealPhotoDataUrl !== null
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
-          Enter the seal number printed on the physical seal and photograph it. The seal number is locked in the journey hash.
-        </p>
-        <SealInput
-          sealNumber={draft.sealNumber}
-          sealPhotoDataUrl={draft.sealPhotoDataUrl}
-          onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
-          onSealPhotoCapture={handleSealPhoto}
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro="Type the number printed on the seal, then photograph it. The number is locked into the journey record."
+      requirements={[
+        { label: 'Seal number', met: sealFormatValid },
+        { label: 'Seal photo', met: draft.sealPhotoDataUrl !== null },
+      ]}
+      action={
+        <SwipeToConfirm
+          label="Swipe to Save Seal"
+          waitingLabel="Add number and photo"
+          onConfirm={onComplete}
+          disabled={!isReady}
         />
-        {showSealFormatHint && (
-          <p className="text-base text-error">
-            Seal number must look like AB-1234 (two letters, four digits).
-          </p>
-        )}
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        <SwipeToConfirm label="Swipe to confirm" onConfirm={onComplete} disabled={!isReady} />
-      </div>
-    </main>
+      }
+    >
+      <SealInput
+        sealNumber={draft.sealNumber}
+        sealPhotoDataUrl={draft.sealPhotoDataUrl}
+        sealPhotoCapturedAt={draft.capturedAt}
+        formatError={showSealFormatHint ? 'Seal number must look like AB-1234 (two letters, four digits).' : undefined}
+        onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
+        onSealPhotoCapture={handleSealPhoto}
+      />
+    </StepLayout>
   )
 }

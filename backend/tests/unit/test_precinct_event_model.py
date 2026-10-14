@@ -50,6 +50,7 @@ def test_precinct_event_types_cover_every_meaningful_change():
         "created",
         "relocated",
         "geofence_resized",
+        "geofence_reshaped",
         "sharing_changed",
         "cosmetic_update",
     }

@@ -38,7 +38,7 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
       </div>
       <div className="flex w-full flex-col gap-3">
         <Button size="lg" onClick={reset}>
-          Try again
+          Try Again
         </Button>
         {/* Plain anchor (full page load), not client-side navigation, on purpose: after
             a crash the React tree may be broken, and a hard reload of Home is the most

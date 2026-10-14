@@ -18,36 +18,37 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const showError = touched && error
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label
-        htmlFor={inputId}
-        className="text-sm font-bold uppercase tracking-wider text-surface-on-variant"
-      >
+    <div className="flex flex-col gap-2">
+      <label htmlFor={inputId} className="text-subhead text-surface-on-variant">
         {label}
       </label>
       <input
         ref={ref}
         id={inputId}
         onBlur={() => setTouched(true)}
+        aria-invalid={showError ? true : undefined}
+        aria-describedby={showError || helperText ? `${inputId}-note` : undefined}
         className={cn(
-          // text-base (16px), not text-sm: iOS auto-zooms the viewport when a focused
-          // input's font-size is under 16px — this is a packaged app, so that zoom
-          // never resets and leaves the whole screen stuck zoomed in.
-          'w-full rounded-xl px-4 py-3 text-base font-medium text-foreground',
-          'bg-muted border border-input',
-          'placeholder:text-muted-foreground/70',
-          'focus:outline-none focus:border-ring focus:bg-card',
-          'transition-colors duration-150 min-h-[44px]',
+          // Overhaul field (4.2, 5.1): a fill, no border — on a white page the fill is the
+          // edge, as with the grey buttons. 16px+ text, not smaller: iOS auto-zooms the
+          // viewport on a focused input under 16px, and in a packaged app that zoom never
+          // resets.
+          'h-14 w-full rounded-[14px] border-0 bg-fill px-4 text-body font-medium text-surface-on',
+          // Placeholders carry instructions ("e.g. Durban"), so they must read: the
+          // on-variant ink clears 4.5:1 on the fill (contrast.test.ts).
+          'placeholder:text-surface-on-variant',
+          'outline-none focus-visible:ring-2 focus-visible:ring-primary',
+          'transition-shadow duration-150',
           'disabled:opacity-40 disabled:cursor-not-allowed',
-          showError && 'border-destructive focus:border-destructive',
+          showError && 'ring-2 ring-error focus-visible:ring-error',
           className,
         )}
         {...props}
       />
       {showError ? (
-        <p className="text-sm text-destructive font-medium">{error}</p>
+        <p id={`${inputId}-note`} className="text-footnote font-medium text-error">{error}</p>
       ) : helperText ? (
-        <p className="text-sm text-muted-foreground">{helperText}</p>
+        <p id={`${inputId}-note`} className="text-footnote text-surface-on-variant">{helperText}</p>
       ) : null}
     </div>
   )

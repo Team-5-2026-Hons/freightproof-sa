@@ -174,7 +174,7 @@ describe('isDriving', () => {
   })
 
   it('is false once in_transit resolves and the arrival phase is current', () => {
-    // Before the driver's "Arrive at destination" swipe, in_transit could never be
+    // Before the driver's "Arrive at Destination" swipe, in_transit could never be
     // resolved while a later phase was current — that state was unreachable, so
     // "current is anything but in_transit" is a safe proxy for "not driving". The swipe
     // resolves in_transit and opens the arrival phase (seal-verify at the gate): the
@@ -188,7 +188,7 @@ describe('isDriving', () => {
   it('is false when in_transit was overridden by the dispatcher', () => {
     // The lost-phone recovery path — a dispatcher closed the leg on the driver's behalf.
     // The trip is not driving; the arrival phase is next, exactly as if the driver had
-    // swiped "Arrive at destination" themselves.
+    // swiped "Arrive at Destination" themselves.
     const plan = walk(SINGLE_LEG_PHASE_PLAN, 3).map((p) =>
       p.phase_type === 'in_transit' ? { ...p, status: 'overridden' as const } : p,
     )

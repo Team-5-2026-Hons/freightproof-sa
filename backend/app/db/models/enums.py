@@ -244,6 +244,9 @@ class PrecinctEventType(str, enum.Enum):
     # facility is, the other changes HOW CLOSE a handshake must be to count as inside it.
     RELOCATED        = "relocated"
     GEOFENCE_RESIZED = "geofence_resized"
+    # The property outline was drawn, edited or removed. Separate from a resize because
+    # it changes the SHAPE a handshake is judged against, not just a distance.
+    GEOFENCE_RESHAPED = "geofence_reshaped"
     SHARING_CHANGED  = "sharing_changed"
     COSMETIC_UPDATE  = "cosmetic_update"
 

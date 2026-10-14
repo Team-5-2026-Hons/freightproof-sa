@@ -2,3 +2,4 @@
 // logic from here (or directly from ./derive / ./routes), never re-derives it inline.
 export * from './derive'
 export * from './routes'
+export * from './stop-label'

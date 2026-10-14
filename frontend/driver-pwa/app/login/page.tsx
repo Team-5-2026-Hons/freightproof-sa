@@ -2,103 +2,99 @@
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
-import { useContext, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AuthContext } from '@/lib/context/AuthContext'
 import { Button } from '@/components/ui/Button'
-import { CountryCodeSelect } from '@/components/ui/CountryCodeSelect'
-import { DEFAULT_COUNTRY_CODE, type CountryCode } from '@/lib/constants/country-codes'
+import { Logo } from '@/components/brand/LogoMark'
+import { AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
+import { ROUTES } from '@/lib/constants/routes'
+import { useStatusBarOverride } from '@/lib/hooks/useStatusBarOverride'
 
-// Supabase's error message when shouldCreateUser: false blocks an unregistered
-// phone number — matched case-insensitively to surface a driver-friendly message.
-const UNREGISTERED_PHONE_ERROR_FRAGMENT = 'signups not allowed'
+// Full-bleed hero photo, served from public/. Set to null to fall back to the drawn dusk
+// road (DuskRoad) instead of requesting a file that isn't there.
+//
+// Photo: Giovanni Spoletini, "A White Truck on the Road", Pexels (photo 12261472),
+// https://www.pexels.com/photo/a-white-truck-on-the-road-12261472/ — Pexels License: free
+// for use in apps, editing allowed, no attribution required (credited here anyway).
+// Chosen because it is already phone-shaped (9:16) and its composition matches the
+// screen: open storm sky behind the lockup, truck mid-frame, road under the button.
+// Resized to 1440px wide (≈3x a 430pt-wide iPhone) and re-encoded as WebP (~160 KB).
+const WELCOME_IMAGE_SRC: string | null = '/images/welcome-truck.webp'
 
-// Loose E.164 check on the combined number: + then 7-15 digits.
-const PHONE_PATTERN = /^\+[1-9]\d{6,14}$/
+// Mark edge in px; the wordmark scales from it (see Logo). Display size: on this screen
+// the lockup IS the headline, the way a bank app's welcome screen leads with its name.
+const WELCOME_MARK_SIZE_PX = 52
 
-// Drivers type the national format with a leading trunk '0' (e.g. 0810463076)
-// — strip exactly one so it isn't duplicated alongside the dial code.
-function toE164(dialCode: string, localNumber: string): string {
-  return dialCode + localNumber.replace(/^0/, '')
-}
-
-export default function LoginPage() {
+export default function WelcomePage() {
   const router = useRouter()
-  const auth = useContext(AuthContext)
-  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY_CODE)
-  const [localNumber, setLocalNumber] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function handleLocalNumberChange(e: React.ChangeEvent<HTMLInputElement>) {
-    // type="tel" doesn't restrict input — strip non-digits as the driver types.
-    setLocalNumber(e.target.value.replace(/\D/g, ''))
-  }
-
-  async function handleSendOtp(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-
-    const phone = toE164(country.dialCode, localNumber)
-    if (!PHONE_PATTERN.test(phone)) {
-      setError('Enter a valid phone number, e.g. 0821234567.')
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      await auth?.requestOtp(phone)
-      router.push(`/otp?phone=${encodeURIComponent(phone)}`)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to send OTP.'
-      setError(
-        message.toLowerCase().includes(UNREGISTERED_PHONE_ERROR_FRAGMENT)
-          ? 'Phone number not registered — contact your dispatcher.'
-          : message,
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
+  // The photo is dark at the top whatever the theme, so the status-bar glyphs stay light.
+  useStatusBarOverride('dark')
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold mb-8 text-surface-on">FreightProof Driver</h1>
-      <form onSubmit={handleSendOtp} className="w-full max-w-sm flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="phone-local-number"
-            className="text-xs font-bold uppercase tracking-wider text-surface-on-variant"
-          >
-            Phone number
-          </label>
-          <div className="flex gap-2">
-            <CountryCodeSelect value={country} onChange={setCountry} />
-            <input
-              id="phone-local-number"
-              type="tel"
-              inputMode="numeric"
-              placeholder={country.placeholder}
-              value={localNumber}
-              onChange={handleLocalNumberChange}
-              required
-              className={[
-                // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
-                'flex-1 rounded-xl px-4 py-3 text-base font-medium text-surface-on',
-                'bg-surface-container-low border border-outline-variant/30',
-                'placeholder:text-surface-on-variant/50',
-                'focus:outline-none focus:border-secondary focus:bg-surface-container-lowest',
-                'transition-colors duration-150 min-h-[44px]',
-              ].join(' ')}
-            />
+    // Always dark (see AuthFrame for the scoped-class mechanism). Not AuthFrame itself:
+    // this screen is full-bleed artwork with no back button and no padded column.
+    <div className="dark">
+      <main className="relative flex min-h-dvh flex-col overflow-hidden bg-surface text-surface-on">
+        <div className="auth-dusk absolute inset-0" aria-hidden />
+        {WELCOME_IMAGE_SRC === null ? (
+          <DuskRoad />
+        ) : (
+          // A plain <img>: static export has no next/image optimiser at runtime.
+          // Decorative — the lockup and the button carry everything the screen says.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={WELCOME_IMAGE_SRC}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        {/* Scrims, top and bottom, so the white lockup and the button read over any
+            photo — including a bright sky — without a box behind either. */}
+        <div
+          className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent via-40% to-black/80"
+          aria-hidden
+        />
+
+        <div className="relative flex flex-1 flex-col px-6 pt-safe pb-[max(env(safe-area-inset-bottom),1.5rem)]">
+          <h1 className="mt-16 flex justify-center">
+            <Logo size={WELCOME_MARK_SIZE_PX} />
+          </h1>
+
+          <div className="mt-auto flex flex-col gap-4">
+            <Button size="lg" className={AUTH_PRIMARY_PILL} onClick={() => router.push(ROUTES.loginPhone)}>
+              Log In
+            </Button>
+            {/* Where a bank app offers "Create account": drivers can't sign themselves
+                up — dispatch registers them — so this says where an account comes from
+                instead of leaving a new driver hunting for a button that doesn't exist. */}
+            <p className="text-center text-footnote text-surface-on-variant">
+              New driver? Your dispatcher sets up your account.
+            </p>
           </div>
-          {error && <p className="text-xs text-error font-medium">{error}</p>}
         </div>
-        <Button type="submit" loading={loading} disabled={loading || !localNumber}>
-          {loading ? 'Sending…' : 'Send OTP'}
-        </Button>
-      </form>
-    </main>
+      </main>
+    </div>
+  )
+}
+
+// The stand-in hero: a two-lane road running from the bottom edge to the horizon glow,
+// the same image the logo's shield holds. Drawn, so it costs no download and is sharp at
+// any pixel density. Sits on .auth-dusk (globals.css), whose horizon is at ~62% height.
+function DuskRoad() {
+  return (
+    <svg
+      className="absolute inset-0 h-full w-full"
+      viewBox="0 0 100 100"
+      preserveAspectRatio="none"
+      aria-hidden
+    >
+      <path d="M49.2 62 50.8 62 78 100 22 100Z" className="fill-black/60" />
+      <path
+        d="M50 64v3M50 70.5v4.5M50 79v6"
+        className="stroke-white/50"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+        fill="none"
+      />
+    </svg>
   )
 }

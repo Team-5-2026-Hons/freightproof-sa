@@ -145,7 +145,7 @@ describe('PhaseStepPageClient — the blocked step clears itself while the drive
     })
 
     expect(screen.queryByText('Waiting for the warehouse')).not.toBeInTheDocument()
-    expect(screen.getByText('Confirm linehaul')).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toBeInTheDocument()
   })
 
   it('checks immediately on arriving at a blocked step, not a full interval later', async () => {

@@ -20,7 +20,7 @@ under corroboration_service.py's timing rules) or from the server's own policy
 constants at evaluation time. A dispatcher or driver client may render this
 shape but must never be trusted to submit one back as fact.
 
-Geometry-at-evaluation-time: `precinct_lat/lng/radius_metres/tolerance_metres`
+Geometry-at-evaluation-time: `precinct_lat/lng/radius_metres/geofence_polygon/tolerance_metres`
 capture the precinct boundary AS IT STOOD when this assessment was produced, not
 a live reference to the precinct row. A precinct's geofence can be edited later;
 a historical assessment that recorded no geometry (predates this contract, or
@@ -40,7 +40,9 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 # under the new rules. This string is persisted verbatim; a reader comparing
 # `policy_version` across two assessments can tell whether they were evaluated
 # under the same policy at all before comparing their numbers.
-ACTION_LOCATION_POLICY_VERSION = "2026-09-15.1"
+# 2026-10-14.1: precinct_geofence_polygon added; when set, the outline (not the radius)
+# is what driver_in_precinct/truck_in_precinct were judged against.
+ACTION_LOCATION_POLICY_VERSION = "2026-10-14.1"
 
 # The driver/truck separation verdict. 'within_limit' and 'separated' are both
 # POSITIVE claims — every quality gate passed and a real distance was measured
@@ -172,6 +174,10 @@ class ActionLocationAssessment(BaseModel):
     precinct_lat: float | None
     precinct_lng: float | None
     precinct_radius_metres: float | None
+    # The outline as it stood at evaluation time ([lat, lng] corners). Set = the verdicts
+    # below were judged against it and precinct_radius_metres is None. Defaulted so
+    # assessments stored before outlines existed still validate (they were all circles).
+    precinct_geofence_polygon: list[tuple[float, float]] | None = None
     precinct_tolerance_metres: float | None
     driver_in_precinct: bool | None
     truck_in_precinct: bool | None

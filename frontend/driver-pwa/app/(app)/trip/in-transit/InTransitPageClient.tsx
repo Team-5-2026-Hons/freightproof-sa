@@ -17,11 +17,12 @@
 // Layout invariant: PANIC IS NEVER BEHIND A SCROLL. The action stack at the bottom is
 // `shrink-0` inside an `overflow-hidden` viewport-height column, and the only part of it
 // that can grow (the open-exceptions list) is height-capped and scrolls inside itself. The
-// map takes whatever is left, which on any phone is the largest element on screen.
+// map takes whatever is left, which on any phone is the largest element on screen — the
+// driver's choice in the design review, over a fixed strip.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldAlert, ScanFace, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, Navigation, PackageCheck, ShieldAlert, TriangleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
@@ -32,17 +33,25 @@ import { startPhaseSubmission, type PhaseSubmissionOutcome } from '@/lib/submiss
 import { previewPhaseLocation } from '@/lib/api/phases'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
-import { currentPhase, currentStepRoute } from '@/lib/phase'
-import { Button } from '@/components/ui/Button'
+import { currentPhase, currentStepRoute, phaseLocation } from '@/lib/phase'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { DriverMap } from '@/components/map/DriverMap'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
-import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { DriverPosition } from '@/lib/types/location'
 import type { LocationWarningAcknowledgement } from '@/lib/types/location'
+import { openDriverExceptions } from '@/lib/utils/trip-attention'
+import { ExceptionCard } from '@/components/trip/ExceptionCard'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { TripException } from '@shared/lib/types/exception'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
+import { useBack } from '@/lib/navigation/useBack'
+import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { useTripRoute } from '@/lib/hooks/useTripRoute'
+import { estimateArrival, legForPhase, type RouteEstimate } from '@/lib/route/eta'
+import { directionsUrl } from '@/lib/utils/directions'
+import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
+import type { Trip } from '@shared/lib/types/trip'
+import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
 // How often the map re-reads the phone's position while this screen is open. A truck at
 // 100 km/h covers ~400 m in this window, which at street zoom is about a screen height —
@@ -53,42 +62,16 @@ const POSITION_REFRESH_MS = 15_000
 // panic button on screen no matter how many exceptions a bad leg has accumulated.
 const EXCEPTION_LIST_MAX_HEIGHT = 'max-h-36'
 
-interface ExceptionCardProps {
-  exception: TripException
-}
-
 interface DriverFix {
   position: DriverPosition
   /** When this fix was taken, so a stale one can be labelled as last known. */
   capturedAt: string
 }
 
-// A native <button> (not the Card component) so the expand/collapse toggle is
-// keyboard-operable and announces its state via aria-expanded — long exception and
-// dispatcher-note descriptions were previously clamped with no way to read the rest.
-// Styling mirrors Card variant="exception".
-function ExceptionCard({ exception }: ExceptionCardProps) {
-  const [expanded, setExpanded] = useState(false)
-  return (
-    <button
-      type="button"
-      aria-expanded={expanded}
-      onClick={() => setExpanded((prev) => !prev)}
-      className="w-full rounded-xl border-l-4 border-error bg-surface-container-lowest p-3 text-left shadow-ambient"
-    >
-      <p className="text-sm font-semibold text-error-on-container capitalize">
-        {exception.exception_type.replace(/_/g, ' ')}
-      </p>
-      {/* clamped only while collapsed — a tap reveals the full description */}
-      <p className={cn('text-xs text-surface-on-variant mt-0.5', !expanded && 'line-clamp-2')}>
-        {exception.description}
-      </p>
-    </button>
-  )
-}
-
 export default function InTransitPageClient() {
   const router = useRouter()
+  const goBack = useBack(ROUTES.activeTripDetail)
+  const largeText = useAccessibilityTextSize()
   const { trip, isLoading, exceptions, refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
   const { capturePosition } = useLocationTrail()
   const { capture } = useLocation()
@@ -103,6 +86,8 @@ export default function InTransitPageClient() {
   const [arrivalOffline, setArrivalOffline] = useState(false)
 
   const tripIsOpen = trip !== null
+  // Called above the early returns, with a nullable id, so hook order never changes.
+  const route = useTripRoute(trip === null ? null : String(trip.id))
 
   const refreshFix = useCallback(async (): Promise<void> => {
     const position = await capturePosition()
@@ -156,7 +141,7 @@ export default function InTransitPageClient() {
   // dispatcher sees every exception regardless — nothing is hidden from the evidence
   // trail, only from this one screen. Driver- and dispatcher-raised exceptions stay
   // visible: those the driver either filed themselves or is meant to act on.
-  const openExceptions = exceptions.filter((e) => e.review_status !== 'reviewed' && e.source !== 'system')
+  const openExceptions = openDriverExceptions(exceptions)
 
   // Captured here, in component scope, rather than read off `trip` inside the nested
   // handlers below — TS narrows `trip` to non-null in this scope (the guard above), but
@@ -168,6 +153,13 @@ export default function InTransitPageClient() {
   // actionablePhase deliberately skips stepless rows and would hand back `unloading`,
   // which is the row the driver has NOT reached yet.
   const arrivalPhase = currentPhase(phases)
+
+  // The leg being driven and the ETA along it. Recomputed on every render, which is every
+  // fresh fix (POSITION_REFRESH_MS) — cheap: one pass over a few thousand points.
+  const leg = legForPhase(route, arrivalPhase)
+  const estimate = leg !== null && fix !== null
+    ? estimateArrival({ leg, position: fix.position, departedAt: trip.actual_departure_at, now: new Date() })
+    : null
 
   // Runs from wherever the driver has since navigated to (background submitter model —
   // see PhaseStepPageClient's identical handleOutcome for the reference implementation).
@@ -358,47 +350,81 @@ export default function InTransitPageClient() {
     submitArrival(arrivalPosition, arrivalCapturedAt ?? new Date().toISOString(), acknowledgement)
   }
 
+  const navigateUrl = directionsUrl(trip.destination_precinct_id)
+
   return (
-    // h-dvh + overflow-hidden: this screen IS one viewport and nothing on it scrolls
-    // except the exceptions list. dvh, not vh — 100vh resolves to the address-bar-hidden
-    // height in a mobile browser and would push the action stack off the bottom.
-    <main className="flex h-dvh flex-col overflow-hidden">
-      <SubpageHeader
-        title={trip.trip_reference}
-        backLabel="Trip detail"
-        onBack={() => router.push(ROUTES.activeTripDetail)}
-        right={<span className="text-sm text-surface-on-variant">In Transit</span>}
-      />
-
-      <div className="flex shrink-0 items-baseline justify-between gap-3 px-4 py-2">
-        <p className="text-sm uppercase tracking-industrial text-surface-on-variant">Planned arrival</p>
-        <p className="text-base font-semibold text-surface-on">
-          {trip.planned_arrival_at ? formatTime(trip.planned_arrival_at) : 'Not set'}
-        </p>
-      </div>
-
-      {/* The map, and the largest element on the screen: it takes every pixel the header
-          and the action stack do not need. min-h-0 is load-bearing — without it a flex
-          child refuses to shrink below its content and pushes the stack off the bottom. */}
-      <section className="min-h-0 flex-1 px-4 pb-3">
+    // h-dvh + overflow-hidden: this screen IS one viewport. Only the exceptions list may
+    // scroll, inside the sheet. dvh, not vh — 100vh resolves to the address-bar-hidden
+    // height in a mobile browser and would push the sheet off the bottom.
+    <main className="relative flex h-dvh flex-col overflow-hidden bg-surface">
+      {/* The map, full-bleed (overhaul 6.1): it takes every pixel the sheet does not, up
+          under the status bar. The sheet's rounded top overlaps it by its own radius
+          (-mb-7); the map itself stops short of that overlap so Google's logo, bottom
+          left, is never covered. min-h-0 is load-bearing — without it a flex child
+          refuses to shrink and pushes the sheet off the bottom. */}
+      <section aria-label="Your position" className="relative -mb-7 min-h-0 flex-1 bg-fill">
         <DriverMap
           position={fix?.position ?? null}
           capturedAt={fix?.capturedAt ?? null}
           onRetry={() => { void refreshFix() }}
-          className="h-full w-full"
+          route={leg?.coordinates ?? null}
+          className="h-[calc(100%-1.75rem)] w-full rounded-none"
+          // Bottom left, 3rem up: clear of the floating Back button and of Google's logo.
+          // Hidden at accessibility text sizes: the map is short there and a chip in its
+          // lower half meets the floating Back and Panic controls. Navigate moves into the
+          // sheet instead (below).
+          handoffClassName={cn('left-4 top-auto bottom-12', largeText && 'hidden')}
+          // The fallback cards carry text and a button; they start below the floating
+          // controls and scroll inside the map's slot on a short phone.
+          fallbackClassName="h-[calc(100%-1.75rem)] w-full overflow-y-auto rounded-none px-4 pt-[calc(env(safe-area-inset-top)+4.5rem)]"
         />
+        {navigateUrl !== null && !largeText && (
+          // A real anchor: a WebView hands maps:/google.navigation: schemes to the OS only
+          // from a link, and this is a hand-off to the driver's own navigation app.
+          <a
+            href={navigateUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            // 3rem above the map's own bottom edge (which sits 1.75rem up the section), the
+            // same height as the map's Open in Maps chip, clear of Google's attribution.
+            className="absolute bottom-[4.75rem] right-4 inline-flex h-11 items-center gap-1.5 rounded-full bg-surface px-3.5 text-subhead font-semibold text-surface-on shadow-ambient-sm active:scale-95"
+          >
+            <Navigation className="size-4" strokeWidth={2.2} aria-hidden />
+            Navigate
+          </a>
+        )}
       </section>
 
-      {/* Everything the driver can do, in a block that never scrolls away. */}
-      <div className="shrink-0 border-t border-outline-variant/60 bg-surface-container-lowest px-4 pt-3 pb-safe">
+      {/* Floating over the map, under the status bar: the way back on the left, and
+          Panic on the right — red, labelled, and never inside anything that scrolls. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+        <button
+          type="button"
+          onClick={goBack}
+          aria-label="Back"
+          className="pointer-events-auto flex size-11 items-center justify-center rounded-full bg-surface text-surface-on shadow-ambient-sm active:scale-95"
+        >
+          <ChevronLeft className="size-6 -translate-x-px" strokeWidth={2.25} aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push(ROUTES.panic)}
+          className="pointer-events-auto inline-flex h-11 items-center gap-1.5 rounded-full bg-error pl-3 pr-4 text-subhead font-bold text-error-on shadow-ambient-sm active:scale-95"
+        >
+          <ShieldAlert className="size-5" strokeWidth={2.2} aria-hidden />
+          Panic
+        </button>
+      </div>
+
+      {/* Everything the driver can do, on a sheet that never scrolls away. */}
+      <div className="relative z-10 shrink-0 rounded-t-[28px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-5 shadow-[0_-6px_24px_rgb(0_0_0/0.10)]">
+        <HeadingTo trip={trip} phase={arrivalPhase} estimate={estimate} />
+
         {openExceptions.length > 0 && (
-          <section className="mb-3 flex flex-col gap-2">
-            <p className="flex items-center gap-1.5 text-base font-semibold text-error">
-              <TriangleAlert className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
-              {openExceptions.length} open exception{openExceptions.length > 1 ? 's' : ''}
-            </p>
+          // No count eyebrow: each card names its own kind.
+          <section aria-label="Open exceptions" className="mt-3.5">
             {/* Height-capped and self-scrolling: a leg with eight exceptions must not be
-                able to push the panic button below the fold. */}
+                able to push the swipe off the screen. */}
             <div className={cn('flex flex-col gap-2 overflow-y-auto overscroll-contain', EXCEPTION_LIST_MAX_HEIGHT)}>
               {openExceptions.map((exc) => (
                 <ExceptionCard key={exc.id} exception={exc} />
@@ -408,20 +434,15 @@ export default function InTransitPageClient() {
         )}
 
         {/* The way out of this screen, and — since 2026-08-09 — the record that the drive
-            ended. The driver already performs this gesture; the system used to discard
-            it and infer arrival later from whenever the unloading paperwork happened to
-            be submitted. currentStepRoute (lib/phase) is what skips the stepless
-            in_transit row the driver is standing on; a caller that stopped at the current
-            phase would loop straight back here.
-            Swipe, not a tap: this is the gesture that opens the truck and starts evidence
-            capture, and a single accidental tap must never be enough to trigger it. */}
-        <div className="flex justify-center">
-          {/* Swiped away entirely (not merely covered by the modal overlay) while a check
-              is in flight or awaiting a decision — a focus-trapped Dialog keeps keyboard
-              focus off it either way, but an unmounted control cannot be reached at all,
-              which is the stronger guarantee against a second swipe mid-check. */}
+            ended. currentStepRoute (lib/phase) is what skips the stepless in_transit row
+            the driver is standing on; a caller that stopped at the current phase would
+            loop straight back here. Swipe, not a tap: a single accidental tap must never
+            open the truck's evidence capture. */}
+        <div className="mt-3.5 flex justify-center">
+          {/* Removed entirely (not merely covered by the sheet) while a check is in flight
+              or awaiting a decision — an unmounted control cannot be swiped twice. */}
           {!(arrivalPreviewLoading || arrivalCapturedAt !== null) && (
-            <SwipeToConfirm label="Arrive at destination" onConfirm={() => { void handleArrivalSwipe() }} />
+            <SwipeToConfirm label="Swipe to Arrive" onConfirm={() => { void handleArrivalSwipe() }} />
           )}
           <LocationCheckModal
             open={arrivalPreviewLoading || arrivalCapturedAt !== null}
@@ -434,34 +455,90 @@ export default function InTransitPageClient() {
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Button
-            variant="secondary"
-            size="lg"
-            iconLeft={<ScanFace className="h-4 w-4" strokeWidth={2} aria-hidden />}
+        {/* Secondary actions as grey pills, ranked visibly below the swipe. */}
+        {/* Two side by side while they fit; stacked at accessibility text sizes rather
+            than letting the labels spill out of their pills. */}
+        <div className="mt-2.5 grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-2.5">
+          <button
+            type="button"
             onClick={() => router.push(ROUTES.checkpoint)}
+            className="flex h-[52px] items-center justify-center gap-2 rounded-full bg-fill text-body font-semibold text-surface-on active:scale-[0.98] active:bg-surface-container-high"
           >
+            <PackageCheck className="size-5" strokeWidth={2} aria-hidden />
             Checkpoint
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
+          </button>
+          <button
+            type="button"
             onClick={() => router.push(ROUTES.exception)}
+            aria-label="Log exception"
+            className="flex h-[52px] items-center justify-center gap-2 rounded-full bg-fill text-body font-semibold text-surface-on active:scale-[0.98] active:bg-surface-container-high"
           >
-            Log exception
-          </Button>
+            <TriangleAlert className="size-5" strokeWidth={2} aria-hidden />
+            Exception
+          </button>
+          {navigateUrl !== null && largeText && (
+            // At accessibility text sizes Navigate lives here, with the other actions,
+            // rather than floating over a map too short to hold it clear of Panic.
+            <a
+              href={navigateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-[52px] items-center justify-center gap-2 rounded-full bg-fill text-body font-semibold text-surface-on active:scale-[0.98]"
+            >
+              <Navigation className="size-5" strokeWidth={2} aria-hidden />
+              Navigate
+            </a>
+          )}
         </div>
-
-        <Button
-          variant="danger"
-          size="lg"
-          className="mt-3"
-          iconLeft={<ShieldAlert className="h-5 w-5" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(ROUTES.panic)}
-        >
-          Panic
-        </Button>
       </div>
     </main>
+  )
+}
+
+/** "640 km", "8.4 km", "350 m" — coarser as the number grows, since precision past that is noise. */
+function formatRemaining(metres: number): string {
+  if (metres < 1000) return `${Math.round(metres / 10) * 10} m`
+  const km = metres / 1000
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`
+}
+
+/**
+ * Where this leg ends and when it is due (overhaul 6.1) — the two facts a driver checks
+ * most, at the top of the sheet. The leg's end comes from the plan: the destination, or
+ * on a cross-dock plan the next stop, named by position when no name is known.
+ *
+ * The ETA is the on-device route estimate when there is one. Off the planned route, or
+ * with no route at all, it falls back to the trip's planned arrival — and says which.
+ */
+function HeadingTo({ trip, phase, estimate }: { trip: Trip; phase: PhaseDescriptor | null; estimate: RouteEstimate | null }) {
+  const places = useTripPlaces(trip)
+  const where = phase === null ? null : phaseLocation(trip.phases, phase)
+  const place = where === null || where === 'To Destination'
+    ? places.destination
+    : { name: where.replace(/^To /, ''), detail: null }
+  const onRoute = estimate?.kind === 'on_route' ? estimate : null
+  return (
+    <div className="flex items-end justify-between gap-4 px-1">
+      <div className="min-w-0">
+        <p className="text-subhead text-surface-on-variant">Heading to</p>
+        <p className="truncate text-title-2 tracking-tight text-surface-on">{place.name}</p>
+        {place.detail !== null && <p className="truncate text-subhead text-surface-on-variant">{place.detail}</p>}
+      </div>
+      <div className="shrink-0 text-right">
+        <p className="text-subhead text-surface-on-variant">ETA</p>
+        {onRoute !== null
+          ? <p className="text-title-1 tabular-nums text-surface-on">{formatTime(onRoute.arrivalAt)}</p>
+          : trip.planned_arrival_at !== null
+            ? <p className="text-title-1 tabular-nums text-surface-on">{formatTime(trip.planned_arrival_at)}</p>
+            : <p className="text-headline text-surface-on-variant">Not set</p>}
+        {onRoute !== null && (
+          <p className="text-footnote tabular-nums text-surface-on-variant">{formatRemaining(onRoute.remainingMetres)} to go</p>
+        )}
+        {estimate?.kind === 'off_route' && (
+          // Not a warning: detours are normal. It explains why the ETA went back to the plan.
+          <p className="text-footnote text-surface-on-variant">Off planned route</p>
+        )}
+      </div>
+    </div>
   )
 }

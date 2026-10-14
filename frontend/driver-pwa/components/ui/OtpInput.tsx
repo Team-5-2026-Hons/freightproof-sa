@@ -106,10 +106,13 @@ export function OtpInput({ length, value, onChange, autoFocus }: OtpInputProps) 
           onFocus={(e) => e.target.select()}
           aria-label={`Digit ${index + 1} of ${length}`}
           className={cn(
-            'h-14 w-11 rounded-xl border text-center text-2xl font-semibold text-foreground',
-            'bg-muted border-input',
-            'focus:outline-none focus:border-ring focus:bg-card',
-            'transition-colors duration-150',
+            // Filled, borderless and rounded like the sign-in phone fields; boxes share
+            // the row (flex-1, capped at 56px) instead of a fixed 44px, so the code spans
+            // the same width as the buttons under it.
+            'h-14 min-w-0 max-w-14 flex-1 rounded-2xl text-center text-2xl font-semibold tabular-nums text-surface-on',
+            'bg-surface-container-high',
+            'outline-none ring-inset focus:ring-2 focus:ring-surface-on/40',
+            'transition-shadow duration-150',
           )}
         />
       ))}
