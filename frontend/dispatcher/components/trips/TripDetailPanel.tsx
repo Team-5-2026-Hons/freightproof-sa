@@ -13,7 +13,8 @@ import { DeclareIncidentDialog } from '@/components/domain/DeclareIncidentDialog
 import { AuditPacksPanel } from './AuditPacksPanel'
 import { TripInformation } from './TripInformation'
 import { PrecinctModal } from './PrecinctModal'
-import { TripExceptionsPanel, type ExceptionFilter } from './TripExceptionsPanel'
+import { DEFAULT_EXCEPTION_RECORD_SORT, EXCEPTION_RECORD_SORT_KEYS, firstExceptionRecordDir, TripExceptionsPanel, type ExceptionDensity, type ExceptionFilter, type ExceptionGrouping } from './TripExceptionsPanel'
+import { useTableSort } from '@/lib/hooks/useTableSort'
 import { TRIP_PANELS, type TripPanel } from './TripSummary'
 import { uniqueExceptionsById } from './exception-dedupe'
 import { LEGACY_AUDIT_PANEL } from '@/lib/trips/panel-query'
@@ -53,6 +54,11 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const [declareOpen, setDeclareOpen] = useState(false)
   // Re-key only the audit content: the trip information and its scroller stay put.
   const [packsVersion, setPacksVersion] = useState(0)
+  // Held here, not in the exceptions panel, so these survive a visit to the Info or Cargo tab.
+  const [exceptionGrouping, setExceptionGrouping] = useState<ExceptionGrouping>('none')
+  // Reviewing is scan then open, so the pane starts as one line per record.
+  const [exceptionDensity, setExceptionDensity] = useState<ExceptionDensity>('compact')
+  const recordSort = useTableSort({ keys: EXCEPTION_RECORD_SORT_KEYS, firstDir: firstExceptionRecordDir, initial: DEFAULT_EXCEPTION_RECORD_SORT })
   const [auditMinimumHeight, setAuditMinimumHeight] = useState(0)
   useEffect(() => {
     if (!scrollToAuditPacks) { auditLandingTripRef.current = null; return }
@@ -105,13 +111,12 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
       {panel === TRIP_PANELS.information && <div className="space-y-6">
         <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />
         <section ref={auditSectionRef} id={TRIP_AUDIT_PACKS_SECTION_ID} aria-labelledby={AUDIT_HEADING_ID} style={{ minHeight: auditMinimumHeight || undefined }} className="border-t border-outline-v/30 pt-6">
-          <h3 id={AUDIT_HEADING_ID} className="mb-3 text-sm font-bold text-on-surf">Audit packs</h3>
-          <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference}
+          <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference} headingId={AUDIT_HEADING_ID}
             onIssue={() => { rememberAuditTrigger(); setIssueOpen(true) }} onDeclare={() => { rememberAuditTrigger(); setDeclareOpen(true) }} />
         </section>
       </div>}
       {panel === TRIP_PANELS.manifest && <ManifestContent tripId={trip.id} />}
-      {panel === TRIP_PANELS.exceptions && <TripExceptionsPanel trip={trip} precincts={precincts} filter={filter} artifactsById={artifactsById} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} selectedExceptionId={selectedExceptionId} invalidExceptionId={invalidExceptionId} onFilter={onFilter} onClearPhaseFilter={onClearPhaseFilter} onClearExceptionSelection={onClearExceptionSelection} onShowInTimeline={onShowInTimeline} returnTo={returnTo} />}
+      {panel === TRIP_PANELS.exceptions && <TripExceptionsPanel trip={trip} precincts={precincts} filter={filter} grouping={exceptionGrouping} onGrouping={setExceptionGrouping} density={exceptionDensity} onDensity={setExceptionDensity} sort={recordSort.sort} onSort={recordSort.onSort} artifactsById={artifactsById} selectedPhaseId={selectedPhaseId} invalidPhaseId={invalidPhaseId} selectedExceptionId={selectedExceptionId} invalidExceptionId={invalidExceptionId} onFilter={onFilter} onClearPhaseFilter={onClearPhaseFilter} onClearExceptionSelection={onClearExceptionSelection} onShowInTimeline={onShowInTimeline} returnTo={returnTo} />}
     </DetailPanel>
     {openPrecinct && <PrecinctModal precinct={openPrecinct} open onClose={() => setOpenPrecinct(null)} returnTo={returnTo} />}
     <CancelTripDialog tripId={trip.id} status={trip.status} open={cancelOpen} onClose={() => setCancelOpen(false)} onCancelled={onChanged} />

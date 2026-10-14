@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { TripExceptionsPanel } from './TripExceptionsPanel'
+import { DEFAULT_EXCEPTION_RECORD_SORT, EXCEPTION_RECORD_SORT_KEYS, firstExceptionRecordDir, TripExceptionsPanel, type ExceptionDensity, type ExceptionGrouping } from './TripExceptionsPanel'
+import { useTableSort } from '@/lib/hooks/useTableSort'
 import { mockTrips, TRIP_0040_ID } from '@shared/lib/mocks'
 import type { Trip } from '@shared/lib/types/trip'
 import type { TripException } from '@shared/lib/types/exception'
@@ -61,8 +63,9 @@ describe('TripExceptionsPanel filters', () => {
     trip.exceptions = trip.exceptions.map((e, i) => ({ ...e, phase_event_id: i === 0 ? null : trip.phases[0].phase_event_id }))
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedPhaseId="trip-level" onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    expect(screen.getByText('Trip-level records · 1 of 2 trip exceptions')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
+    expect(screen.getByText('Trip-level records')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 trip exceptions')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
     expect(document.querySelectorAll('[data-exception-id]')).toHaveLength(1)
   })
   it('states the size of each filter, so the unselected one is not a blind click', () => {
@@ -70,8 +73,18 @@ describe('TripExceptionsPanel filters', () => {
 
     // The panel opens filtered to what needs review, so a dispatcher looking at two rows
     // could not tell whether "All recorded" held another ten or the same two.
-    expect(screen.getByRole('button', { name: 'Unreviewed · 2' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All recorded · 12' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*2$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*12$/ })).toBeInTheDocument()
+  })
+
+  it('marks the active filter as the selected tab and switches on click', () => {
+    const onFilter = vi.fn()
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(10, 2)} filter="needs_review" onFilter={onFilter} returnTo="/trips/x" />)
+
+    expect(screen.getByRole('tab', { name: /^Unreviewed/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^All recorded/ })).toHaveAttribute('aria-selected', 'false')
+    fireEvent.click(screen.getByRole('tab', { name: /^All recorded/ }))
+    expect(onFilter).toHaveBeenCalledWith('all')
   })
 
   it('shows a zero rather than dropping the count when nothing is owed', () => {
@@ -79,8 +92,8 @@ describe('TripExceptionsPanel filters', () => {
 
     // "Twelve recorded, none owed" and "no exceptions at all" are different facts about a
     // trip, and only one of them is good news.
-    expect(screen.getByRole('button', { name: 'Unreviewed · 0' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All recorded · 12' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*12$/ })).toBeInTheDocument()
   })
 
   it('counts and renders each exception id once when a polling merge repeats it', () => {
@@ -89,8 +102,8 @@ describe('TripExceptionsPanel filters', () => {
 
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...base, exceptions: [repeated, { ...repeated }] }} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    expect(screen.getByRole('button', { name: 'Unreviewed · 1' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { name: 'Checkpoint Timeout' })).toHaveLength(1)
   })
 
@@ -106,13 +119,15 @@ describe('TripExceptionsPanel filters', () => {
 
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...trip, exceptions: [linked, tripLevel] }} filter="all" selectedPhaseId={phase.phase_event_id} onFilter={vi.fn()} onClearPhaseFilter={onClearPhaseFilter} onShowInTimeline={onShowInTimeline} returnTo="/trips/x" />)
 
-    expect(screen.getByText('Selected phase · 1 of 2 trip exceptions')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'All recorded · 1' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Unreviewed · 0' })).toBeInTheDocument()
+    // The filter names its phase the way the group headers do, not just "Selected phase".
+    expect(screen.getByText(/^Loading · (Origin|Stop|Destination) · /)).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 trip exceptions')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show in timeline' }))
     // The record's own id travels with the phase, so the timeline can reveal that row.
     expect(onShowInTimeline).toHaveBeenCalledWith('linked-loading', phase.phase_event_id)
-    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Show all \d+$/ }))
     expect(onClearPhaseFilter).toHaveBeenCalledOnce()
   })
 
@@ -197,6 +212,16 @@ describe('TripExceptionsPanel filters', () => {
 })
 
 
+// The panel is controlled (TripDetailPanel owns the choices), so these need a stateful parent.
+function GroupingHarness({ trip, initialDensity = 'detailed', selectedExceptionId = null, artifactsById = NO_ARTIFACTS, onDensity, onShowInTimeline }: { trip: Trip; initialDensity?: ExceptionDensity; selectedExceptionId?: string | null; artifactsById?: Map<string, EvidenceArtifactWithUrl>; onDensity?: (density: ExceptionDensity) => void; onShowInTimeline?: () => void }) {
+  const [grouping, setGrouping] = useState<ExceptionGrouping>('none')
+  const [density, setDensity] = useState<ExceptionDensity>(initialDensity)
+  const { sort, onSort } = useTableSort({ keys: EXCEPTION_RECORD_SORT_KEYS, firstDir: firstExceptionRecordDir, initial: DEFAULT_EXCEPTION_RECORD_SORT })
+  return <TripExceptionsPanel artifactsById={artifactsById} precincts={[]} filter="all" onFilter={vi.fn()} returnTo="/trips/x" trip={trip}
+    selectedExceptionId={selectedExceptionId} grouping={grouping} onGrouping={setGrouping} density={density} onDensity={next => { setDensity(next); onDensity?.(next) }}
+    sort={sort} onSort={onSort} onShowInTimeline={onShowInTimeline} />
+}
+
 describe('optional grouping and batch cap', () => {
   it('allows 100 eligible records and requires narrowing for 101', () => {
     const base = tripWith(0,1)
@@ -208,14 +233,29 @@ describe('optional grouping and batch cap', () => {
     expect(screen.queryByRole('button',{name:'Review 101 warnings'})).not.toBeInTheDocument()
     expect(screen.getByText(/Narrow.*100/)).toBeInTheDocument()
   })
+  it('names a phase group by its phase and stop, with its record count, and never by event id', () => {
+    const base = tripWith(0, 3)
+    const first = base.phases[0]!
+    const rows = base.exceptions.map((e, i) => ({ ...e, id: `named-${i}` as TripException['id'], phase_event_id: first.phase_event_id }))
+    render(<GroupingHarness trip={{ ...base, phases: [first], exceptions: rows }} />)
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Group by phase' }))
+
+    const group = document.querySelector(`[data-phase-group="${first.phase_event_id}"]`) as HTMLElement
+    expect(within(group).getAllByRole('heading', { level: 3 })[0]).toHaveTextContent('Trip Created')
+    expect(within(group).getByText('Dispatcher')).toBeInTheDocument()
+    expect(group).not.toHaveTextContent(first.phase_event_id)
+    expect(within(group).getByLabelText('3 records')).toHaveTextContent('3')
+  })
+
   it('keeps two matching phase labels separate and null links visible only when grouping is selected', () => {
     const base=tripWith(0,1)
     const first=base.phases[0]!
     const second={...first,phase_event_id:'second-phase' as typeof first.phase_event_id}
     const rows=[{...base.exceptions[0]!,id:'one' as TripException['id'],phase_event_id:first.phase_event_id},{...base.exceptions[0]!,id:'two' as TripException['id'],phase_event_id:second.phase_event_id},{...base.exceptions[0]!,id:'null' as TripException['id'],phase_event_id:null}]
-    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} filter="all" onFilter={vi.fn()} returnTo="/trips/x" trip={{...base,phases:[first,second],exceptions:rows}} />)
+    render(<GroupingHarness trip={{...base,phases:[first,second],exceptions:rows}} />)
     expect(screen.queryByText('Trip-level records')).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Group records'),{target:{value:'phase'}})
+    fireEvent.click(screen.getByRole('switch',{name:'Group by phase'}))
     expect(document.querySelectorAll('[data-phase-group]')).toHaveLength(3)
     expect(screen.getByText('Trip-level records')).toBeInTheDocument()
   })
@@ -230,7 +270,8 @@ it('keeps the frozen batch and typed note when a live claim removes all current 
   fireEvent.change(screen.getByLabelText('Review note (required)'),{target:{value:'Draft for the explicit batch'}})
   view.rerender(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} {...props} trip={{...base,exceptions:[{...row,claimed_by_user_id:'colleague'}]}} />)
   expect(screen.getByLabelText('Review note (required)')).toHaveValue('Draft for the explicit batch')
-  expect(screen.getByText(`Record ${row.id}`)).toBeInTheDocument()
+  // The form's list is the snapshot it was opened on, even though the live row is no longer eligible.
+  expect(screen.getByText('Show all 1')).toBeInTheDocument()
 })
 
 
@@ -321,7 +362,7 @@ describe('selecting one exception', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...trip, exceptions: [inLoading, inDeparture] }} filter="all" selectedPhaseId={loading.phase_event_id} selectedExceptionId={inDeparture.id} onFilter={vi.fn()} onClearPhaseFilter={onClearPhaseFilter} returnTo="/trips/x" />)
 
     expect(screen.getByText('The selected exception is outside this phase filter.')).toBeInTheDocument()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Clear phase filter' })[0]!)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Show all \d+$/ })[0]!)
     expect(onClearPhaseFilter).toHaveBeenCalledOnce()
   })
 })
@@ -448,12 +489,184 @@ describe('moving focus to the selected record (A1)', () => {
     expect(row).toHaveFocus()
   })
 
-  it('exempts the filters and the Group records select from the click-off rule', () => {
+  it('exempts the filters and the Group by phase switch from the click-off rule', () => {
     const trip = tripWith(0, 3)
 
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedExceptionId={trip.exceptions[1]!.id} onFilter={vi.fn()} returnTo="/trips/x" />)
 
-    expect(screen.getByLabelText('Exception filters')).toHaveAttribute('data-keep-exception-selection')
-    expect(screen.getByRole('combobox').closest('label')).toHaveAttribute('data-keep-exception-selection')
+    expect(screen.getByRole('tablist', { name: 'Exception filters' }).parentElement).toHaveAttribute('data-keep-exception-selection')
+    expect(screen.getByRole('switch', { name: 'Group by phase' }).closest('[data-keep-exception-selection]')).not.toBeNull()
+  })
+})
+
+describe('compact density', () => {
+  it('shows one line per record, not the full card, and switches back through the tabs', () => {
+    const onDensity = vi.fn()
+    render(<GroupingHarness trip={tripWith(0, 3)} onDensity={onDensity} />)
+
+    expect(screen.getAllByRole('link', { name: /Review exception/ })).toHaveLength(3)
+    fireEvent.click(screen.getByRole('tab', { name: 'Compact' }))
+
+    expect(onDensity).toHaveBeenCalledWith('compact')
+    expect(screen.getByRole('tab', { name: 'Compact' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.queryAllByRole('link', { name: /Review exception/ })).toHaveLength(0)
+    expect(document.querySelectorAll('[id^="exception-panel-row-"]')).toHaveLength(3)
+  })
+
+  it('never wears the timeline row id, which the timeline scrolls and click-off rules key on', () => {
+    render(<GroupingHarness trip={tripWith(0, 2)} initialDensity="compact" />)
+
+    expect(document.querySelectorAll('[id^="exception-row-"]')).toHaveLength(0)
+    expect(document.querySelector('[id^="exception-panel-row-"]')).toHaveAttribute('data-keep-exception-selection')
+  })
+
+  function openFirstRow(trip: Trip, extra: { onShowInTimeline?: () => void } = {}) {
+    render(<GroupingHarness trip={trip} initialDensity="compact" {...extra} />)
+    const id = trip.exceptions[0]!.id
+    const rowId = `exception-panel-row-${id}`
+    fireEvent.click(document.getElementById(rowId)!)
+    return { id, rowId, card: () => document.querySelector(`[data-exception-id="${id}"]`) as HTMLElement | null }
+  }
+
+  it('opens a row in place and hands focus to its card', async () => {
+    const { card, rowId } = openFirstRow(tripWith(0, 2))
+
+    expect(within(card()!).getByRole('link', { name: /Review exception/ })).toBeInTheDocument()
+    await waitFor(() => expect(card()).toHaveFocus())
+    expect(document.getElementById(rowId)).toBeNull()
+    // The card is its own collapse control now, so there is no separate button for it.
+    expect(within(card()!).queryByRole('button', { name: 'Show less' })).not.toBeInTheDocument()
+  })
+
+  it('collapses when the card body is clicked, and returns focus to its row', async () => {
+    const { card, rowId } = openFirstRow(tripWith(0, 2))
+
+    fireEvent.click(within(card()!).getByRole('heading', { name: /Checkpoint Timeout/ }))
+
+    await waitFor(() => expect(document.getElementById(rowId)).toHaveFocus())
+    expect(card()).toBeNull()
+  })
+
+  it('stays open when the card\'s own controls are used', () => {
+    const onShowInTimeline = vi.fn()
+    const { card } = openFirstRow(tripWith(0, 2), { onShowInTimeline })
+
+    fireEvent.click(within(card()!).getByRole('button', { name: 'Show in timeline' }))
+    fireEvent.click(within(card()!).getByRole('link', { name: /Review exception/ }))
+
+    expect(onShowInTimeline).toHaveBeenCalledOnce()
+    expect(card()).not.toBeNull()
+  })
+
+  it('stays open when the map dialog it opened is clicked, since that dialog sits inside the card', () => {
+    const trip = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)!
+    const phase = trip.phases.find(candidate => candidate.phase_type === 'loading')!
+    const fixedPhase = { ...phase, driver_phone_lat: -33.9, driver_phone_lng: 18.4, horse_gps_lat: -33.95, horse_gps_lng: 18.45 }
+    const gps = { ...trip.exceptions[0]!, id: 'gps' as TripException['id'], exception_type: 'gps_mismatch' as const, phase_event_id: phase.phase_event_id, review_status: 'recorded' as const }
+    render(<GroupingHarness initialDensity="compact" trip={{ ...trip, phases: trip.phases.map(p => p.phase_event_id === phase.phase_event_id ? fixedPhase : p), exceptions: [gps] }} />)
+    fireEvent.click(document.getElementById('exception-panel-row-gps')!)
+    fireEvent.click(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL }))
+
+    fireEvent.click(screen.getByRole('dialog', { name: /Recorded locations/ }))
+
+    expect(document.querySelector('[data-exception-id="gps"]')).not.toBeNull()
+  })
+
+  it('stays open while the reader is selecting text', () => {
+    const { card } = openFirstRow(tripWith(0, 2))
+    const getSelection = vi.spyOn(window, 'getSelection').mockReturnValue({ isCollapsed: false } as Selection)
+    try {
+      fireEvent.click(within(card()!).getByRole('heading', { name: /Checkpoint Timeout/ }))
+
+      expect(card()).not.toBeNull()
+    } finally { getSelection.mockRestore() }
+  })
+
+  it('collapses from the keyboard only when the card itself has focus', async () => {
+    const { card, rowId } = openFirstRow(tripWith(0, 2))
+    await waitFor(() => expect(card()).toHaveFocus())
+
+    fireEvent.keyDown(within(card()!).getByRole('button', { name: 'Show in timeline' }), { key: 'Enter' })
+    expect(card()).not.toBeNull()
+
+    fireEvent.keyDown(card()!, { key: 'Enter' })
+
+    await waitFor(() => expect(document.getElementById(rowId)).toHaveFocus())
+    expect(card()).toBeNull()
+  })
+
+  it('keeps the URL-selected record open: a click on it does not collapse it', () => {
+    Element.prototype.scrollIntoView = vi.fn()
+    const trip = tripWith(0, 3)
+    render(<GroupingHarness trip={trip} initialDensity="compact" selectedExceptionId={trip.exceptions[1]!.id} />)
+
+    const card = document.querySelector(`[data-exception-id="${trip.exceptions[1]!.id}"]`) as HTMLElement
+    expect(within(card).getByRole('link', { name: /Review exception/ })).toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('heading', { name: /Checkpoint Timeout/ }))
+    expect(document.querySelector(`[data-exception-id="${trip.exceptions[1]!.id}"]`)).not.toBeNull()
+    expect(document.querySelectorAll('[id^="exception-panel-row-"]')).toHaveLength(2)
+  })
+})
+
+describe('sorting records', () => {
+  const recordOrder = () => [...document.querySelectorAll<HTMLElement>('[data-exception-id]')].map(el => el.dataset.exceptionId)
+  function tripAt(times: Record<string, string>): Trip {
+    const base = tripWith(0, Object.keys(times).length)
+    return { ...base, exceptions: base.exceptions.map((e, i) => ({ ...e, id: Object.keys(times)[i] as TripException['id'], supporting_artifact_id: null, created_at: Object.values(times)[i]! })) }
+  }
+
+  it('opens newest first and reverses on one click', () => {
+    render(<GroupingHarness trip={tripAt({ a: '2026-10-01T10:00:00Z', b: '2026-10-01T12:00:00Z', c: '2026-10-01T11:00:00Z' })} />)
+
+    expect(recordOrder()).toEqual(['b', 'c', 'a'])
+    expect(screen.getByRole('button', { name: 'Newest first, reverse order' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Newest first, reverse order' }))
+
+    expect(recordOrder()).toEqual(['a', 'c', 'b'])
+    expect(screen.getByRole('button', { name: 'Oldest first, reverse order' })).toBeInTheDocument()
+  })
+
+  it('orders by the event time a photo was captured, not the time the system recorded the row', () => {
+    const photo: EvidenceArtifactWithUrl = {
+      id: 'art-early' as ArtifactId, trip_id: 't', artifact_type: 'photo', s3_key: 'k', s3_bucket: 'b', file_hash: 'b'.repeat(64),
+      mime_type: 'image/jpeg', captured_at: '2026-10-01T08:00:00Z', captured_by_driver_id: null, captured_by_user_id: null,
+      captured_lat: null, captured_lng: null, created_at: '2026-10-01T08:00:01Z', phase_event_id: null, evidence_role: null,
+      signed_url: 'https://storage.test/p.jpg',
+    }
+    const trip = tripAt({ plain: '2026-10-01T10:00:00Z', photographed: '2026-10-01T12:00:00Z' })
+    trip.exceptions[1] = { ...trip.exceptions[1]!, supporting_artifact_id: 'art-early' as TripException['supporting_artifact_id'] }
+
+    render(<GroupingHarness trip={trip} artifactsById={new Map([['art-early', photo]])} />)
+    fireEvent.click(screen.getByRole('button', { name: /reverse order/ }))
+
+    // Recorded later (12:00) but captured first (08:00), so it leads when oldest comes first.
+    expect(recordOrder()).toEqual(['photographed', 'plain'])
+  })
+
+  it('keeps equal times in a stable order by id when the direction flips', () => {
+    render(<GroupingHarness trip={tripAt({ b: '2026-10-01T10:00:00Z', a: '2026-10-01T10:00:00Z' })} />)
+
+    const newest = recordOrder()
+    fireEvent.click(screen.getByRole('button', { name: /reverse order/ }))
+
+    expect(recordOrder()).toEqual(newest)
+  })
+
+  it('moves the phase groups with the direction', () => {
+    const base = tripWith(0, 2)
+    const first = base.phases[0]!
+    const second = { ...first, phase_event_id: 'later-phase' as typeof first.phase_event_id }
+    const rows = [
+      { ...base.exceptions[0]!, id: 'early' as TripException['id'], supporting_artifact_id: null, phase_event_id: first.phase_event_id, created_at: '2026-10-01T09:00:00Z' },
+      { ...base.exceptions[1]!, id: 'late' as TripException['id'], supporting_artifact_id: null, phase_event_id: second.phase_event_id, created_at: '2026-10-01T15:00:00Z' },
+    ]
+    render(<GroupingHarness trip={{ ...base, phases: [first, second], exceptions: rows }} />)
+    fireEvent.click(screen.getByRole('switch', { name: 'Group by phase' }))
+    const groupOrder = () => [...document.querySelectorAll<HTMLElement>('[data-phase-group]')].map(el => el.dataset.phaseGroup)
+
+    expect(groupOrder()).toEqual(['later-phase', first.phase_event_id])
+    fireEvent.click(screen.getByRole('button', { name: /reverse order/ }))
+
+    expect(groupOrder()).toEqual([first.phase_event_id, 'later-phase'])
   })
 })

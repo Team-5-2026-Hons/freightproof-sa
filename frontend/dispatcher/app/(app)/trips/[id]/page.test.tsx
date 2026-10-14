@@ -250,6 +250,8 @@ describe('Trip detail Evidence and Minimised navigation', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
     const rendered = render(<TripDetailPage />)
     fireEvent.click(screen.getByRole('tab', { name: 'Minimised' }))
+    // The pane opens compact; "Show in timeline" lives on the full card.
+    fireEvent.click(screen.getByRole('tab', { name: 'Detailed' }))
     const overlay = screen.getByRole('dialog', { name: 'Trip exceptions' })
     const record = overlay.querySelector<HTMLElement>('[data-exception-id="mini-4"]')!
     fireEvent.click(within(record).getByRole('button', { name: 'Show in timeline' }))
@@ -661,8 +663,8 @@ describe('Trip detail summary and panels', () => {
     rendered.rerender(<TripDetailPage />)
 
     // This rerender models browser Back/Forward restoring an older query string.
-    const allRecorded = screen.getByRole('button', { name: 'All recorded · 2' })
-    expect(allRecorded).toHaveStyle({ background: 'linear-gradient(135deg,#1b1b1c 0%,#303031 100%)' })
+    const allRecorded = screen.getByRole('tab', { name: /^All recorded\s*2$/ })
+    expect(allRecorded).toHaveAttribute('aria-selected', 'true')
   })
 
   it('closes the narrow overlay before revealing the exception row in the timeline, then focuses that row', async () => {
@@ -671,6 +673,7 @@ describe('Trip detail summary and panels', () => {
     if (!loading) throw new Error('TRIP_0040 loading phase is missing')
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loading.phase_event_id}`)
     const rendered = render(<TripDetailPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Detailed' }))
 
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Trip exceptions' })).getAllByRole('button', { name: 'Show in timeline' })[0]!)
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?exceptions=all`, { scroll: false })
@@ -700,6 +703,7 @@ describe('Trip detail summary and panels', () => {
     try {
       render(<TripDetailPage />)
       const panel = screen.getByRole('complementary', { name: 'Trip detail' })
+      fireEvent.click(within(panel).getByRole('tab', { name: 'Detailed' }))
       fireEvent.click(within(panel).getAllByRole('button', { name: 'Show in timeline' })[0]!)
 
       expect(panel).toBeInTheDocument()
@@ -870,8 +874,10 @@ describe('Trip detail exceptions panel opened on one exception', () => {
       navigation.search.delete('exception')
       rerender(<TripDetailPage />)
       expect(document.querySelector('[aria-current="true"]')).toBeNull()
-      expect(selectedRecord()?.querySelector('article')).not.toHaveClass('ring-2')
-      expect(screen.getByText(line('Selected phase · 2 of 2 trip exceptions'))).toBeInTheDocument()
+      // Deselected, the record is no longer the open card: it drops back to its one-line row.
+      expect(selectedRecord()).toBeNull()
+      expect(document.getElementById(`exception-panel-row-${EARLIER_ID}`)).not.toBeNull()
+      expect(screen.getByText(line('2 of 2 trip exceptions'))).toBeInTheDocument()
     } finally { restore() }
   })
 
@@ -935,7 +941,7 @@ describe('Trip detail exceptions panel opened on one exception', () => {
 
     expect(document.querySelector('[data-exception-id="trip-level-exception"]')).toHaveAttribute('aria-current', 'true')
     expect(screen.queryByText(/^Selected phase/)).toBeNull()
-    expect(screen.getByRole('button', { name: 'All recorded · 3' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All recorded\s*3$/ })).toBeInTheDocument()
   })
 
   it('keeps the phase filter and marks the record when both are in the URL', () => {
@@ -943,7 +949,7 @@ describe('Trip detail exceptions panel opened on one exception', () => {
 
     render(<TripDetailPage />)
 
-    expect(screen.getByText(line('Selected phase · 2 of 2 trip exceptions'))).toBeInTheDocument()
+    expect(screen.getByText(line('2 of 2 trip exceptions'))).toBeInTheDocument()
     expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
   })
 
@@ -962,7 +968,7 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&phase=${loadingPhaseId()}&exception=${EARLIER_ID}`)
     render(<TripDetailPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clear phase filter' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Show all \d+$/ }))
 
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
   })
@@ -971,7 +977,7 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
     render(<TripDetailPage />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Unreviewed · 0' }))
+    fireEvent.click(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ }))
 
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=needs_review`, { scroll: false })
   })
@@ -1028,15 +1034,15 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     } finally { restore() }
   })
 
-  it('keeps the selection when the Group records select is used', () => {
+  it('keeps the selection when the Group by phase switch is used', () => {
     const restore = dockedMatchMedia()
     navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
     try {
       render(<TripDetailPage />)
-      const select = within(screen.getByRole('complementary', { name: 'Trip detail' })).getByRole('combobox')
+      const groupSwitch = within(screen.getByRole('complementary', { name: 'Trip detail' })).getByRole('switch', { name: 'Group by phase' })
 
-      fireEvent.click(select)
-      fireEvent.change(select, { target: { value: 'phase' } })
+      fireEvent.click(groupSwitch)
+      expect(groupSwitch).toHaveAttribute('aria-checked', 'true')
 
       expect(replace).not.toHaveBeenCalled()
       expect(selectedRecord()).toHaveAttribute('aria-current', 'true')

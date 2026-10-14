@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { TripDetailPanel } from './TripDetailPanel'
@@ -272,6 +272,8 @@ describe('TripDetailPanel exceptions tab', () => {
 
   it('hands the trip artifacts to the exception footer so the supporting photo resolves', () => {
     renderExceptions({})
+    // The pane opens compact; the footer is on the full card.
+    fireEvent.click(screen.getByRole('tab', { name: 'Detailed' }))
 
     expect(within(screen.getByText('Supporting evidence').closest('details')!).getByRole('img', { name: 'Supporting photo' })).toHaveAttribute('src', photo.signed_url)
   })
@@ -282,6 +284,27 @@ describe('TripDetailPanel exceptions tab', () => {
     renderExceptions({ selectedExceptionId: withPhoto.id })
 
     expect(document.querySelector(`[data-exception-id="${withPhoto.id}"]`)).toHaveAttribute('aria-current', 'true')
+  })
+
+  it('keeps the Group by phase, Compact and sort choices when the dispatcher visits Info and comes back', () => {
+    const view = renderExceptions({})
+    const reopen = (panel: 'information' | 'exceptions') => view.rerender(
+      <ToastProvider>
+        <TripDetailPanel panel={panel} trip={{ ...activeTrip, exceptions: [withPhoto] }} precincts={mockPrecincts} filter="all"
+          artifactsById={new Map([['art-panel', photo]])} overlayOpen onSelect={vi.fn()} onClose={vi.fn()} onFilter={vi.fn()}
+          onChanged={vi.fn()} returnTo="/trips/trip-1" />
+      </ToastProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Group by phase' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Compact' }))
+    fireEvent.click(screen.getByRole('button', { name: /reverse order/ }))
+    reopen('information')
+    reopen('exceptions')
+
+    expect(screen.getByRole('switch', { name: 'Group by phase' })).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByRole('tab', { name: 'Compact' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: 'Oldest first, reverse order' })).toBeInTheDocument()
   })
 
   it('passes an unknown exception id through as the recoverable message', () => {
