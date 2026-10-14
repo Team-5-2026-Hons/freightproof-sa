@@ -38,7 +38,9 @@ export function TripInformation({ trip, precincts, onOpenPrecinct, onCancelTrip 
     <section><h3 className="mb-2 text-sm font-bold text-on-surf">Route</h3>
       {[...trip.stops].sort((a, b) => a.sequence - b.sequence).map((stop, i) => {
         const precinct = precincts.find(p => p.id === stop.precinct_id)
-        return <div key={stop.id} className="border-b border-outline-v/20 py-3 text-sm">
+        // The last stop ends the list without a rule, like InfoRow: the audit section below draws the one
+        // divider between the trip's facts and its documents.
+        return <div key={stop.id} className="border-b border-outline-v/20 py-3 text-sm last:border-0">
           {/* A preview first: a dispatcher checking a stop usually wants its geofence or
               contact details, which live on the precinct record and nowhere here. Openable
               only once the precinct itself has loaded — same rule as the header's vehicles. */}
