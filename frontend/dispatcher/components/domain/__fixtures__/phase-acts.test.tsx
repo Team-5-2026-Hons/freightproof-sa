@@ -224,6 +224,20 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     for (const leg of legs) expect(within(leg).queryByRole('button', { name: /^In Transit/ })).toBeNull()
   })
 
+  it('cross-dock-13-phase: the live leg is the only node with the live ring, and it keeps its clean node colour', () => {
+    renderScenario(scenarioOf('cross-dock-13-phase'))
+
+    const live = document.querySelectorAll('[data-live="true"]')
+    expect(live).toHaveLength(1)
+    expect(phaseGroups('In Transit')[1]!).toContainElement(live[0] as HTMLElement)
+    expect(live[0]).toHaveAttribute('data-node-type', 'next')
+    expect(within(live[0] as HTMLElement).getByText('Live')).toHaveClass('sr-only')
+    // The ring breathes only when motion is welcome; reduced motion keeps a static ring.
+    expect(live[0]!.querySelector('[data-live-ring]')!.className).toMatch(/(^| )motion-safe:animate-pulse( |$)/)
+    expect(live[0]!.querySelector('[data-live-ring]')!.className).not.toMatch(/(^| )animate-pulse( |$)/)
+    expect(phaseGroups('In Transit')[0]!.querySelector('[data-live]')).toBeNull()
+  })
+
   it('four-stop-three-legs: three in_transit legs, none behind a toggle', () => {
     renderScenario(scenarioOf('four-stop-three-legs'))
 
@@ -239,6 +253,16 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     const leg = phaseGroups('In Transit')[0]!
     expect(within(leg).getByText('Needs attention')).toBeInTheDocument()
     expect(scenario.trip.exceptions.some(e => e.severity === 'critical' && e.review_status === 'needs_review')).toBe(true)
+  })
+
+  it('transit-active-critical: the live ring stays on the leg when its verdict turns the node amber', () => {
+    renderScenario(scenarioOf('transit-active-critical'))
+
+    const node = phaseGroups('In Transit')[0]!.querySelector('[data-node-type]')
+    expect(node).toHaveAttribute('data-node-type', 'warn')
+    expect(node).toHaveAttribute('data-live', 'true')
+    expect(node!.querySelector('[data-live-ring]')).not.toBeNull()
+    expect(document.querySelectorAll('[data-live="true"]')).toHaveLength(1)
   })
 
   it('transit-resolved-none: a finished leg with nothing recorded says so, and never "Checks passed"', () => {

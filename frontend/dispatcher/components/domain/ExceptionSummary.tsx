@@ -30,6 +30,11 @@ interface Props {
   tone?: 'low' | 'lowest'
   selected?: boolean
 }
+/** The id of an exception's title, so a container can be named by its exception type. */
+export function exceptionSummaryTitleId(exceptionId: string): string {
+  return `exception-summary-title-${exceptionId}`
+}
+
 export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone = 'low', selected = false }: Props) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const target = ROUTES.exceptionDetail(exception.id)
@@ -45,7 +50,7 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
       {phaseLabel && <p className="mb-2 text-xs font-semibold text-on-surf-v">{phaseLabel} · Exception</p>}
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 className="text-sm font-bold text-on-surf">{fmtExceptionType(exception.exception_type)}</h3>
+          <h3 id={exceptionSummaryTitleId(exception.id)} className="text-sm font-bold text-on-surf">{fmtExceptionType(exception.exception_type)}</h3>
           <Chip type={severity.chipType} label={severity.label} />
         </div>
         {/* Matches PhaseTimelineItem's own <time> exactly (size, weight, colour, clock

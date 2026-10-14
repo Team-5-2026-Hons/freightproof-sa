@@ -6,6 +6,7 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException } from '@shared/lib/types/exception'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { AbsentAct, AnchorAct, CompletionAct, EvidenceAct, ExceptionAct, ExpectedAct, MilestoneAct, PhaseAct } from '@/lib/phase/acts'
+import { COMPACT_COLUMNS } from '../CompactActLine'
 import { PhaseActs, type PhaseActsProps } from '../PhaseActs'
 import { makePhase } from './testFixtures'
 import { line } from './textLine'
@@ -112,6 +113,36 @@ describe('compact rail (D45)', () => {
     expect(rows[1].querySelector('[data-compact-connector]')).toBeNull()
     const evidence = screen.getByRole('group', { name: 'Submitted evidence · capture time unavailable' })
     expect(evidence.querySelector('[data-compact-connector]')).toBeNull()
+  })
+
+  it('draws the compact connector from the icon cell of every row kind, so it follows the icon', () => {
+    render(<PhaseActs {...props([completionAct(), exceptionAct('e1'), exceptionAct('e2')])} density="compact" />)
+
+    const connectors = [...document.querySelectorAll('[data-compact-connector]')]
+    expect(connectors.length).toBeGreaterThan(0)
+    for (const connector of connectors) {
+      expect(connector.parentElement).toHaveAttribute('data-compact-icon')
+      expect(connector.className).not.toMatch(/calc\(|top-\[/)
+    }
+  })
+
+  it('shares one set of columns across the compact rail, sized to the widest time', () => {
+    const findings = ['e1', 'e2'].map(id => ({ ...exceptionAct(id), trigger: 'handshake' as const }))
+    render(<PhaseActs {...props([completionAct(), ...findings])} density="compact" />)
+
+    const list = document.querySelector('ol')!
+    expect(list).toHaveClass(COMPACT_COLUMNS.split(' ')[1]!)
+    expect(list.className).toContain('max-content')
+    // Every row, the confirmation group and its inner list pass the columns through.
+    for (const row of document.querySelectorAll('li')) expect(row).toHaveClass('grid-cols-subgrid', 'col-span-full')
+    const group = screen.getByRole('group', { name: 'Findings from this confirmation' })
+    expect(group.querySelector('ol')).toHaveClass('grid-cols-subgrid')
+  })
+
+  it('keeps the full rail out of the compact grid', () => {
+    render(<PhaseActs {...props([completionAct(), exceptionAct('e1')])} />)
+
+    expect(document.querySelector('ol')!.className).not.toContain('grid')
   })
 
   it('ends the compact rail at its final event', () => {

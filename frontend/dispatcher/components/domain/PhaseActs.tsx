@@ -10,6 +10,7 @@ import { useRecentKeys } from '@/lib/hooks/useRecentKeys'
 import { ExceptionMoreRow, type OpenException } from './ExceptionRow'
 import type { EvidenceLookup } from './EvidenceGroupRow'
 import { ActRow, RailRow, type ActRowContext } from './PhaseActRow'
+import { COMPACT_COLUMNS, COMPACT_SUBGRID } from './CompactActLine'
 import { PhaseZone } from './PhaseZone'
 
 export type { EvidenceLookup } from './EvidenceGroupRow'
@@ -105,15 +106,16 @@ export function PhaseActs(props: PhaseActsProps) {
       more={item === moreItem ? { hiddenCount: hiddenExceptionCount, phaseId: phase.phase_event_id, onOpen: props.onOpenException } : null} />
   }
 
-  const rows = <ol>
+  // Compact, the list owns the time, icon and detail columns that every row joins (R3).
+  const rows = <ol className={compact ? COMPACT_COLUMNS : undefined}>
     {chronology.map(item => (
       <Fragment key={item.key}>
         {entry(item)}
         {item.kind === 'completion' && <>
-          {attached.length > 0 && <ConfirmationGroup title={item.outcome === 'overridden' ? 'Recorded with this override' : 'Findings from this confirmation'}>
+          {attached.length > 0 && <ConfirmationGroup compact={compact} title={item.outcome === 'overridden' ? 'Recorded with this override' : 'Findings from this confirmation'}>
             {attached.map(finding => entry(finding, true))}
           </ConfirmationGroup>}
-          {untimed.length > 0 && <ConfirmationGroup title="Submitted evidence · capture time unavailable">
+          {untimed.length > 0 && <ConfirmationGroup compact={compact} title="Submitted evidence · capture time unavailable">
             {untimed.map(evidence => entry(evidence, true))}
           </ConfirmationGroup>}
         </>}
@@ -123,15 +125,16 @@ export function PhaseActs(props: PhaseActsProps) {
   return compact ? <div className="mt-2">{rows}</div> : <PhaseZone title="Recorded">{rows}</PhaseZone>
 }
 
-interface ConfirmationGroupProps { title: string; children: ReactNode }
+interface ConfirmationGroupProps { title: string; compact: boolean; children: ReactNode }
 
 /** A group that belongs to the confirmation, not to a later instant on the chronology. Its
  * heading is flush left, in full-strength text, so it reads as a label for the rows under it
  * rather than as one more row; the rail breaks at the heading. */
-function ConfirmationGroup({ title, children }: ConfirmationGroupProps) {
-  return <li role="group" aria-label={title} className="pb-1">
-    <p className="pb-1 pt-2 text-meta font-semibold text-on-surf">{title}</p>
-    <ol>{children}</ol>
+function ConfirmationGroup({ title, compact, children }: ConfirmationGroupProps) {
+  // Compact, the group passes the card's columns through, so its rows align with the rest.
+  return <li role="group" aria-label={title} className={`pb-1 ${compact ? COMPACT_SUBGRID : ''}`}>
+    <p className={`pb-1 pt-2 text-meta font-semibold text-on-surf ${compact ? 'col-span-full' : ''}`}>{title}</p>
+    <ol className={compact ? COMPACT_SUBGRID : undefined}>{children}</ol>
   </li>
 }
 
@@ -151,7 +154,7 @@ function ActEntry({ item, context, highlighted, more, density, nested, connectTo
     <>
       <ActRow item={item} context={context} highlighted={highlighted} density={density} nested={nested} connectToNext={connectToNext} />
       {more && (density === 'compact'
-        ? <li><ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} density={density} /></li>
+        ? <li className={COMPACT_SUBGRID}><ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} density={density} /></li>
         : <RailRow kind="more" highlighted={false}><ExceptionMoreRow hiddenCount={more.hiddenCount} phaseId={more.phaseId} onOpen={more.onOpen} /></RailRow>)}
     </>
   )

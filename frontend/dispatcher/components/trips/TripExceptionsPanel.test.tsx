@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TripExceptionsPanel } from './TripExceptionsPanel'
 import { mockTrips, TRIP_0040_ID } from '@shared/lib/mocks'
@@ -7,6 +7,7 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { TripException } from '@shared/lib/types/exception'
 import { VIEW_ON_MAP_LABEL } from '@/components/domain/LocationEvidencePanel'
 import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
+import { EXCEPTION_SELECTION_OUTLINE, exceptionRowId } from '@/components/domain/ExceptionRow'
 import type { ArtifactId, EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
 vi.mock('next/navigation', () => ({
@@ -250,12 +251,14 @@ describe('selecting one exception', () => {
     const selected = document.querySelector<HTMLElement>(`[data-exception-id="${target.id}"]`)!
     expect(selected).toHaveAttribute('aria-current', 'true')
     expect(selected.className).not.toMatch(/(^| )ring-/)
-    expect(within(selected).getByRole('article')).toHaveClass('bg-sec-c/25', 'ring-2', 'ring-sec')
+    expect(within(selected).getByRole('article')).toHaveClass('bg-sec-c/25', EXCEPTION_SELECTION_OUTLINE)
+    expect(within(selected).getByRole('article').className).not.toMatch(/(^| )ring-/)
     expect(within(selected).getByRole('article').className).not.toContain('before:')
-    // Never colour alone: the ring is paired with a word.
-    expect(within(selected).getByText(/Selected exception/)).toBeInTheDocument()
+    // The caption above each record repeated the card's own phase label and time, so it is gone;
+    // selection is the hairline for the eye and aria-current for assistive tech.
+    expect(screen.queryByText(/Selected exception/)).toBeNull()
+    expect(screen.queryByText(new RegExp(`Trip ${base.trip_reference} · Raised`))).toBeNull()
     expect(document.querySelectorAll('[aria-current="true"]')).toHaveLength(1)
-    expect(screen.getAllByText(/Selected exception/)).toHaveLength(1)
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledOnce())
     expect(scrollIntoView.mock.contexts[0]).toBe(selected)
   })
@@ -390,5 +393,67 @@ describe('supporting evidence in the panel footer', () => {
     const disclosure = screen.getByText('Supporting evidence').closest('details')!
     expect(within(disclosure).getByRole('img', { name: 'Supporting photo' })).toBeInTheDocument()
     expect(within(disclosure).queryByText(GPS_MISMATCH_TRIGGER)).not.toBeInTheDocument()
+  })
+})
+
+describe('moving focus to the selected record (A1)', () => {
+  let row: HTMLButtonElement
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn()
+    row = document.createElement('button')
+    row.id = exceptionRowId('timeline-row')
+    document.body.append(row)
+  })
+  afterEach(() => { row.remove(); vi.restoreAllMocks() })
+  function dock(matches: boolean): void {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ ...window.matchMedia(''), matches })
+  }
+
+  it('focuses the record, named by its exception type, when a timeline row selected it in the docked panel', async () => {
+    dock(true)
+    const trip = tripWith(0, 3)
+    const target = trip.exceptions[1]!
+    row.focus()
+
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedExceptionId={target.id} onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    const record = document.querySelector<HTMLElement>(`[data-exception-id="${target.id}"]`)!
+    await waitFor(() => expect(record).toHaveFocus())
+    const title = within(record).getByRole('heading', { level: 3 }).textContent!
+    expect(screen.getByRole('group', { name: title })).toBe(record)
+  })
+
+  it('leaves focus alone for a deep link, where no timeline row made the selection', async () => {
+    dock(true)
+    const trip = tripWith(0, 3)
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedExceptionId={trip.exceptions[1]!.id} onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('leaves focus to the overlay below the dock width', async () => {
+    dock(false)
+    const trip = tripWith(0, 3)
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    row.focus()
+
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedExceptionId={trip.exceptions[1]!.id} onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    await waitFor(() => expect(scrolled).toHaveBeenCalled())
+    expect(row).toHaveFocus()
+  })
+
+  it('exempts the filters and the Group records select from the click-off rule', () => {
+    const trip = tripWith(0, 3)
+
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" selectedExceptionId={trip.exceptions[1]!.id} onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByLabelText('Exception filters')).toHaveAttribute('data-keep-exception-selection')
+    expect(screen.getByRole('combobox').closest('label')).toHaveAttribute('data-keep-exception-selection')
   })
 })

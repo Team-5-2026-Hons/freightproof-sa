@@ -16,7 +16,7 @@ import type { ActItem } from '@/lib/phase/act-groups'
 import { EvidenceGroupRow, type EvidenceLookup } from './EvidenceGroupRow'
 import type { EvidenceGroup } from '@/lib/phase/act-groups'
 import { NumericText } from './NumericText'
-import { CompactActLine, COMPACT_CONNECTOR } from './CompactActLine'
+import { CompactActLine, COMPACT_SUBGRID } from './CompactActLine'
 import { ExceptionRow, type OpenException } from './ExceptionRow'
 
 type RailKind = 'evidence' | 'milestone' | 'completion' | 'exception' | 'absent' | 'anchor' | 'expected' | 'more'
@@ -142,18 +142,17 @@ function compactRecord(item: Exclude<ActItem, { kind: 'exception' }>, context: A
 }
 
 function CompactRow({ item, context, connectToNext = false }: ItemProps) {
-  const connector = connectToNext ? <span aria-hidden="true" data-compact-connector className={COMPACT_CONNECTOR} /> : null
   if (item.kind === 'exception') {
     const exception = context.exceptionsById.get(item.exceptionId)
-    return exception ? <li data-row-kind="exception" className="relative">{connector}<ExceptionRow exception={exception} at={item.at} phaseId={context.phase.phase_event_id}
+    return exception ? <li data-row-kind="exception" className={COMPACT_SUBGRID}><ExceptionRow exception={exception} at={item.at} phaseId={context.phase.phase_event_id}
       selected={exception.id === context.selectedExceptionId} highlighted={exception.id === context.highlightedExceptionId}
-      onOpen={context.onOpenException} density="compact" /></li> : null
+      onOpen={context.onOpenException} density="compact" connectToNext={connectToNext} /></li> : null
   }
   const record = compactRecord(item, context)
   if (record === null) return null
   const kind = item.kind === 'evidence_group' ? 'evidence' : item.kind
-  return <li data-row-kind={kind} className="relative">{connector}
-    <CompactActLine times={record.times} icon={KIND_ICON[kind]}><NumericText text={record.detail} /></CompactActLine>
+  return <li data-row-kind={kind} className={COMPACT_SUBGRID}>
+    <CompactActLine times={record.times} icon={KIND_ICON[kind]} connectToNext={connectToNext}><NumericText text={record.detail} /></CompactActLine>
   </li>
 }
 

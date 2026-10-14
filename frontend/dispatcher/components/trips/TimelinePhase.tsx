@@ -110,6 +110,7 @@ export function TimelinePhase(props: Props): React.JSX.Element {
         timestamp={phase.completed_at}
         nodeType={model.verdict?.nodeType ?? baseNode}
         initialOpen={live}
+        live={live}
         cancelled={trip.status === 'cancelled'}
         overridden={phase.status === 'overridden'}
         isLast={props.isLast}

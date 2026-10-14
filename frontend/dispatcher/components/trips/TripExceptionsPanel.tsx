@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { fmtExceptionRaised } from '@/lib/format/exception'
 import { EXCEPTION_BATCH_LIMIT, sortQueueChronologically } from '@/lib/exceptions/queue'
 import type { TripException } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
@@ -10,7 +9,7 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import { precinctAtPhase } from '@/lib/phase/trip-detail'
 import { ExceptionMapButton, hasExceptionMapEvidence } from './ExceptionMapButton'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
-import { ExceptionSummary } from '@/components/domain/ExceptionSummary'
+import { ExceptionSummary, exceptionSummaryTitleId } from '@/components/domain/ExceptionSummary'
 import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
 import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { Button } from '@/components/ui/Button'
@@ -18,6 +17,9 @@ import { useDocked } from '@/components/ui/DetailPanel'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { BatchReviewForm } from './BatchReviewForm'
 import { uniqueExceptionsById } from './exception-dedupe'
+import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
+import { exceptionRowId } from '@/components/domain/ExceptionRow'
+import { PHASE_ANCHOR_PREFIX } from './PhaseTimelineItem'
 import { isTripLevelException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 
 export type ExceptionFilter = 'needs_review' | 'all'
@@ -45,7 +47,8 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
   // already the 'lowest' tone (pure white, same value as bg-surf-lowest), a 'lowest'
   // card there would have the identical blending problem in the other direction. Each
   // context needs the tone its OWN container is not.
-  const tone = useDocked() ? 'lowest' : 'low'
+  const docked = useDocked()
+  const tone = docked ? 'lowest' : 'low'
   const { user } = useAuth()
   const [batchSelection, setBatchSelection] = useState<{tripId: string; rows: TripException[]} | null>(null)
   const [grouping, setGrouping] = useState<'none' | 'phase'>('none')
@@ -56,10 +59,21 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
   // scrolled on back to the record. The frame wait is for the overlay: Modal calls
   // showModal() in its own effect, which runs after this one (children first), and a
   // dialog that is not yet open has no layout to scroll within.
+  //
+  // Docked, the panel is a column after the whole timeline, so a keyboard reader who picked a
+  // row would otherwise Tab through every card to reach the record (A1). Focus follows only when
+  // a timeline row made the selection: a deep link or a reload leaves focus where the page put
+  // it. The overlay has its own focus trap and needs none of this.
   useEffect(() => {
     if (!selectedExceptionId) return
-    const frame = window.requestAnimationFrame(() => selectedRef.current?.scrollIntoView({ block: 'center' }))
+    const fromTimelineRow = docked && document.activeElement?.id.startsWith(exceptionRowId('')) === true
+    const frame = window.requestAnimationFrame(() => {
+      selectedRef.current?.scrollIntoView({ block: 'center' })
+      if (fromTimelineRow) selectedRef.current?.focus({ preventScroll: true })
+    })
     return () => window.cancelAnimationFrame(frame)
+    // `docked` is read for this selection only; resizing across the dock width is not a new selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedExceptionId])
   if (invalidPhaseId || invalidExceptionId) {
     return <div className="space-y-3">
@@ -101,7 +115,9 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
     {/* Each filter states its own size. Without it the unselected one is a blind click -
         a dispatcher looking at two rows had no way to tell whether "All recorded" held
         another ten or the same two, which is the question the button is there to answer. */}
-    <div className="mb-4 flex flex-wrap gap-2" aria-label="Exception filters">
+    {/* Filters still leave the single-record view by their own action (page.tsx onFilter); the
+        attribute only stops the click-off rule from navigating a second time. */}
+    <div className="mb-4 flex flex-wrap gap-2" aria-label="Exception filters" {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }}>
       <Button variant={filter === 'needs_review' ? 'primary' : 'secondary'} size="sm" onClick={() => onFilter('needs_review')}>Unreviewed · {needsReview}</Button>
       <Button variant={filter === 'all' ? 'primary' : 'secondary'} size="sm" onClick={() => onFilter('all')}>All recorded · {scopedExceptions.length}</Button>
       {batchable.length > 0 && batchable.length <= EXCEPTION_BATCH_LIMIT && <Button variant="secondary" size="sm" onClick={() => setBatchSelection(batchOpen ? null : {tripId:trip.id, rows:batchable})} aria-expanded={batchOpen}>
@@ -109,7 +125,7 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
       </Button>}
     </div>
     {batchable.length > EXCEPTION_BATCH_LIMIT && <p className="mb-4 text-sm text-on-surf-v">Narrow to a phase with at most {EXCEPTION_BATCH_LIMIT} eligible records before batch review.</p>}
-    <label className="mb-4 flex flex-wrap items-center gap-3 text-xs text-on-surf-v">Group records<select value={grouping} onChange={e => setGrouping(e.target.value as 'none' | 'phase')} className="min-h-11 rounded-md border border-outline bg-surf-lowest px-3 text-sm text-on-surf"><option value="none">None, newest first</option><option value="phase">Recorded phase event</option></select></label>
+    <label className="mb-4 flex flex-wrap items-center gap-3 text-xs text-on-surf-v" {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }}>Group records<select value={grouping} onChange={e => setGrouping(e.target.value as 'none' | 'phase')} className="min-h-11 rounded-md border border-outline bg-surf-lowest px-3 text-sm text-on-surf"><option value="none">None, newest first</option><option value="phase">Recorded phase event</option></select></label>
     {batchOpen && batchSelection && <BatchReviewForm
       tripId={trip.id}
       tripReference={trip.trip_reference}
@@ -153,9 +169,12 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
         </details>}
       </div>
       const selected = exception.id === selectedExceptionId
+      // The selected record is a focus target (A1), named by its exception type. Its phase card's
+      // anchor lets Escape return focus to that card when the row itself is not on the timeline.
       return <div key={exception.id} ref={selected ? selectedRef : undefined} data-exception-id={exception.id} aria-current={selected ? 'true' : undefined}
-        className="[&_time]:text-on-surf-v">
-        <p className="mb-2 break-words text-xs text-on-surf-v tabular-nums">Trip {trip.trip_reference} · Raised {fmtExceptionRaised(exception.created_at)}{selected && ' · Selected exception'}</p>
+        data-phase-anchor={phase ? `${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}` : undefined}
+        {...(selected ? { tabIndex: -1, role: 'group', 'aria-labelledby': exceptionSummaryTitleId(exception.id) } : {})}
+        className="rounded-lg [&_time]:text-on-surf-v focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sec">
         <ExceptionSummary
           exception={exception}
           phaseLabel={phase ? PHASE_NAMES[phase.phase_type] : 'Trip record'}

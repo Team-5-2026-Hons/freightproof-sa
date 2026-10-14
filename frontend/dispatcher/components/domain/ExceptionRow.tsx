@@ -6,7 +6,7 @@ import { fmtExceptionType } from '@/lib/format/exception'
 import { DEVICE_CLOCK, SERVER_CLOCK } from '@/lib/phase/act-wording'
 import { exceptionReviewLabel } from '@/lib/phase/exception-rows'
 import { NumericText } from './NumericText'
-import { CompactActLine } from './CompactActLine'
+import { COMPACT_HIT_AREA, COMPACT_SUBGRID, CompactActLine } from './CompactActLine'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { TripException } from '@shared/lib/types/exception'
@@ -34,7 +34,9 @@ export function exceptionRowId(exceptionId: string): string {
 const ROW_CARD = 'border border-outline-v/40 hover:border-outline'
 const ROW_CARD_CRITICAL = 'border border-err/60 hover:border-err'
 // Selection persists; a landing highlight fades. Neither replaces keyboard focus or severity.
-export const EXCEPTION_SELECTION_OUTLINE = 'ring-2 ring-sec'
+// Selection is a 1 px hairline inside the row; keyboard focus alone is the 2 px outline outside it,
+// so a reader tabbing past the selected row never sees two rows that look focused (A3).
+export const EXCEPTION_SELECTION_OUTLINE = 'shadow-[inset_0_0_0_1px_theme(colors.sec.DEFAULT)]'
 export const EXCEPTION_SELECTED_SURFACE = 'bg-sec-c/25'
 const ROW_HIGHLIGHT = 'bg-sec-c/70'
 const ROW_TRANSITION = 'transition-colors duration-700 hover:duration-150 motion-reduce:transition-none'
@@ -63,6 +65,8 @@ interface RowProps {
   highlighted: boolean
   onOpen: OpenException
   density?: 'compact' | 'full'
+  /** Compact only: the rail continues from this row's icon to the next row. */
+  connectToNext?: boolean
 }
 
 function cardClass(exception: TripException, selected: boolean, highlighted: boolean): string {
@@ -78,7 +82,7 @@ function cardClass(exception: TripException, selected: boolean, highlighted: boo
  * the full card. The time names its clock (D16): the phone's when the instant is the evidence
  * capture, the server's when it is the time the system recorded the exception.
  */
-export function ExceptionRow({ exception, at, phaseId, selected, highlighted, onOpen, density = 'full' }: RowProps) {
+export function ExceptionRow({ exception, at, phaseId, selected, highlighted, onOpen, density = 'full', connectToNext = false }: RowProps) {
   const severity = EXCEPTION_SEVERITY_META[exception.severity]
   const typeLabel = fmtExceptionType(exception.exception_type)
   const review = exceptionReviewLabel(exception)
@@ -86,8 +90,8 @@ export function ExceptionRow({ exception, at, phaseId, selected, highlighted, on
   if (density === 'compact') return (
     <button type="button" id={exceptionRowId(exception.id)} aria-current={selected ? 'true' : undefined}
       data-highlighted={highlighted ? 'true' : undefined} onClick={() => onOpen(exception.id, phaseId)}
-      className={`relative min-h-11 w-full rounded text-left text-on-surf hover:bg-sec-c/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec ${ROW_TRANSITION} ${highlighted ? ROW_HIGHLIGHT : selected ? EXCEPTION_SELECTED_SURFACE : ''} ${selected || highlighted ? EXCEPTION_SELECTION_OUTLINE : ''}`}>
-      <CompactActLine times={[{ at, source: at === exception.created_at ? 'server' : 'device' }]} icon="warn" iconClassName="text-warn">
+      className={`${COMPACT_SUBGRID} ${COMPACT_HIT_AREA} relative w-full rounded text-left text-on-surf hover:bg-sec-c/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec ${ROW_TRANSITION} ${highlighted ? ROW_HIGHLIGHT : selected ? EXCEPTION_SELECTED_SURFACE : ''} ${selected || highlighted ? EXCEPTION_SELECTION_OUTLINE : ''}`}>
+      <CompactActLine times={[{ at, source: at === exception.created_at ? 'server' : 'device' }]} icon="warn" iconClassName="text-warn" connectToNext={connectToNext}>
         <span className="font-semibold">{typeLabel}</span> · {severity.label} · {review}
       </CompactActLine>
     </button>
@@ -131,7 +135,7 @@ interface MoreProps {
  *  away in the panel, filtered to this phase. */
 export function ExceptionMoreRow({ hiddenCount, phaseId, onOpen, density = 'full' }: MoreProps) {
   if (density === 'compact') return <button type="button" onClick={() => onOpen(null, phaseId)}
-    aria-label={`+${hiddenCount} more · ${OPEN_ACTION}`} className="min-h-11 w-full rounded text-left text-sec hover:bg-sec-c/40 transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
+    aria-label={`+${hiddenCount} more · ${OPEN_ACTION}`} className={`${COMPACT_SUBGRID} ${COMPACT_HIT_AREA} relative w-full rounded text-left text-sec hover:bg-sec-c/40 transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec`}>
     <CompactActLine times={[]} icon="plus" iconClassName="text-sec"><NumericText text={`+${hiddenCount} more`} /> · {OPEN_ACTION}</CompactActLine>
   </button>
   return (

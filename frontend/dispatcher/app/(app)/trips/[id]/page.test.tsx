@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import TripDetailPage from './page'
@@ -970,5 +971,86 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     fireEvent.click(within(loadingGroup).getByRole('button', { name: /\+1 more/ }))
 
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all&phase=${phaseId}`, { scroll: false })
+  })
+
+  it('moves focus from a timeline row to its docked record, and "Show in timeline" brings it back', async () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all')
+    try {
+      const { rerender } = render(<TripDetailPage />)
+      const row = document.getElementById(`exception-row-${EARLIER_ID}`)!
+      row.focus()
+      fireEvent.click(row)
+      navigation.search = new URLSearchParams(push.mock.calls.at(-1)![0].split('?')[1])
+      rerender(<TripDetailPage />)
+
+      await waitFor(() => expect(selectedRecord()).toHaveFocus())
+      expect(screen.getByRole('complementary', { name: 'Trip detail' })).toContainElement(selectedRecord())
+
+      fireEvent.click(within(selectedRecord()!).getByRole('button', { name: 'Show in timeline' }))
+      await waitFor(() => expect(document.activeElement).toHaveAttribute('id', `exception-row-${EARLIER_ID}`))
+    } finally { restore() }
+  })
+
+  it('keeps the selection while another phase card is opened and closed', () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    try {
+      render(<TripDetailPage />)
+      const departure = within(screen.getByRole('group', { name: /^Departure phase/ })).getByRole('button', { name: /^Departure/ })
+
+      fireEvent.click(departure)
+      fireEvent.click(departure)
+
+      expect(replace).not.toHaveBeenCalled()
+      expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+    } finally { restore() }
+  })
+
+  it('keeps the selection when the Group records select is used', () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    try {
+      render(<TripDetailPage />)
+      const select = within(screen.getByRole('complementary', { name: 'Trip detail' })).getByRole('combobox')
+
+      fireEvent.click(select)
+      fireEvent.change(select, { target: { value: 'phase' } })
+
+      expect(replace).not.toHaveBeenCalled()
+      expect(selectedRecord()).toHaveAttribute('aria-current', 'true')
+    } finally { restore() }
+  })
+
+  it('deselects on Escape, keeping the panel and its filter', () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams(`panel=exceptions&exceptions=all&exception=${EARLIER_ID}`)
+    try {
+      render(<TripDetailPage />)
+
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+
+      expect(replace).toHaveBeenCalledOnce()
+      expect(replace).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=all`, { scroll: false })
+    } finally { restore() }
+  })
+
+  it('returns focus from the docked record to its timeline row on Escape', async () => {
+    const restore = dockedMatchMedia()
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all')
+    try {
+      const user = userEvent.setup()
+      const { rerender } = render(<TripDetailPage />)
+      document.getElementById(`exception-row-${EARLIER_ID}`)!.focus()
+      await user.keyboard('{Enter}')
+      navigation.search = new URLSearchParams(push.mock.calls.at(-1)![0].split('?')[1])
+      rerender(<TripDetailPage />)
+      await waitFor(() => expect(selectedRecord()).toHaveFocus())
+
+      await user.keyboard('{Escape}')
+
+      expect(replace).toHaveBeenCalledOnce()
+      expect(document.activeElement).toHaveAttribute('id', `exception-row-${EARLIER_ID}`)
+    } finally { restore() }
   })
 })

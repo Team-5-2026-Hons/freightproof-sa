@@ -5,6 +5,7 @@ import { Chip } from '@/components/ui/Chip'
 import { Ic } from '@/components/ui/Ic'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { PhaseNodeType } from '@/lib/phase/derive'
+import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
 
 // TimelinePhase's shared wrapper owns this anchor for both representations. Standalone
 // callers can still give PhaseTimelineItem an id; the timeline gives it none.
@@ -15,7 +16,7 @@ export const TIMELINE_TOOLBAR_HEIGHT_VAR = '--timeline-toolbar-height'
 // current gate with nothing done yet, 'active' is genuinely under way.
 export const NODE_STYLE: Record<PhaseNodeType, string> = {
   done:    'bg-ok text-white',
-  active:  'bg-sec text-white animate-pulse',
+  active:  'bg-sec text-white motion-safe:animate-pulse',
   next:    'bg-surf-lowest text-sec border-2 border-sec',
   warn:    'bg-warn-c text-warn-onc',
   pending: 'bg-surf-high text-on-surf-v border border-outline-v',
@@ -60,16 +61,25 @@ interface Props {
   collapsedVerdict?: ReactNode
   /** A request counter: each new value opens the card (a page-originated "Show in timeline"). */
   openRequestId?: number | null
+  /** The phase is happening now: its node keeps a live ring whatever its verdict. */
+  live?: boolean
 }
 
-interface RailColumnProps { nodeType: PhaseNodeType; number: number | null; overridden: boolean; isLast: boolean }
+interface RailColumnProps {
+  nodeType: PhaseNodeType; number: number | null; overridden: boolean; isLast: boolean
+  /** The phase is happening now. Shown as a ring around the node, so it survives any verdict colour. */
+  live?: boolean
+}
 
 /** The node and the rail line below it, shared by the Evidence cards and the minimised cards so
  *  the two views line up. A null number is the Trip record, which has no sequence. */
-export function PhaseRailColumn({ nodeType, number, overridden, isLast }: RailColumnProps) {
+export function PhaseRailColumn({ nodeType, number, overridden, isLast, live = false }: RailColumnProps) {
   return <div className="flex shrink-0 flex-col items-center">
-    <div data-node-type={nodeType} className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-meta font-bold ${NODE_STYLE[nodeType]}`}>
+    <div data-node-type={nodeType} data-live={live ? 'true' : undefined} className={`relative flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-meta font-bold ${NODE_STYLE[nodeType]}`}>
       {number === null ? <Ic n="file" s={14} /> : nodeType === 'done' && !overridden ? <Ic n="check" s={14} className="text-white" /> : number}
+      {/* The verdict owns the node's colour (amber once a live leg needs attention), so "now" is a
+          separate ring with a 2 px gap. Only the ring breathes, and only when motion is welcome. */}
+      {live && <><span aria-hidden="true" data-live-ring className="pointer-events-none absolute -inset-1 rounded-full border-2 border-sec motion-safe:animate-pulse" /><span className="sr-only">Live</span></>}
     </div>
     {!isLast && <div className={`my-1 min-h-[20px] w-0.5 flex-1 ${LINE_STYLE[nodeType]}`} />}
   </div>
@@ -94,7 +104,7 @@ function statusChip(nodeType: PhaseNodeType, cancelled: boolean, overridden: boo
 
 export function PhaseTimelineItem({
   id, label, meta, timestamp, nodeType, number, initialOpen, cancelled,
-  overridden, children, warning, isLast, alwaysOpen = false, verdict, collapsedContent, collapsedVerdict, openRequestId = null,
+  overridden, children, warning, isLast, alwaysOpen = false, verdict, collapsedContent, collapsedVerdict, openRequestId = null, live = false,
 }: Props): React.JSX.Element {
   const [open, setOpen] = useState(initialOpen)
   // Adjusting state during render, not in an effect: React's own pattern for reacting to a changed
@@ -126,12 +136,13 @@ export function PhaseTimelineItem({
   </>
 
   return <div id={id} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }} className="relative flex min-w-0 gap-[14px]">
-    <PhaseRailColumn nodeType={nodeType} number={number} overridden={overridden} isLast={isLast} />
+    <PhaseRailColumn nodeType={nodeType} number={number} overridden={overridden} isLast={isLast} live={live} />
     {/* Same bottom gap on every row; the rail is a sibling stretching the row's full height. */}
     <div className="mb-3 min-w-0 flex-1">
       <div className={`rounded-lg px-4 py-3 ${CARD_STYLE[nodeType]} ${expandable ? 'transition-shadow duration-150 hover:shadow-md' : ''}`}>
-        {/* Wraps the header only: buttons (exception rows, thumbnails, Copy) cannot nest inside a <button>. */}
-        {expandable ? <button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)} className="block w-full select-none rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">{summaryContent}</button> : summaryContent}
+        {/* Wraps the header only: buttons (exception rows, thumbnails, Copy) cannot nest inside a <button>.
+            Opening another card to compare is reading around the selection, so it keeps it (H1). */}
+        {expandable ? <button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(!open)} {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }} className="block w-full select-none rounded-md text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">{summaryContent}</button> : summaryContent}
         {!open && !alwaysOpen && collapsedContent}
         {warning && <p className="mt-3 text-body font-semibold text-warn">{warning}</p>}
         {children && (alwaysOpen || open) && <div id={alwaysOpen ? undefined : contentId}>{children}</div>}

@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { TripException } from '@shared/lib/types/exception'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
-import { ExceptionMoreRow, ExceptionRow, exceptionRowId } from '../ExceptionRow'
+import { EXCEPTION_SELECTION_OUTLINE, ExceptionMoreRow, ExceptionRow, exceptionRowId } from '../ExceptionRow'
 import { ExceptionRowList } from '../ExceptionRowList'
+import { COMPACT_HIT_AREA } from '../CompactActLine'
 
 function exception(id: string, overrides: Partial<TripException> = {}): TripException {
   return {
@@ -23,7 +24,7 @@ describe('ExceptionRow', () => {
   it.each(['compact', 'full'] as const)('outlines the brief landing highlight too (%s)', density => {
     render(<ExceptionRow exception={exception('landing')} at={AT} phaseId="p" selected={false} highlighted onOpen={vi.fn()} density={density} />)
 
-    expect(screen.getByRole('button')).toHaveClass('ring-2', 'ring-sec', 'bg-sec-c/70')
+    expect(screen.getByRole('button')).toHaveClass(EXCEPTION_SELECTION_OUTLINE, 'bg-sec-c/70')
     expect(screen.getByRole('button')).not.toHaveAttribute('aria-current')
   })
   it('keeps the soft selected surface with a complete outline and separate keyboard focus', () => {
@@ -31,11 +32,37 @@ describe('ExceptionRow', () => {
 
     const row = screen.getByRole('button')
     expect(row).toHaveClass('bg-sec-c/25')
-    expect(row).toHaveClass('ring-2', 'ring-sec')
+    expect(row).toHaveClass(EXCEPTION_SELECTION_OUTLINE)
     expect(row.className).not.toContain('before:')
     expect(row).toHaveClass('focus-visible:outline-2')
     expect(row).toHaveTextContent('Critical')
     expect(row).toHaveAttribute('aria-current', 'true')
+  })
+  it.each(['compact', 'full'] as const)('marks selection with an inner hairline, leaving the outer outline to keyboard focus (%s)', density => {
+    render(<ExceptionRow exception={exception('selected')} at={AT} phaseId="p" selected highlighted={false} onOpen={vi.fn()} density={density} />)
+
+    const row = screen.getByRole('button')
+    expect(EXCEPTION_SELECTION_OUTLINE).toContain('inset_0_0_0_1px')
+    expect(row).toHaveClass(EXCEPTION_SELECTION_OUTLINE, 'bg-sec-c/25', 'focus-visible:outline-2')
+    expect(row.className).not.toMatch(/(^| )ring-/)
+  })
+  it('keeps a compact row one line tall to the eye with a 44 px target, and draws its connector from the icon', () => {
+    const { rerender } = render(<ExceptionRow exception={exception('compact')} at={AT} phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} density="compact" />)
+
+    const row = screen.getByRole('button')
+    expect(row).not.toHaveClass('min-h-11')
+    expect(row).toHaveClass(...COMPACT_HIT_AREA.split(' '), 'relative')
+    expect(row.querySelector('[data-compact-connector]')).toBeNull()
+
+    rerender(<ExceptionRow exception={exception('compact')} at={AT} phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} density="compact" connectToNext />)
+    expect(row.querySelector('[data-compact-icon] > [data-compact-connector]')).not.toBeNull()
+  })
+  it('gives the compact "+n more" row the same height and target as an exception row', () => {
+    render(<ExceptionMoreRow hiddenCount={3} phaseId="p" onOpen={vi.fn()} density="compact" />)
+
+    const row = screen.getByRole('button')
+    expect(row).not.toHaveClass('min-h-11')
+    expect(row).toHaveClass(...COMPACT_HIT_AREA.split(' '))
   })
   it('gives compact exceptions visible hover feedback without shifting their columns', () => {
     render(<ExceptionRow exception={exception('hover')} at={AT} phaseId="p" selected={false} highlighted={false} onOpen={vi.fn()} density="compact" />)
