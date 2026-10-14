@@ -27,4 +27,13 @@ describe('DetailPanel responsive presentation', () => {
     rerender(<DetailPanel {...props} overlayOpen />)
     expect(screen.getByRole('dialog', { name: 'Trip information' })).toHaveTextContent('Supporting detail')
   })
+
+  it('is not itself a tab stop or a focus-ring target, so a closing modal cannot outline the whole panel', () => {
+    setDocked(true)
+    render(<DetailPanel {...props} />)
+
+    const panel = screen.getByRole('tabpanel')
+    expect(panel).not.toHaveAttribute('tabindex')
+    expect(panel).toHaveClass('focus-visible:outline-none')
+  })
 })
