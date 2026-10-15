@@ -1,15 +1,13 @@
 'use client'
 
-import { useCallback, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { Ban, FileWarning, LockOpen, PackageX, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react'
+import { Ban, FileWarning, LockOpen, PackageX, TriangleAlert, Wrench, X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useToast } from '@/lib/hooks/useToast'
-import { useOfflineQueue, type QueuedExceptionPhoto } from '@/lib/hooks/useOfflineQueue'
+import { useOfflineQueue, type ExceptionDraft, type ExceptionSubmitOutcome } from '@/lib/hooks/useOfflineQueue'
 import { contextPhaseEventId } from '@/lib/phase/derive'
-import { ApiError } from '@/lib/api/client'
-import { uploadArtifact } from '@/lib/api/artifacts'
 import { ROUTES } from '@/lib/constants/routes'
 import { Button } from '@/components/ui/Button'
 import { TextArea } from '@/components/ui/TextArea'
@@ -19,6 +17,7 @@ import { SubpageHeader } from '@/components/layout/SubpageHeader'
 import type { ExceptionType } from '@shared/lib/types/exception'
 import type { Vehicle, VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { DRIVER_EXCEPTION_TYPES } from '@shared/lib/constants/status-meta'
+import { MAX_EXCEPTION_PHOTOS } from '@shared/lib/constants/exception-evidence'
 import { useLocation } from '@/lib/hooks/useLocation'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { markTransition } from '@/lib/navigation/transition-direction'
@@ -117,6 +116,22 @@ function Choice({ checked, onClick, children, className }: ChoiceProps) {
 // The photo upload gets its own label since it's the slow step on a bad signal.
 type SubmitStage = 'idle' | 'uploading-photo' | 'saving'
 
+interface DraftPhoto {
+  id: string
+  dataUrl: string
+  capturedAt: string
+}
+
+type SubmitError =
+  | null
+  | { kind: 'rejected' }
+  | { kind: 'rejected-photo'; photoNumber: number }
+  | { kind: 'not-saved'; photoCount: number }
+
+function pluralPhotos(count: number): string {
+  return count === 1 ? '1 photo' : `${count} photos`
+}
+
 export default function LogExceptionPageClient() {
   const router = useRouter()
   const goBack = useBack(ROUTES.inTransit)
@@ -124,34 +139,51 @@ export default function LogExceptionPageClient() {
   const largeText = useAccessibilityTextSize()
   const { trip, logException } = useTrip()
   const { notify } = useToast()
-  const { enqueueException } = useOfflineQueue()
+  const { submitExceptionReport } = useOfflineQueue()
   const { capture } = useLocation()
   const [type, setType] = useState<ExceptionType | null>(null)
   // The category list collapses to the one chosen row (overhaul 6.4); Change reopens it.
   const [choosingType, setChoosingType] = useState(true)
   const [description, setDescription] = useState('')
-  const [photo, setPhoto] = useState<QueuedExceptionPhoto | null>(null)
-  // Set once uploaded, so a retried submit references the existing artifact instead of
-  // uploading the same image again.
-  const [artifactId, setArtifactId] = useState<string | null>(null)
+  // One id per report draft, reused by every submit press: if the first POST's response
+  // was lost, the server recognises the retry and returns the original report.
+  const [clientReportId] = useState(() => crypto.randomUUID())
+  const [photos, setPhotos] = useState<DraftPhoto[]>([])
   const [vehicleType, setVehicleType] = useState<VehicleType | null>(null)
   const [trailerId, setTrailerId] = useState<VehicleId | null>(null)
 
   const [stage, setStage] = useState<SubmitStage>('idle')
+  // See handleSubmit: a synchronous claim, because `stage` lags the tap by the GPS wait.
+  const submitGuard = useRef(false)
   // Two different failures that must not share one message: server refused the report,
   // versus it never got saved anywhere at all.
-  const [submitError, setSubmitError] = useState<null | 'rejected' | 'not-saved'>(null)
+  // Different failures that must not share one message: the server refused the report,
+  // it refused one photo, or it never got saved anywhere at all.
+  const [submitError, setSubmitError] = useState<SubmitError>(null)
   const submitting = stage !== 'idle'
 
-  const handlePhotoCaptured = useCallback((dataUrl: string) => {
-    // No eager upload, unlike the phase steps' useArtifactUpload: this photo is for an
-    // optional form the driver can abandon freely. Upload begins in handleSubmit's Step 1.
+  function addPhoto(dataUrl: string) {
+    // No eager upload: this photo is for an optional form the driver can abandon freely.
     // Stamped at capture, not submit, since that's when the driver stood in front of it.
     const capturedAt = new Date().toISOString()
-    setPhoto({ dataUrl, capturedAt })
-    setArtifactId(null)
+    setPhotos((current) => (
+      current.length >= MAX_EXCEPTION_PHOTOS ? current : [...current, { id: crypto.randomUUID(), dataUrl, capturedAt }]
+    ))
     setSubmitError(null)
-  }, [])
+  }
+
+  function retakePhoto(photoId: string, dataUrl: string) {
+    // A NEW id, not the old one: the old id may already map to an uploaded artifact, and
+    // a retake must not reuse the bytes the server has for the previous picture.
+    const capturedAt = new Date().toISOString()
+    setPhotos((current) => current.map((p) => (p.id === photoId ? { id: crypto.randomUUID(), dataUrl, capturedAt } : p)))
+    setSubmitError(null)
+  }
+
+  function removePhoto(photoId: string) {
+    setPhotos((current) => current.filter((p) => p.id !== photoId))
+    setSubmitError(null)
+  }
 
   function chooseType(next: ExceptionType) {
     setType(next)
@@ -171,10 +203,25 @@ export default function LogExceptionPageClient() {
     if (!type || !trip || !description.trim()) return
     const vehicle = breakdownVehicle(type, trip.trailers, vehicleType, trailerId)
     if (!vehicle.complete) return
+    // Claimed synchronously: `stage` only flips after the GPS wait below, so a second tap
+    // in that window would otherwise start a second submission of the same report.
+    if (submitGuard.current) return
+    submitGuard.current = true
+    try {
+      await submitReport(type, trip, vehicle)
+    } finally {
+      submitGuard.current = false
+    }
+  }
+
+  async function submitReport(
+    type: ExceptionType,
+    trip: NonNullable<ReturnType<typeof useTrip>['trip']>,
+    vehicle: ReturnType<typeof breakdownVehicle>,
+  ) {
     setSubmitError(null)
 
     const tripId = String(trip.id)
-    const clientReportId = crypto.randomUUID()
     // Captured now, not at flush time: the exception belongs to the leg being driven,
     // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
@@ -192,132 +239,84 @@ export default function LogExceptionPageClient() {
           driverAccuracyMetres: location.accuracy,
         }
 
-    // Cleared once the photo is uploaded (only its id needs to go) or terminally rejected.
-    let photoToQueue: QueuedExceptionPhoto | undefined = photo ?? undefined
-
-    // The offline path, shared by a failed photo upload and a failed report submit.
-    function queueForLater(supportingArtifactId: string | null): void {
-      const result = enqueueException(
-        tripId,
-        {
-          exception_type: type as ExceptionType,
-          description,
-          client_report_id: clientReportId,
-          ...vehicle.fields,
-          ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
-          ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
-          ...(location
-            ? {
-                gps_lat: location.latitude,
-                gps_lng: location.longitude,
-                driver_captured_at: location.capturedAt,
-                driver_accuracy_metres: location.accuracy,
-              }
-            : {}),
-        },
-        photoToQueue,
-      )
-
-      if (!result.persisted) {
-        // Storage refused it outright — showing "Report saved" here would be a lie.
-        setSubmitError('not-saved')
-        return
-      }
-
-      // The body states exactly what is/isn't saved: "will sync later" alone would read
-      // as a promise covering the photo too.
-      const photoDropped = photoToQueue !== undefined && !result.photoPersisted
-      notify({
-        kind: photoDropped ? 'error' : 'success',
-        title: 'Report saved',
-        body: photoDropped
-          ? 'Stored on this device and will sync when you’re back online — but there was no room to store the photo. Photograph it again once you have signal.'
-          : photoToQueue
-            ? 'Report and photo stored on this device. Both sync when you’re back online.'
-            : supportingArtifactId
-              ? 'Stored on this device. Your photo is already uploaded; the report syncs when you’re back online.'
-              : 'Stored on this device. It will sync when you’re back online.',
-      })
-      router.push(ROUTES.inTransit)
-    }
-
-    // ── Step 1: make sure the photo exists server-side before the report cites it ──
-    let supportingArtifactId = artifactId
-    // Already uploaded by an earlier attempt on this same photo: the queue only needs the id.
-    if (supportingArtifactId) photoToQueue = undefined
-    if (photo && !supportingArtifactId) {
-      setStage('uploading-photo')
-      try {
-        const artifact = await uploadArtifact({
-          tripId,
-          artifactType: 'photo',
-          dataUrl: photo.dataUrl,
-          capturedAt: photo.capturedAt,
-        })
-        supportingArtifactId = artifact.id
-        setArtifactId(artifact.id)
-        photoToQueue = undefined
-      } catch (err) {
-        console.error('Failed to upload the exception photo', err)
-        const isTerminal = (
-          err instanceof ApiError
-          && err.status >= 400
-          && err.status < 500
-          && err.status !== 429
-        )
-        if (isTerminal) {
-          // This image will be rejected the same way every time — continue without the
-          // photo so the written report still reaches the dispatcher.
-          notify({
-            kind: 'error',
-            title: 'Photo could not be attached',
-            body: 'The report will be sent without it. Retake the photo and log a second report if the image matters.',
-          })
-          supportingArtifactId = null
-          photoToQueue = undefined
-        } else {
-          // Transient: queue the report with the image still attached.
-          setStage('idle')
-          queueForLater(null)
-          return
-        }
-      }
-    }
-
-    // ── Step 2: raise the exception ──
-    setStage('saving')
-    try {
-      await logException(type, {
+    const draft: ExceptionDraft = {
+      tripId,
+      clientReportId,
+      body: {
+        exception_type: type,
         description,
-        clientReportId,
-        ...captureFields,
-        ...(vehicle.fields.vehicle_type ? { vehicleType: vehicle.fields.vehicle_type } : {}),
-        ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
-        ...(supportingArtifactId ? { supporting_artifact_id: supportingArtifactId } : {}),
-      })
-      // Names the chosen category as explicit proof the report registered.
-      notify({
-        kind: 'success',
-        title: 'Exception recorded',
-        body: `${EXCEPTION_LABELS[type] ?? type}${supportingArtifactId ? ' with photo' : ''}. Now listed under this trip's open exceptions.`,
-      })
-      router.push(ROUTES.inTransit)
-    } catch (err) {
-      console.error('Failed to log exception', err)
-      // A 4xx fails identically on retry; a network failure or 5xx is retryable.
-      const isRetryable = (
-        !(err instanceof ApiError)
-        || err.status === 0
-        || err.status === 429
-        || err.status >= 500
+        client_report_id: clientReportId,
+        ...vehicle.fields,
+        ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+        ...(location
+          ? {
+              gps_lat: location.latitude,
+              gps_lng: location.longitude,
+              driver_captured_at: location.capturedAt,
+              driver_accuracy_metres: location.accuracy,
+            }
+          : {}),
+      },
+      photos,
+    }
+
+    // Photos upload before the report is posted, so the label is the slow step's name;
+    // once the last one is up only the report POST remains.
+    setStage(photos.length > 0 ? 'uploading-photo' : 'saving')
+    try {
+      const outcome = await submitExceptionReport(
+        draft,
+        // The report is only ever posted with the COMPLETE id list (never a reduced set).
+        (artifactIds) => logException(type, {
+          description,
+          clientReportId,
+          ...captureFields,
+          ...(vehicle.fields.vehicle_type ? { vehicleType: vehicle.fields.vehicle_type } : {}),
+          ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
+          ...(artifactIds.length > 0 ? { supporting_artifact_ids: artifactIds } : {}),
+        }),
+        (uploaded, total) => { if (uploaded >= total) setStage('saving') },
       )
-      if (isRetryable) {
-        queueForLater(supportingArtifactId)
-      } else {
-        setSubmitError('rejected')
-      }
+      handleOutcome(outcome, type, photos.length)
     } finally {
       setStage('idle')
+    }
+  }
+
+  function handleOutcome(outcome: ExceptionSubmitOutcome, category: ExceptionType, photoCount: number): void {
+    switch (outcome.kind) {
+      case 'acknowledged':
+        // Names the chosen category as explicit proof the report registered.
+        notify({
+          kind: 'success',
+          title: 'Exception recorded',
+          body: `${EXCEPTION_LABELS[category] ?? category}${photoCount > 0 ? ` with ${pluralPhotos(photoCount)}` : ''}. Now listed under this trip's open exceptions.`,
+        })
+        router.push(ROUTES.inTransit)
+        return
+      case 'saved-for-later':
+        // States exactly what is stored: "will sync later" alone would not say the
+        // photos are covered too.
+        notify({
+          kind: 'success',
+          title: 'Report saved',
+          body: photoCount > 0
+            ? `Report and ${pluralPhotos(photoCount)} stored on this device. ${photoCount === 1 ? 'It syncs' : 'They sync'} when you’re back online.`
+            : 'Stored on this device. It will sync when you’re back online.',
+        })
+        router.push(ROUTES.inTransit)
+        return
+      case 'not-saved':
+        // Send failed AND storage refused it — nothing is holding this report.
+        setSubmitError({ kind: 'not-saved', photoCount: outcome.photoCount })
+        return
+      case 'rejected':
+        setSubmitError(
+          outcome.photoIndex === null
+            ? { kind: 'rejected' }
+            : { kind: 'rejected-photo', photoNumber: outcome.photoIndex + 1 },
+        )
+        return
     }
   }
 
@@ -476,30 +475,75 @@ export default function LogExceptionPageClient() {
             onChange={(e) => setDescription(e.target.value)}
             required
           />
-          {/* The description is required evidence; the photograph stays optional, so it is
+          {/* The description is required evidence; the photographs stay optional, so each is
               one compact row rather than a tile that would bury the submit. */}
-          <CameraCapture
-            variant="row"
-            label="Photo (optional)"
-            actionLabel="Add a photo"
-            hint="Optional"
-            capturedHint="Sends with the report"
-            dataUrl={photo?.dataUrl ?? null}
-            onCapture={handlePhotoCaptured}
-          />
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex items-baseline justify-between gap-3 px-1">
+              <h3 className="text-title-3 text-surface-on">Photos (optional)</h3>
+              {photos.length > 0 && (
+                <span className="text-subhead text-surface-on-variant">{photos.length} of {MAX_EXCEPTION_PHOTOS}</span>
+              )}
+            </div>
+            {photos.length > 0 && (
+              <ol className="flex min-w-0 flex-col gap-3">
+                {photos.map((photo, i) => (
+                  <li key={photo.id} className="min-w-0">
+                    <div role="group" aria-label={`Photo ${i + 1}`} className="flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <CameraCapture
+                          variant="row"
+                          label={`Photo ${i + 1}`}
+                          capturedHint="Sends with the report"
+                          dataUrl={photo.dataUrl}
+                          onCapture={(dataUrl) => retakePhoto(photo.id, dataUrl)}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Remove photo ${i + 1}`}
+                        onClick={() => removePhoto(photo.id)}
+                        className="flex size-11 shrink-0 items-center justify-center rounded-full bg-fill text-surface-on active:scale-95"
+                      >
+                        <X className="size-5" strokeWidth={1.9} aria-hidden />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {photos.length < MAX_EXCEPTION_PHOTOS && (
+              // CameraCapture's own empty row is the add control, not a Button: it owns the
+              // native-camera/file-picker fallback logic, which must not be duplicated here.
+              <CameraCapture
+                variant="row"
+                label={photos.length === 0 ? 'Add a photo' : 'Add another photo'}
+                actionLabel={photos.length === 0 ? 'Add a photo' : 'Add another photo'}
+                hint={photos.length === 0 ? 'Optional' : undefined}
+                dataUrl={null}
+                onCapture={addPhoto}
+              />
+            )}
+          </div>
         </div>
 
-        {submitError === 'rejected' && (
+        {submitError?.kind === 'rejected' && (
           // Terminal 4xx: retrying with the same input cannot succeed.
-          <p className="mt-4 px-5 text-subhead text-error">
+          <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Could not submit — the report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
-        {submitError === 'not-saved' && (
+        {submitError?.kind === 'rejected-photo' && (
+          // The report is never sent without the photo the driver chose to attach.
+          <p role="alert" className="mt-4 px-5 text-subhead text-error">
+            Photo {submitError.photoNumber} was not accepted by the server. Remove or retake it, then submit again.
+          </p>
+        )}
+        {submitError?.kind === 'not-saved' && (
           // Send failed AND storage refused it — nothing is holding this report.
-          <p className="mt-4 px-5 text-subhead text-error">
-            Could not send or save this report — your device is out of storage. Free up
-            space and try again, or report this to your dispatcher directly.
+          <p role="alert" className="mt-4 px-5 text-subhead text-error">
+            Could not send this report and this device has no room to store it. Not saved: the
+            description{submitError.photoCount > 0 ? ` and ${pluralPhotos(submitError.photoCount)}` : ''}.
+            Nothing was lost from this screen — free up space or get signal, then submit again.
           </p>
         )}
       </div>
@@ -517,7 +561,7 @@ export default function LogExceptionPageClient() {
             "Submit Exception" while waiting — the chips above say what is missing. */}
         <Button size="pill" disabled={!ready} onClick={handleSubmit}>
           {stage === 'uploading-photo'
-            ? 'Uploading Photo…'
+            ? 'Uploading Photos…'
             : stage === 'saving'
               ? 'Submitting…'
               : 'Submit Exception'}
