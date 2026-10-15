@@ -535,3 +535,8 @@ migration whose `op.` lines are all intended, no new `.env` key, and `main.py` i
   decimal comma ("33,29"). The limits live once in `components/analytics/fleet/costRates.ts`, mirroring the backend's.
   The derived fuel-per-km row updates live as the admin types. Save errors show the server's message, and the inputs keep
   their values. The hook is `useSaveCostRates` (save only, see B12), not `useCostProfile` as §7.5 said.
+- **B15 (merge, 15 Oct):** `tom_add_cost_profiles` was re-parented twice as `dev` moved, each time because a teammate's
+  migration reached `dev` first with the same parent. It went onto `ciaran_evidence_anchors`, then onto
+  `tim_seal_source_linehaul_pdf`. Ours moved each time, being the unmerged one; theirs were never touched. §4.1's
+  `down_revision` is therefore out of date: the file is the truth. The chain is `tim_precinct_geofence_polygon` →
+  `ciaran_evidence_anchors` → `tim_seal_source_linehaul_pdf` → `tom_add_cost_profiles`.
