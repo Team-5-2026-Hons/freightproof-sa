@@ -38,6 +38,7 @@ from app.orchestration.phases.payloads import (
     compute_departure_canonical_payload_v2,
     compute_in_transit_canonical_payload_v2,
     compute_loading_canonical_payload_v2,
+    compute_loading_canonical_payload_v3,
     compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
 )
@@ -82,6 +83,17 @@ _PHASE_VECTORS: dict[str, tuple[dict[str, Any], dict[str, Any], str]] = {
         ),
         _v2("loading", parcel_count_origin=42, linehaul_photo_sha256=DIGEST_A),
         "95c639664b4ae951611a62605b5db4c5d6c11e175d1ab6e5980e41421166b800",
+    ),
+    "loading_v3": (
+        compute_loading_canonical_payload_v3(
+            phase_event_id=PHASE_EVENT_ID, trip_id=TRIP_ID,
+            parcel_count_origin=42, linehaul_photo_sha256=DIGEST_A, linehaul_pdf_sha256=DIGEST_B,
+        ),
+        {
+            **_BASE_V2, "payload_version": 3, "phase_type": "loading",
+            "parcel_count_origin": 42, "linehaul_photo_sha256": DIGEST_A, "linehaul_pdf_sha256": DIGEST_B,
+        },
+        "4d528e99b4acbd3d08cbea7663e0bdeb84e8b2fa6fe2ce948dd2e3e7f5c4918e",
     ),
     "departure_v1": (
         compute_departure_canonical_payload_v1(
@@ -169,8 +181,8 @@ def test_phase_payload_hash_is_the_golden_sha256(vector: str) -> None:
     assert compute_payload_hash(built) == expected_hash
 
 
-def test_there_is_one_golden_vector_for_each_of_the_ten_payload_builders() -> None:
-    assert len(_PHASE_VECTORS) == 10
+def test_there_is_one_golden_vector_for_each_of_the_eleven_payload_builders() -> None:
+    assert len(_PHASE_VECTORS) == 11
 
 
 def _trip_payload() -> dict[str, Any]:

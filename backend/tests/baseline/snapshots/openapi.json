@@ -660,6 +660,16 @@
             ],
             "title": "Seal Number At Arrival"
           },
+          "seal_number_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealNumberSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "seal_photo_artifact_id": {
             "format": "uuid",
             "title": "Seal Photo Artifact Id",
@@ -2510,6 +2520,16 @@
             ],
             "title": "Seal Number Confirmed"
           },
+          "seal_number_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealNumberSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "seal_photo_artifact_id": {
             "format": "uuid",
             "title": "Seal Photo Artifact Id",
@@ -4260,6 +4280,7 @@
               "pod_photo",
               "pod_signature",
               "linehaul_photo",
+              "linehaul_pdf",
               "checkpoint_selfie",
               "checkpoint_cargo_photo",
               "exception_supporting"
@@ -4337,6 +4358,7 @@
         "description": "What a capture was taken for. Each value is the stem of the phase column that\nrecords the submitted copy (<value>_artifact_id) and of its anchored hash key\n(<value>_sha256), so it is frozen like those names.",
         "enum": [
           "linehaul_photo",
+          "linehaul_pdf",
           "seal_photo",
           "waybill_photo",
           "pod_photo",
@@ -6349,6 +6371,18 @@
             "minLength": 1,
             "title": "Idempotency Key",
             "type": "string"
+          },
+          "linehaul_pdf_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linehaul Pdf Artifact Id"
           },
           "linehaul_photo_artifact_id": {
             "anyOf": [
@@ -8390,6 +8424,18 @@
             ],
             "title": "Idempotency Key"
           },
+          "linehaul_pdf_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Linehaul Pdf Artifact Id"
+          },
           "linehaul_photo_artifact_id": {
             "anyOf": [
               {
@@ -8510,6 +8556,16 @@
               }
             ],
             "title": "Seal Number"
+          },
+          "seal_number_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SealNumberSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "seal_photo_artifact_id": {
             "anyOf": [
@@ -10085,6 +10141,16 @@
           "missing"
         ],
         "title": "SealCondition",
+        "type": "string"
+      },
+      "SealNumberSource": {
+        "description": "How the seal number on a departure or arrival row was entered on the phone.\n\nRecorded, never anchored: it describes the capture, not the seal, and keeping it out\nof the payload leaves the departure and arrival anchor contracts unchanged.",
+        "enum": [
+          "ocr_confirmed",
+          "ocr_corrected",
+          "typed"
+        ],
+        "title": "SealNumberSource",
         "type": "string"
       },
       "SealReceipt": {

@@ -123,6 +123,9 @@ export interface PhaseDescriptor {
   // blocked_on above: the server always sends this field, so it becomes a required
   // `string | null` as soon as those fixtures carry it.
   linehaul_photo_artifact_id?: string | null
+  // The scanned linehaul sheet as a PDF, from the same scan as linehaul_photo_artifact_id
+  // (loading payload v3). Optional for the same fixture reason as the field above.
+  linehaul_pdf_artifact_id?: string | null
 
   // Present on the backend read schema (schemas/handshakes.py:153) but missing from the
   // old shared HandshakeEvent — a live contract drift. Carried across deliberately so

@@ -51,6 +51,12 @@ const ARTIFACT_UPLOAD_TIMEOUT_MS = 30_000
 // upload into a guaranteed rejection.
 export const MAX_ARTIFACT_UPLOAD_BYTES = 10 * 1024 * 1024
 
+// The backend decides the type from the bytes (mime_allowlist.py); the name only has to
+// stop a stored PDF from carrying a .jpg extension into Storage and downloads.
+function fileExtension(blob: Blob): string {
+  return blob.type === 'application/pdf' ? 'pdf' : 'jpg'
+}
+
 export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
   const blob = await dataUrlToBlob(params.dataUrl)
 
@@ -72,7 +78,7 @@ export async function uploadArtifact(params: UploadArtifactParams): Promise<Uplo
     form.append('phase_event_id', params.attribution.phaseEventId)
     form.append('evidence_role', params.attribution.role)
   }
-  form.append('file', blob, `${params.artifactType}.jpg`)
+  form.append('file', blob, `${params.artifactType}.${fileExtension(blob)}`)
 
   return api.postForm<UploadedArtifact>('/api/v1/artifacts', form, { timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS })
 }

@@ -26,7 +26,7 @@ STEP_SLUGS: dict[PhaseType, tuple[str, ...]] = {
 EVIDENCE_ROLES: dict[PhaseType, frozenset[EvidenceRole]] = {
     PhaseType.TRIP_CREATION: frozenset(),
     PhaseType.ACTIVATION: frozenset(),
-    PhaseType.LOADING: frozenset({EvidenceRole.LINEHAUL_PHOTO}),
+    PhaseType.LOADING: frozenset({EvidenceRole.LINEHAUL_PHOTO, EvidenceRole.LINEHAUL_PDF}),
     # waybill_photo is only produced by legacy queued departure entries; kept so they still attribute.
     PhaseType.DEPARTURE: frozenset({EvidenceRole.SEAL_PHOTO, EvidenceRole.WAYBILL_PHOTO}),
     PhaseType.IN_TRANSIT: frozenset(),

@@ -15,7 +15,7 @@ from app.orchestration.phases.completion import _finish_phase
 from app.orchestration.phases.driver_position import _record_driver_position
 from app.orchestration.phases.findings import _raise_scan_shortfall_if_unrecorded
 from app.orchestration.phases.gate import _gate_and_load
-from app.orchestration.phases.payloads import compute_loading_canonical_payload_v2
+from app.orchestration.phases.payloads import compute_loading_canonical_payload_v3
 from app.schemas.phases import LoadingCompleteRequest
 from app.schemas.trips import TripDetailResponse
 
@@ -39,13 +39,25 @@ async def advance_loading(
 
     # Optional evidence: a warehouse that has already gone paperless has no linehaul
     # sheet to hand the driver, and this must never block completion (schema docstring).
-    linehaul_photo_sha256: str | None = None
-    if payload.linehaul_photo_artifact_id is not None:
-        linehaul_hashes = await _assert_artifacts_belong_to_trip(
-            db, trip_id=trip_id, phase_event_id=event.id, cited={EvidenceRole.LINEHAUL_PHOTO: payload.linehaul_photo_artifact_id},
-        )
-        event.linehaul_photo_artifact_id = payload.linehaul_photo_artifact_id
-        linehaul_photo_sha256 = linehaul_hashes[payload.linehaul_photo_artifact_id]
+    # The PDF is optional on its own too: a failed PDF build on the phone still sends the
+    # scan image alone.
+    linehaul_hashes = await _assert_artifacts_belong_to_trip(
+        db, trip_id=trip_id, phase_event_id=event.id,
+        cited={
+            EvidenceRole.LINEHAUL_PHOTO: payload.linehaul_photo_artifact_id,
+            EvidenceRole.LINEHAUL_PDF: payload.linehaul_pdf_artifact_id,
+        },
+    )
+    event.linehaul_photo_artifact_id = payload.linehaul_photo_artifact_id
+    event.linehaul_pdf_artifact_id = payload.linehaul_pdf_artifact_id
+    linehaul_photo_sha256 = (
+        linehaul_hashes[payload.linehaul_photo_artifact_id]
+        if payload.linehaul_photo_artifact_id is not None else None
+    )
+    linehaul_pdf_sha256 = (
+        linehaul_hashes[payload.linehaul_pdf_artifact_id]
+        if payload.linehaul_pdf_artifact_id is not None else None
+    )
 
     # The observed set, not a driver-entered number. The gate in _gate_and_load has
     # already established that the warehouse closed its session at this stop, so these
@@ -122,10 +134,11 @@ async def advance_loading(
         else PhaseStatus.COMPLETED
     )
 
-    _anchor_phase(db, event=event, canonical_payload=compute_loading_canonical_payload_v2(
+    _anchor_phase(db, event=event, canonical_payload=compute_loading_canonical_payload_v3(
         phase_event_id=event.id, trip_id=trip_id,
         parcel_count_origin=event.parcel_count_origin,
         linehaul_photo_sha256=linehaul_photo_sha256,
+        linehaul_pdf_sha256=linehaul_pdf_sha256,
     ))
 
     return await _finish_phase(

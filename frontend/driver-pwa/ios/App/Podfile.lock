@@ -1,32 +1,46 @@
 PODS:
-  - Capacitor (6.2.1):
+  - Capacitor (7.6.9):
     - CapacitorCordova
-  - CapacitorCamera (6.1.3):
+  - CapacitorCamera (7.0.5):
     - Capacitor
-  - CapacitorCordova (6.2.1)
-  - CapacitorGeolocation (6.1.1):
+  - CapacitorCommunityImageToText (7.0.0):
     - Capacitor
-  - CapacitorHaptics (6.0.3):
+  - CapacitorCordova (7.6.9)
+  - CapacitorGeolocation (7.1.8):
     - Capacitor
-  - CapacitorPushNotifications (6.0.5):
+    - IONGeolocationLib (= 1.0.1)
+  - CapacitorHaptics (7.0.5):
     - Capacitor
-  - CapacitorStatusBar (6.0.3):
+  - CapacitorPushNotifications (7.0.7):
     - Capacitor
+  - CapacitorStatusBar (7.0.6):
+    - Capacitor
+  - CapgoCapacitorDocumentScanner (7.2.5):
+    - Capacitor
+  - IONGeolocationLib (1.0.1)
 
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
+  - "CapacitorCommunityImageToText (from `../../node_modules/@capacitor-community/image-to-text`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorGeolocation (from `../../node_modules/@capacitor/geolocation`)"
   - "CapacitorHaptics (from `../../node_modules/@capacitor/haptics`)"
   - "CapacitorPushNotifications (from `../../node_modules/@capacitor/push-notifications`)"
   - "CapacitorStatusBar (from `../../node_modules/@capacitor/status-bar`)"
+  - "CapgoCapacitorDocumentScanner (from `../../node_modules/@capgo/capacitor-document-scanner`)"
+
+SPEC REPOS:
+  trunk:
+    - IONGeolocationLib
 
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorCamera:
     :path: "../../node_modules/@capacitor/camera"
+  CapacitorCommunityImageToText:
+    :path: "../../node_modules/@capacitor-community/image-to-text"
   CapacitorCordova:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorGeolocation:
@@ -37,16 +51,21 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/push-notifications"
   CapacitorStatusBar:
     :path: "../../node_modules/@capacitor/status-bar"
+  CapgoCapacitorDocumentScanner:
+    :path: "../../node_modules/@capgo/capacitor-document-scanner"
 
 SPEC CHECKSUMS:
-  Capacitor: c95400d761e376be9da6be5a05f226c0e865cebf
-  CapacitorCamera: 5ba135b0cb55a788758139fa2404d726bf60f0f3
-  CapacitorCordova: 8d93e14982f440181be7304aa9559ca631d77fff
-  CapacitorGeolocation: ef657a46a125be74010f4ce57caae173c23204d2
-  CapacitorHaptics: 40f83026feeee9cfe36e89e9c98a3baaaf20c450
-  CapacitorPushNotifications: 35abece14371c57172e8321c9ccc8b6fa35fabfe
-  CapacitorStatusBar: 149cde8f1328ec3aa6cbdd872a55137ae3f98b16
+  Capacitor: 46067d1c8df89760dbed78780d436327d588c726
+  CapacitorCamera: 9e952270be355797f769aa835bb7643a96c871fe
+  CapacitorCommunityImageToText: b36b9e68f402633092f3761cecfe462da3e0b52c
+  CapacitorCordova: 2080fc0d6bfbc9dcc0e6d88e77fa624190d343ca
+  CapacitorGeolocation: ab54d708e2fcf99a7bafe0219eaa6f7a932f001a
+  CapacitorHaptics: 1b145fa83c622e5383a3bac04ea81e2514f0b0f5
+  CapacitorPushNotifications: 0527809a9619ed775439d5ab2c2d996122b48319
+  CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
+  CapgoCapacitorDocumentScanner: 3242088f569b55758edca6dc86fb5523242214a6
+  IONGeolocationLib: 20f9d0248a0b5264511fb57a37e25dd2badf797a
 
-PODFILE CHECKSUM: 6cb46c5878e1e7e6e565b7f439db52cbdb02f893
+PODFILE CHECKSUM: dbae784e0445d51638260b2ba6cea08211c17680
 
 COCOAPODS: 1.17.0

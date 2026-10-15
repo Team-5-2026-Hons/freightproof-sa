@@ -10,7 +10,9 @@ import type {
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import type { ActionLocationAssessment, DriverLocationCapture } from '@shared/lib/types/action-location'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { sealNumberSource, type SealNumberSource } from '@/lib/ocr/sealSource'
 import { uploadArtifact, type ArtifactAttribution, type ArtifactType } from './artifacts'
+import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
 
 // idempotency_key lets a resubmitted completion return the current state instead of
 // duplicating evidence. driver_captured_at is stamped once at submit time and reused on
@@ -37,6 +39,8 @@ export interface LoadingCompleteRequest extends PhaseCompleteRequestBase {
   // Optional — a paperless warehouse has nothing to photograph, so this must never
   // block completion. Sent explicitly as null rather than omitted.
   linehaul_photo_artifact_id: string | null
+  // The scan as a PDF. Null when it could not be built, or on a paperless warehouse.
+  linehaul_pdf_artifact_id: string | null
 }
 
 // No guard_verified_seal/seal_number_confirmed: guards have no accounts. Omitting the
@@ -49,6 +53,7 @@ export interface DepartureCompleteRequest extends PhaseCompleteRequestBase {
   waybill_photo_artifact_id: string | null
   seal_number: string
   seal_photo_artifact_id: string
+  seal_number_source: SealNumberSource
 }
 
 // Lets submitPhase forward a waybill photo from a pre-existing offline-queue entry
@@ -73,6 +78,8 @@ export interface ArrivalCompleteRequest extends PhaseCompleteRequestBase {
   phase_type: Extract<PhaseType, 'arrival'>
   seal_condition: SealCondition
   seal_number_at_arrival?: string
+  // Omitted with the number when the seal is missing.
+  seal_number_source?: SealNumberSource
   seal_photo_artifact_id: string
 }
 
@@ -193,6 +200,21 @@ async function artifactIdFor(request: ArtifactIdRequest): Promise<string> {
   return uploaded.id
 }
 
+// The linehaul PDF is a derived copy of the scan (linehaul_photo is the evidence), so it
+// must never cost the driver the loading. A transient failure rethrows: the offline queue
+// retries the whole submit later and the PDF gets another chance. A terminal one (a 4xx
+// the server will never accept) would make the queue drop the entry, scan and all, so
+// the loading goes ahead without the PDF instead.
+async function optionalLinehaulPdfId(request: ArtifactIdRequest): Promise<string | null> {
+  try {
+    return await artifactIdFor(request)
+  } catch (err) {
+    if (isQueueableFailure(err)) throw err
+    console.warn('Linehaul PDF upload rejected; completing loading without it.', err)
+    return null
+  }
+}
+
 export interface SubmitPhaseResult {
   ok: boolean
   // Null in demo mode. After the trip's last phase, this is the only response that still
@@ -263,10 +285,21 @@ export async function submitPhase(
             attribution: { phaseEventId, role: 'linehaul_photo' },
           })
         : null
+      const linehaulPdfDataUrl = e.linehaulPdfDataUrl ?? null
+      const linehaulPdfId = linehaulPdfDataUrl !== null
+        ? await optionalLinehaulPdfId({
+            tripId, artifactType: 'document', readyId: e.linehaulPdfArtifactId ?? null,
+            dataUrl: linehaulPdfDataUrl, capturedAt,
+            attribution: { phaseEventId, role: 'linehaul_pdf' },
+          })
+        // The offline queue drops the PDF image when storage is full but keeps the id an
+        // early upload produced, so that id still goes out.
+        : e.linehaulPdfArtifactId ?? null
       updatedTrip = await completePhase(tripId, phaseEventId, {
         phase_type: 'loading',
         ...driverPosition(position),
         linehaul_photo_artifact_id: linehaulPhotoId,
+        linehaul_pdf_artifact_id: linehaulPdfId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
@@ -302,6 +335,8 @@ export async function submitPhase(
         waybill_photo_artifact_id: waybillPhotoId,
         seal_number: e.sealNumber,
         seal_photo_artifact_id: sealPhotoId,
+        // `?? null`: a departure queued by an older build has no OCR key, and was typed.
+        seal_number_source: sealNumberSource(e.sealNumberOcr ?? null, e.sealNumber),
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
@@ -331,7 +366,10 @@ export async function submitPhase(
         seal_condition: e.sealCondition,
         // Omitted, not sent as null, when missing — mirrors the backend's own
         // "nothing to read off a seal that isn't there" rule (see the type's comment).
-        ...(e.sealCondition === 'missing' ? {} : { seal_number_at_arrival: e.sealNumberAtArrival ?? undefined }),
+        ...(e.sealCondition === 'missing' ? {} : {
+          seal_number_at_arrival: e.sealNumberAtArrival ?? undefined,
+          seal_number_source: sealNumberSource(e.sealNumberAtArrivalOcr ?? null, e.sealNumberAtArrival ?? ''),
+        }),
         seal_photo_artifact_id: sealPhotoId,
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,

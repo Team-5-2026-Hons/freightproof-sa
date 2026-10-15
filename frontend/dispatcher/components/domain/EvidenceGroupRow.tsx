@@ -6,7 +6,7 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { PhaseType } from '@shared/lib/types/phase'
 import { countLabel } from '@/lib/format/count'
 import { evidenceStateLabel, evidenceTimeLines, evidenceTitle } from '@/lib/phase/act-wording'
-import type { EvidenceAct } from '@/lib/phase/acts'
+import { isDocumentRole, type EvidenceAct } from '@/lib/phase/acts'
 import type { EvidenceGroup } from '@/lib/phase/act-groups'
 import { EvidenceDocument } from './EvidenceDocument'
 import { EvidencePhoto } from './EvidencePhoto'
@@ -38,7 +38,7 @@ function captionFor(role: EvidenceAct['role'], index: number, total: number): st
 }
 
 function uploadedHeading(group: EvidenceGroup): string {
-  return `${countLabel(group.acts.length, group.role === 'pod_signature' ? 'file' : 'photo')} uploaded`
+  return `${countLabel(group.acts.length, isDocumentRole(group.role) ? 'file' : 'photo')} uploaded`
 }
 
 function EvidenceImage({ act, caption, lookup }: { act: EvidenceAct; caption: string; lookup: EvidenceLookup }) {
@@ -51,8 +51,8 @@ function EvidenceImage({ act, caption, lookup }: { act: EvidenceAct; caption: st
     error: lookup.artifactError,
     onRetry: lookup.onRetryArtifacts,
   }
-  // The receiver's attestation is a document; every other role is a photograph.
-  return act.role === 'pod_signature' ? <EvidenceDocument {...common} /> : <EvidencePhoto {...common} size="compact" />
+  // The receiver's attestation and the linehaul PDF are documents; every other role is a photograph.
+  return isDocumentRole(act.role) ? <EvidenceDocument {...common} /> : <EvidencePhoto {...common} size="compact" />
 }
 
 function EvidenceActBlock({ act, caption, lookup }: { act: EvidenceAct; caption: string; lookup: EvidenceLookup }) {

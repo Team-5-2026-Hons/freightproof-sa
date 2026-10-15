@@ -16,6 +16,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2,
+    PHASE_PAYLOAD_VERSION_V3,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,
@@ -24,6 +25,7 @@ from app.orchestration.phases.payloads import (
     compute_departure_canonical_payload_v2,
     compute_in_transit_canonical_payload_v2,
     compute_loading_canonical_payload_v2,
+    compute_loading_canonical_payload_v3,
     compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
 )
@@ -77,7 +79,7 @@ def _phase_payload_version(anchored_payload: Any) -> int:
         return _LEGACY_PHASE_PAYLOAD_VERSION
 
     version = anchored_payload["payload_version"]
-    if type(version) is not int or version != PHASE_PAYLOAD_VERSION_V2:
+    if type(version) is not int or version not in (PHASE_PAYLOAD_VERSION_V2, PHASE_PAYLOAD_VERSION_V3):
         raise _UnsupportedPhasePayloadVersion(f"unsupported phase payload version: {version!r}")
     return version
 
@@ -150,6 +152,10 @@ async def _reconstruct_phase_event_payload(
     if event is None:
         raise _PhaseEvidenceMissing("anchored phase event is missing")
     version = _phase_payload_version(anchored_payload)
+    if version == PHASE_PAYLOAD_VERSION_V3 and event.phase_type != PhaseType.LOADING:
+        # v3 exists only for loading (the linehaul PDF). Checked before the OVERRIDDEN branch
+        # so a v3-labelled receipt on an overridden row is unsupported, not a hash mismatch.
+        raise _UnsupportedPhasePayloadVersion("payload version 3 exists only for loading")
     if version == _LEGACY_PHASE_PAYLOAD_VERSION:
         legacy_handshake = _legacy_handshake_contract(anchored_payload)
         if legacy_handshake == "loading":
@@ -209,19 +215,30 @@ async def _reconstruct_phase_event_payload(
         }[PhaseType(event.phase_type)]
         return _PhasePayloadState(payload=builder(phase_event_id=event.id, trip_id=event.trip_id))
     if event.phase_type == PhaseType.LOADING:
-        loading_artifacts: tuple[_ArtifactCommitment, ...] = ()
+        roles: list[tuple[str, uuid.UUID]] = []
         if event.linehaul_photo_artifact_id is not None:
-            loading_artifacts = await _load_artifacts_for_roles(
-                db, event=event,
-                roles=(("linehaul_photo_sha256", event.linehaul_photo_artifact_id),),
+            roles.append(("linehaul_photo_sha256", event.linehaul_photo_artifact_id))
+        if version == PHASE_PAYLOAD_VERSION_V3 and event.linehaul_pdf_artifact_id is not None:
+            roles.append(("linehaul_pdf_sha256", event.linehaul_pdf_artifact_id))
+        loading_artifacts = (
+            await _load_artifacts_for_roles(db, event=event, roles=tuple(roles)) if roles else ()
+        )
+        hashes = {item.payload_key: item.artifact.file_hash for item in loading_artifacts}
+        if version == PHASE_PAYLOAD_VERSION_V3:
+            return _PhasePayloadState(
+                payload=compute_loading_canonical_payload_v3(
+                    phase_event_id=event.id, trip_id=event.trip_id,
+                    parcel_count_origin=event.parcel_count_origin,
+                    linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
+                    linehaul_pdf_sha256=hashes.get("linehaul_pdf_sha256"),
+                ),
+                artifacts=loading_artifacts,
             )
         return _PhasePayloadState(
             payload=compute_loading_canonical_payload_v2(
                 phase_event_id=event.id, trip_id=event.trip_id,
                 parcel_count_origin=event.parcel_count_origin,
-                linehaul_photo_sha256=(
-                    loading_artifacts[0].artifact.file_hash if loading_artifacts else None
-                ),
+                linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
             ),
             artifacts=loading_artifacts,
         )
@@ -323,12 +340,16 @@ async def reconstruct_pending_phase_payload(
     The ledger already durably stores the hash and evidence links in the phase
     transaction. Never replace that hash with a reconstruction: changed/missing
     evidence must leave an explicit anchor debt, not acquire a new trusted baseline.
-    Trying v1 also recovers phase anchors queued before the v2 deployment.
+    Trying every contract also recovers anchors queued before v2, and loading anchors queued as v3.
     """
-    for contract in ({}, {"payload_version": PHASE_PAYLOAD_VERSION_V2}):
+    for contract in (
+        {}, {"payload_version": PHASE_PAYLOAD_VERSION_V2}, {"payload_version": PHASE_PAYLOAD_VERSION_V3},
+    ):
         try:
             state = await _reconstruct_phase_event_payload(db, event.id, anchored_payload=contract)
-        except _PhaseEvidenceMissing:
+        except (_PhaseEvidenceMissing, _UnsupportedPhasePayloadVersion):
+            # A contract this phase type never produced (v3 off loading) is simply not a
+            # match; move on to the next one rather than abandoning recovery.
             continue
         if _hash_payload(state.payload) == event.event_hash:
             return state.payload

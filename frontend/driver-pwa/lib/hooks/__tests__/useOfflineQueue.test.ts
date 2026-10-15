@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useOfflineQueue, __resetOfflineQueueStoreForTests } from '../useOfflineQueue'
 import { ApiError } from '@/lib/api/client'
 import type { DriverPosition } from '@/lib/types/location'
-import type { ActivationEvidence } from '@/lib/types/evidence-draft'
+import type { ActivationEvidence, LoadingEvidence } from '@/lib/types/evidence-draft'
 import type { CheckpointEvidence } from '@/lib/api/checkpoints'
 import {
   __setIndexedDbForTests,
@@ -706,6 +706,42 @@ describe('useOfflineQueue', () => {
       expect(stored).toHaveLength(1)
       expect(stored[0].kind).toBe('phase')
     })
+  })
+})
+
+// The linehaul PDF wraps the same JPEG as the scan, so it roughly doubles a loading entry.
+// The scan is the evidence; when storage refuses both, the queue keeps the scan.
+describe('queued loading with a linehaul PDF', () => {
+  const LOADING: LoadingEvidence = {
+    linehaulPhotoDataUrl: 'data:image/jpeg;base64,/9j/SCAN', linehaulPhotoArtifactId: null,
+    linehaulPdfDataUrl: 'data:application/pdf;base64,JVBERi0=', linehaulPdfArtifactId: 'pdf-early',
+    capturedAt: '2026-06-12T10:05:00Z',
+  }
+
+  it('keeps the scan and drops the PDF image when the entry will not fit in storage', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementationOnce(() => { throw new Error('QuotaExceededError') })
+    const { result } = renderHook(() => useOfflineQueue())
+
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-2', 'loading', LOADING, POSITION, DRIVER_CAPTURED_AT))
+
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].evidence.linehaulPhotoDataUrl).toBe(LOADING.linehaulPhotoDataUrl)
+    expect(stored[0].evidence.linehaulPdfDataUrl).toBeNull()
+    // An id the early upload already produced costs nothing to keep.
+    expect(stored[0].evidence.linehaulPdfArtifactId).toBe('pdf-early')
+    expect(result.current.queueLength).toBe(1)
+    setItem.mockRestore()
+  })
+
+  it('stores the PDF image when it fits', () => {
+    const { result } = renderHook(() => useOfflineQueue())
+
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-2', 'loading', LOADING, POSITION, DRIVER_CAPTURED_AT))
+
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')
+    expect(stored[0].evidence.linehaulPdfDataUrl).toBe(LOADING.linehaulPdfDataUrl)
   })
 })
 

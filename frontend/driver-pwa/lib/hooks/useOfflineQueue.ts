@@ -462,7 +462,17 @@ export function useOfflineQueue() {
         position, driverCapturedAt, acknowledgement: acknowledgement ?? null,
         enqueuedAt: new Date().toISOString(),
       }
-      saveQueue([...loadQueue(), entry])
+      if (saveQueue([...loadQueue(), entry])) {
+        publishCounts()
+        return
+      }
+
+      // Write refused — almost always the ~5MB localStorage quota. A loading's linehaul PDF
+      // wraps the same JPEG as the scan, so it roughly doubles the entry; the scan is the
+      // evidence, so retry without the PDF image. Any id its early upload produced stays.
+      if ('linehaulPdfDataUrl' in evidence && evidence.linehaulPdfDataUrl) {
+        saveQueue([...loadQueue(), { ...entry, evidence: { ...evidence, linehaulPdfDataUrl: null } }])
+      }
       publishCounts()
     },
     [],
