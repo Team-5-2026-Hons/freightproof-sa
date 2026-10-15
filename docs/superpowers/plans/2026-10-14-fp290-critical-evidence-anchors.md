@@ -179,7 +179,8 @@ Tests: extend `test_exception_reads.py`, `test_blockchain_receipt_lookup.py`, `t
 Run: those backend tests; `npm test`, `npm run type-check`, `npm run build` in `dispatcher` and `client-portal`.
 
 ### Task 6 — End-to-end proof and docs
-- `tests/integration/test_fp290_incident_chain.py`: critical broken-seal report with 2 photos → cancel → review; distinct events/receipts; all photo bytes verified; Hedera failure → `failed` → recovery; scoped audit pack has the exact receipts and all photos.
+- [x] Done 15 Oct: `test_fp290_incident_chain.py` (8 tests), design note, two cargo tests in `test_trip_verification.py`; backend gate run 15 Oct: pytest 3201 passed / 4 skipped, ruff, mypy app and lint-imports clean; `check_structure.py` fails only on files FP-290 did not touch (see report). Manual items below are still the user's.
+- `tests/integration/test_fp290_incident_chain.py`: critical broken-seal report with 2 photos → cancel → review; distinct events/receipts; all photo bytes verified; Hedera failure → `failed` → recovery; a newly issued, scoped audit pack has the exact receipts and all photos (pending/failed shown honestly before recovery). Receipts and coverage are inspected in the audit pack and the shared portal, not the dispatcher (which is review-only, see Task 5).
 - Design note: coverage matrix per field, GPS never-hashed, PP snapshot = creation-time manifest (non-PP legs have no cargo commitment), capture time vs server time vs consensus time, retry runbook. Add cargo tests to `test_b3_canonical_hashes.py` / `test_trip_verification.py` / `test_trips_anchor.py` only where missing.
 - Full backend gate from `backend/`: `.venv/bin/pytest`, `.venv/bin/ruff check .`, `.venv/bin/mypy .`, `.venv/bin/lint-imports`, `.venv/bin/python scripts/check_structure.py`. Run pytest in the foreground (a concurrent run wipes the test DB).
 - Manual (user): offline/reload two-photo flow on browser + Android; rendered PDF and portal at phone/desktop widths.
@@ -187,14 +188,16 @@ Run: those backend tests; `npm test`, `npm run type-check`, `npm run build` in `
 
 ## 6. Acceptance
 
+Backend rows were observed passing in the full-suite run of 15 Oct (3201 passed, 4 skipped). Names are `file::test`.
+
 | Requirement | Proof |
 |---|---|
-| Critical incident + multiple photos anchored | T1, T4, T6 |
-| Cancellation with cause, actor, time | T3 |
-| Review who/when/outcome, incl. batch + authored | T3 |
-| No GPS/text/identity in payloads | T1 allowlist + sentinel tests |
-| Hedera/broker failure leaves recoverable debt | T2, T6 |
-| Tampered source/photo detected; outage ≠ mismatch | T1, T2, T5 |
-| No cross-tenant/cross-consignment leakage | T1, T5 |
-| Trip v1/v2, phase legacy/v2, manifest v1/v2 all still verify | T1, T5, T6 |
-| Offline multi-photo survives reload; no silent photo loss | T4 |
+| Critical incident + multiple photos anchored | T1 `test_critical_exception_anchors::test_critical_report_with_two_photos_freezes_one_pending_event`, `::test_worker_entry_point_anchors_the_frozen_hash_and_links_the_receipt`. T6 `test_fp290_incident_chain::test_new_pack_after_recovery_has_exactly_the_right_receipts_and_both_photos`. T4 `exception-store.test.ts` (envelope with ordered photo blobs): frontend suite **not re-run in T6**; two-photo reload on a device is manual |
+| Cancellation with cause, actor, time | T3 `test_trip_admin::test_cancel_freezes_distinct_cancellation_and_authored_review_events` (cause digest, actor digest, `occurred_at == trip.closed_at`). T6 `test_each_action_has_its_own_event_and_receipts_stay_separate` |
+| Review who/when/outcome, incl. batch + authored | T3 `test_exception_decision_anchors::test_single_review_freezes_one_review_event`, `::test_batch_creates_one_event_per_newly_reviewed_row`, `::test_mixed_batch_skips_rows_this_user_already_reviewed`; authored: the cancellation-note review in the T3 cancel test above |
+| No GPS/text/identity in payloads | T1 `test_evidence_anchor_payloads::test_payloads_carry_exactly_the_allowlisted_keys`, `::test_record_types_have_no_gps_or_location_fields`, `::test_payload_contains_no_raw_text_or_identity_values`; `test_evidence_anchor_verify::test_gps_only_edit_still_verifies` |
+| Hedera/broker failure leaves recoverable debt | T2 `test_evidence_anchor_recovery::test_broker_failure_falls_back_to_a_local_anchor`, `::test_never_dispatched_event_is_recovered_and_anchored`, `::test_failed_event_with_exhausted_retries_is_still_eligible`. T6 `test_hedera_outage_leaves_failed_events_and_the_source_intact`, `::test_recovery_anchors_the_failed_events_without_touching_the_raise` |
+| Tampered source/photo detected; outage ≠ mismatch | T1 `test_evidence_anchor_verify::test_edited_source_fields_are_a_db_mismatch`, `::test_replaced_file_bytes_are_a_db_mismatch`, `::test_storage_outage_is_an_error_not_a_mismatch`. T5 `test_audit_pack_evidence_anchors::test_review_receipt_never_promotes_the_raise_tier` and the receipt-reassignment tests. T6 `test_pack_issued_during_the_outage_says_failed_and_recovery_during_it_changes_nothing` (outage shown as `failed`, not as anchored) |
+| No cross-tenant/cross-consignment leakage | T1 `test_evidence_anchor_verify::test_other_organisations_event_is_404_before_storage_or_hedera`. T5 `test_audit_pack_evidence_anchors::test_scoped_pack_withholds_other_consignments_events_receipts_and_photos`. T6 the new scoped pack excludes the other client's receipt while an unscoped pack includes it (same test as row 1) |
+| Trip v1/v2, phase legacy/v2, manifest v1/v2 all still verify | Trip v1/v2: `test_trip_verification::test_v1_receipt_still_verifies`, `::test_multi_stop_trip_verifies`, `test_b3_canonical_hashes::test_trip_journey_lock_v2_hash_is_the_golden_sha256`. Phase: `test_phase_anchor_payload::test_departure_v1_payload_remains_byte_compatible`, `::test_confirmation_v1_payload_remains_byte_compatible`, B3 phase golden vectors. Manifest: `test_audit_pack_evidence_anchors::test_v1_manifest_json_still_validates_and_reads_as_v1`, `::test_manifest_is_version_2`. |
+| Offline multi-photo survives reload; no silent photo loss | T4 `exception-store.test.ts::test_data_survives_reopening_the_connection`, `::test_quota_failure_on_put_rejects_with_quota_and_keeps_previous_record`, `legacy-exception-migration.test.ts`: **not re-run in T6; not observed on a device**. Manual check required (see the report's checklist) |
