@@ -13,6 +13,7 @@ from app.db.models.enums import (
     ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType, TripStatus,
 )
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_dispatcher
 from app.orchestration.phases.payloads import compute_override_canonical_payload_v2
@@ -92,7 +93,7 @@ async def override_phase(
     ))
 
     # The human intervention lands on the ledger, not just in an audit column.
-    db.add(TripException(
+    await register_exception(db, TripException(
         trip_id=trip_id, phase_event_id=event.id,
         exception_type=ExceptionType.DISPATCHER_NOTE, source=ExceptionSource.DISPATCHER,
         severity=ExceptionSeverity.WARNING,

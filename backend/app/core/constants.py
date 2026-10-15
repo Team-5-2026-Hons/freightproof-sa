@@ -15,6 +15,12 @@ MINIMUM_TRIP_DURATION = timedelta(minutes=15)
 MAX_BATCH_REVIEW_SIZE = 100
 
 
+# Photos one exception report may carry. The membership is frozen at creation and committed
+# by the report's Hedera receipt, so the cap bounds what a single anchor must re-hash.
+# Mirrored by frontend/shared/lib/constants/exception-evidence.ts (backend contract test).
+MAX_EXCEPTION_PHOTOS = 5
+
+
 # Largest value a Postgres `integer` column holds; filters on one must not exceed it.
 PG_INTEGER_MAX = 2_147_483_647
 

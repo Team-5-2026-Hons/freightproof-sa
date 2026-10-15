@@ -16,6 +16,7 @@ from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_seve
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, TripStatus
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.orchestration.exceptions.review_policy import dispatcher_authored_review
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
@@ -77,12 +78,14 @@ async def cancel_trip(
     # platform exists to avoid. Deliberate no-migration stopgap: the proper fix is a
     # raised_by_user_id column, which is a schema change and its own task.
     # Reviewed by its author at creation (FP-280) — see review_policy.
-    db.add(TripException(
+    # Both the note's own authored-review event and the cancellation event are frozen here,
+    # from the exact persisted note (never inferred later from its description prefix).
+    await register_exception(db, TripException(
         trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
         source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
         **dispatcher_authored_review(user_id=user_id, at=trip.closed_at),
         description=f"{_CANCELLED_BY_PREFIX}{user_id}: {note}",
-    ))
+    ), cancelled_trip=trip)
     await db.flush()
 
     enqueue_event(

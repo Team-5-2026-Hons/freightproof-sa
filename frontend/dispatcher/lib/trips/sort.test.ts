@@ -68,10 +68,15 @@ describe('sortTrips', () => {
     expect(ids(sortTrips(trips, { key: 'manifest', dir: 'asc' }, PRECINCTS))).toEqual(['a', 'b'])
   })
 
-  it('sorts status by the chip label the dispatcher reads', () => {
-    const trips = [trip('a', { current_phase: 'unloading' }), trip('b', { current_phase: 'loading' })]
+  it('sorts status in plan order, not by phase name, with a trip that has no plan last', () => {
+    const trips = [
+      trip('none', { phase_total: 0, phase_completed: 0, current_phase: null }),
+      trip('unloading', { current_phase: 'unloading', phase_completed: 5 }),
+      trip('departure', { current_phase: 'departure', phase_completed: 3 }),
+    ]
 
-    expect(ids(sortTrips(trips, { key: 'status', dir: 'asc' }, PRECINCTS))).toEqual(['b', 'a'])
+    expect(ids(sortTrips(trips, { key: 'status', dir: 'asc' }, PRECINCTS))).toEqual(['departure', 'unloading', 'none'])
+    expect(ids(sortTrips(trips, { key: 'status', dir: 'desc' }, PRECINCTS))).toEqual(['unloading', 'departure', 'none'])
   })
 
   it('sorts progress by fraction complete, with a trip that has no plan last in both directions', () => {
@@ -102,6 +107,49 @@ describe('sortTrips', () => {
 
     expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['three', 'one'])
     expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS))).toEqual(['one', 'three'])
+  })
+
+  it('puts one critical above any number of lesser exceptions', () => {
+    const trips = [
+      trip('warnings', { needs_review_count: 5, attention: { critical: 0, warning: 5, info: 0, claimed: 0 } }),
+      trip('critical', { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+      trip('info', { needs_review_count: 1, attention: { critical: 0, warning: 0, info: 1, claimed: 0 } }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['critical', 'warnings', 'info'])
+  })
+
+  it('at equal severity puts the trip with more unclaimed exceptions first, even with fewer in total', () => {
+    const trips = [
+      trip('owned', { needs_review_count: 3, attention: { critical: 3, warning: 0, info: 0, claimed: 3 } }),
+      trip('unowned', { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['unowned', 'owned'])
+  })
+
+  it('reverses the whole attention order when descending, keeping trips with no plan last', () => {
+    const trips = [
+      trip('none', { phase_total: 0, phase_completed: 0 }),
+      trip('quiet'),
+      trip('warning', { needs_review_count: 1, attention: { critical: 0, warning: 1, info: 0, claimed: 0 } }),
+      trip('critical', { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['critical', 'warning', 'quiet', 'none'])
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS))).toEqual(['quiet', 'warning', 'critical', 'none'])
+  })
+
+  it('breaks an attention tie by creation time then id', () => {
+    const same = { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }
+    const trips = [
+      trip('late', { ...same, created_at: '2026-10-02T08:00:00Z' }),
+      trip('b', { ...same, created_at: '2026-10-01T08:00:00Z' }),
+      trip('a', { ...same, created_at: '2026-10-01T08:00:00Z' }),
+    ]
+
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'asc' }, PRECINCTS))).toEqual(['a', 'b', 'late'])
+    expect(ids(sortTrips(trips, { key: 'exceptions', dir: 'desc' }, PRECINCTS))).toEqual(['a', 'b', 'late'])
   })
 
   it('orders trips with no exceptions by progress', () => {

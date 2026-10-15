@@ -205,3 +205,17 @@ it('ignores responses for a previous subject and after unmount', async () => {
   expect(onResult).not.toHaveBeenCalled()
   expect(notify).not.toHaveBeenCalled()
 })
+
+it('verifies an exception action by evidence-event subject without implying the incident is proven', async () => {
+  const eventId = '22222222-2222-4222-8222-222222222222'
+  post.mockResolvedValue({
+    status: 'verified', receipt: null, expected_hash: 'a', current_hash: 'a', evidence_verified: true,
+  })
+  render(<VerifyButton subjectType="evidence_event" subjectId={eventId} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Verify integrity' }))
+  expect(await screen.findByText('Recorded action matches its anchor')).toBeInTheDocument()
+  expect(screen.getByText(/does not prove the incident/)).toBeInTheDocument()
+  expect(post).toHaveBeenCalledWith(
+    '/api/v1/blockchain/verify', { subject_type: 'evidence_event', subject_id: eventId }, { idempotent: true, timeoutMs: 35_000 },
+  )
+})

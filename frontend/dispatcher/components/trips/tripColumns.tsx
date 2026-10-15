@@ -4,16 +4,15 @@ import Link from 'next/link'
 import { Chip } from '@/components/ui/Chip'
 import { SkeletonBar } from '@/components/ui/Skeleton'
 import type { TableColumn } from '@/components/ui/Table'
-import { PhaseChain } from '@/components/domain/PhaseChain'
 import { TripIdStamp } from '@/components/domain/TripIdStamp'
 import { ROUTES } from '@/lib/constants/routes'
+import { countLabel } from '@/lib/format/count'
 import { manifestClient, manifestKey, manifestLabel } from '@/lib/format/manifest'
 import { routeShortName } from '@/lib/trips/route-name'
-import { chainNodesFromCounts, tripChipMeta } from '@/lib/phase/derive'
-import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
+import { tripChipMeta } from '@/lib/phase/derive'
 import { fmtSastDateParts } from '@shared/lib/utils/datetime'
 import type { Precinct } from '@shared/lib/types/precinct'
-import type { TripChecklistItem } from '@shared/lib/types/trip'
+import type { TripAttention, TripChecklistItem } from '@shared/lib/types/trip'
 
 // Desktop-first. Base widths come from measuring the widest realistic content inside the compact
 // table's 12px cell padding: the trip ID (about 200px of text and copy icon) is the one cell that
@@ -27,13 +26,14 @@ const ROUTE_WIDTH_PX = 170
 const STATUS_WIDTH_PX = 112
 const MANIFEST_WIDTH_PX = 110
 const EXCEPTIONS_WIDTH_PX = 130
-// The chain sits above its hint, so the column no longer has to hold both side by side.
-const PROGRESS_WIDTH_PX = 160
+// The active list's note also names criticals and claims ("3 exceptions · 1 critical · 2 unclaimed").
+const ATTENTION_WIDTH_PX = 160
 const CORE_WIDTH_PX = DATE_WIDTH_PX + TRIP_WIDTH_PX + DRIVER_WIDTH_PX + ROUTE_WIDTH_PX + STATUS_WIDTH_PX
 
-// A narrower container folds the two least critical columns into neighbouring cells rather
-// than scrolling: the exceptions note first (under the status chip), then the manifest (under
-// the trip ID). Each threshold is exactly the width at which the columns before it still fit.
+// A narrower container folds the least critical columns into neighbouring cells rather than
+// scrolling: on History the exceptions note first (under the status chip), then the manifest (under
+// the trip ID). The dashboard never folds its exceptions (see buildTripColumns). Each threshold is
+// exactly the width at which the columns before it still fit.
 const exceptionsHideBelow = (exceptionsWidth: number): number => CORE_WIDTH_PX + exceptionsWidth
 const manifestHideBelow = (exceptionsWidth: number): number => exceptionsHideBelow(exceptionsWidth) + MANIFEST_WIDTH_PX
 
@@ -46,8 +46,8 @@ export interface TripDateColumn<T> {
 interface TripColumnOptions<T extends TripChecklistItem> {
   precincts: readonly Precinct[]
   date: TripDateColumn<T>
-  /** Dashboard shows the phase chain and what the trip is doing; History only whether
-   *  anything needs a dispatcher's attention now (see needs_review_count). */
+  /** Dashboard: where the trip is in its plan, under the status chip, and room for the claim split
+   *  in the exceptions note. History has neither: its trips are finished. */
   showProgress: boolean
   /** Header buttons for the owner to handle. Off for server-paginated lists, where sorting one
    *  page would present a partial ordering as the whole. Needs `onSort` on the Table too. */
@@ -64,37 +64,37 @@ function stopRoleLabel(trip: TripChecklistItem): string {
   return `Stop ${trip.current_stop + 1}`
 }
 
-/** What the row says the trip is doing. Exceptions win; otherwise the coarse status covers
- *  terminal states and current_phase covers everything in between. */
-export function progressHint(trip: TripChecklistItem): string {
-  if (trip.needs_review_count > 0) {
-    return `⚠ ${trip.needs_review_count} exception${trip.needs_review_count > 1 ? 's' : ''}`
-  }
-  if (trip.status === 'closed') return '✓ Closed'
-  if (trip.status === 'cancelled') return 'Cancelled'
-  if (trip.current_phase === null) return 'Pending start'
-
-  const role = stopRoleLabel(trip)
-  const stop = role ? ` · ${role}` : ''
-  return `${PHASE_NAMES[trip.current_phase]}${stop} · ${trip.phase_completed}/${trip.phase_total}`
+// Only critical is named: warnings are the routine case, and naming them on every row would bury
+// the one word that changes what a dispatcher does next. Claimed exceptions still count in the
+// total because they still need review; the suffix says whether anyone has taken them on.
+function attentionDetail(total: number, attention: TripAttention): string {
+  const critical = attention.critical > 0 ? ` · ${attention.critical} critical` : ''
+  const unclaimed = total - attention.claimed
+  const owner = unclaimed === 0 ? ' · all claimed' : unclaimed === total ? ' · unclaimed' : ` · ${unclaimed} unclaimed`
+  return `${critical}${owner}`
 }
 
-// `withChain` is false where the note is folded into the narrow Status cell: a wrapped chain of
-// dots would make the row several lines tall, and the hint already carries the completed/total.
-function ExceptionsNote({ trip, showProgress, withChain = true }: { trip: TripChecklistItem; showProgress: boolean; withChain?: boolean }) {
-  const hint = progressHint(trip)
-  if (showProgress) {
-    const tone = trip.needs_review_count > 0 ? 'text-warn' : trip.status === 'closed' ? 'text-ok' : 'text-on-surf-v'
-    const nodes = chainNodesFromCounts(trip.phase_total, trip.phase_completed, trip.current_phase === null ? '' : PHASE_NAMES[trip.current_phase])
-    return (
-      <div>
-        {/* Wraps rather than overflows: a cross-dock plan has 11 nodes, wider than this column. */}
-        {withChain && <PhaseChain nodes={nodes} compact className="flex-wrap gap-y-1" />}
-        <p className={`${withChain ? 'mt-1 ' : ''}text-[11px] ${tone}`}>{hint}</p>
-      </div>
-    )
-  }
-  if (trip.needs_review_count > 0) return <span className="text-[11px] font-[600] text-warn">{hint}</span>
+/** What still needs a dispatcher's review, or null when nothing does. Rows from the active list
+ *  carry the severity and claim split, so they also say how bad and whether anyone has it. */
+export function exceptionsLabel(trip: TripChecklistItem): string | null {
+  const total = trip.needs_review_count
+  if (total === 0) return null
+  const count = `⚠ ${countLabel(total, 'exception')}`
+  return trip.attention ? `${count}${attentionDetail(total, trip.attention)}` : count
+}
+
+/** Where the trip is in its plan, shown under the status chip: "Origin · 1/7". The chip already
+ *  names the phase and covers finished and not-started trips, so those get nothing here. */
+export function planPosition(trip: TripChecklistItem): string | null {
+  if (trip.status === 'closed' || trip.status === 'cancelled' || trip.current_phase === null) return null
+  const role = stopRoleLabel(trip)
+  return `${role ? `${role} · ` : ''}${trip.phase_completed}/${trip.phase_total}`
+}
+
+function ExceptionsNote({ trip }: { trip: TripChecklistItem }) {
+  const label = exceptionsLabel(trip)
+  // A critical reads in the error colour, matching the severity the attention order ranks first.
+  if (label) return <span className={`text-[11px] font-[600] ${trip.attention && trip.attention.critical > 0 ? 'text-err' : 'text-warn'}`}>{label}</span>
   // NOT "No exceptions": needs_review_count is zero once reviewed exceptions are resolved,
   // even though the record still holds them.
   return <span className="text-[11px] font-[600] text-ok">None need review</span>
@@ -113,8 +113,8 @@ export function tripRowClassName(trip: TripChecklistItem): string | undefined {
  *  Dashboard cannot drift apart. Built per render because route names depend on the loaded
  *  precincts. */
 export function buildTripColumns<T extends TripChecklistItem>({ precincts, date, showProgress, sortable = false }: TripColumnOptions<T>): TableColumn<T>[] {
-  const exceptionsWidth = showProgress ? PROGRESS_WIDTH_PX : EXCEPTIONS_WIDTH_PX
-  return [
+  const exceptionsWidth = showProgress ? ATTENTION_WIDTH_PX : EXCEPTIONS_WIDTH_PX
+  const columns: TableColumn<T>[] = [
     {
       id: 'date', sortable, label: date.label, width: DATE_WIDTH_PX, minWidth: 100,
       skeleton: <><SkeletonBar className="h-3.5 w-20" /><SkeletonBar className="mt-2 h-2.5 w-14" /></>,
@@ -174,21 +174,33 @@ export function buildTripColumns<T extends TripChecklistItem>({ precincts, date,
       </>,
     },
     {
-      id: 'exceptions', sortable, label: showProgress ? 'Progress' : 'Exceptions', width: exceptionsWidth, minWidth: 120, hideBelow: exceptionsHideBelow(exceptionsWidth),
+      id: 'exceptions', sortable, label: 'Exceptions', width: exceptionsWidth, minWidth: 120,
+      // Never folded on the dashboard; see the reorder below.
+      hideBelow: showProgress ? undefined : exceptionsHideBelow(exceptionsWidth),
       skeleton: <SkeletonBar className="h-3 w-28" />,
-      render: trip => <ExceptionsNote trip={trip} showProgress={showProgress} />,
+      render: trip => <ExceptionsNote trip={trip} />,
     },
     {
       id: 'status', sortable, label: 'Status', width: STATUS_WIDTH_PX, minWidth: 110,
       skeleton: <SkeletonBar className="h-6 w-20 rounded-md" />,
       render: (trip, { hidden }) => {
         const meta = tripChipMeta(trip.status, trip.current_phase)
+        const position = showProgress ? planPosition(trip) : null
         return <>
           <Chip type={meta.chipType} label={meta.label} />
+          {position && <p className="mt-1 text-[11px] tabular-nums text-on-surf-v">{position}</p>}
           {/* The exceptions column's note moves here while that column is hidden. */}
-          {hidden.has('exceptions') && <div className="mt-2"><ExceptionsNote trip={trip} showProgress={showProgress} withChain={false} /></div>}
+          {hidden.has('exceptions') && <div className="mt-2"><ExceptionsNote trip={trip} /></div>}
         </>
       },
     },
   ]
+  if (!showProgress) return columns
+  // The dashboard is a monitoring screen, so what needs attention sits right after the trip it
+  // belongs to and never folds: when a narrow window makes the table scroll sideways, the trip and
+  // its exceptions are still in the first screen. History keeps the record order.
+  const exceptions = columns.filter(column => column.id === 'exceptions')
+  const others = columns.filter(column => column.id !== 'exceptions')
+  const afterTrip = others.findIndex(column => column.id === 'trip') + 1
+  return [...others.slice(0, afterTrip), ...exceptions, ...others.slice(afterTrip)]
 }

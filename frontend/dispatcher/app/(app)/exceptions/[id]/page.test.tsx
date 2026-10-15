@@ -825,3 +825,19 @@ describe('exception detail header and hierarchy', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Assessment' })).toHaveFocus()
   })
 })
+
+describe('Exception detail — review-only evidence', () => {
+  it('shows no anchor status, retry message or verification control, even when the exception has anchor events', () => {
+    mockDetail(baseException({
+      anchor_events: [
+        { event_id: 'e1', receipt_type: 'exception_raised', anchor_status: 'pending', receipt_id: null, occurred_at: '2026-09-03T10:00:00Z' },
+        { event_id: 'e2', receipt_type: 'exception_reviewed', anchor_status: 'failed', receipt_id: null, occurred_at: '2026-09-03T11:00:00Z' },
+        { event_id: 'e3', receipt_type: 'trip_cancelled', anchor_status: 'anchored', receipt_id: 'r3', occurred_at: '2026-09-03T12:00:00Z' },
+      ],
+    }))
+    renderPage()
+
+    expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
+  })
+})

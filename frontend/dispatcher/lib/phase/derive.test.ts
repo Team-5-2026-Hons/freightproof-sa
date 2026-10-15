@@ -5,7 +5,7 @@ import {
 } from '@shared/lib/mocks/phase-trips'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import {
-  activePhase, anchorTally, chainNodesFromCounts, completionPct,
+  activePhase, anchorTally, completionPct,
   currentSealNumber, departureSealForLeg, isResolved, legDepartureAt, nodeTypeFor, originScannedCount,
   recordedExceptionLabel, sortedPlan, tripChipMeta, destinationScannedCount,
 } from './derive'
@@ -274,30 +274,6 @@ describe('anchorTally', () => {
     })
 
     expect(anchorTally(plan)).toEqual({ owed: 8, anchored: 1, failed: 1 })
-  })
-})
-
-describe('chainNodesFromCounts', () => {
-  it('renders one node per phase in the plan, however long the plan is', () => {
-    expect(chainNodesFromCounts(11, 6, 'Unloading')).toHaveLength(11)
-    expect(chainNodesFromCounts(7, 7, 'Confirmation')).toHaveLength(7)
-  })
-
-  it('marks completed, current and pending nodes', () => {
-    const nodes = chainNodesFromCounts(11, 6, 'Unloading')
-
-    expect(nodes[5].status).toBe('completed')
-    expect(nodes[6].status).toBe('in_progress')
-    expect(nodes[6].label).toBe('Unloading')
-    expect(nodes[7].status).toBe('pending')
-  })
-
-  it('has no in-progress node on a fully walked plan', () => {
-    expect(chainNodesFromCounts(7, 7, 'Confirmation').every(n => n.status === 'completed')).toBe(true)
-  })
-
-  it('is empty rather than throwing when the plan count is 0', () => {
-    expect(chainNodesFromCounts(0, 0, '')).toEqual([])
   })
 })
 

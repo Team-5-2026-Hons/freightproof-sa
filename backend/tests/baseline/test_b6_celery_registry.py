@@ -25,6 +25,8 @@ _CELERY_BUILTIN_PREFIX = "celery."
 EXPECTED_APPLICATION_TASKS = frozenset({
     "tasks.blockchain.anchor_phase_event",
     "tasks.blockchain.recover_phase_anchors",
+    "tasks.evidence_anchors.anchor_event",
+    "tasks.evidence_anchors.recover_events",
     "tasks.pp.sync_active_consignments",
     "tasks.verification.sweep_abandoned",
 })
@@ -33,6 +35,7 @@ EXPECTED_BEAT_ENTRIES = frozenset({
     "pp-sync-active-consignments",
     "idvs-sweep-abandoned-verifications",
     "recover-phase-anchors",
+    "recover-evidence-anchors",
 })
 
 

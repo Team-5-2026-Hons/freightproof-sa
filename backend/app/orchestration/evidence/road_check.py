@@ -39,6 +39,7 @@ from app.db.models.enums import (
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFixStatus, get_pulsit_client
@@ -300,7 +301,7 @@ async def check_trip_on_road(db: AsyncSession, *, trip: Trip) -> RoadCheckResult
         if await _already_recorded(db, trip_id=trip.id, finding=finding):
             already.append(finding)
             continue
-        db.add(TripException(
+        await register_exception(db, TripException(
             trip_id=trip.id,
             phase_event_id=finding.phase_event_id,
             trip_stop_id=finding.trip_stop_id,

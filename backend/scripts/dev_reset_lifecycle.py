@@ -58,6 +58,8 @@ _DELETE_ORDER = [
     "merkle_batch_leaves",
     "trailer_gps_snapshots",
     "driver_substitutions",
+    "evidence_anchor_events",
+    "exception_artifacts",
     "exceptions",
     "checkpoints",
     "phase_events",

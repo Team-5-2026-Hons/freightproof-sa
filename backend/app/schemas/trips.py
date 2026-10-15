@@ -108,6 +108,18 @@ def validate_declared_schedule(
         )
 
 
+class TripAttentionResponse(BaseModel):
+    """A trip's unreviewed exceptions split the two ways the dashboard ranks them: by
+    severity, so a critical outranks any number of warnings, and by claim, so a dispatcher
+    can see which ones nobody has taken on. A claimed exception is still unreviewed (FP-280),
+    so critical + warning + info always equals needs_review_count, claimed or not."""
+
+    critical: int
+    warning: int
+    info: int
+    claimed: int
+
+
 class TripListItemResponse(BaseModel):
     """Lightweight trip shape returned by GET /api/v1/trips. Excludes handshakes and
     receipts; needs_review_count counts only review_status == NEEDS_REVIEW."""
@@ -130,6 +142,7 @@ class TripListItemResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     needs_review_count: int
+    attention: TripAttentionResponse
     # Lets a row read "Unloading · stop 2 · 6/11" without the list view holding a phase
     # plan. phase_total is the plan's own length (7 on single-leg, 11 on cross-dock).
     current_phase: Optional[str] = None

@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
 import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,11 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.enums import SubjectType, VerifyStatus
 from app.crypto.hashing import compute_journey_lock_hash, compute_trip_canonical_payload
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.db.models.enums import PhaseType
+from app.db.models.phases import PhaseEvent
+from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
+from app.integrations.parcel_perfect import MANIFEST_HAPPY_PATH
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.verification.service import verify_subject
-from tests.integration._pp_manifest_world import build_manifest_world
+from tests.integration._pp_manifest_world import build_manifest_world, create_body, install_pp_mock, preview
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -211,3 +215,48 @@ async def test_v1_receipt_still_verifies(client: AsyncClient, db_session: AsyncS
     status = await _verify(db_session, trip_id)
 
     assert status == VerifyStatus.VERIFIED
+
+
+# ── FP-290: what the journey lock does and does not commit about cargo ────────
+
+async def test_non_manifest_lock_carries_no_cargo_commitment_and_later_cargo_does_not_move_it(
+    client: AsyncClient, db_session: AsyncSession,
+) -> None:
+    """A leg with no PP manifest has nothing cargo-shaped in its lock. A consignment added
+    afterwards therefore verifies: the design note states this limitation, this pins it."""
+    world = await build_manifest_world(db_session)
+    trip_id = await _create(client, world, datetime.now(UTC).isoformat())
+    payload = (await _anchored_receipt(db_session, trip_id)).payload_json
+    assert payload["pp_manifest"] is None and payload["pp_manifest_snapshot_sha256"] is None
+    assert not any("consign" in key or "parcel" in key for key in payload)
+    db_session.add(Consignment(id=uuid.uuid4(), trip_id=trip_id, parcel_perfect_reference="LATE-1", parcel_count_expected=3))
+    await db_session.flush()
+
+    status = await _verify(db_session, trip_id)
+
+    assert status == VerifyStatus.VERIFIED
+
+
+async def test_deleted_manifest_snapshot_fails_verification(
+    client: AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The lock's snapshot hash is recomputed from H0's stored snapshot; removing the snapshot
+    must read as tampering, not as 'nothing to compare'."""
+    install_pp_mock(monkeypatch)
+    world = await build_manifest_world(db_session)
+    resp = await client.post(
+        "/api/v1/trips/from-pp-manifest",
+        json=create_body(world, await preview(client, world, MANIFEST_HAPPY_PATH)), headers=world.headers(),
+    )
+    assert resp.status_code == 201, resp.text
+    trip_id = uuid.UUID(resp.json()["id"])
+    assert await _verify(db_session, trip_id) == VerifyStatus.VERIFIED
+    h0 = (await db_session.execute(select(PhaseEvent).where(
+        PhaseEvent.trip_id == trip_id, PhaseEvent.phase_type == PhaseType.TRIP_CREATION,
+    ))).scalar_one()
+    h0.parcel_manifest_snapshot = None
+    await db_session.flush()
+
+    status = await _verify(db_session, trip_id)
+
+    assert status == VerifyStatus.DB_MISMATCH

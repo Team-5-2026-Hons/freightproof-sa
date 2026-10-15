@@ -21,6 +21,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.orchestration.phases.blocking import blocked_on_by_stop
+from app.orchestration.evidence_anchors.reads import decorate_exception_reads
 from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.orchestration.consignments.scans import scanned_counts_for_trip
 from app.schemas.blockchain import BlockchainReceiptRead
@@ -57,6 +58,41 @@ def _pp_manifest(trip: Trip, client_names: dict[uuid.UUID, str]) -> PPManifestRe
             if trip.client_organization_id is not None else None
         ),
     )
+
+
+async def _load_trip_receipts(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_ids: list[uuid.UUID], evidence_event_ids: list[uuid.UUID],
+) -> Sequence[BlockchainReceipt]:
+    """The trip's receipts: its own, its phase events', and its exception actions'.
+
+    H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one — see
+    phases.advance_departure/advance_confirmation), so a TRIP-only filter silently hid every
+    driver-anchored pickup/delivery receipt from the dispatcher's per-trip evidence view.
+    Evidence-event receipts are additionally pinned to this trip's id; the ids passed in are
+    this trip's own already, so the pin is a second lock, not the only one.
+    """
+    result = await db.execute(
+        select(BlockchainReceipt)
+        .where(
+            or_(
+                and_(
+                    BlockchainReceipt.subject_type == SubjectType.TRIP,
+                    BlockchainReceipt.subject_id == trip_id,
+                ),
+                and_(
+                    BlockchainReceipt.subject_type == SubjectType.PHASE_EVENT,
+                    BlockchainReceipt.subject_id.in_(phase_event_ids),
+                ),
+                and_(
+                    BlockchainReceipt.subject_type == SubjectType.EVIDENCE_EVENT,
+                    BlockchainReceipt.subject_id.in_(evidence_event_ids),
+                    BlockchainReceipt.trip_id == trip_id,
+                ),
+            )
+        )
+        .order_by(BlockchainReceipt.created_at, BlockchainReceipt.id)
+    )
+    return result.scalars().all()
 
 
 async def get_trip_detail(
@@ -105,7 +141,9 @@ async def get_trip_detail(
         select(TripException).where(TripException.trip_id == trip_id)
     )
     exceptions = exc_result.scalars().all()
-    exception_reads = [TripExceptionRead.model_validate(e) for e in exceptions]
+    exception_reads = await decorate_exception_reads(
+        db, exceptions, [TripExceptionRead.model_validate(e) for e in exceptions],
+    )
     if include_reviewer_names:
         # Dispatcher trip page only. The same builder serves the driver's active trip
         # and phase completion, which must not carry dispatcher identities.
@@ -113,30 +151,12 @@ async def get_trip_detail(
             db, organization_id=operator_organization_id, reads=exception_reads,
         )
 
-    # H3/H5 anchor a PHASE_EVENT-subject receipt (not a TRIP-subject one —
-    # see phases.advance_departure/advance_confirmation), so a TRIP-only filter here
-    # silently hid every driver-anchored pickup/delivery receipt from the
-    # dispatcher's per-trip evidence view. Reuse the phase event ids already
-    # fetched above (no extra query) and OR in their receipts alongside the
-    # trip's own — additive only, TRIP-subject behaviour is unchanged.
-    phase_event_ids = [h.id for h in phase_events]
-    receipts_result = await db.execute(
-        select(BlockchainReceipt)
-        .where(
-            or_(
-                and_(
-                    BlockchainReceipt.subject_type == SubjectType.TRIP,
-                    BlockchainReceipt.subject_id == trip_id,
-                ),
-                and_(
-                    BlockchainReceipt.subject_type == SubjectType.PHASE_EVENT,
-                    BlockchainReceipt.subject_id.in_(phase_event_ids),
-                ),
-            )
-        )
-        .order_by(BlockchainReceipt.created_at, BlockchainReceipt.id)
+    receipts = await _load_trip_receipts(
+        db, trip_id=trip_id, phase_event_ids=[h.id for h in phase_events],
+        # Critical-evidence receipts hang off evidence events, not the exception. The events
+        # were just read with the exceptions, so no extra lookup is needed to name them.
+        evidence_event_ids=[e.event_id for read in exception_reads for e in read.anchor_events],
     )
-    receipts = receipts_result.scalars().all()
 
     stops_result = await db.execute(
         select(TripStop).where(TripStop.trip_id == trip_id).order_by(TripStop.sequence)

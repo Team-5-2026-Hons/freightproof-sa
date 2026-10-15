@@ -208,6 +208,11 @@ class BlockchainReceiptType(str, enum.Enum):
     PRECINCT_UPDATED    = "precinct_updated"
     # The seal on an issued audit pack: hash of its manifest and PDF hashes.
     AUDIT_PACK_ISSUED   = "audit_pack_issued"
+    # FP-290 evidence anchors: one receipt per action on an exception, never per trip.
+    # Their values are also the event_type inside each canonical payload.
+    EXCEPTION_RAISED    = "exception_raised"
+    EXCEPTION_REVIEWED  = "exception_reviewed"
+    TRIP_CANCELLED      = "trip_cancelled"
 
 
 class SubjectType(str, enum.Enum):
@@ -219,6 +224,8 @@ class SubjectType(str, enum.Enum):
     PHASE_EVENT     = "phase_event"
     PRECINCT_EVENT  = "precinct_event"
     AUDIT_PACK      = "audit_pack"
+    # An EvidenceAnchorEvent id (one raise / review / cancel), never the exception or trip id.
+    EVIDENCE_EVENT  = "evidence_event"
 
 
 class VehicleEventType(str, enum.Enum):

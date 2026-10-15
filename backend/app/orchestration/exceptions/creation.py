@@ -15,13 +15,17 @@ from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, VehicleType
-from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
 from app.orchestration.evidence import action_location
+from app.orchestration.evidence_anchors.artifacts import (
+    resolve_photo_ids, validate_trip_artifacts,
+)
+from app.orchestration.evidence_anchors.reads import build_exception_read
+from app.orchestration.evidence_anchors.recording import anchor_new_report
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.exceptions.review_policy import initial_review_status
@@ -239,6 +243,7 @@ async def _find_by_client_report_id(
 async def raise_exception(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
     exception_type: ExceptionType, description: str, supporting_artifact_id: uuid.UUID | None,
+    supporting_artifact_ids: Sequence[uuid.UUID] | None = None,
     phase_event_id: uuid.UUID | None = None,
     gps_lat: Decimal | None = None, gps_lng: Decimal | None = None,
     driver_captured_at: datetime | None = None,
@@ -266,31 +271,25 @@ async def raise_exception(
     if trip.driver_id != driver_id:
         raise PermissionError("You are not the assigned driver on this trip.")
 
-    # Evidence ownership, checked before anything is written: the FK alone only
-    # proves the artifact exists SOMEWHERE, not that it belongs to THIS trip.
-    # Raises before any TripException row is built, so a rejected claim leaves no trace.
-    if supporting_artifact_id is not None:
-        artifact_result = await db.execute(
-            select(EvidenceArtifact.id).where(
-                EvidenceArtifact.id == supporting_artifact_id,
-                EvidenceArtifact.trip_id == trip_id,
-            )
-        )
-        if artifact_result.scalar_one_or_none() is None:
-            raise ResourceNotFoundError("EvidenceArtifact", str(supporting_artifact_id))
-
     # Idempotent replay, checked before the row is even built: a lost response, or a
     # retry the offline queue reuses the same client_report_id for, must return the
-    # ORIGINAL exception rather than raise a second one for the same real-world report.
-    # This pre-check is the common case (the earlier attempt already committed and this
-    # process can see it); the race where two attempts land in the same instant is
-    # handled below, after the insert, by the partial unique index.
+    # ORIGINAL exception (with its original photos and anchor events, whatever this body
+    # says) rather than raise a second one for the same real-world report. This pre-check
+    # is the common case (the earlier attempt already committed and this process can see
+    # it); the race where two attempts land in the same instant is handled below, after the
+    # insert, by the partial unique index.
     if client_report_id is not None:
         existing = await _find_by_client_report_id(
             db, trip_id=trip_id, client_report_id=client_report_id,
         )
         if existing is not None:
-            return TripExceptionRead.model_validate(existing)
+            return await build_exception_read(db, existing)
+
+    # Evidence ownership, checked before anything is written: the FK alone only proves an
+    # artifact exists SOMEWHERE, not that it belongs to THIS trip. Raises before any row is
+    # built, so a rejected claim leaves no trace.
+    photo_ids = resolve_photo_ids(supporting_artifact_id, supporting_artifact_ids)
+    await validate_trip_artifacts(db, trip_id=trip_id, artifact_ids=photo_ids)
 
     phase_event = await _resolve_phase_context(
         db, trip_id=trip_id, claimed_phase_event_id=phase_event_id,
@@ -327,7 +326,7 @@ async def raise_exception(
         severity=severity,
         review_status=initial_review_status(severity),
         description=description,
-        supporting_artifact_id=supporting_artifact_id,
+        supporting_artifact_id=photo_ids[0] if photo_ids else None,
         client_report_id=client_report_id,
         gps_lat=gps_lat,
         gps_lng=gps_lng,
@@ -377,9 +376,11 @@ async def raise_exception(
                 "Exception replay lost the insert race, returning the winner: "
                 "trip=%s client_report_id=%s", trip_id, client_report_id,
             )
-            return TripExceptionRead.model_validate(winner)
+            return await build_exception_read(db, winner)
 
     await db.refresh(exc)
+
+    await anchor_new_report(db, exc, photo_ids=photo_ids)
 
     # Telemetry is enrichment, never a gate. The driver report has already been
     # inserted, and an unavailable/slow tracker produces an unverified snapshot on
@@ -403,4 +404,4 @@ async def raise_exception(
         ),
     )
 
-    return TripExceptionRead.model_validate(exc)
+    return await build_exception_read(db, exc)

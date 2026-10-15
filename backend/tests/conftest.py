@@ -86,10 +86,17 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
     from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
     from app.tasks.blockchain import anchor_phase_event_task
 
+    from app.orchestration.evidence_anchors.dispatch import _BACKGROUND_EVIDENCE_TASKS
+    from app.tasks.evidence_anchors import anchor_event_task, register_evidence_publisher
+
     monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
+    # Evidence anchors too: a committed critical report must never reach the dev broker, and
+    # a failed publish would fall back to a local anchor against DATABASE_URL.
+    monkeypatch.setattr(anchor_event_task, "delay", Mock(return_value=None))
+    register_evidence_publisher()  # app.main does this at startup; service-level tests never import it
     yield
-    while _BACKGROUND_ANCHOR_TASKS:
-        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS))
+    while _BACKGROUND_ANCHOR_TASKS or _BACKGROUND_EVIDENCE_TASKS:
+        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS), *tuple(_BACKGROUND_EVIDENCE_TASKS))
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.

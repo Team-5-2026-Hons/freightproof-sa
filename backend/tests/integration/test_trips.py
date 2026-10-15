@@ -26,7 +26,9 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.enums import (
     AnchorStatus, PhaseStatus, PhaseType, IdvsStatus,
     OrganizationType, TripStatus, VehicleType,
+    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
 )
+from app.db.models.transit import TripException
 from app.db.session import get_db
 
 from tests.conftest import auth_header, make_token
@@ -448,6 +450,92 @@ async def test_list_trips_returns_created_trip(client: AsyncClient, seed_data, d
     assert "driver" in body[0]
     assert "horse" in body[0]
     assert "trailers" in body[0]
+
+
+async def test_list_trips_attention_splits_unreviewed_by_severity_and_claim(
+    client: AsyncClient, seed_data, db_session,
+):
+    """The dashboard ranks by severity, then by who has taken an exception on. A claimed
+    exception still needs review, so it stays in every count; a reviewed one leaves them."""
+    create_resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    trip_id = uuid.UUID(create_resp.json()["id"])
+
+    def _exception(
+        severity: ExceptionSeverity,
+        status: ExceptionReviewStatus,
+        claimed_by: uuid.UUID | None = None,
+    ) -> TripException:
+        return TripException(
+            id=uuid.uuid4(), trip_id=trip_id, exception_type=ExceptionType.SEAL_MISMATCH,
+            source=ExceptionSource.SYSTEM, severity=severity, review_status=status,
+            description=f"{severity.value} {status.value}", claimed_by_user_id=claimed_by,
+        )
+
+    db_session.add_all([
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW, seed_data["user"].id),
+        _exception(ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.REVIEWED, seed_data["user"].id),
+    ])
+    await db_session.flush()
+
+    resp = await client.get("/api/v1/trips", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    assert row["attention"] == {"critical": 1, "warning": 2, "info": 0, "claimed": 1}
+    assert row["needs_review_count"] == 3
+
+
+async def test_list_trips_counts_exception_and_overridden_phases_as_done(
+    client: AsyncClient, seed_data, db_session,
+):
+    """Progress uses the ledger's own "resolved" rule (phases.state): a phase that finished
+    with a recorded exception will never be revisited, so it counts as done, like an override."""
+    create_resp = await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+    trip_id = uuid.UUID(create_resp.json()["id"])
+    pending = (
+        await db_session.execute(
+            select(PhaseEvent)
+            .where(PhaseEvent.trip_id == trip_id, PhaseEvent.status == PhaseStatus.PENDING)
+            .order_by(PhaseEvent.sequence_number)
+            .limit(2)
+        )
+    ).scalars().all()
+    pending[0].status = PhaseStatus.EXCEPTION
+    pending[1].status = PhaseStatus.OVERRIDDEN
+    await db_session.flush()
+
+    resp = await client.get("/api/v1/trips", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    row = resp.json()[0]
+    # trip_creation is completed at creation; the exception and override phases add two.
+    assert row["phase_completed"] == 3
+    assert row["phase_total"] == 8
+
+
+async def test_list_trips_attention_is_zero_without_exceptions(
+    client: AsyncClient, seed_data, db_session,
+):
+    await client.post(
+        "/api/v1/trips",
+        json=_make_payload(seed_data),
+        headers=_auth_headers(seed_data),
+    )
+
+    resp = await client.get("/api/v1/trips", headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["attention"] == {"critical": 0, "warning": 0, "info": 0, "claimed": 0}
 
 
 async def test_list_trips_status_filter(client: AsyncClient, seed_data, db_session):

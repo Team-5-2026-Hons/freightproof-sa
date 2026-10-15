@@ -81,7 +81,7 @@ async def advance_arrival(
     # carries the wrong number records both findings. Always CRITICAL: a seal found
     # damaged or missing at the gate is the in-transit opening this phase exists to catch.
     if payload.seal_condition != SealCondition.INTACT:
-        _record_seal_finding(
+        await _record_seal_finding(
             db, trip=trip, event=event,
             exception_type=ExceptionType.SEAL_COMPROMISED, severity=ExceptionSeverity.CRITICAL,
             description=(
@@ -113,7 +113,7 @@ async def advance_arrival(
         # would hide behind. _record_seal_finding writes the row and derives the
         # realtime severity from the same value, so the two cannot drift apart.
         seal_unverified_severity = _seal_unverified_severity(departure_event)
-        _record_seal_finding(
+        await _record_seal_finding(
             db, trip=trip, event=event,
             exception_type=ExceptionType.SEAL_UNVERIFIED, severity=seal_unverified_severity,
             description=(
@@ -144,7 +144,7 @@ async def advance_arrival(
         # TripException is written. A dispatcher acts on that, not on a stuck trip.
         # If a hold is ever genuinely wanted it belongs as a manual dispatcher action
         # with an explicit release path — not as an automatic dead end.
-        _record_seal_finding(
+        await _record_seal_finding(
             db, trip=trip, event=event,
             exception_type=ExceptionType.SEAL_MISMATCH, severity=ExceptionSeverity.CRITICAL,
             description=(

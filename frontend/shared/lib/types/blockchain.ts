@@ -4,7 +4,10 @@
 
 export type SubjectType =
   | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event'
-  | 'precinct_event' | 'phase_event';
+  | 'precinct_event' | 'phase_event'
+  // One anchorable action on an exception (raise, review, trip cancellation); subject_id is the
+  // evidence anchor EVENT id, never the exception or trip id.
+  | 'evidence_event';
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'
@@ -15,7 +18,9 @@ export type BlockchainReceiptType =
   | 'exception_batch' | 'driver_substitution'
   | 'vehicle_created' | 'vehicle_updated'
   | 'driver_created' | 'driver_updated'
-  | 'precinct_created' | 'precinct_updated';
+  | 'precinct_created' | 'precinct_updated'
+  // FP-290: the three actions on an exception that get their own receipt.
+  | 'exception_raised' | 'exception_reviewed' | 'trip_cancelled';
 
 export type BlockchainReceipt = {
   id: string;

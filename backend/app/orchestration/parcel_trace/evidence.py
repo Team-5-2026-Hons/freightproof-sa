@@ -7,9 +7,10 @@ from uuid import UUID
 from app.db.models.enums import PhaseStatus, PhaseType
 from app.db.models.phases import PhaseEvent
 from app.orchestration.parcel_trace.queries import JourneyRecords
+from app.orchestration.phases.state import RESOLVED_PHASE_STATUSES
 from app.schemas.parcel_trace import ParcelRecordedLocation, ParcelSealWindow, ParcelTracePhase
 
-RESOLVED_STATUSES = frozenset({PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION, PhaseStatus.OVERRIDDEN})
+RESOLVED_STATUSES = RESOLVED_PHASE_STATUSES
 OBSERVED_STATUSES = frozenset({PhaseStatus.COMPLETED, PhaseStatus.EXCEPTION})
 
 

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import { buildTripColumns, progressHint, tripRowClassName } from './tripColumns'
+import { buildTripColumns, exceptionsLabel, planPosition, tripRowClassName } from './tripColumns'
 import type { TableRenderContext } from '@/components/ui/Table'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { TripChecklistItem } from '@shared/lib/types/trip'
@@ -41,6 +41,16 @@ describe('trip columns', () => {
     const columns = buildTripColumns<TripChecklistItem>({ precincts: [], date: DATE, showProgress: false })
 
     expect(columns[0].label).toBe('Created')
+  })
+
+  it('puts exceptions right after the trip on the dashboard and never folds them; History keeps its order', () => {
+    const dashboard = buildTripColumns<TripChecklistItem>({ precincts: [], date: DATE, showProgress: true })
+    const history = buildTripColumns<TripChecklistItem>({ precincts: [], date: DATE, showProgress: false })
+
+    expect(dashboard.map(c => c.id)).toEqual(['date', 'trip', 'exceptions', 'manifest', 'driver', 'route', 'status'])
+    expect(dashboard.find(c => c.id === 'exceptions')?.hideBelow).toBeUndefined()
+    expect(history.map(c => c.id)).toEqual(['date', 'trip', 'manifest', 'driver', 'route', 'exceptions', 'status'])
+    expect(history.find(c => c.id === 'exceptions')?.hideBelow).toBeGreaterThan(0)
   })
 
   it('shows the manifest key first and the client beneath it', () => {
@@ -97,12 +107,51 @@ describe('trip columns', () => {
   })
 })
 
-describe('progressHint', () => {
-  it('leads with exceptions, then terminal states, then the phase', () => {
-    expect(progressHint(trip({ needs_review_count: 1 }))).toBe('⚠ 1 exception')
-    expect(progressHint(trip({ status: 'closed' }))).toBe('✓ Closed')
-    expect(progressHint(trip({ status: 'cancelled' }))).toBe('Cancelled')
-    expect(progressHint(trip({ current_phase: null }))).toBe('Pending start')
-    expect(progressHint(trip())).toMatch(/· Origin · 1\/7$/)
+describe('exceptionsLabel', () => {
+  it('is null when nothing needs review, and a plain count on rows without the split', () => {
+    expect(exceptionsLabel(trip())).toBeNull()
+    expect(exceptionsLabel(trip({ needs_review_count: 1 }))).toBe('⚠ 1 exception')
+  })
+
+  it('names critical exceptions and says whether anyone has claimed them', () => {
+    const split = (critical: number, warning: number, claimed: number) => trip({
+      needs_review_count: critical + warning,
+      attention: { critical, warning, info: 0, claimed },
+    })
+
+    expect(exceptionsLabel(split(1, 2, 1))).toBe('⚠ 3 exceptions · 1 critical · 2 unclaimed')
+    expect(exceptionsLabel(split(0, 1, 0))).toBe('⚠ 1 exception · unclaimed')
+    expect(exceptionsLabel(split(0, 2, 2))).toBe('⚠ 2 exceptions · all claimed')
+  })
+})
+
+describe('planPosition', () => {
+  it('gives the stop and count, and nothing where the chip already says it all', () => {
+    expect(planPosition(trip())).toBe('Origin · 1/7')
+    expect(planPosition(trip({ current_stop: 2 }))).toBe('Stop 3 · 1/7')
+    expect(planPosition(trip({ status: 'closed' }))).toBeNull()
+    expect(planPosition(trip({ status: 'cancelled' }))).toBeNull()
+    expect(planPosition(trip({ current_phase: null }))).toBeNull()
+  })
+})
+
+describe('status cell', () => {
+  it('shows the plan position under the chip on the dashboard only', () => {
+    const { unmount } = render(<>{cell('status', trip(), NOTHING_HIDDEN, true)}</>)
+    expect(screen.getByText('Origin · 1/7')).toBeInTheDocument()
+    unmount()
+
+    render(<>{cell('status', trip(), NOTHING_HIDDEN, false)}</>)
+    expect(screen.queryByText('Origin · 1/7')).toBeNull()
+  })
+
+  it('reads a critical in the error colour and lesser exceptions in the warning colour', () => {
+    const critical = trip({ needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } })
+    const warning = trip({ needs_review_count: 1, attention: { critical: 0, warning: 1, info: 0, claimed: 0 } })
+
+    render(<>{cell('exceptions', critical, NOTHING_HIDDEN, true)}{cell('exceptions', warning, NOTHING_HIDDEN, true)}</>)
+
+    expect(screen.getByText(/1 critical/)).toHaveClass('text-err')
+    expect(screen.getByText(/1 exception · unclaimed/)).toHaveClass('text-warn')
   })
 })

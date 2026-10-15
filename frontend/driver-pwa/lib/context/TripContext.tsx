@@ -382,7 +382,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const logException = useCallback(async (type: ExceptionType, payload: Record<string, unknown>) => {
     if (!trip) return
     const description = typeof payload.description === 'string' ? payload.description : ''
-    const supportingArtifactId = typeof payload.supporting_artifact_id === 'string' ? payload.supporting_artifact_id : undefined
+    // The page uploads every photo first and hands over the COMPLETE ordered id list; the
+    // first id also rides in the legacy single field so an older backend still gets the
+    // lead photo. A lone legacy id (no list) is still honoured for older callers.
+    const photoIds = Array.isArray(payload.supporting_artifact_ids)
+      ? payload.supporting_artifact_ids.filter((id): id is string => typeof id === 'string')
+      : []
+    const legacyArtifactId = typeof payload.supporting_artifact_id === 'string' ? payload.supporting_artifact_id : undefined
+    const supportingArtifactId = photoIds[0] ?? legacyArtifactId
     const clientReportId = typeof payload.clientReportId === 'string'
       ? payload.clientReportId
       : crypto.randomUUID()
@@ -457,6 +464,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      ...(photoIds.length > 0 ? { supporting_artifact_ids: photoIds } : {}),
       client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
       ...(vehicleType ? { vehicle_type: vehicleType } : {}),

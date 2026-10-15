@@ -4,6 +4,13 @@ import { OfflineBanner } from '../OfflineBanner'
 import { ApiError } from '@/lib/api/client'
 import { __resetOfflineQueueStoreForTests } from '@/lib/hooks/useOfflineQueue'
 import {
+  __setIndexedDbForTests,
+  getExceptionEnvelope,
+  saveExceptionEnvelope,
+  type ExceptionEnvelope,
+} from '@/lib/offline/exception-store'
+import { createFakeIndexedDb } from '@/lib/offline/testing/fake-indexeddb'
+import {
   startPhaseSubmission,
   __resetPhaseSubmitterForTests,
   type PhaseSubmissionRequest,
@@ -76,6 +83,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  __setIndexedDbForTests(null)
 })
 
 describe('OfflineBanner', () => {
@@ -268,6 +276,99 @@ describe('OfflineBanner', () => {
       await act(async () => { startPhaseSubmission(phaseSubmission()) })
 
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+  })
+  // Exception reports the server refused sit in IndexedDB as "needs attention". They are
+  // never auto-deleted, so the banner must say so and give the driver the two real choices.
+  describe('needs-attention notice', () => {
+    function attentionEnvelope(clientReportId: string): ExceptionEnvelope {
+      return {
+        clientReportId,
+        tripId: 'trip-1',
+        body: { exception_type: 'cargo_damage', description: 'Pallet crushed', client_report_id: clientReportId },
+        photos: [],
+        status: 'needs-attention',
+        attentionReason: 'Description too long',
+        attentionPhotoId: null,
+        createdAt: '2026-09-05T09:00:00.000Z',
+        updatedAt: '2026-09-05T09:00:00.000Z',
+      }
+    }
+
+    beforeEach(() => {
+      __setIndexedDbForTests(createFakeIndexedDb())
+    })
+
+    it('shows an alert row with Try again and Dismiss as real 44pt buttons', async () => {
+      await saveExceptionEnvelope(attentionEnvelope('report-1'))
+
+      render(<OfflineBanner />)
+
+      const alert = await screen.findByText(/1 report needs attention/i)
+      expect(alert.closest('[role="alert"]')).toHaveTextContent(/the server did not accept (it|them)\. Nothing was deleted\./i)
+      for (const name of ['Try again', 'Dismiss']) {
+        const button = screen.getByRole('button', { name })
+        expect(button.tagName).toBe('BUTTON')
+        expect(button).toHaveClass('min-h-11')
+      }
+    })
+
+    it('uses plural phrasing for more than one report', async () => {
+      await saveExceptionEnvelope(attentionEnvelope('report-1'))
+      await saveExceptionEnvelope(attentionEnvelope('report-2'))
+
+      render(<OfflineBanner />)
+
+      expect(await screen.findByText(/2 reports need attention/i)).toBeInTheDocument()
+    })
+
+    it('Try again resets the reports and sends them', async () => {
+      const { raiseException } = await import('@/lib/api/exceptions')
+      await saveExceptionEnvelope(attentionEnvelope('report-1'))
+      render(<OfflineBanner />)
+      await screen.findByText(/1 report needs attention/i)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      await waitFor(() => expect(raiseException).toHaveBeenCalledTimes(1))
+      await waitFor(() => expect(screen.queryByText(/need(s)? attention/i)).not.toBeInTheDocument())
+      expect(await getExceptionEnvelope('report-1')).toBeNull()
+    })
+
+    it('Dismiss asks for confirmation; Keep backs out without deleting', async () => {
+      await saveExceptionEnvelope(attentionEnvelope('report-1'))
+      render(<OfflineBanner />)
+      await screen.findByText(/1 report needs attention/i)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+
+      expect(screen.getByRole('button', { name: 'Delete 1 report?' })).toHaveClass('min-h-11')
+      expect(screen.getByRole('button', { name: 'Keep' })).toHaveClass('min-h-11')
+      fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+      expect(await getExceptionEnvelope('report-1')).not.toBeNull()
+    })
+
+    it('Dismiss removes the reports only after the confirm tap, without sending them', async () => {
+      const { raiseException } = await import('@/lib/api/exceptions')
+      await saveExceptionEnvelope(attentionEnvelope('report-1'))
+      render(<OfflineBanner />)
+      await screen.findByText(/1 report needs attention/i)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+      expect(await getExceptionEnvelope('report-1')).not.toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Delete 1 report?' }))
+
+      await waitFor(() => expect(screen.queryByText(/need(s)? attention/i)).not.toBeInTheDocument())
+      expect(raiseException).not.toHaveBeenCalled()
+      expect(await getExceptionEnvelope('report-1')).toBeNull()
+    })
+
+    it('shows no attention row when nothing needs attention', async () => {
+      const { container } = render(<OfflineBanner />)
+
+      await waitFor(() => expect(container).toBeEmptyDOMElement())
+      expect(screen.queryByText(/need(s)? attention/i)).not.toBeInTheDocument()
     })
   })
 })

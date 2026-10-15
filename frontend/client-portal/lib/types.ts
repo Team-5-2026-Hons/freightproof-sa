@@ -165,6 +165,33 @@ export interface CheckpointRecord {
   tier: EvidenceTier
 }
 
+// manifest v2 (FP-290). The three anchorable actions on an exception.
+export type AnchorAction = 'raised' | 'reviewed' | 'cancelled'
+
+// One photo of an exception report, tied to the receipt that committed its hash. `tier` is
+// 'anchored' only when that receipt is intact and commits exactly this artifact and hash.
+export interface ExceptionPhoto {
+  artifact_id: string
+  position: number
+  sha256: string
+  mime_type: string
+  captured_at: string
+  tier: EvidenceTier
+  anchor_event_id: string | null
+  anchor_receipt_id: string | null
+}
+
+// Where one action on an exception stands. 'pending' and 'failed' are debts, never success.
+export interface ExceptionAnchorRecord {
+  event_id: string
+  action: AnchorAction
+  receipt_type: string
+  anchor_status: string
+  receipt_id: string | null
+  occurred_at: string
+  tier: EvidenceTier
+}
+
 export interface ExceptionRecord {
   exception_id: string
   exception_type: string
@@ -182,8 +209,16 @@ export interface ExceptionRecord {
   reviewer_name: string | null
   contact_method: string | null
   review_note: string | null
+  // v1 readers: the photo(s). In v2 every photo is repeated in `photos` with its receipt.
   evidence: EvidenceFile[]
+  // The REPORT's tier: anchored only by a matching raise receipt (a review or cancellation
+  // receipt anchors that action alone).
   tier: EvidenceTier
+  // Absent on packs frozen under manifest v1.
+  photos?: ExceptionPhoto[]
+  anchors?: ExceptionAnchorRecord[]
+  // GPS is never part of a receipt, so a position is always FreightProof's own record.
+  position_tier?: 'recorded'
 }
 
 export interface RecordChange {
