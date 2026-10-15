@@ -14,16 +14,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.constants import PG_INTEGER_MAX
 from app.core.pagination import CursorPosition, encode_cursor
-from app.db.models.enums import ExceptionReviewStatus, PhaseStatus, TripStatus, TripType
+from app.db.models.enums import (
+    ExceptionReviewStatus,
+    ExceptionSeverity,
+    TripStatus,
+    TripType,
+)
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.phases.state import RESOLVED_PHASE_STATUSES
 from app.orchestration.trips.detail import _client_names, _pp_manifest
 from app.schemas.people import DriverRead
 from app.schemas.pagination import CursorPage
 from app.schemas.trips import (
+    TripAttentionResponse,
     TripHistoryDriverResponse,
     TripHistoryListItemResponse,
     TripHistoryVehicleResponse,
@@ -82,25 +89,46 @@ async def list_trips(
     # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
     # notes, which are saved already reviewed) are excluded — only unreviewed rows are
     # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
+    # One grouped query yields the severity and claim split the dashboard ranks by.
     exc_result = await db.execute(
-        select(TripException.trip_id, func.count(TripException.id))
+        select(
+            TripException.trip_id,
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.CRITICAL
+            ),
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.WARNING
+            ),
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.INFO
+            ),
+            func.count(TripException.id).filter(
+                TripException.claimed_by_user_id.is_not(None)
+            ),
+        )
         .where(
             TripException.trip_id.in_(trip_ids),
             TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
         )
         .group_by(TripException.trip_id)
     )
-    exc_counts: dict[uuid.UUID, int] = {row[0]: row[1] for row in exc_result.all()}
+    attention_by_trip: dict[uuid.UUID, TripAttentionResponse] = {
+        row[0]: TripAttentionResponse(
+            critical=row[1], warning=row[2], info=row[3], claimed=row[4]
+        )
+        for row in exc_result.all()
+    }
 
     # Same batching shape as exc_counts above: one grouped query for the page.
-    # `completed` here means "resolved" in the ledger's sense — an overridden phase
-    # will never be revisited either, so it counts as done for a progress bar.
+    # `completed` here means "resolved" in the ledger's sense (phases.state): an overridden
+    # phase or one that finished with a recorded exception will never be revisited, so both
+    # count as done.
     plan_result = await db.execute(
         select(
             PhaseEvent.trip_id,
             func.count(PhaseEvent.id),
             func.count(PhaseEvent.id).filter(
-                PhaseEvent.status.in_([PhaseStatus.COMPLETED, PhaseStatus.OVERRIDDEN])
+                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
             ),
         )
         .where(PhaseEvent.trip_id.in_(trip_ids))
@@ -111,6 +139,10 @@ async def list_trips(
     }
 
     client_names = await _client_names(db, trips)
+    no_attention = TripAttentionResponse(critical=0, warning=0, info=0, claimed=0)
+
+    def needs_review_count(attention: TripAttentionResponse) -> int:
+        return attention.critical + attention.warning + attention.info
 
     return [
         TripListItemResponse(
@@ -128,7 +160,8 @@ async def list_trips(
             actual_departure_at=t.actual_departure_at,
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
-            needs_review_count=exc_counts.get(t.id, 0),
+            needs_review_count=needs_review_count(attention_by_trip.get(t.id, no_attention)),
+            attention=attention_by_trip.get(t.id, no_attention),
             current_phase=t.current_phase,
             current_stop=t.current_stop,
             phase_total=plan_counts.get(t.id, (0, 0))[0],
@@ -249,7 +282,7 @@ async def list_trip_history(
             PhaseEvent.trip_id,
             func.count(PhaseEvent.id),
             func.count(PhaseEvent.id).filter(
-                PhaseEvent.status.in_([PhaseStatus.COMPLETED, PhaseStatus.OVERRIDDEN])
+                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
             ),
         )
         .where(PhaseEvent.trip_id.in_(trip_ids))

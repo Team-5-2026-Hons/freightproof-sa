@@ -493,3 +493,151 @@ async def test_override_rejects_a_closed_trip(client: AsyncClient, db_session, s
     )
 
     assert resp.status_code == 409
+
+
+# ── FP-290: cancellation and override evidence anchors ────────────────────────
+
+async def _anchor_events(db_session, trip_id):
+    from app.db.models.evidence_anchors import EvidenceAnchorEvent
+    return list((await db_session.execute(
+        select(EvidenceAnchorEvent).where(EvidenceAnchorEvent.trip_id == trip_id)
+        .order_by(EvidenceAnchorEvent.receipt_type)
+    )).scalars().all())
+
+
+async def _cancel(client, db_session, seed, order: str):
+    trip = await _make_trip(db_session, seed, order_number=order, status=TripStatus.ACTIVE)
+    response = await client.post(
+        f"/api/v1/trips/{trip.id}/cancel", json={"note": "Client withdrew the load."},
+        headers=auth_header(_dispatcher_token(seed)),
+    )
+    assert response.status_code == 200
+    return trip
+
+
+async def test_cancel_freezes_distinct_cancellation_and_authored_review_events(
+    client: AsyncClient, db_session, seed,
+):
+    from app.orchestration.evidence_anchors import canonical
+    trip = await _cancel(client, db_session, seed, "FP290-CANCEL")
+
+    events = await _anchor_events(db_session, trip.id)
+    note = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id))).scalar_one()
+    by_kind = {str(e.receipt_type.value if hasattr(e.receipt_type, "value") else e.receipt_type): e for e in events}
+
+    assert sorted(by_kind) == ["exception_reviewed", "trip_cancelled"]
+    assert by_kind["exception_reviewed"].id != by_kind["trip_cancelled"].id
+    cancelled, reviewed = by_kind["trip_cancelled"].payload_json, by_kind["exception_reviewed"].payload_json
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["cancelled_by_sha256"] == canonical.actor_sha256(seed["dispatcher"].id)
+    assert cancelled["cause_record_sha256"] == canonical.text_sha256(note.description)
+    assert by_kind["trip_cancelled"].occurred_at == trip.closed_at
+    assert cancelled["exception_id"] == str(note.id) == reviewed["exception_id"]
+    assert reviewed["review_outcome"] == "dispatcher_authored"
+    assert reviewed["authored_statement_sha256"] == canonical.text_sha256(note.description)
+    assert note.description not in str([cancelled, reviewed])
+
+
+async def test_cancel_events_anchor_and_verify_and_detect_tampering(client: AsyncClient, db_session, seed):
+    from unittest.mock import MagicMock
+    from sqlalchemy import update
+    from app.db.models.enums import SubjectType, VerifyStatus
+    from app.orchestration.evidence_anchors.execution import anchor_evidence_event
+    from app.orchestration.verification.service import verify_subject
+    trip = await _cancel(client, db_session, seed, "FP290-VERIFY")
+    trip_id = trip.id
+    ids = [e.id for e in await _anchor_events(db_session, trip_id)]
+    mirror = MagicMock()
+    mirror.verify_hash.return_value = True
+
+    async def statuses():
+        return [(await verify_subject(
+            db_session, subject_type=SubjectType.EVIDENCE_EVENT, subject_id=i, hedera_service=mirror,
+        )).status for i in ids]
+
+    for event_id in ids:
+        assert await anchor_evidence_event(db_session, event_id=event_id) is True
+    assert await statuses() == [VerifyStatus.VERIFIED, VerifyStatus.VERIFIED]
+
+    await db_session.execute(update(TripException).where(TripException.trip_id == trip_id).values(
+        description="Cancelled by someone else: rewritten"))
+    db_session.expire_all()
+    assert await statuses() == [VerifyStatus.DB_MISMATCH, VerifyStatus.DB_MISMATCH]
+
+
+async def test_cancellation_event_is_a_mismatch_if_the_trip_is_no_longer_cancelled(
+    client: AsyncClient, db_session, seed,
+):
+    from unittest.mock import MagicMock
+    from sqlalchemy import update
+    from app.db.models.enums import SubjectType, VerifyStatus
+    from app.db.models.trips import Trip as TripModel
+    from app.orchestration.evidence_anchors.execution import anchor_evidence_event
+    from app.orchestration.verification.service import verify_subject
+    trip = await _cancel(client, db_session, seed, "FP290-UNCANCEL")
+    trip_id = trip.id
+    [cancelled] = [e for e in await _anchor_events(db_session, trip_id)
+                   if str(getattr(e.receipt_type, "value", e.receipt_type)) == "trip_cancelled"]
+    cancelled_id = cancelled.id
+    await anchor_evidence_event(db_session, event_id=cancelled_id)
+    mirror = MagicMock()
+    mirror.verify_hash.return_value = True
+    await db_session.execute(update(TripModel).where(TripModel.id == trip_id).values(status="active"))
+    db_session.expire_all()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.EVIDENCE_EVENT, subject_id=cancelled_id, hedera_service=mirror)
+
+    assert outcome.status == VerifyStatus.DB_MISMATCH
+
+
+async def test_recancel_is_409_and_creates_no_further_events(client: AsyncClient, db_session, seed):
+    trip = await _cancel(client, db_session, seed, "FP290-RECANCEL")
+    before = len(await _anchor_events(db_session, trip.id))
+
+    again = await client.post(
+        f"/api/v1/trips/{trip.id}/cancel", json={"note": "again"}, headers=auth_header(_dispatcher_token(seed)))
+
+    assert again.status_code == 409
+    assert len(await _anchor_events(db_session, trip.id)) == before == 2
+
+
+async def test_cancel_events_are_dispatched_only_after_commit(client: AsyncClient, db_session, seed):
+    import asyncio
+    from app.orchestration.evidence_anchors import dispatch
+    from app.tasks.evidence_anchors import anchor_event_task
+    anchor_event_task.delay.reset_mock()
+    trip = await _cancel(client, db_session, seed, "FP290-DISPATCH")
+    await asyncio.sleep(0)
+    anchor_event_task.delay.assert_not_called()
+    event_ids = {str(e.id) for e in await _anchor_events(db_session, trip.id)}
+
+    await db_session.commit()
+    while dispatch._BACKGROUND_EVIDENCE_TASKS:
+        await asyncio.gather(*tuple(dispatch._BACKGROUND_EVIDENCE_TASKS))
+
+    assert {c.args[0] for c in anchor_event_task.delay.call_args_list} == event_ids
+
+
+async def test_override_freezes_an_authored_review_event_and_none_for_the_system_warning(
+    client: AsyncClient, db_session, seed,
+):
+    from app.orchestration.evidence_anchors import canonical
+    trip = await _make_trip(db_session, seed, order_number="FP290-OVERRIDE")
+    driver_token = make_token(sub=str(seed["driver"].id), role="driver")
+    arrival_id = await _phase_id(client, trip.id, driver_token, "arrival")
+    note_text = "Gate log confirms arrival; phone dead."
+
+    response = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/override", json={"note": note_text},
+        headers=auth_header(_dispatcher_token(seed)),
+    )
+
+    assert response.status_code == 200
+    [event] = await _anchor_events(db_session, trip.id)
+    note = next(r for r in await _exceptions_for(db_session, trip.id)
+                if r.exception_type == ExceptionType.DISPATCHER_NOTE)
+    assert event.exception_id == note.id
+    assert event.payload_json["authored_statement_sha256"] == canonical.text_sha256(note_text)
+    assert event.payload_json["reviewed_by_sha256"] == canonical.actor_sha256(seed["dispatcher"].id)

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 {#- Audit pack PDF. Layout only: every value comes from the manifest, every free-text
     value is autoescaped. Section letters match docs/design-notes/2026-09-23-insurer-audit-trail-plan.md §5. -#}
+{% from '_exception_evidence.html.j2' import exception_evidence %}
 {% macro tier(t) %}<span class="tier tier-{{ t }}">{{ tiers[t][0] }}</span>{% endmacro %}
 {% macro fix(f) %}{% if f %}{{ '%.5f'|format(f.lat) }}, {{ '%.5f'|format(f.lng) }}{% if f.accuracy_metres %} (±{{ f.accuracy_metres|round|int }} m){% endif %}{% else %}—{% endif %}{% endmacro %}
 <html lang="en">
@@ -41,12 +42,15 @@
 
   <div class="summary-box">
     {% set phase_anchors = m.phases|selectattr('anchor_status', 'equalto', 'anchored')|list %}
-    {% set owed = m.phases|selectattr('anchor_status', 'in', ['pending', 'failed'])|list %}
+    {% set phase_owed = m.phases|selectattr('anchor_status', 'in', ['pending', 'failed'])|list %}
+    {% set exception_owed = [] %}
+    {% for e in m.exceptions %}{% for a in e.anchors if a.anchor_status in ['pending', 'failed'] %}{% set _ = exception_owed.append(a) %}{% endfor %}{% endfor %}
+    {% set owed = phase_owed + exception_owed %}
     {% set broken = m.anchored_records|rejectattr('payload_matches_hash')|list %}
     <strong>Integrity at generation:</strong>
     {{ m.anchored_records|length }} Hedera receipt(s) for this trip ·
     {{ phase_anchors|length }} anchored phase(s) ·
-    {% if owed %}<span class="flag">{{ owed|length }} anchor(s) pending or failed</span>{% else %}no anchors owed{% endif %} ·
+    {% if owed %}<span class="flag">{{ owed|length }} anchor(s) pending or failed</span> (phases {{ phase_owed|length }}, exception actions {{ exception_owed|length }}; the issuer's system keeps retrying them){% else %}no anchors owed{% endif %} ·
     {% if broken %}<span class="flag">{{ broken|length }} receipt payload(s) no longer match their hash</span>{% else %}every stored receipt payload matches its anchored hash{% endif %}.
     <p class="small muted">Checked against FreightProof's stored receipts when this pack was generated. Each hash can be
       re-checked independently against the public Hedera ledger using the steps in the integrity appendix.</p>
@@ -267,11 +271,20 @@
     <tr><td>E{{ exception_numbers[e.exception_id] }}</td><td>{{ e.raised_at|sast }}</td>
       <td>{{ e.exception_type|humanise }} · {{ e.severity }}</td><td>{{ e.source|humanise }}</td><td>{{ e.description }}</td>
       <td>{{ e.review_status|humanise }}{% if e.reviewed_at %}, {{ e.reviewed_at|sast }}{% endif %}{% if e.reviewer_name %} by {{ e.reviewer_name }}{% endif %}{% if e.contact_method %} via {{ e.contact_method }}{% endif %}{% if e.review_outcome %} · {{ e.review_outcome|humanise }}{% endif %}{% if e.review_note %} · “{{ e.review_note }}”{% endif %}</td></tr>
+    {% if e.anchors or e.photos %}
+    <tr><td></td><td colspan="5">{{ exception_evidence(e, tiers) }}</td></tr>
+    {% endif %}
     {% else %}
     <tr><td colspan="6" class="muted">No exceptions recorded.</td></tr>
     {% endfor %}
   </table>
-  <p class="small muted">Exceptions are {{ tier('recorded') }} — FreightProof does not yet anchor exception records to Hedera.</p>
+  <p class="small muted">Each exception carries its own tier. A critical report is {{ tier('anchored') }} only when its
+    raise receipt is on Hedera and today's record and every photo still hash to what it committed; a review or
+    cancellation receipt anchors that action alone and never raises the report's tier. An exception raised before
+    anchoring began, or one whose receipt is pending, failed or no longer matches, is {{ tier('recorded') }}. GPS
+    positions are never part of a receipt and stay {{ tier('recorded') }}. A matching receipt shows these records were
+    not changed after anchoring; it does not prove the incident happened as described, where it happened, or who is
+    liable.</p>
 </section>
 
 {# ── §L Location evidence ────────────────────────────────────────────────── #}

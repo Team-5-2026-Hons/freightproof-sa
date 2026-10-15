@@ -175,17 +175,3 @@ export function recordedExceptionLabel(
   if (count > 0) return `${count} exception${count === 1 ? '' : 's'}`
   return phases.some(phase => phase.status === 'exception') ? 'Exception' : null
 }
-
-/** Build chain nodes from the ledger-derived counts the trip LIST carries. `total` is
- *  the plan's own length, computed server-side — never a constant. */
-export function chainNodesFromCounts(
-  total: number,
-  completed: number,
-  currentLabel: string,
-): PhaseChainNode[] {
-  return Array.from({ length: total }, (_, i): PhaseChainNode => ({
-    key: `phase-${i}`,
-    status: i < completed ? 'completed' : i === completed ? 'in_progress' : 'pending',
-    label: i === completed ? currentLabel : `Phase ${i}`,
-  }))
-}

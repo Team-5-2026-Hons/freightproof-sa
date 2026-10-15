@@ -74,6 +74,9 @@ async def pack_seal_endpoint(pack_id: UUID, db: AsyncSession = Depends(get_db)) 
 @router.get(
     "/{token}",
     response_model=PublicAuditPackView,
+    # A pack frozen under manifest v1 must be served as v1: fields it never had (v2 additions)
+    # stay absent instead of appearing as defaults the issuer never wrote.
+    response_model_exclude_unset=True,
     summary="Open an audit pack from its share link",
     dependencies=[Depends(rate_limit(AUDIT_PACK_PUBLIC))],
 )

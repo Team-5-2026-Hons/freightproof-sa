@@ -49,6 +49,7 @@ from app.auth.router import router as auth_router
 from app.core.config_validation import enforce_production_config
 from app.core.realtime import register_realtime_hook
 from app.db.session import get_read_only_db
+from app.tasks.evidence_anchors import register_evidence_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,10 @@ if move_truck_enabled():
 # Publishes queued realtime events once a request's transaction is durable
 # (see app/core/realtime.py). Idempotent.
 register_realtime_hook()
+
+# Lets the request path queue evidence-anchor events on the Celery worker without importing
+# the task layer (see orchestration/evidence_anchors/dispatch.py). Idempotent.
+register_evidence_publisher()
 
 
 @app.exception_handler(Exception)

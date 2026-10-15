@@ -7,15 +7,19 @@ PATCH .../review — that route and its tests are unchanged here.
 """
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import event as sa_event
 
+from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
+    AnchorStatus,
     ArtifactType,
+    BlockchainReceiptType,
+    SubjectType,
     ExceptionContactMethod,
     ExceptionReviewOutcome,
     ExceptionReviewStatus,
@@ -30,6 +34,7 @@ from app.db.models.enums import (
     VehicleType,
 )
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
@@ -38,9 +43,11 @@ from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+from app.orchestration.evidence_anchors.artifacts import attach_exception_artifacts
 from app.orchestration.exceptions.queries import _load_trip_contexts
 
 from tests.conftest import auth_header, make_token
+from tests.integration._evidence_anchor_world import make_artifact
 
 _REVIEW_QUEUE = "/api/v1/exceptions/review-queue"
 _HISTORY = "/api/v1/exceptions/history"
@@ -138,9 +145,9 @@ async def _make_exception(db_session, trip: Trip, *, tag: str, **overrides) -> T
     return exc
 
 
-def _headers(seed: dict) -> dict:
+def _headers(seed: dict, *, role: str = "dispatcher") -> dict:
     return auth_header(make_token(
-        sub=str(seed["user"].id), role="dispatcher", org_id=str(seed["org"].id),
+        sub=str(seed["user"].id), role=role, org_id=str(seed["org"].id),
     ))
 
 
@@ -831,3 +838,195 @@ async def test_trip_contexts_are_loaded_in_three_queries(db_session, test_engine
     assert contexts[trips[0].id].driver_name == seed["driver"].full_name
     assert contexts[trips[0].id].horse_registration == seed["horse"].registration
     assert contexts[trips[0].id].trailer_registrations == ["TRL-Q"]
+
+
+# ── FP-290 Task 5: photos and anchor events on reads ───────────────────────────
+
+
+async def _attach_photos(db_session, exc: TripException, count: int) -> list[EvidenceArtifact]:
+    """Freeze `count` photos onto an exception in order, as raise_exception does."""
+    photos = [await make_artifact(db_session, exc.trip_id, label=f"p{i}") for i in range(count)]
+    await attach_exception_artifacts(
+        db_session, exception_id=exc.id, artifact_ids=[p.id for p in photos],
+    )
+    return photos
+
+
+async def _make_event(
+    db_session, exc: TripException, receipt_type: BlockchainReceiptType, status: AnchorStatus,
+    *, receipt_id: uuid.UUID | None = None, at: datetime | None = None,
+) -> EvidenceAnchorEvent:
+    event = EvidenceAnchorEvent(
+        trip_id=exc.trip_id, exception_id=exc.id, receipt_type=receipt_type,
+        occurred_at=at or datetime.now(UTC), payload_version=1, payload_json={},
+        event_hash="0" * 64, anchor_status=status, receipt_id=receipt_id,
+    )
+    db_session.add(event)
+    await db_session.flush()
+    return event
+
+
+async def _make_receipt(db_session, trip_id: uuid.UUID, subject_id: uuid.UUID) -> BlockchainReceipt:
+    receipt = BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip_id, subject_type=SubjectType.EVIDENCE_EVENT, subject_id=subject_id,
+        receipt_type=BlockchainReceiptType.EXCEPTION_RAISED, data_hash="ab" * 32, hedera_tx_id="0.0.1@1.2",
+        payload_json={},
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    return receipt
+
+
+async def test_detail_returns_every_photo_in_order_without_storage_keys(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="photos")
+    trip = await _make_trip(db_session, seed, tag="photos")
+    exc = await _make_exception(db_session, trip, tag="photos", severity=ExceptionSeverity.CRITICAL)
+    photos = await _attach_photos(db_session, exc, 3)
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    listed = res.json()["supporting_artifacts"]
+    assert [p["id"] for p in listed] == [str(p.id) for p in photos]
+    assert [p["position"] for p in listed] == [0, 1, 2]
+    assert all(p["signed_url"] and "s3_key" not in p and "s3_bucket" not in p for p in listed)
+
+
+async def test_detail_lists_each_action_anchor_with_its_own_status(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="anchors")
+    trip = await _make_trip(db_session, seed, tag="anchors")
+    exc = await _make_exception(db_session, trip, tag="anchors", severity=ExceptionSeverity.CRITICAL)
+    raised = await _make_event(db_session, exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    receipt = await _make_receipt(db_session, trip.id, exc.id)
+    reviewed = await _make_event(
+        db_session, exc, BlockchainReceiptType.EXCEPTION_REVIEWED, AnchorStatus.ANCHORED,
+        receipt_id=receipt.id, at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    events = res.json()["anchor_events"]
+    assert [(e["event_id"], e["receipt_type"], e["anchor_status"], e["receipt_id"]) for e in events] == [
+        (str(raised.id), "exception_raised", "pending", None),
+        (str(reviewed.id), "exception_reviewed", "anchored", str(receipt.id)),
+    ]
+
+
+async def test_detail_of_a_historical_exception_shows_no_events_not_pending(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="legacy")
+    trip = await _make_trip(db_session, seed, tag="legacy")
+    exc = await _make_exception(db_session, trip, tag="legacy", severity=ExceptionSeverity.CRITICAL)
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.json()["anchor_events"] == []
+    assert res.json()["supporting_artifacts"] == []
+
+
+async def test_detail_reads_a_legacy_single_photo_as_a_one_photo_report(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="legacyphoto")
+    trip = await _make_trip(db_session, seed, tag="legacyphoto")
+    photo = await make_artifact(db_session, trip.id)
+    exc = await _make_exception(db_session, trip, tag="legacyphoto", supporting_artifact_id=photo.id)
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert [p["id"] for p in res.json()["supporting_artifacts"]] == [str(photo.id)]
+
+
+async def test_detail_hides_a_photo_that_belongs_to_another_trip(client: AsyncClient, db_session):
+    seed = await _seed_org(db_session, tag="foreignphoto")
+    trip = await _make_trip(db_session, seed, tag="foreignphoto")
+    other = await _make_trip(db_session, seed, tag="foreignphoto2")
+    exc = await _make_exception(db_session, trip, tag="foreignphoto")
+    foreign = await make_artifact(db_session, other.id)
+    db_session.add(ExceptionArtifact(exception_id=exc.id, artifact_id=foreign.id, position=0))
+    await db_session.flush()
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.json()["supporting_artifacts"] == []
+
+
+def _trip_url(trip_id) -> str:
+    return f"/api/v1/trips/{trip_id}"
+
+
+async def test_trip_detail_carries_photos_and_anchor_events_for_every_exception(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="tripdetail")
+    trip = await _make_trip(db_session, seed, tag="tripdetail")
+    first = await _make_exception(db_session, trip, tag="a", severity=ExceptionSeverity.CRITICAL)
+    second = await _make_exception(db_session, trip, tag="b", severity=ExceptionSeverity.CRITICAL)
+    photos = await _attach_photos(db_session, first, 2)
+    await _make_event(db_session, first, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    await _make_event(db_session, second, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.FAILED)
+
+    res = await client.get(_trip_url(trip.id), headers=_headers(seed))
+
+    by_id = {e["id"]: e for e in res.json()["exceptions"]}
+    assert [p["id"] for p in by_id[str(first.id)]["supporting_artifacts"]] == [str(p.id) for p in photos]
+    assert [e["anchor_status"] for e in by_id[str(first.id)]["anchor_events"]] == ["pending"]
+    assert [e["anchor_status"] for e in by_id[str(second.id)]["anchor_events"]] == ["failed"]
+
+
+async def test_trip_detail_includes_evidence_event_receipts_for_this_trip_only(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="tripreceipts")
+    trip = await _make_trip(db_session, seed, tag="tripreceipts")
+    other_trip = await _make_trip(db_session, seed, tag="tripreceipts2")
+    exc = await _make_exception(db_session, trip, tag="r", severity=ExceptionSeverity.CRITICAL)
+    other_exc = await _make_exception(db_session, other_trip, tag="r2", severity=ExceptionSeverity.CRITICAL)
+    event = await _make_event(db_session, exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    mine = await _make_receipt(db_session, trip.id, event.id)
+    other_event = await _make_event(db_session, other_exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    theirs = await _make_receipt(db_session, other_trip.id, other_event.id)
+
+    res = await client.get(_trip_url(trip.id), headers=_headers(seed, role="admin_dispatcher"))
+
+    ids = {r["id"] for r in res.json()["blockchain_receipts"]}
+    assert str(mine.id) in ids and str(theirs.id) not in ids
+
+
+async def test_trip_detail_for_a_non_admin_keeps_anchor_summaries_but_no_receipt_bodies(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="tripsummary")
+    trip = await _make_trip(db_session, seed, tag="tripsummary")
+    exc = await _make_exception(db_session, trip, tag="s", severity=ExceptionSeverity.CRITICAL)
+    event = await _make_event(db_session, exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    await _make_receipt(db_session, trip.id, event.id)
+
+    res = await client.get(_trip_url(trip.id), headers=_headers(seed))
+
+    body = res.json()
+    assert body["blockchain_receipts"] == []
+    assert [e["event_id"] for e in body["exceptions"][0]["anchor_events"]] == [str(event.id)]
+
+
+async def test_trip_detail_loads_anchors_and_photos_in_a_constant_number_of_queries(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="nplus")
+    trip = await _make_trip(db_session, seed, tag="nplus")
+    for i in range(4):
+        exc = await _make_exception(db_session, trip, tag=f"n{i}", severity=ExceptionSeverity.CRITICAL)
+        await _attach_photos(db_session, exc, 2)
+        await _make_event(db_session, exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    statements: list[str] = []
+    bind = db_session.bind.sync_engine if hasattr(db_session.bind, "sync_engine") else db_session.bind
+
+    def _capture(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    sa_event.listen(bind, "before_cursor_execute", _capture)
+    try:
+        res = await client.get(_trip_url(trip.id), headers=_headers(seed))
+    finally:
+        sa_event.remove(bind, "before_cursor_execute", _capture)
+
+    assert res.status_code == 200
+    assert sum("FROM evidence_anchor_events" in s for s in statements) == 1
+    assert sum("FROM exception_artifacts" in s or "JOIN exception_artifacts" in s for s in statements) == 1

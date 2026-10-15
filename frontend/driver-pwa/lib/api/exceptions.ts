@@ -6,7 +6,13 @@ import type { VehicleType } from '@shared/lib/types/vehicle'
 export interface RaiseExceptionBody {
   exception_type: ExceptionType
   description: string
+  // First photo's artifact id. Kept alongside supporting_artifact_ids so an older
+  // backend that only knows the single-photo field still receives the lead photo.
   supporting_artifact_id?: string
+  // Ordered ids of every photo on the report (order = the driver's display order).
+  // Sent with the COMPLETE list only, after every photo has uploaded: the server
+  // rejects partial or duplicate lists, and a reduced set must never go out silently.
+  supporting_artifact_ids?: string[]
   // The phase the driver was on when this happened, resolved from the trip plan at the
   // moment of the event (lib/phase/derive.ts contextPhaseEventId). Sent from the client
   // rather than derived server-side because an entry can sit in the offline queue for

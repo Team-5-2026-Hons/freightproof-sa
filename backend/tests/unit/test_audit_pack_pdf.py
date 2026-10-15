@@ -7,7 +7,7 @@ from datetime import timedelta
 from pypdf import PdfReader
 
 from app.reporting.pdf_renderer import render_audit_pack_html, render_audit_pack_pdf
-from app.schemas.audit_pack import AnchoredRecord, PackIssue
+from app.schemas.audit_pack import AnchoredRecord, ExceptionAnchorRecord, ExceptionPhoto, PackIssue
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest, make_phase
 
@@ -184,3 +184,118 @@ def test_render_audit_pack_html_pre_arrival_phase_has_no_condition_row():
 
     # Assert
     assert "Seal condition" not in html
+
+
+# ── FP-290 Task 5: exception photos and per-action anchors ──────────────────────
+
+
+def _photo(position: int, *, sha: str, tier: str = "anchored", receipt: uuid.UUID | None = None) -> ExceptionPhoto:
+    return ExceptionPhoto(
+        artifact_id=uuid.uuid4(), position=position, sha256=sha, mime_type="image/jpeg", captured_at=T0, tier=tier,
+        anchor_event_id=uuid.uuid4() if receipt else None, anchor_receipt_id=receipt,
+    )
+
+
+def _anchor(action: str, *, status: str, tier: str, receipt: uuid.UUID | None = None) -> ExceptionAnchorRecord:
+    return ExceptionAnchorRecord(
+        event_id=uuid.uuid4(), action=action, receipt_type=f"exception_{action}", anchor_status=status,
+        receipt_id=receipt, occurred_at=T0, tier=tier,
+    )
+
+
+def _two_photo_exception(receipt: uuid.UUID, *, tier: str = "anchored", status: str = "anchored"):
+    return make_exception(
+        "seal_broken_in_transit", "critical", tier=tier,
+        photos=[_photo(0, sha="a1" * 32, tier=tier, receipt=receipt), _photo(1, sha="b2" * 32, tier=tier, receipt=receipt)],
+        anchors=[_anchor("raised", status=status, tier=tier, receipt=receipt if status == "anchored" else None)],
+    )
+
+
+def test_audit_pack_html_lists_every_photo_hash_tied_to_its_receipt():
+    receipt = uuid.uuid4()
+    manifest = make_manifest(phases=[], exceptions=[_two_photo_exception(receipt)])
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert "a1" * 32 in html and "b2" * 32 in html
+    assert html.count(str(receipt)) >= 3  # the raise row and both photos name the receipt
+
+
+def test_audit_pack_html_shows_a_pending_raise_plainly_as_recorded_not_anchored():
+    manifest = make_manifest(
+        phases=[], exceptions=[_two_photo_exception(uuid.uuid4(), tier="recorded", status="pending")],
+    )
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert "Recorded — anchoring pending" in html
+
+
+def test_audit_pack_html_shows_a_failed_anchor_as_retryable_debt():
+    manifest = make_manifest(
+        phases=[], exceptions=[_two_photo_exception(uuid.uuid4(), tier="recorded", status="failed")],
+    )
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert "Recorded — anchoring failed, will retry" in html
+
+
+def test_audit_pack_html_counts_exception_anchors_owed_in_the_integrity_summary():
+    pending = make_exception(
+        "panic_button", "critical", tier="recorded", anchors=[_anchor("raised", status="pending", tier="recorded")],
+    )
+    failed = make_exception(
+        "seal_broken_in_transit", "critical", tier="recorded",
+        anchors=[_anchor("raised", status="failed", tier="recorded"), _anchor("reviewed", status="anchored", tier="anchored", receipt=uuid.uuid4())],
+    )
+
+    html = render_audit_pack_html(make_manifest(phases=[], exceptions=[pending, failed]), issue=None, mirror_base_url=MIRROR)
+
+    assert "2 anchor(s) pending or failed" in html
+    assert "no anchors owed" not in html
+
+
+def test_audit_pack_html_does_not_show_an_anchored_status_as_anchored_when_the_record_changed():
+    changed = make_exception(
+        "panic_button", "critical", tier="recorded",
+        anchors=[_anchor("raised", status="anchored", tier="recorded", receipt=uuid.uuid4())],
+    )
+
+    html = render_audit_pack_html(make_manifest(phases=[], exceptions=[changed]), issue=None, mirror_base_url=MIRROR)
+
+    assert "Recorded — the record no longer matches its anchor" in html
+
+
+def test_audit_pack_html_no_longer_says_exceptions_are_never_anchored():
+    manifest = make_manifest(phases=[], exceptions=[_two_photo_exception(uuid.uuid4())])
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert "does not yet anchor exception" not in html
+
+
+def test_audit_pack_html_states_what_an_exception_receipt_does_not_prove():
+    manifest = make_manifest(phases=[], exceptions=[_two_photo_exception(uuid.uuid4())])
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert "does not prove" in html
+    assert "location verified" not in html.lower()
+
+
+def test_audit_pack_html_still_renders_a_v1_exception_with_a_single_evidence_file():
+    v1 = make_exception("cargo_damage", "warning")
+
+    html = render_audit_pack_html(make_manifest(phases=[], exceptions=[v1]), issue=None, mirror_base_url=MIRROR)
+
+    assert "Cargo Damage" in html or "cargo damage" in html.lower()
+
+
+def test_audit_pack_pdf_renders_a_two_photo_anchored_exception():
+    manifest = make_manifest(phases=[], exceptions=[_two_photo_exception(uuid.uuid4())])
+
+    pdf = render_audit_pack_pdf(manifest, issue=None, mirror_base_url=MIRROR)
+
+    assert pdf.startswith(b"%PDF-")
+    assert "Photo 2" in _text(pdf)

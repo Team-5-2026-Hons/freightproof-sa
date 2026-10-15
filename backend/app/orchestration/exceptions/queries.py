@@ -21,10 +21,13 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
-from app.orchestration.evidence.artifacts import get_trip_scoped_artifact
+from app.orchestration.evidence.artifacts import get_trip_scoped_artifact, sign_artifact_url
+from app.orchestration.evidence_anchors.reads import (
+    load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
+)
 from app.orchestration.exceptions.review_identity import name_of, user_names
 from app.schemas.pagination import CursorPage
-from app.schemas.transit import TripExceptionDetail, TripExceptionListItem
+from app.schemas.transit import ExceptionPhotoWithUrl, TripExceptionDetail, TripExceptionListItem
 
 
 # Recorded/reviewed only — never needs_review. Named once rather than inlined into
@@ -362,8 +365,18 @@ async def get_exception_detail(
     )
     context = (await _load_trip_contexts(db, [trip])).get(trip.id)
     list_item = _to_list_item(exc, trip, phase_type, stop_sequence, names, context)
+    # Every photo of the report, in order, each signed here. Ownership is checked in the
+    # loader (a photo re-pointed at another trip is dropped), so signing needs no second check.
+    photos = (await load_photos_by_exception(db, [exc]))[exc.id]
+    signed = [await sign_artifact_url(a) for a in photos]
+    anchor_events = (await load_anchor_events_by_exception(db, [exc.id]))[exc.id]
     return TripExceptionDetail(
         **list_item.model_dump(),
+        supporting_artifacts=[
+            ExceptionPhotoWithUrl(**summary.model_dump(), signed_url=url)
+            for summary, url in zip(photo_summaries(photos), signed, strict=True)
+        ],
+        anchor_events=anchor_events,
         gps_lat=exc.gps_lat,
         gps_lng=exc.gps_lng,
         review_outcome=exc.review_outcome,

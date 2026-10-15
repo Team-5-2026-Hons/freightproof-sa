@@ -15,7 +15,7 @@ import { buildTripColumns, tripRowClassName } from '@/components/trips/tripColum
 import { useTrips }       from '@/lib/hooks/useTrips'
 import { putTripSeeds }   from '@/lib/trips/tripSeed'
 import { matchesTripSearch } from '@/lib/trips/search'
-import { defaultTripSortDirection, sortTrips, TRIP_SORT_KEYS } from '@/lib/trips/sort'
+import { defaultTripSortDirection, sortTrips, TRIP_SORT_KEYS, type TripSort } from '@/lib/trips/sort'
 import { useTableSort } from '@/lib/hooks/useTableSort'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { useNow }         from '@/lib/hooks/useNow'
@@ -40,6 +40,7 @@ const DASHBOARD_TABLE_ID = 'dashboard'
 // A control-room dashboard can stay open overnight; a minute is fine-grained enough for the date to
 // turn over at SAST midnight without a new trip event to re-render it.
 const CLOCK_TICK_MS = 60_000
+const ATTENTION_SORT: TripSort = { key: 'exceptions', dir: defaultTripSortDirection('exceptions') }
 const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
 
 export default function ActiveTripsPage() {
@@ -48,9 +49,15 @@ export default function ActiveTripsPage() {
   const now = useNow(CLOCK_TICK_MS)
   const { notify } = useToast()
   const [search, setSearch] = useState('')
-  // No initial sort: until a header is clicked the list keeps the order the API sends, so the page
-  // never reorders itself. Local state, because this page has no URL state to join.
-  const { sort, tableSort, onSort } = useTableSort({ keys: TRIP_SORT_KEYS, firstDir: defaultTripSortDirection })
+  // Attention first by default: this is a monitoring screen, so a trip that has just raised a
+  // critical must surface without anyone clicking a header, even though that means a live event can
+  // move rows. A header click still takes over, and clicking Exceptions returns to attention order.
+  // Local state, because this page has no URL state to join.
+  const { sort, tableSort, onSort } = useTableSort({
+    keys: TRIP_SORT_KEYS,
+    firstDir: defaultTripSortDirection,
+    initial: ATTENTION_SORT,
+  })
 
   // Single fetch for all trips — active and closed are derived client-side
   const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
@@ -84,7 +91,7 @@ export default function ActiveTripsPage() {
 
   const filteredTrips = useMemo(() => {
     const matching = allTrips.filter(t => matchesTripSearch(t, search))
-    return sort ? sortTrips(matching, sort, precincts) : matching
+    return sortTrips(matching, sort, precincts)
   }, [allTrips, search, sort, precincts])
 
   // Built per render: route names depend on the loaded precincts.

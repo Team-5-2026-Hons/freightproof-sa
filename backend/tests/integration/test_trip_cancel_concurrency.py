@@ -21,6 +21,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest_asyncio
 from sqlalchemy import delete, select
@@ -32,6 +33,7 @@ from app.db.models.enums import (
     BlockchainReceiptType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType, SubjectType,
     TripStatus, VehicleType,
 )
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
@@ -140,6 +142,8 @@ async def _tear_down(world: World) -> None:
     async with world.sessionmaker() as db:
         trip = (await db.execute(select(Trip).where(Trip.id == world.trip_id))).scalar_one()
         horse_id, origin_id, client_id = trip.horse_id, trip.origin_precinct_id, trip.client_organization_id
+        # Events reference their receipts and the cancellation note, so they go first.
+        await db.execute(delete(EvidenceAnchorEvent).where(EvidenceAnchorEvent.trip_id == world.trip_id))
         await db.execute(delete(BlockchainReceipt).where(BlockchainReceipt.trip_id == world.trip_id))
         await db.execute(delete(TripException).where(TripException.trip_id == world.trip_id))
         await db.execute(delete(PhaseEvent).where(PhaseEvent.trip_id == world.trip_id))
@@ -338,3 +342,45 @@ async def test_a_replayed_completion_does_not_deadlock_with_the_anchor_worker(
     # The replay carries a fresh idempotency key against a resolved row: an idempotent 200.
     outcome = await asyncio.wait_for(asyncio.gather(replay, return_exceptions=True), _COMPLETION_TIMEOUT_SECONDS)
     assert not isinstance(outcome[0], BaseException), f"replay failed: {outcome[0]!r}"
+
+
+async def test_hedera_outage_after_a_committed_cancel_loses_nothing(
+    sessionmaker, open_world, monkeypatch,
+) -> None:
+    """The cancellation commits with its events; a Hedera outage leaves retryable debt, and
+    the trip stays cancelled. A later attempt then anchors the original frozen hashes."""
+    from app.core.exceptions import HederaServiceError
+    from app.db.models.enums import AnchorStatus
+    from app.db.models.evidence_anchors import EvidenceAnchorEvent
+    from app.orchestration.evidence_anchors.execution import anchor_evidence_event
+    await _committed(sessionmaker, _cancel(open_world))
+
+    async def events() -> list[EvidenceAnchorEvent]:
+        async with sessionmaker() as db:
+            return list((await db.execute(select(EvidenceAnchorEvent).where(
+                EvidenceAnchorEvent.trip_id == open_world.trip_id))).scalars().all())
+
+    frozen = {e.id: e.event_hash for e in await events()}
+    assert len(frozen) == 2
+
+    async def attempt() -> list[bool]:
+        results = []
+        for event_id in frozen:
+            async def work(db: AsyncSession, i: uuid.UUID = event_id) -> bool:
+                return await anchor_evidence_event(db, event_id=i)
+
+            results.append(await _committed(sessionmaker, work))
+        return results
+
+    with monkeypatch.context() as outage:
+        outage.setattr(
+            "app.orchestration.evidence_anchors.execution.anchor_subject",
+            AsyncMock(side_effect=HederaServiceError("down")))
+        assert await attempt() == [False, False]
+
+    assert await _final_status(open_world) == TripStatus.CANCELLED.value
+    assert {e.anchor_status for e in await events()} == {AnchorStatus.FAILED}
+    assert {e.id: e.event_hash for e in await events()} == frozen
+
+    assert await attempt() == [True, True]
+    assert {e.anchor_status for e in await events()} == {AnchorStatus.ANCHORED}

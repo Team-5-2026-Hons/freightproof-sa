@@ -6,7 +6,7 @@ import type { ActionLocationAssessment } from '@shared/lib/types/action-location
 import { locationEvidenceForAssessment } from '@/lib/phase/location-evidence'
 const panel = vi.hoisted(() => vi.fn())
 vi.mock('@/components/domain/LocationEvidencePanel', () => ({ LocationEvidencePanel: (props: object) => { panel(props); return <div>Recorded comparison</div> } }))
-vi.mock('@/components/domain/EvidencePhoto', () => ({ EvidencePhoto: ({artifactId}: {artifactId: string}) => <div>Recorded artifact {artifactId}</div> }))
+vi.mock('@/components/domain/EvidencePhoto', () => ({ EvidencePhoto: ({label, artifactId, artifact}: {label: string; artifactId?: string; artifact?: {id: string}}) => <div>{label}: recorded artifact {artifactId ?? artifact?.id}</div> }))
 const base = { gps_lat: null, gps_lng: null, action_location_assessment: null, supporting_artifact_id: null, supporting_artifact: null, exception_type: 'gps_mismatch', created_at: '2026-10-01T22:00:00Z' } satisfies Pick<TripExceptionDetail,'gps_lat'|'gps_lng'|'action_location_assessment'|'supporting_artifact_id'|'supporting_artifact'|'exception_type'|'created_at'>
 const snapshot: ActionLocationAssessment = { schema_version:1, policy_version:'recorded-v1', evaluated_at:'2026-10-01T10:00:00Z', driver_lat:-33.9,driver_lng:18.4,driver_captured_at:'2026-10-01T09:59:00Z',driver_accuracy_metres:5,tracker_lat:-33.91,tracker_lng:18.41,tracker_captured_at:null,separation_metres:1300,proximity:'separated',reasons:[],max_separation_metres:200,max_age_seconds:120,max_skew_seconds:60,max_phone_accuracy_metres:50,expected_trip_stop_id:null,precinct_id:null,precinct_lat:-33.9,precinct_lng:18.4,precinct_radius_metres:100,precinct_tolerance_metres:10,driver_in_precinct:true,truck_in_precinct:false }
 describe('honest detail evidence', () => {
@@ -26,7 +26,18 @@ describe('honest detail evidence', () => {
     const view=render(<ExceptionDetailEvidence exception={base} />)
     expect(screen.getByText('No supporting photo or location recorded for this exception.')).toBeInTheDocument()
     view.rerender(<ExceptionDetailEvidence exception={{...base,supporting_artifact_id:'photo'}} />)
-    expect(screen.getByText('Recorded artifact photo')).toBeInTheDocument()
+    expect(screen.getByText('Supporting photo: recorded artifact photo')).toBeInTheDocument()
     expect(screen.queryByText('No supporting photo or location recorded for this exception.')).not.toBeInTheDocument()
+  })
+  it('shows every photo of a multi-photo report, in order', () => {
+    const photo = (id: string, position: number) => ({ id, position, artifact_type: 'photo' as const, mime_type: 'image/jpeg', file_hash: 'ab'.repeat(32), captured_at: '2026-10-01T22:00:00Z', signed_url: `https://s/${id}` })
+    render(<ExceptionDetailEvidence exception={{...base, supporting_artifact_id: 'first', supporting_artifacts: [photo('first', 0), photo('second', 1), photo('third', 2)]}} />)
+    expect(screen.getAllByText(/recorded artifact/).map(node => node.textContent)).toEqual([
+      'Photo 1 of 3: recorded artifact first', 'Photo 2 of 3: recorded artifact second', 'Photo 3 of 3: recorded artifact third',
+    ])
+  })
+  it('falls back to the single supporting photo for a report with no photo list', () => {
+    render(<ExceptionDetailEvidence exception={{...base, supporting_artifact_id: 'legacy'}} />)
+    expect(screen.getByText('Supporting photo: recorded artifact legacy')).toBeInTheDocument()
   })
 })

@@ -100,7 +100,7 @@ export default function PanicPageClient() {
         return
       }
       const phaseEventId = contextPhaseEventId(trip.phases)
-      const enqueueResult = enqueueException(String(trip.id), {
+      const enqueueResult = await enqueueException(String(trip.id), {
         exception_type: 'panic_button',
         description,
         client_report_id: clientReportId,

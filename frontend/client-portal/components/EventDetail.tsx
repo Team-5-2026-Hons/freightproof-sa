@@ -2,9 +2,20 @@
 
 import { formatCoord, formatSast, humanise } from '@/lib/format'
 import type { TimelineItem } from '@/lib/timeline'
+import type { EvidenceFile, ExceptionPhoto } from '@/lib/types'
 import { Field } from './Card'
+import { ExceptionAnchorList } from './ExceptionAnchorList'
 import { EvidencePhoto } from './EvidencePhoto'
 import { TierBadge } from './TierBadge'
+
+// A v2 exception lists its photos with the receipt that committed each; the `evidence` list
+// repeats them for older readers, so showing both would double every photo.
+function photoFile(photo: ExceptionPhoto): EvidenceFile {
+  return {
+    artifact_id: photo.artifact_id, role: 'exception_supporting', sha256: photo.sha256,
+    mime_type: photo.mime_type, captured_at: photo.captured_at, tier: photo.tier,
+  }
+}
 
 export function EventDetail({ token, item }: { token: string; item: TimelineItem | null }) {
   if (!item) {
@@ -78,7 +89,10 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
             <Field label="Raised"><span className="num">{formatSast(item.record.raised_at)}</span></Field>
             <Field label="Severity / source">{humanise(item.record.severity)} · {humanise(item.record.source)}</Field>
             <Field label="Description">{item.record.description}</Field>
-            <Field label="Position"><span className="num">{formatCoord(item.record.position)}</span></Field>
+            <Field label="Position">
+              <span className="num">{formatCoord(item.record.position)}</span>
+              {item.record.position && <span className="text-muted"> · Recorded — GPS is never part of a receipt</span>}
+            </Field>
             <Field label="Review">
               {humanise(item.record.review_status)}
               {item.record.reviewed_at && `, ${formatSast(item.record.reviewed_at)}`}
@@ -90,7 +104,18 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
           </>
         )}
       </dl>
-      {evidence.length > 0 && (
+      {item.kind === 'exception' && <ExceptionAnchorList anchors={item.record.anchors ?? []} />}
+      {item.kind === 'exception' && item.record.photos && item.record.photos.length > 0 ? (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {item.record.photos.map((photo, index, all) => (
+            <EvidencePhoto
+              key={photo.artifact_id} token={token} file={photoFile(photo)}
+              label={all.length > 1 ? `Photo ${index + 1} of ${all.length}` : 'Photo'}
+              receiptId={photo.anchor_receipt_id}
+            />
+          ))}
+        </div>
+      ) : evidence.length > 0 && (
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {evidence.map((file) => <EvidencePhoto key={file.artifact_id} token={token} file={file} />)}
         </div>
