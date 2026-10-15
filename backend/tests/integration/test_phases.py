@@ -2047,3 +2047,210 @@ async def test_completion_of_pending_phase_on_cancelled_trip_returns_409(
     resp = await _complete_loading(client, trip, token)
 
     assert resp.status_code == 409
+
+
+async def _complete_departure_with(client: AsyncClient, db_session, trip, token: str, **fields: Any):
+    """activation and loading, then departure carrying the given extra fields."""
+    await _complete_activation(client, trip.id, token)
+    assert (await _complete_loading(client, trip, token)).status_code == 200
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    departure_id = await _phase_id(client, trip.id, token, "departure")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{departure_id}/complete",
+        json={
+            "phase_type": "departure", "seal_number": "AB-1234",
+            "seal_photo_artifact_id": seal_photo_id,
+            "idempotency_key": str(uuid.uuid4()), **fields,
+        },
+        headers=auth_header(token),
+    )
+    return departure_id, resp
+
+
+async def _complete_arrival_with(client: AsyncClient, db_session, trip, token: str, **fields: Any):
+    """Walk to arrival, then complete it with the given fields."""
+    await _walk_to_in_transit(client, db_session, trip, token)
+    await _complete_in_transit(client, trip, token)
+    seal_photo_id = await _make_artifact(db_session, trip.id)
+    arrival_id = await _phase_id(client, trip.id, token, "arrival")
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete",
+        json={
+            "phase_type": "arrival", "seal_photo_artifact_id": seal_photo_id,
+            "idempotency_key": str(uuid.uuid4()), **fields,
+        },
+        headers=auth_header(token),
+    )
+    return arrival_id, resp
+
+
+async def test_departure_complete_records_how_the_seal_number_was_entered(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    departure_id, resp = await _complete_departure_with(
+        client, db_session, trip, token, seal_number_source="ocr_corrected",
+    )
+
+    assert resp.status_code == 200, resp.text
+    row = next(p for p in resp.json()["phases"] if p["phase_type"] == "departure")
+    assert row["seal_number_source"] == "ocr_corrected"
+    event = await db_session.get(PhaseEvent, uuid.UUID(departure_id))
+    assert event.seal_number_source == "ocr_corrected"
+
+
+async def test_departure_complete_without_seal_number_source_stores_null(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    departure_id, resp = await _complete_departure_with(client, db_session, trip, token)
+
+    assert resp.status_code == 200, resp.text
+    event = await db_session.get(PhaseEvent, uuid.UUID(departure_id))
+    assert event.seal_number_source is None
+
+
+async def test_departure_complete_rejects_an_unknown_seal_number_source(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    _departure_id, resp = await _complete_departure_with(
+        client, db_session, trip, token, seal_number_source="scanned",
+    )
+
+    assert resp.status_code == 422
+
+
+async def test_arrival_complete_records_how_the_seal_number_was_entered(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    arrival_id, resp = await _complete_arrival_with(
+        client, db_session, trip, token, seal_condition="intact",
+        seal_number_at_arrival="AB-1234", seal_number_source="ocr_confirmed",
+    )
+
+    assert resp.status_code == 200, resp.text
+    event = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    assert event.seal_number_source == "ocr_confirmed"
+
+
+async def test_arrival_with_a_missing_seal_stores_no_seal_number_source(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A missing seal has no number, so there is no way it was entered to record."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+
+    arrival_id, resp = await _complete_arrival_with(
+        client, db_session, trip, token, seal_condition="missing", seal_number_source="typed",
+    )
+
+    assert resp.status_code == 200, resp.text
+    event = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    assert event.seal_number_source is None
+
+
+async def _make_linehaul_pdf(db_session, trip_id, phase_event_id, *, mime_type="application/pdf") -> str:
+    """An attributed PDF artifact as the upload route would store it."""
+    artifact = EvidenceArtifact(
+        id=uuid.uuid4(), trip_id=trip_id, artifact_type=ArtifactType.DOCUMENT,
+        s3_key=f"{trip_id}/{uuid.uuid4()}.pdf", s3_bucket="evidence-artifacts",
+        file_hash=uuid.uuid4().hex * 2, mime_type=mime_type, captured_at=datetime.now(UTC),
+        phase_event_id=uuid.UUID(str(phase_event_id)), evidence_role=EvidenceRole.LINEHAUL_PDF,
+    )
+    db_session.add(artifact)
+    await db_session.flush()
+    return str(artifact.id)
+
+
+async def test_loading_complete_with_linehaul_pdf_persists_it(client: AsyncClient, db_session, seed_trip):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    photo_id = await _make_attributed_artifact(db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO)
+    pdf_id = await _make_linehaul_pdf(db_session, trip.id, loading_id)
+
+    resp = await _complete_loading(
+        client, trip, token, linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=pdf_id,
+    )
+
+    assert resp.status_code == 200, resp.text
+    row = next(p for p in resp.json()["phases"] if p["phase_type"] == "loading")
+    assert row["linehaul_pdf_artifact_id"] == pdf_id
+    event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert str(event.linehaul_pdf_artifact_id) == pdf_id
+
+
+async def test_loading_complete_rejects_an_image_cited_as_the_linehaul_pdf(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    photo_id = await _make_attributed_artifact(db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO)
+    not_a_pdf = await _make_linehaul_pdf(db_session, trip.id, loading_id, mime_type="image/jpeg")
+
+    resp = await _complete_loading(
+        client, trip, token, linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=not_a_pdf,
+    )
+
+    assert resp.status_code == 422
+
+
+async def test_loading_complete_rejects_the_same_artifact_as_photo_and_pdf(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    pdf_id = await _make_linehaul_pdf(db_session, trip.id, loading_id)
+
+    resp = await _complete_loading(
+        client, trip, token, linehaul_photo_artifact_id=pdf_id, linehaul_pdf_artifact_id=pdf_id,
+    )
+
+    assert resp.status_code == 422
+
+
+async def test_loading_complete_rejects_another_trips_linehaul_pdf(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    photo_id = await _make_attributed_artifact(db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO)
+
+    resp = await _complete_loading(
+        client, trip, token, linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=str(uuid.uuid4()),
+    )
+
+    assert resp.status_code == 404
+
+
+async def test_loading_complete_rejects_a_linehaul_pdf_without_its_scan(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    pdf_id = await _make_linehaul_pdf(db_session, trip.id, loading_id)
+
+    resp = await _complete_loading(client, trip, token, linehaul_pdf_artifact_id=pdf_id)
+
+    assert resp.status_code == 422
+    event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    assert event.linehaul_pdf_artifact_id is None

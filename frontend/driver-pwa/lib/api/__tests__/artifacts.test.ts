@@ -99,3 +99,38 @@ describe('uploadArtifact attribution', () => {
     expect(unattributed.has('evidence_role')).toBe(false)
   })
 })
+
+describe('uploadArtifact filename', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPostForm.mockResolvedValue({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubBlob(type: string) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      blob: () => Promise.resolve(new Blob([new ArrayBuffer(16)], { type })),
+    }))
+  }
+
+  it('names a PDF .pdf', async () => {
+    stubBlob('application/pdf')
+
+    await uploadArtifact({ ...PARAMS, artifactType: 'document' })
+
+    const file = (mockPostForm.mock.calls[0][1] as FormData).get('file') as File
+    expect(file.name).toBe('document.pdf')
+  })
+
+  it('keeps .jpg for photos', async () => {
+    stubBlob('image/jpeg')
+
+    await uploadArtifact(PARAMS)
+
+    const file = (mockPostForm.mock.calls[0][1] as FormData).get('file') as File
+    expect(file.name).toBe(`${PARAMS.artifactType}.jpg`)
+  })
+})

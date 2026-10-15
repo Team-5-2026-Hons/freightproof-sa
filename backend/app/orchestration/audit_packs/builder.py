@@ -92,7 +92,8 @@ _PHASE_EVIDENCE: Mapping[EvidenceRole, tuple[str, str | None]] = {
     "gate_photo": ("gate_photo_artifact_id", None),
     "pod_photo": ("pod_photo_artifact_id", "pod_photo_sha256"),
     "pod_signature": ("pod_signature_artifact_id", "pod_signature_sha256"),
-    "linehaul_photo": ("linehaul_photo_artifact_id", None),
+    "linehaul_photo": ("linehaul_photo_artifact_id", "linehaul_photo_sha256"),
+    "linehaul_pdf": ("linehaul_pdf_artifact_id", "linehaul_pdf_sha256"),
 }
 
 

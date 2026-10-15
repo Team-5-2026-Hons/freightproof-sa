@@ -1,8 +1,11 @@
 // frontend/driver-pwa/components/phase/steps/departure/CaptureSeal.tsx
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { StepLayout } from '@/components/phase/StepLayout'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
+import { useSealOcr } from '@/lib/hooks/useSealOcr'
+import { canReplaceWithOcr } from '@/lib/ocr/sealSource'
 import { SealInput } from '@/components/phase/SealInput'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { isValidSealFormat } from '@/lib/utils/seal-format'
@@ -37,6 +40,12 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
   const sealFormatValid = isValidSealFormat(sealNumber)
   const showSealFormatHint = sealNumber.trim().length > 0 && !sealFormatValid
 
+  const { reading, readSeal } = useSealOcr()
+  // The OCR answer is judged against the draft as it is when the answer ARRIVES: the
+  // driver may have typed while it ran, and that typing must win.
+  const draftRef = useRef(draft)
+  useEffect(() => { draftRef.current = draft }, [draft])
+
   // Upload starts at capture, not at submit — see lib/hooks/useArtifactUpload.ts. The
   // data URL is stored regardless, so a failed early upload only means the submit path
   // uploads it as it always did.
@@ -46,24 +55,41 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
     void uploadNow(dataUrl, 'photo', capturedAt, 'seal_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
     })
+    void readSeal(dataUrl).then((result) => {
+      if (result.stale) return
+      const current = draftRef.current
+      // OCR is credited only when it actually fills the field. Filling with null is
+      // deliberate: a retake that reads nothing clears an UNTOUCHED earlier read, because a
+      // number off a photo the driver has since replaced must not survive as if it came
+      // from the new one. Once the driver has made the field their own, their number
+      // stands and no OCR value is kept, so it submits as "typed" — even if OCR happened to
+      // read the same thing.
+      onUpdate(canReplaceWithOcr(current.sealNumber, current.sealNumberOcr ?? null)
+        ? { sealNumberOcr: result.value, sealNumber: result.value }
+        : { sealNumberOcr: null })
+    })
   }
 
-  // Only a format error (a guaranteed backend 422) can stop the driver proceeding.
-  const isReady = sealFormatValid && draft.sealPhotoDataUrl !== null
+  const readFromPhoto = sealNumber !== '' && sealNumber === (draft.sealNumberOcr ?? null)
+
+  // A format error (a guaranteed backend 422) stops the driver proceeding, and so does a
+  // read still running: swiping inside that window would submit a capture tag worked out
+  // from the previous photo's read. The read gives up after SEAL_OCR_TIMEOUT_MS.
+  const isReady = sealFormatValid && draft.sealPhotoDataUrl !== null && !reading
 
   return (
     <StepLayout
       phase={phase}
       stepIndex={stepIndex}
-      intro="Type the number printed on the seal, then photograph it. The number is locked into the journey record."
+      intro="Photograph the seal, then check the number. The number is locked into the journey record."
       requirements={[
-        { label: 'Seal number', met: sealFormatValid },
         { label: 'Seal photo', met: draft.sealPhotoDataUrl !== null },
+        { label: 'Seal number', met: sealFormatValid },
       ]}
       action={
         <SwipeToConfirm
           label="Swipe to Save Seal"
-          waitingLabel="Add number and photo"
+          waitingLabel={reading ? 'Reading the seal…' : 'Add photo and number'}
           onConfirm={onComplete}
           disabled={!isReady}
         />
@@ -74,6 +100,8 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
         sealPhotoDataUrl={draft.sealPhotoDataUrl}
         sealPhotoCapturedAt={draft.capturedAt}
         formatError={showSealFormatHint ? 'Seal number must look like AB-1234 (two letters, four digits).' : undefined}
+        hint={readFromPhoto ? 'Read from the photo — check it matches the seal.' : undefined}
+        reading={reading}
         onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
         onSealPhotoCapture={handleSealPhoto}
       />

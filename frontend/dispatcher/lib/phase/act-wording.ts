@@ -66,6 +66,7 @@ const RECEIVER_SUBMITTED = 'Submitted as receiver confirmation'
 export function evidenceTitle(act: EvidenceAct, phaseType: PhaseType): string {
   switch (act.role) {
     case 'linehaul_photo': return 'Linehaul sheet photographed'
+    case 'linehaul_pdf': return 'Linehaul sheet scanned (PDF)'
     case 'seal_photo': return phaseType === 'arrival' ? 'Seal photographed on arrival' : 'Seal photographed'
     case 'waybill_photo': return 'Waybill copy photographed'
     case 'pod_photo': return 'Proof-of-delivery photo taken'

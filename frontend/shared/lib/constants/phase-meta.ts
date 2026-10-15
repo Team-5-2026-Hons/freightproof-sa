@@ -62,7 +62,7 @@ export const ANCHORED_PHASES: readonly PhaseType[] = Object.keys(PHASE_NAMES) as
 export const EVIDENCE_ROLES: Record<PhaseType, readonly EvidenceRole[]> = {
   trip_creation: [],
   activation: [],
-  loading: ['linehaul_photo'],
+  loading: ['linehaul_photo', 'linehaul_pdf'],
   departure: ['seal_photo', 'waybill_photo'],
   in_transit: [],
   arrival: ['seal_photo'],
@@ -74,12 +74,14 @@ export const EVIDENCE_ROLES: Record<PhaseType, readonly EvidenceRole[]> = {
 export const EVIDENCE_ROLE_FIELD: Record<
   EvidenceRole,
   | 'linehaul_photo_artifact_id'
+  | 'linehaul_pdf_artifact_id'
   | 'seal_photo_artifact_id'
   | 'waybill_photo_artifact_id'
   | 'pod_photo_artifact_id'
   | 'pod_signature_artifact_id'
 > = {
   linehaul_photo: 'linehaul_photo_artifact_id',
+  linehaul_pdf: 'linehaul_pdf_artifact_id',
   seal_photo: 'seal_photo_artifact_id',
   waybill_photo: 'waybill_photo_artifact_id',
   pod_photo: 'pod_photo_artifact_id',
@@ -89,6 +91,7 @@ export const EVIDENCE_ROLE_FIELD: Record<
 // Singular noun for "Expected: …" rows; never claims anything is missing.
 export const EVIDENCE_ROLE_NOUN: Record<EvidenceRole, string> = {
   linehaul_photo: 'linehaul sheet photo',
+  linehaul_pdf: 'linehaul sheet scan (PDF)',
   seal_photo: 'seal photo',
   waybill_photo: 'waybill photo',
   pod_photo: 'proof-of-delivery photo',

@@ -54,6 +54,11 @@ async def advance_departure(
     event.waybill_photo_artifact_id = payload.waybill_photo_artifact_id
     event.seal_number = payload.seal_number
     event.seal_photo_artifact_id = payload.seal_photo_artifact_id
+    # Recorded, never anchored: how the number was entered says nothing about the seal,
+    # and keeping it out of the payload leaves departure's anchor contract unchanged.
+    event.seal_number_source = (
+        payload.seal_number_source.value if payload.seal_number_source is not None else None
+    )
 
     # Intra-request seal continuity — compared against THIS SAME
     # request's seal_number, not a fetched prior row: the driver applies and

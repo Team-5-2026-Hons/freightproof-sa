@@ -63,6 +63,17 @@ class SealCondition(str, enum.Enum):
     MISSING = "missing"
 
 
+class SealNumberSource(str, enum.Enum):
+    """How the seal number on a departure or arrival row was entered on the phone.
+
+    Recorded, never anchored: it describes the capture, not the seal, and keeping it out
+    of the payload leaves the departure and arrival anchor contracts unchanged."""
+
+    OCR_CONFIRMED = "ocr_confirmed"
+    OCR_CORRECTED = "ocr_corrected"
+    TYPED         = "typed"
+
+
 class PhaseStatus(str, enum.Enum):
     PENDING     = "pending"
     IN_PROGRESS = "in_progress"
@@ -176,6 +187,7 @@ class EvidenceRole(str, enum.Enum):
     records the submitted copy (<value>_artifact_id) and of its anchored hash key
     (<value>_sha256), so it is frozen like those names."""
     LINEHAUL_PHOTO = "linehaul_photo"
+    LINEHAUL_PDF   = "linehaul_pdf"
     SEAL_PHOTO     = "seal_photo"
     WAYBILL_PHOTO  = "waybill_photo"
     POD_PHOTO      = "pod_photo"

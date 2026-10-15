@@ -348,7 +348,20 @@ export function useOfflineQueue() {
         enqueuedAt: new Date().toISOString(),
       }
       const q = [...loadQueue(), entry]
-      saveQueue(q)
+      if (saveQueue(q)) {
+        publishStoreState({ length: q.length })
+        return
+      }
+
+      // Write refused — almost always the ~5MB localStorage quota. A loading's linehaul PDF
+      // wraps the same JPEG as the scan, so it roughly doubles the entry; the scan is the
+      // evidence, so retry without the PDF image. Any id its early upload produced stays.
+      if ('linehaulPdfDataUrl' in evidence && evidence.linehaulPdfDataUrl) {
+        const withoutPdf = [...loadQueue(), { ...entry, evidence: { ...evidence, linehaulPdfDataUrl: null } }]
+        saveQueue(withoutPdf)
+        publishStoreState({ length: withoutPdf.length })
+        return
+      }
       publishStoreState({ length: q.length })
     },
     [],

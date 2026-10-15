@@ -12,6 +12,7 @@ from app.core.exceptions import EvidenceAttributionError, ResourceNotFoundError
 from app.db.models.enums import EvidenceRole
 from app.db.models.evidence import EvidenceArtifact
 from app.orchestration.evidence.attribution import cited_attribution_error
+from app.storage.mime_allowlist import PDF
 
 
 async def _assert_artifacts_belong_to_trip(
@@ -51,6 +52,7 @@ async def _assert_artifacts_belong_to_trip(
         select(
             EvidenceArtifact.id, EvidenceArtifact.file_hash, EvidenceArtifact.phase_event_id,
             EvidenceArtifact.evidence_role, EvidenceArtifact.captured_by_driver_id,
+            EvidenceArtifact.mime_type,
         ).where(
             EvidenceArtifact.id.in_(present),
             EvidenceArtifact.trip_id == trip_id,
@@ -73,7 +75,7 @@ async def _assert_artifacts_belong_to_trip(
 
 
 def _assert_attribution_fits(
-    artifact: Row[tuple[uuid.UUID, str, uuid.UUID | None, EvidenceRole | None, uuid.UUID | None]],
+    artifact: Row[tuple[uuid.UUID, str, uuid.UUID | None, EvidenceRole | None, uuid.UUID | None, str]],
     *, role: EvidenceRole, phase_event_id: uuid.UUID,
 ) -> None:
     error = cited_attribution_error(
@@ -89,3 +91,7 @@ def _assert_attribution_fits(
         raise EvidenceAttributionError(
             "A driver's own upload cannot be submitted as the receiver confirmation."
         )
+    # The upload allowlist sniffs the bytes, so mime_type is what the file really is. Checked
+    # per role because attribution alone would let an unattributed photo stand in as the PDF.
+    if role is EvidenceRole.LINEHAUL_PDF and artifact.mime_type != PDF:
+        raise EvidenceAttributionError("The linehaul PDF must be a PDF file.")

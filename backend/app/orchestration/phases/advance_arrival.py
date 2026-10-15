@@ -65,6 +65,12 @@ async def advance_arrival(
     event.seal_number = seal_at_arrival
     event.seal_condition = payload.seal_condition.value
     event.seal_photo_artifact_id = payload.seal_photo_artifact_id
+    # Not anchored, as at departure. A missing seal has no number, so nothing to record.
+    event.seal_number_source = (
+        payload.seal_number_source.value
+        if payload.seal_number_source is not None and seal_at_arrival is not None
+        else None
+    )
     event.status = PhaseStatus.COMPLETED
 
     # "" when the departure row carries no seal at all. Reachable in normal
