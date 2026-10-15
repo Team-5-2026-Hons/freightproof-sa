@@ -73,3 +73,21 @@ def test_exception_and_gps_snapshot_point_at_phase_events():
     assert "phase_event_id" in gps_cols
     gps_fk_targets = {fk.column.table.name for fk in gps_cols["phase_event_id"].foreign_keys}
     assert "phase_events" in gps_fk_targets
+
+
+def test_seal_number_source_values_are_the_three_capture_methods():
+    from app.db.models.enums import SealNumberSource
+
+    assert {s.value for s in SealNumberSource} == {"ocr_confirmed", "ocr_corrected", "typed"}
+
+
+def test_phase_events_has_nullable_seal_source_and_linehaul_pdf_columns():
+    from app.db.models.phases import PhaseEvent
+
+    columns = PhaseEvent.__table__.c
+
+    assert columns.seal_number_source.nullable is True
+    assert columns.linehaul_pdf_artifact_id.nullable is True
+    (fk,) = columns.linehaul_pdf_artifact_id.foreign_keys
+    assert fk.target_fullname == "evidence_artifacts.id"
+    assert fk.name == "fk_phase_linehaul_pdf"

@@ -46,17 +46,18 @@ import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = {
-  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null,
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
+  linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt: null,
 }
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  sealNumber: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+  sealNumber: null, sealNumberOcr: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
 // The seal is no longer captured here — see ArrivalEvidence/ARRIVAL_INITIAL below.
 const UNLOADING_INITIAL: UnloadingEvidence = {
   waybillHandedOver: null, driverVisualCount: null, capturedAt: null,
 }
 const ARRIVAL_INITIAL: ArrivalEvidence = {
-  sealCondition: null, sealNumberAtArrival: null,
+  sealCondition: null, sealNumberAtArrival: null, sealNumberAtArrivalOcr: null,
   sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
 // driverVisualCount is seeded per-mount from the carry-forward hook — see

@@ -158,6 +158,31 @@ describe('CameraCapture native capture failures', () => {
       ),
     )
   })
+
+  it('uses a provided native source instead of the camera, and stays quiet on cancel', async () => {
+    const onCapture = vi.fn()
+    const nativeSource = vi.fn().mockResolvedValueOnce('data:image/jpeg;base64,SCAN').mockResolvedValueOnce(null)
+
+    render(<CameraCapture label="Linehaul sheet" actionLabel="Scan the sheet" dataUrl={null} onCapture={onCapture} nativeSource={nativeSource} />)
+    fireEvent.click(screen.getByText('Scan the sheet'))
+    await waitFor(() => expect(onCapture).toHaveBeenCalledWith('data:image/jpeg;base64,SCAN'))
+    fireEvent.click(screen.getByText('Scan the sheet'))
+    await waitFor(() => expect(nativeSource).toHaveBeenCalledTimes(2))
+
+    expect(onCapture).toHaveBeenCalledTimes(1)
+    expect(mockGetPhoto).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the file picker when the native source fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const nativeSource = vi.fn().mockRejectedValue(new Error('Document scanner is not supported'))
+
+    render(<CameraCapture label="Linehaul sheet" actionLabel="Scan the sheet" dataUrl={null} onCapture={vi.fn()} nativeSource={nativeSource} />)
+    fireEvent.click(screen.getByText('Scan the sheet'))
+
+    expect(await screen.findByText('Choose a Photo Instead')).toBeInTheDocument()
+  })
 })
 
 // FP-150 hardening. Two gaps this suite had: the browser file-input branch had NO

@@ -11,8 +11,19 @@ import type {
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 const mockPost = vi.fn()
+// The real client imports Supabase at load time; this stand-in keeps the status field that
+// isQueueableFailure reads, so the queueable/terminal split can be exercised here.
+const { MockApiError } = vi.hoisted(() => ({
+  MockApiError: class MockApiError extends Error {
+    constructor(public readonly status: number, message: string) {
+      super(message)
+      this.name = 'ApiError'
+    }
+  },
+}))
 vi.mock('@/lib/api/client', () => ({
   api: { get: vi.fn(), post: (...args: unknown[]) => mockPost(...args), postForm: vi.fn() },
+  ApiError: MockApiError,
 }))
 
 // uploadArtifact's data-URL -> Blob conversion is jsdom-incompatible (fetch('data:...')
@@ -143,6 +154,88 @@ describe('submitPhase (real-backend branch)', () => {
     )
   })
 
+  it('sends the linehaul PDF id next to the scan image', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,AAAA', linehaulPhotoArtifactId: 'scan-artifact',
+      linehaulPdfDataUrl: 'data:application/pdf;base64,JVBERi0=', linehaulPdfArtifactId: 'pdf-artifact',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({
+      linehaul_photo_artifact_id: 'scan-artifact', linehaul_pdf_artifact_id: 'pdf-artifact',
+    })
+  })
+
+  it('uploads the PDF at submit as a document when the early upload never landed', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockResolvedValue({ id: 'late-pdf' })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,AAAA', linehaulPhotoArtifactId: 'scan-artifact',
+      linehaulPdfDataUrl: 'data:application/pdf;base64,JVBERi0=', linehaulPdfArtifactId: null,
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockUploadArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      artifactType: 'document', attribution: { phaseEventId: 'phase-event-2', role: 'linehaul_pdf' },
+    }))
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ linehaul_pdf_artifact_id: 'late-pdf' })
+  })
+
+  it('sends the PDF id an early upload produced even after the queue dropped the PDF image', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,AAAA', linehaulPhotoArtifactId: 'scan-artifact',
+      linehaulPdfDataUrl: null, linehaulPdfArtifactId: 'pdf-early',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockUploadArtifact).not.toHaveBeenCalled()
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ linehaul_pdf_artifact_id: 'pdf-early' })
+  })
+
+  it('still completes loading with the scan when the PDF upload is rejected outright', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockRejectedValueOnce(new MockApiError(413, 'too large'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-2', 'loading', {
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,AAAA', linehaulPhotoArtifactId: 'scan-artifact',
+      linehaulPdfDataUrl: 'data:application/pdf;base64,JVBERi0=', linehaulPdfArtifactId: null,
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({
+      linehaul_photo_artifact_id: 'scan-artifact', linehaul_pdf_artifact_id: null,
+    })
+    expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it.each([
+    ['no response (status 0)', new MockApiError(0, 'timed out')],
+    ['a server error (5xx)', new MockApiError(503, 'unavailable')],
+    ['a network failure', new TypeError('Failed to fetch')],
+  ])('rejects the loading when the PDF upload fails with %s, so the queue retries it whole', async (_case, error) => {
+    mockUploadArtifact.mockRejectedValueOnce(error)
+
+    const { submitPhase } = await import('../phases')
+
+    await expect(submitPhase('trip-1', 'phase-event-2', 'loading', {
+      linehaulPhotoDataUrl: 'data:image/jpeg;base64,AAAA', linehaulPhotoArtifactId: 'scan-artifact',
+      linehaulPdfDataUrl: 'data:application/pdf;base64,JVBERi0=', linehaulPdfArtifactId: null,
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)).rejects.toBe(error)
+    expect(mockPost).not.toHaveBeenCalled()
+  })
+
   it('completes loading with no linehaul photo — the warehouse scan is what was recorded', async () => {
     mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
 
@@ -161,6 +254,7 @@ describe('submitPhase (real-backend branch)', () => {
         driver_phone_lng: POSITION.lng,
         driver_accuracy_metres: POSITION.accuracyM,
         linehaul_photo_artifact_id: null,
+        linehaul_pdf_artifact_id: null,
         idempotency_key: IDEMPOTENCY_KEY,
         driver_captured_at: DRIVER_CAPTURED_AT,
       },
@@ -195,6 +289,7 @@ describe('submitPhase (real-backend branch)', () => {
         // wire shape stable for the backend's still-Optional field.
         waybill_photo_artifact_id: null,
         seal_number: 'AB-1234',
+        seal_number_source: 'typed',
         seal_photo_artifact_id: 'seal-artifact',
         // No guard_verified_seal and no seal_number_confirmed. toHaveBeenCalledWith is an
         // EXACT object match, so this assertion also fences the removal: sending either
@@ -206,6 +301,59 @@ describe('submitPhase (real-backend branch)', () => {
       },
       { timeoutMs: 30_000 },
     )
+  })
+
+  it('sends ocr_confirmed when the departure seal number is what OCR read', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+    mockUploadArtifact.mockResolvedValue({ id: 'seal-artifact' })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-3', 'departure', {
+      sealNumber: 'AB-1234', sealNumberOcr: 'AB-1234',
+      sealPhotoDataUrl: 'data:image/jpeg;base64,AAAA', sealPhotoArtifactId: 'seal-artifact',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ seal_number_source: 'ocr_confirmed' })
+  })
+
+  it('sends typed for a departure draft saved before OCR existed', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-3', 'departure', {
+      sealNumber: 'AB-1234',
+      sealPhotoDataUrl: 'data:image/jpeg;base64,AAAA', sealPhotoArtifactId: 'seal-artifact',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ seal_number_source: 'typed' })
+  })
+
+  it('sends no seal_number_source for a missing seal at arrival', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-5', 'arrival', {
+      sealCondition: 'missing', sealNumberAtArrival: null, sealNumberAtArrivalOcr: null,
+      sealPhotoDataUrl: 'data:image/jpeg;base64,AAAA', sealPhotoArtifactId: 'seal-artifact',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).not.toHaveProperty('seal_number_source')
+  })
+
+  it('sends ocr_corrected when the arrival number differs from what OCR read', async () => {
+    mockPost.mockResolvedValue({ id: 'trip-1', phases: [] })
+
+    const { submitPhase } = await import('../phases')
+    await submitPhase('trip-1', 'phase-event-5', 'arrival', {
+      sealCondition: 'intact', sealNumberAtArrival: 'AB-1234', sealNumberAtArrivalOcr: 'AB-1284',
+      sealPhotoDataUrl: 'data:image/jpeg;base64,AAAA', sealPhotoArtifactId: 'seal-artifact',
+      capturedAt: DRIVER_CAPTURED_AT,
+    }, IDEMPOTENCY_KEY, POSITION, DRIVER_CAPTURED_AT)
+
+    expect(mockPost.mock.calls[0][1]).toMatchObject({ seal_number_source: 'ocr_corrected' })
   })
 
   // The NULL == NULL trap, guarded directly: a departure draft with no seal captured
@@ -746,6 +894,7 @@ describe('submitPhase — arrival', () => {
         driver_accuracy_metres: POSITION.accuracyM,
         seal_condition: 'intact',
         seal_number_at_arrival: 'AB-1234',
+        seal_number_source: 'typed',
         seal_photo_artifact_id: 'seal-arrival-artifact',
         idempotency_key: IDEMPOTENCY_KEY,
         driver_captured_at: DRIVER_CAPTURED_AT,

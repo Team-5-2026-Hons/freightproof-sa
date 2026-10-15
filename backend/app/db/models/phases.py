@@ -104,6 +104,11 @@ class PhaseEvent(Base):
     # every enum column here, so new values need no migration. NULL on every other
     # phase type, where "condition" has no meaning.
     seal_condition: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Departure and arrival only: how seal_number was entered (SealNumberSource). Plain
+    # String like seal_condition. NULL comes from app builds older than seal OCR, which
+    # never send it, and means "unknown", never guessed. Replayed offline-queue entries
+    # are rebuilt by the current client and send "typed" when no OCR value was kept.
+    seal_number_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     # Artifact FKs use use_alter=True to break the migration's circular dependency:
     # evidence_artifacts is created before trips, so these FKs are added via ALTER TABLE.
     seal_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -139,6 +144,14 @@ class PhaseEvent(Base):
     linehaul_photo_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_linehaul_photo"),
+        nullable=True,
+    )
+    # The scanned linehaul sheet as a one-page PDF, built on the phone from the same scan
+    # as linehaul_photo_artifact_id and anchored with it in loading payload v3. Optional:
+    # a failed PDF build must never block loading.
+    linehaul_pdf_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("evidence_artifacts.id", use_alter=True, name="fk_phase_linehaul_pdf"),
         nullable=True,
     )
     parcel_manifest_snapshot: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)

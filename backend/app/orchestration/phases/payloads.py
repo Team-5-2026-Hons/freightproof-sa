@@ -10,6 +10,8 @@ from app.db.models.enums import PhaseStatus, PhaseType
 
 
 PHASE_PAYLOAD_VERSION_V2 = 2
+# Loading only: v2 plus the scanned linehaul PDF's hash. Every other phase stays on v2.
+PHASE_PAYLOAD_VERSION_V3 = 3
 
 
 def compute_departure_canonical_payload_v1(
@@ -91,6 +93,24 @@ def compute_loading_canonical_payload_v2(
         ),
         "parcel_count_origin": parcel_count_origin,
         "linehaul_photo_sha256": linehaul_photo_sha256,
+    }
+
+
+def compute_loading_canonical_payload_v3(
+    *, phase_event_id: uuid.UUID, trip_id: uuid.UUID, parcel_count_origin: int | None,
+    linehaul_photo_sha256: str | None, linehaul_pdf_sha256: str | None,
+) -> dict[str, str | int | None]:
+    """v2 plus the scanned linehaul sheet's PDF. The scan image and the PDF made from it
+    are both committed, so a PDF handed to an insurer can be checked against Hedera too.
+    Every key is always present, None when absent (a failed PDF build, a paperless
+    warehouse), so reconstruction has one deterministic shape."""
+    return {
+        **compute_loading_canonical_payload_v2(
+            phase_event_id=phase_event_id, trip_id=trip_id,
+            parcel_count_origin=parcel_count_origin, linehaul_photo_sha256=linehaul_photo_sha256,
+        ),
+        "payload_version": PHASE_PAYLOAD_VERSION_V3,
+        "linehaul_pdf_sha256": linehaul_pdf_sha256,
     }
 
 

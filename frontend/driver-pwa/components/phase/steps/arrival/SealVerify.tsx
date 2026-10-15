@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
@@ -8,6 +8,8 @@ import { StatusBanner } from '@/components/ui/StatusBanner'
 import { CircleDashed, Lock, Unlink, type LucideIcon } from 'lucide-react'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
+import { useSealOcr } from '@/lib/hooks/useSealOcr'
+import { canReplaceWithOcr } from '@/lib/ocr/sealSource'
 import { isValidSealFormat, normalizeSeal } from '@/lib/utils/seal-format'
 import { cn } from '@/lib/utils'
 import type { PhaseDescriptor, SealCondition } from '@shared/lib/types/phase'
@@ -88,6 +90,10 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   // draft (see handleConditionChange), so a stale number can never reappear if the
   // driver switches back to 'intact'/'damaged'.
   const [input, setInput] = useState(draft.sealNumberAtArrival ?? '')
+  const { reading, readSeal } = useSealOcr()
+  // Judged when the OCR answer arrives, not when the photo was taken (see CaptureSeal).
+  const draftRef = useRef(draft)
+  useEffect(() => { draftRef.current = draft }, [draft])
   const hasInput = input.trim().length > 0
   // The backend 422s any non-null seal number not matching XX-#### before its own
   // comparison runs, so format must still be caught here — but only when a number is
@@ -96,15 +102,36 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   const showFormatHint = !isMissing && hasInput && !formatValid
   const numberSatisfied = isMissing || (hasInput && formatValid)
   const hasPhoto = draft.sealPhotoDataUrl !== null
-  const isReady = draft.sealCondition !== null && numberSatisfied && hasPhoto
+  // A read still running blocks the swipe: submitting inside that window would send a
+  // capture tag worked out from the previous photo's read. A missing seal sends no number
+  // and no tag, so a read it has made irrelevant does not hold the driver up.
+  const readPending = reading && !isMissing
+  const isReady = draft.sealCondition !== null && numberSatisfied && hasPhoto && !readPending
 
   // Upload starts at capture, not submit. Artifact id is cleared alongside the new data
   // URL so a re-shot photo can never submit under the previous shot's id.
+  //
+  // OCR stays blind entry: it reads the physical seal in this photo, never paperwork and
+  // never the departure value. A missing seal has nothing to read.
   function handleSealPhoto(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ sealPhotoDataUrl: dataUrl, sealPhotoArtifactId: null, capturedAt })
     void uploadNow(dataUrl, 'photo', capturedAt, 'seal_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
+    })
+    if (draft.sealCondition === 'missing') return
+    void readSeal(dataUrl).then((result) => {
+      const current = draftRef.current
+      if (result.stale || current.sealCondition === 'missing') return
+      // Credited only when OCR actually fills the field, as at departure (see CaptureSeal):
+      // a retake that reads nothing clears an untouched earlier read, and once the driver
+      // has made the field their own their number stands and submits as "typed".
+      if (canReplaceWithOcr(current.sealNumberAtArrival, current.sealNumberAtArrivalOcr ?? null)) {
+        setInput(result.value ?? '')
+        onUpdate({ sealNumberAtArrivalOcr: result.value, sealNumberAtArrival: result.value })
+      } else {
+        onUpdate({ sealNumberAtArrivalOcr: null })
+      }
     })
   }
 
@@ -114,7 +141,7 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
     // alongside a 'missing' condition.
     if (condition === 'missing') {
       setInput('')
-      onUpdate({ sealCondition: condition, sealNumberAtArrival: null })
+      onUpdate({ sealCondition: condition, sealNumberAtArrival: null, sealNumberAtArrivalOcr: null })
     } else {
       onUpdate({ sealCondition: condition })
     }
@@ -128,10 +155,14 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
     onUpdate({ sealNumberAtArrival: normalized })
   }
 
+  const readFromPhoto = input !== '' && input === (draft.sealNumberAtArrivalOcr ?? null)
+
   // The waiting swipe names the next missing thing, in the order the screen asks for them.
   const waitingLabel = draft.sealCondition === null
     ? 'Choose the seal condition'
-    : !numberSatisfied ? 'Add the seal number' : 'Add the photo first'
+    : readPending
+      ? 'Reading the seal…'
+      : !hasPhoto ? 'Add the photo first' : 'Add the seal number'
 
   return (
     <StepLayout
@@ -140,9 +171,9 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
       intro={AS_FOUND_INSTRUCTION}
       requirements={[
         { label: 'Seal condition', met: draft.sealCondition !== null },
+        { label: 'Seal photo', met: hasPhoto },
         // A missing seal has no number to record, so it drops off the list entirely.
         ...(isMissing ? [] : [{ label: 'Seal number', met: numberSatisfied }]),
-        { label: 'Seal photo', met: hasPhoto },
       ]}
       // One label in every condition: it must never leak the comparison result.
       action={<SwipeToConfirm label="Swipe to Record Seal" waitingLabel={waitingLabel} onConfirm={onComplete} disabled={!isReady} />}
@@ -151,6 +182,15 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
         <h2 className="text-subhead font-semibold text-surface-on-variant">Seal condition</h2>
         <ConditionChoice value={draft.sealCondition} onChange={handleConditionChange} />
       </section>
+
+      <CameraCapture
+        label="Seal photo"
+        actionLabel={isMissing ? 'Photograph the door latch' : 'Photograph the seal'}
+        hint={isMissing ? 'Where the seal should be' : 'As found, before it is broken'}
+        dataUrl={draft.sealPhotoDataUrl}
+        capturedAt={draft.capturedAt}
+        onCapture={handleSealPhoto}
+      />
 
       {isMissing ? (
         <StatusBanner tone="attention" title="Recorded as a finding">
@@ -172,22 +212,17 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
             className={cn('text-title-3 tracking-wider', showFormatHint && 'ring-2 ring-error focus-visible:ring-error')}
           />
           {/* Blind entry is the point: the number must come off the seal itself. */}
-          <p id={NOTE_ID} className={cn('text-footnote', showFormatHint ? 'font-medium text-error' : 'text-surface-on-variant')}>
+          <p id={NOTE_ID} aria-live="polite" className={cn('text-footnote', showFormatHint ? 'font-medium text-error' : 'text-surface-on-variant')}>
             {showFormatHint
               ? 'Seal number must look like AB-1234 (two letters, four digits).'
-              : 'Type what is printed. Don’t copy it from paperwork.'}
+              : reading
+                ? 'Reading the seal…'
+                : readFromPhoto
+                  ? 'Read from the photo — check it matches the seal.'
+                  : 'Type what is printed. Don’t copy it from paperwork.'}
           </p>
         </div>
       )}
-
-      <CameraCapture
-        label="Seal photo"
-        actionLabel={isMissing ? 'Photograph the door latch' : 'Photograph the seal'}
-        hint={isMissing ? 'Where the seal should be' : 'As found, before it is broken'}
-        dataUrl={draft.sealPhotoDataUrl}
-        capturedAt={draft.capturedAt}
-        onCapture={handleSealPhoto}
-      />
     </StepLayout>
   )
 }

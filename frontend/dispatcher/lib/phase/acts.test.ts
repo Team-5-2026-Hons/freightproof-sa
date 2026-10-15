@@ -8,12 +8,14 @@ import {
   RECEIVED_GAP_DISPLAY_MS,
   buildPhaseActs,
   exceptionEventTime,
+  isDocumentRole,
   showsReceivedTime,
   type PhaseAct,
   type PhaseActsInput,
 } from './acts'
 
 // Single-leg sequence numbers: 3 departure, 4 in_transit, 5 arrival, 6 unloading, 7 confirmation.
+const LOADING = 2
 const DEPARTURE = 3
 const IN_TRANSIT = 4
 const ARRIVAL = 5
@@ -26,6 +28,13 @@ const XD_DEPARTURE_2 = 8
 const XD_IN_TRANSIT_2 = 9
 
 const T = (hhmm: string): string => `2026-10-13T${hhmm}:00Z`
+
+describe('isDocumentRole', () => {
+  it('treats the receiver attestation and the linehaul PDF as documents, every photo role as a photo', () => {
+    expect(['pod_signature', 'linehaul_pdf'].every(role => isDocumentRole(role as 'pod_signature' | 'linehaul_pdf'))).toBe(true)
+    expect((['linehaul_photo', 'seal_photo', 'waybill_photo', 'pod_photo'] as const).some(isDocumentRole)).toBe(false)
+  })
+})
 
 describe('confirmation findings (D46)', () => {
   it('attaches a late handshake finding directly after completion, leaving road events chronological', () => {
@@ -688,6 +697,16 @@ describe('buildPhaseActs: absent rows (D35, R4)', () => {
     const absent = buildPhaseActs(input(s)).filter(a => a.kind === 'absent')
 
     expect(absent.map(a => a.kind === 'absent' && a.role)).toEqual(['seal_photo'])
+  })
+
+  it('never reports linehaul_pdf as absent or expected for a resolved loading with only the scan', () => {
+    const s = scenario(LOADING, { status: 'completed', completed_at: T('09:00'), linehaul_photo_artifact_id: 'scan-1' })
+    const scan = attributed(s, 'scan-1', 'linehaul_photo', { created_at: T('08:50') })
+
+    const acts = buildPhaseActs(input(s, { artifacts: [scan] }))
+
+    expect(acts.filter(a => a.kind === 'absent' || a.kind === 'expected').map(a => 'role' in a && a.role)).not.toContain('linehaul_pdf')
+    expect(acts.filter(a => a.kind === 'absent')).toEqual([])
   })
 
   it('emits no absent row when an upload is attributed to the role but not cited (it is a not_submitted row)', () => {

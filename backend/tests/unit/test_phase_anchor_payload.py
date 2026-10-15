@@ -26,7 +26,7 @@ from app.blockchain.hedera import HederaReceipt
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     AnchorStatus, ArtifactType, BlockchainReceiptType, ExceptionType, ParcelStatus, PhaseStatus, PhaseType, IdvsStatus,
-    OrganizationType, SealCondition, SubjectType, TripStatus, VehicleType, VerifyStatus,
+    OrganizationType, SealCondition, SealNumberSource, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
@@ -57,12 +57,14 @@ from app.orchestration.phases.payloads import (
     compute_departure_canonical_payload_v2,
     compute_in_transit_canonical_payload_v2,
     compute_loading_canonical_payload_v2,
+    compute_loading_canonical_payload_v3,
     compute_override_canonical_payload_v2,
     compute_unloading_canonical_payload_v2,
 )
 from app.orchestration.phases.override import override_phase
 from app.orchestration.phases.anchor_recovery import recover_phase_anchor
 from app.orchestration.phases.anchor_execution import anchor_phase_event
+from app.orchestration.verification.phase_payloads import reconstruct_pending_phase_payload
 from app.orchestration.verification.service import verify_subject
 from app.storage.supabase_storage import EvidenceObjectNotFoundError, EvidenceStorageUnavailableError
 from app.schemas.phases import (
@@ -213,6 +215,7 @@ async def _make_artifact(db_session, trip_id, *, file_hash="a" * 64):
 async def _advance_to_departure(
     db_session, trip, driver, phases, *,
     waybill_hash: str | None = "a" * 64, seal_hash: str = "a" * 64,
+    seal_number_source: SealNumberSource | None = None,
 ):
     """The seal — and the anchor — moved from loading to
     departure, so this is now the helper that produces an anchored handshake."""
@@ -237,7 +240,8 @@ async def _advance_to_departure(
             seal_photo_artifact_id=await _make_artifact(
                 db_session, trip.id, file_hash=seal_hash,
             ),
-            guard_verified_seal=True, idempotency_key=str(uuid.uuid4()),
+            guard_verified_seal=True, seal_number_source=seal_number_source,
+            idempotency_key=str(uuid.uuid4()),
         ),
     )
 
@@ -509,6 +513,77 @@ async def test_advance_departure_v2_anchors_null_for_absent_legacy_waybill(
         )
     )).scalar_one()
     assert receipt.payload_json["waybill_photo_sha256"] is None
+
+
+@pytest.mark.asyncio
+async def test_advance_departure_keeps_seal_number_source_out_of_the_anchor(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    """seal_number_source describes the capture, not the seal: it is stored on the row
+    and must never reach the anchored payload, or the departure contract would change."""
+    trip, driver, phases = trip_fixture
+
+    await _advance_to_departure(
+        db_session, trip, driver, phases, seal_number_source=SealNumberSource.OCR_CONFIRMED,
+    )
+    # Commit fires the after_commit dispatch hook; the payload is read as dispatched,
+    # before any worker touches it.
+    await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
+
+    departure = phases["departure"]
+    [canonical_payload] = [
+        payload for event_id, payload, _ in captured_anchor_dispatches
+        if event_id == str(departure.id)
+    ]
+    assert departure.seal_number_source == SealNumberSource.OCR_CONFIRMED.value
+    assert "seal_number_source" not in canonical_payload
+    assert canonical_payload == compute_departure_canonical_payload_v2(
+        phase_event_id=departure.id,
+        trip_id=trip.id,
+        seal_number="AB-1234",
+        seal_photo_sha256="a" * 64,
+        waybill_photo_sha256="a" * 64,
+    )
+
+
+@pytest.mark.asyncio
+async def test_advance_loading_anchors_v3_with_both_linehaul_hashes(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(
+            phase_type=PhaseType.ACTIVATION, driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    photo_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
+    pdf_id = await _make_artifact(db_session, trip.id, file_hash="b" * 64)
+    pdf = await db_session.get(EvidenceArtifact, pdf_id)
+    pdf.artifact_type = ArtifactType.DOCUMENT
+    pdf.mime_type = "application/pdf"
+    await db_session.flush()
+
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+            linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=pdf_id,
+        ),
+    )
+    # Commit fires the after_commit dispatch hook; the payload is read as dispatched,
+    # before any worker touches it.
+    await db_session.commit()
+    await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
+
+    loading_payloads =[p for _id, p, _type in captured_anchor_dispatches if p.get("phase_type") == "loading"]
+    assert loading_payloads == [compute_loading_canonical_payload_v3(
+        phase_event_id=phases["loading"].id, trip_id=trip.id,
+        parcel_count_origin=phases["loading"].parcel_count_origin,
+        linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
+    )]
 
 
 # test_advance_confirmation_anchors_even_on_count_mismatch was removed from
@@ -1235,6 +1310,29 @@ def test_loading_v2_payload_keeps_optional_keys_present_when_absent():
     assert payload["linehaul_photo_sha256"] is None
 
 
+def test_loading_v3_payload_adds_the_pdf_hash_to_the_v2_keys():
+    payload = compute_loading_canonical_payload_v3(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        parcel_count_origin=3, linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
+    )
+
+    assert set(payload) == {
+        "payload_version", "phase_event_id", "trip_id", "phase_type",
+        "parcel_count_origin", "linehaul_photo_sha256", "linehaul_pdf_sha256",
+    }
+    assert payload["payload_version"] == 3
+    assert payload["phase_type"] == "loading"
+
+
+def test_loading_v3_payload_keeps_the_pdf_key_present_when_absent():
+    payload = compute_loading_canonical_payload_v3(
+        phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4(),
+        parcel_count_origin=None, linehaul_photo_sha256=None, linehaul_pdf_sha256=None,
+    )
+
+    assert payload["linehaul_pdf_sha256"] is None
+
+
 def test_in_transit_v2_payload_key_set():
     payload = compute_in_transit_canonical_payload_v2(phase_event_id=uuid.uuid4(), trip_id=uuid.uuid4())
 
@@ -1310,6 +1408,10 @@ def test_no_v2_payload_leaks_gps_artifact_ids_pii_or_completed_at():
         compute_loading_canonical_payload_v2(
             phase_event_id=phase_event_id, trip_id=trip_id,
             parcel_count_origin=3, linehaul_photo_sha256="a" * 64,
+        ),
+        compute_loading_canonical_payload_v3(
+            phase_event_id=phase_event_id, trip_id=trip_id,
+            parcel_count_origin=3, linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
         ),
         compute_in_transit_canonical_payload_v2(phase_event_id=phase_event_id, trip_id=trip_id),
         compute_arrival_canonical_payload_v2(
@@ -1479,3 +1581,231 @@ def test_override_commitments_never_expose_the_plain_note_or_user_id():
 
     assert note not in payload.values()
     assert str(user_id) not in payload.values()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_after_loading_v3_reconstructs_matching_payload(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(
+            phase_type=PhaseType.ACTIVATION, driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+    photo_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
+    # "a" * 64, not a distinct hash: the autouse storage stub returns "a" * 64 for every
+    # stored file, so any other recorded hash would read as replaced bytes. The PDF key is
+    # still exercised, since a verifier that ignored it would rebuild it as None.
+    pdf_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
+    pdf = await db_session.get(EvidenceArtifact, pdf_id)
+    pdf.mime_type = "application/pdf"
+    await db_session.flush()
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+            linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=pdf_id,
+        ),
+    )
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=phases["loading"].id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is True
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_rejects_a_v3_payload_on_a_phase_other_than_loading(
+    db_session, trip_fixture,
+):
+    trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    departure.seal_number = "AB-1234"
+    payload = {
+        "payload_version": 3, "phase_event_id": str(departure.id), "trip_id": str(trip.id),
+        "phase_type": "departure", "seal_number": departure.seal_number,
+    }
+    db_session.add(BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=13,
+    ))
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.ERROR
+    stub_service.verify_hash.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_rejects_a_v3_payload_on_an_overridden_row(db_session, trip_fixture):
+    trip, _driver, phases = trip_fixture
+    departure = phases["departure"]
+    override_user_id = (await db_session.execute(
+        select(User.id).where(User.organization_id == trip.operator_organization_id)
+    )).scalar_one()
+    departure.status = PhaseStatus.OVERRIDDEN
+    departure.dispatcher_override_user_id = override_user_id
+    departure.dispatcher_override_note = "phone lost"
+    # A v3 label on an overridden row: before the guard moved up, the override branch
+    # rebuilt a payload that could never match, so this surfaced as a hash mismatch.
+    payload = {
+        "payload_version": 3, "phase_event_id": str(departure.id), "trip_id": str(trip.id),
+        "phase_type": "departure",
+    }
+    db_session.add(BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=14,
+    ))
+    await db_session.flush()
+    stub_service = MagicMock()
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=departure.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.ERROR
+    stub_service.verify_hash.assert_not_called()
+
+
+async def _activate(db_session, trip, driver, phases) -> None:
+    await advance_activation(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["activation"].id,
+        payload=ActivationCompleteRequest(
+            phase_type=PhaseType.ACTIVATION, driver_phone_lat=Decimal("0"), driver_phone_lng=Decimal("0"),
+            idempotency_key=str(uuid.uuid4()),
+        ),
+    )
+
+
+async def _complete_loading_with_scan_and_pdf(db_session, trip, driver, phases):
+    """Complete loading with a scan (hash a*64) and a PDF (hash b*64); returns (photo_id, pdf_id)."""
+    photo_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
+    pdf_id = await _make_artifact(db_session, trip.id, file_hash="b" * 64)
+    pdf = await db_session.get(EvidenceArtifact, pdf_id)
+    pdf.artifact_type = ArtifactType.DOCUMENT
+    pdf.mime_type = "application/pdf"
+    await db_session.flush()
+    await advance_loading(
+        db_session, trip_id=trip.id, driver_id=driver.id, phase_event_id=phases["loading"].id,
+        payload=LoadingCompleteRequest(
+            phase_type=PhaseType.LOADING, idempotency_key=str(uuid.uuid4()),
+            linehaul_photo_artifact_id=photo_id, linehaul_pdf_artifact_id=pdf_id,
+        ),
+    )
+    return photo_id, pdf_id
+
+
+@pytest.mark.asyncio
+async def test_verify_subject_still_verifies_a_stored_v2_loading_receipt(db_session, trip_fixture):
+    trip, _driver, phases = trip_fixture
+    loading = phases["loading"]
+    loading.status = PhaseStatus.COMPLETED
+    loading.parcel_count_origin = 3
+    loading.linehaul_photo_artifact_id = await _make_artifact(db_session, trip.id, file_hash="a" * 64)
+    payload = compute_loading_canonical_payload_v2(
+        phase_event_id=loading.id, trip_id=trip.id,
+        parcel_count_origin=3, linehaul_photo_sha256="a" * 64,
+    )
+    receipt = BlockchainReceipt(
+        id=uuid.uuid4(), trip_id=trip.id,
+        subject_type=SubjectType.PHASE_EVENT, subject_id=loading.id,
+        receipt_type=BlockchainReceiptType.PICKUP,
+        payload_json=payload, data_hash=compute_payload_hash(payload),
+        hedera_topic_id="0.0.12345", hedera_sequence_number=15,
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    loading.event_hash = compute_payload_hash(payload)
+    loading.anchor_status = AnchorStatus.ANCHORED
+    loading.blockchain_receipt_id = receipt.id
+    await db_session.flush()
+    stub_service = MagicMock()
+    stub_service.verify_hash.return_value = True
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.PHASE_EVENT, subject_id=loading.id,
+        hedera_service=stub_service,
+    )
+
+    assert outcome.status == VerifyStatus.VERIFIED
+    assert outcome.evidence_verified is True
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_pending_payload_for_loading_with_pdf_returns_the_v3_payload(
+    db_session, trip_fixture,
+):
+    trip, driver, phases = trip_fixture
+    await _activate(db_session, trip, driver, phases)
+    await _complete_loading_with_scan_and_pdf(db_session, trip, driver, phases)
+    loading = phases["loading"]
+
+    rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
+
+    # Distinct photo/PDF hashes, so swapped payload keys would not equal this.
+    assert rebuilt == compute_loading_canonical_payload_v3(
+        phase_event_id=loading.id, trip_id=trip.id, parcel_count_origin=loading.parcel_count_origin,
+        linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
+    )
+
+
+@pytest.mark.asyncio
+async def test_recovery_restores_a_lost_loading_dispatch_that_carried_a_pdf(
+    db_session, trip_fixture, captured_anchor_dispatches,
+):
+    trip, driver, phases = trip_fixture
+    await _activate(db_session, trip, driver, phases)
+    # Anchor activation so the loading row is the only debt recovery can pick.
+    await _drain_anchors(db_session, captured_anchor_dispatches)
+    await _complete_loading_with_scan_and_pdf(db_session, trip, driver, phases)
+    loading = phases["loading"]
+    original_hash = loading.event_hash
+    # No commit, so the dispatch never fired: the queue payload is lost.
+    loading.updated_at = datetime.now(UTC) - timedelta(minutes=10)
+    await db_session.flush()
+
+    assert await recover_phase_anchor(db_session, due_before=datetime.now(UTC) - timedelta(minutes=5)) is True
+    await db_session.flush()
+
+    receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
+    assert receipt.payload_json["linehaul_pdf_sha256"] == "b" * 64
+    assert receipt.data_hash == loading.event_hash == original_hash
+    assert loading.anchor_status == AnchorStatus.ANCHORED
+
+
+@pytest.mark.asyncio
+async def test_reconstruct_pending_payload_refuses_a_changed_linehaul_pdf(db_session, trip_fixture):
+    trip, driver, phases = trip_fixture
+    await _activate(db_session, trip, driver, phases)
+    _photo_id, pdf_id = await _complete_loading_with_scan_and_pdf(db_session, trip, driver, phases)
+    loading = phases["loading"]
+    original_hash = loading.event_hash
+    pdf = await db_session.get(EvidenceArtifact, pdf_id)
+    pdf.file_hash = "c" * 64
+    await db_session.flush()
+
+    rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
+
+    assert rebuilt is None
+    assert loading.event_hash == original_hash

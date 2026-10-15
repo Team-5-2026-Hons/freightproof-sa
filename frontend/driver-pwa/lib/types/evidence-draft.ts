@@ -18,6 +18,11 @@ export interface LoadingEvidence {
   // Optional on the wire (LoadingCompleteRequest.linehaul_photo_artifact_id).
   linehaulPhotoDataUrl: string | null
   linehaulPhotoArtifactId: string | null
+  // The same sheet as a one-page PDF (lib/scan/buildLinehaulPdf.ts), uploaded as role
+  // linehaul_pdf. Optional: drafts saved before the scanner existed have neither key, and
+  // a failed PDF build leaves them null while the scan image still submits.
+  linehaulPdfDataUrl?: string | null
+  linehaulPdfArtifactId?: string | null
   capturedAt: string | null
 }
 
@@ -31,6 +36,10 @@ export interface LoadingEvidence {
 // lib/api/phases.ts's fallback for when the early upload didn't land.
 export interface DepartureEvidence {
   sealNumber: string | null
+  // What on-device OCR read off the seal photo (lib/ocr/readSeal.ts), or null when it read
+  // nothing or could not run. Kept so the submit can tell confirmed from corrected from
+  // typed. Optional: drafts saved before OCR existed have no key at all.
+  sealNumberOcr?: string | null
   sealPhotoDataUrl: string | null
   sealPhotoArtifactId: string | null
   capturedAt: string | null
@@ -59,6 +68,8 @@ export interface ArrivalEvidence {
   // Required unless sealCondition is 'missing' — there is nothing to read off a seal
   // that isn't there. Enforced in lib/api/phases.ts's submitPhase, not here.
   sealNumberAtArrival: string | null
+  // As DepartureEvidence.sealNumberOcr, for the seal as found at the gate.
+  sealNumberAtArrivalOcr?: string | null
   // Required in every condition, including 'missing': a missing seal is photographed
   // as a missing seal — the absence is itself the evidence.
   sealPhotoDataUrl: string | null

@@ -6,15 +6,21 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import canonicalize_payload
 from app.core.exceptions import ResourceNotFoundError
-from app.db.models.enums import TripStatus
+from app.db.models.enums import AnchorStatus, BlockchainReceiptType, PhaseType, SubjectType, TripStatus
+from app.db.models.phases import PhaseEvent
 from app.orchestration.audit_packs.builder import build_audit_manifest
+from app.orchestration.phases.payloads import (
+    compute_loading_canonical_payload_v2,
+    compute_loading_canonical_payload_v3,
+)
 from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
-from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip
+from tests.integration.audit_pack_seed import T0, AuditTrip, _artifact, _receipt, seed_audit_trip
 
 
 @pytest.fixture
@@ -273,3 +279,76 @@ async def test_build_audit_manifest_summarises_the_critical_incident(db_session,
     assert manifest.incident.exception_ids == [audit_trip.panic.id]
     assert manifest.incident.minutes_to_first_review == 6
     assert manifest.incident.last_known_position is not None
+
+
+async def _loading(db: AsyncSession, seed: AuditTrip) -> PhaseEvent:
+    return (await db.execute(
+        select(PhaseEvent).where(PhaseEvent.trip_id == seed.trip.id, PhaseEvent.phase_type == PhaseType.LOADING)
+    )).scalar_one()
+
+
+async def test_build_audit_manifest_marks_an_anchored_linehaul_photo_anchored(db_session, audit_trip):
+    # Arrange
+    loading = await _loading(db_session, audit_trip)
+    photo = _artifact(audit_trip.trip.id, "linehaul-scan", T0)
+    db_session.add(photo)
+    await db_session.flush()
+    loading.linehaul_photo_artifact_id = photo.id
+    payload = compute_loading_canonical_payload_v2(
+        phase_event_id=loading.id, trip_id=audit_trip.trip.id,
+        parcel_count_origin=loading.parcel_count_origin, linehaul_photo_sha256=photo.file_hash,
+    )
+    receipt = await _receipt(
+        db_session, trip_id=audit_trip.trip.id, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=loading.id, receipt_type=BlockchainReceiptType.LOADING, payload=payload,
+        sequence=10, at=T0 + timedelta(hours=1, minutes=30),
+    )
+    loading.blockchain_receipt_id = receipt.id
+    loading.anchor_status = AnchorStatus.ANCHORED
+    loading.event_hash = receipt.data_hash
+    await db_session.flush()
+
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    record = next(p for p in manifest.phases if p.phase_type == "loading")
+    linehaul = next(e for e in record.evidence if e.role == "linehaul_photo")
+    assert linehaul.tier == "anchored"
+    assert {f.name: f.matches_anchor for f in record.anchored_fields}["linehaul_photo_sha256"] is True
+
+
+async def test_build_audit_manifest_includes_the_anchored_linehaul_pdf(db_session, audit_trip):
+    # Arrange
+    loading = await _loading(db_session, audit_trip)
+    photo = _artifact(audit_trip.trip.id, "linehaul-scan", T0)
+    pdf = _artifact(audit_trip.trip.id, "linehaul-pdf", T0)
+    pdf.artifact_type = "document"
+    pdf.mime_type = "application/pdf"
+    db_session.add_all([photo, pdf])
+    await db_session.flush()
+    loading.linehaul_photo_artifact_id = photo.id
+    loading.linehaul_pdf_artifact_id = pdf.id
+    payload = compute_loading_canonical_payload_v3(
+        phase_event_id=loading.id, trip_id=audit_trip.trip.id,
+        parcel_count_origin=loading.parcel_count_origin,
+        linehaul_photo_sha256=photo.file_hash, linehaul_pdf_sha256=pdf.file_hash,
+    )
+    receipt = await _receipt(
+        db_session, trip_id=audit_trip.trip.id, subject_type=SubjectType.PHASE_EVENT,
+        subject_id=loading.id, receipt_type=BlockchainReceiptType.LOADING, payload=payload,
+        sequence=11, at=T0 + timedelta(hours=1, minutes=30),
+    )
+    loading.blockchain_receipt_id = receipt.id
+    loading.anchor_status = AnchorStatus.ANCHORED
+    loading.event_hash = receipt.data_hash
+    await db_session.flush()
+
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    record = next(p for p in manifest.phases if p.phase_type == "loading")
+    linehaul_pdf = next(e for e in record.evidence if e.role == "linehaul_pdf")
+    assert linehaul_pdf.tier == "anchored"
+    assert linehaul_pdf.mime_type == "application/pdf"

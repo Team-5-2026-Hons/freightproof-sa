@@ -37,7 +37,7 @@ PositionSource = Literal["driver_phone", "vehicle_tracker", "trailer_tracker"]
 
 EvidenceRole = Literal[
     "seal_photo", "waybill_photo", "gate_photo", "pod_photo", "pod_signature",
-    "linehaul_photo", "checkpoint_selfie", "checkpoint_cargo_photo", "exception_supporting",
+    "linehaul_photo", "linehaul_pdf", "checkpoint_selfie", "checkpoint_cargo_photo", "exception_supporting",
 ]
 
 ObservationLevel = Literal["info", "attention"]
