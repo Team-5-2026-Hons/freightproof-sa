@@ -1,10 +1,10 @@
 // frontend/driver-pwa/components/blockchain/AnchorProgress.tsx
 //
-// driver-pwa-local — NOT a shared component (see AnchorBadge.tsx for the same
-// rationale). AnchorBadge is a one-line summary chip ("Anchored" / "Anchoring…");
-// this is a richer sibling for surfaces with room for a 3-row pipeline view — it
-// shows WHERE a handshake's evidence sits in the Hedera anchoring pipeline, not
-// just whether the whole thing is done.
+// driver-pwa-local — NOT a shared component: the pipeline wording is the driver's, not
+// the dispatcher's. Where a one-word state is enough the trip page's PhaseList shows it
+// ("Anchored" / "Anchoring…" / "Receipt owed"); this is for surfaces with room for a
+// 3-row pipeline view — WHERE a handshake's evidence sits in the Hedera anchoring
+// pipeline, not just whether the whole thing is done.
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Circle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -24,7 +24,7 @@ const HASH_SUFFIX_LEN = 8
 const LONG_WAIT_MS = 15_000
 
 // Truncates a 64-char SHA-256 event hash (or a Hedera receipt id) to "first8…last8"
-// for compact display — mirrors AnchorBadge's truncateHash. The full value is never
+// for compact display. The full value is never
 // lost: it's still available via the title tooltip and an sr-only span, so
 // truncation never hides evidence a driver or auditor might need.
 function truncateHash(value: string): string {
@@ -37,7 +37,7 @@ function truncateHash(value: string): string {
 // completeH2/H5 response returns, event_hash AND blockchain_receipt_id should both
 // already be set; a legacy row with event_hash but no receipt stays "in progress"
 // forever, which is expected for data predating anchoring). Renders nothing when
-// eventHash is null: same rationale as AnchorBadge — nothing has been submitted yet
+// eventHash is null: nothing has been submitted yet
 // (feeder handshake, or this handshake hasn't completed), and showing a pipeline
 // here would wrongly imply something is in flight.
 export function AnchorProgress({ eventHash, receiptId, className }: AnchorProgressProps) {

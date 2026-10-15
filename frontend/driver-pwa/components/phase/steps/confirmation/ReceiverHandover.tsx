@@ -15,7 +15,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import { Check } from 'lucide-react'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { QrCode } from '@/components/ui/QrCode'
 import { Button } from '@/components/ui/Button'
@@ -56,72 +57,66 @@ export function ReceiverHandover({
 
   if (isConfirmed) {
     return (
-      <main className="flex min-h-dvh flex-col">
-        <StepHeader phase={phase} stepIndex={stepIndex} />
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-          <div className="flex size-16 items-center justify-center rounded-full bg-primary-container">
-            <span className="text-3xl" aria-hidden="true">✓</span>
-          </div>
-          <p className="text-xl font-medium text-surface-on">Receiver confirmed the delivery</p>
-          {draft.receiverConfirmedAt !== null && (
-            <p className="text-base text-surface-on-variant">
-              Signed at {formatTime(draft.receiverConfirmedAt)}
-            </p>
-          )}
-          <p className="max-w-sm text-sm text-surface-on-variant">
-            Their signature was recorded on their own device, with their own location.
+      <StepLayout
+        phase={phase}
+        stepIndex={stepIndex}
+        showTitle={false}
+        action={<SwipeToConfirm label="Swipe to Continue" onConfirm={onComplete} />}
+      >
+        {/* No signature image (D7, Tim 14 Oct): the signature is the receiver's evidence,
+            held server-side. The driver's screen says only that it happened, and when. */}
+        <div className="flex flex-col items-center pt-10 text-center">
+          <span className="flex size-28 items-center justify-center rounded-full bg-success-tint">
+            <span className="flex size-20 items-center justify-center rounded-full bg-success text-success-on">
+              <Check className="size-10" strokeWidth={2.6} aria-hidden />
+            </span>
+          </span>
+          <h1 className="mt-6 text-title-1 tracking-tight text-surface-on">Receiver signed</h1>
+          <p className="mt-2 text-body text-surface-on-variant">
+            {draft.receiverConfirmedAt !== null && (
+              <>Signed at <span className="font-semibold tabular-nums text-surface-on">{formatTime(draft.receiverConfirmedAt)}</span> </>
+            )}
+            on their own device, with their own location.
           </p>
         </div>
-        <div className="flex justify-center px-6 pt-6 pb-safe">
-          <SwipeToConfirm label="Continue" onConfirm={onComplete} />
-        </div>
-      </main>
+      </StepLayout>
     )
   }
 
+  // No action while waiting: the receiver's own device completes this step, not a swipe.
   return (
-    <main className="flex min-h-dvh flex-col overflow-x-hidden">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      {/* justify-center, so the code sits in the middle of whatever space is left rather
-          than stacking from the top and pushing the status text off a short screen. */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 px-4 py-6">
-        <p className="max-w-sm text-center text-base leading-relaxed text-surface-on-variant">
-          Ask the receiver to scan this code with their phone camera. They sign on their
-          own device.
-        </p>
-
-        {/* White plate, always — the QR must not inherit a dark theme (QrCode.tsx). The
-            plate is sized by its content, and the content caps its own width, so neither
-            can push the page wider than the viewport. */}
-        <div className="rounded-2xl bg-white p-3 shadow-sm">
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro="Ask them to scan this with their phone camera. They sign on their own device."
+    >
+      <div className="flex w-full flex-col items-center gap-6 overflow-x-hidden">
+        {/* White plate, always — the QR must not inherit a dark theme (QrCode.tsx). An
+            explicit width (the QR's 260px ceiling + 2 × 18px padding), not shrink-to-fit:
+            QrCode is w-full, so in a content-sized plate its placeholder — shown while the
+            code is issued, or when issuing fails — collapsed to nothing. */}
+        <div className="w-full max-w-[296px] rounded-[28px] bg-white p-[18px] shadow-ambient ring-1 ring-hairline">
           <QrCode value={scanUrl} />
         </div>
 
-        <div className="flex max-w-sm flex-col items-center gap-1 text-center">
-          {receiverOpened ? (
-            <>
-              <p className="text-base font-medium text-surface-on">
-                The receiver has opened the link
-              </p>
-              <p className="text-sm text-surface-on-variant">
-                The code has stopped changing while they sign. Waiting for them to finish.
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-base font-medium text-surface-on">Waiting for the receiver…</p>
-              <p className="text-sm text-surface-on-variant">
-                The code refreshes on its own. An old photo of it will not work.
-              </p>
-            </>
-          )}
+        <div role="status" className="flex max-w-sm flex-col items-center gap-1.5 text-center">
+          <p className="inline-flex items-center gap-2 text-headline text-surface-on">
+            {/* Blue: progress, the one thing blue means in this app. */}
+            <span aria-hidden className="size-2 rounded-full bg-secondary ring-4 ring-secondary/20" />
+            {receiverOpened ? 'The receiver has opened the link' : 'Waiting for the receiver'}
+          </p>
+          <p className="text-subhead text-surface-on-variant">
+            {receiverOpened
+              ? 'The code has stopped changing while they sign. Waiting for them to finish.'
+              : 'The code refreshes itself, so a photo of an old one won’t work.'}
+          </p>
         </div>
 
         {error !== null && (
-          <div className="flex w-full flex-col items-center gap-3 rounded-xl border border-error/40 bg-error-container/30 p-4">
-            <p className="text-center text-sm text-surface-on">{error}</p>
-            <Button variant="secondary" onClick={forceNewCode} disabled={isIssuing}>
-              {isIssuing ? 'Refreshing…' : 'Try again'}
+          <div className="flex w-full flex-col items-center gap-3 rounded-2xl bg-error-tint p-4">
+            <p className="text-center text-subhead text-surface-on">{error}</p>
+            <Button variant="fill" size="pill-sm" onClick={forceNewCode} disabled={isIssuing}>
+              {isIssuing ? 'Refreshing…' : 'Try Again'}
             </Button>
           </div>
         )}
@@ -132,16 +127,11 @@ export function ReceiverHandover({
             right there, so let them retire it and start again. Shown only once the link
             has actually been opened — before that, the rotation is already doing this. */}
         {receiverOpened && error === null && (
-          <button
-            type="button"
-            onClick={forceNewCode}
-            disabled={isIssuing}
-            className="text-sm underline text-surface-on-variant disabled:opacity-50"
-          >
-            Receiver having trouble? Show a new code
-          </button>
+          <Button variant="fill" size="pill-sm" onClick={forceNewCode} disabled={isIssuing}>
+            Receiver Having Trouble? Show a New Code
+          </Button>
         )}
       </div>
-    </main>
+    </StepLayout>
   )
 }

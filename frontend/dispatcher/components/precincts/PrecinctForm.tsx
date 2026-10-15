@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { TopBar } from '@/components/ui/TopBar'
@@ -8,10 +8,15 @@ import { Button } from '@/components/ui/Button'
 import { FormField } from '@/components/ui/FormField'
 import { Switch } from '@/components/ui/Switch'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
+import { AddressSearch } from '@/components/precincts/AddressSearch'
+import { OutlinePanel, type CandidateStatus } from '@/components/precincts/OutlinePanel'
 import { useToast } from '@/lib/hooks/useToast'
 import { api } from '@/lib/api/client'
 import { ROUTES } from '@/lib/constants/routes'
-import type { Precinct } from '@shared/lib/types/precinct'
+import type { AddressSuggestion } from '@/lib/geocode/photon'
+import { fetchOutlineCandidates, type OutlineCandidate } from '@/lib/geocode/overpass'
+import { rectangleAround, validateOutline } from '@/lib/map/polygon'
+import type { LatLngPair, Precinct } from '@shared/lib/types/precinct'
 import {
   validatePrecinctForm,
   parseCoordinatePair,
@@ -33,6 +38,22 @@ const DEFAULT_MAP_CENTRE = { latitude: -26.2041, longitude: 28.0473 }
 const CLICK_COORDINATE_PRECISION = 5
 
 const RADIUS_SLIDER_STEP_METRES = 10
+
+// Outline = the property outline is the fence; radius = the circle is. An outline is the
+// default for a NEW precinct (it is the more accurate fence); an existing one opens in
+// whichever shape it has.
+type BoundaryMode = 'outline' | 'radius'
+
+const BOUNDARY_MODES: ReadonlyArray<{ mode: BoundaryMode; label: string }> = [
+  { mode: 'outline', label: 'Property outline' },
+  { mode: 'radius', label: 'Radius' },
+]
+
+// Same pressed-state treatment as OutlinePanel's candidate rows.
+const MODE_BUTTON_CLASS =
+  'flex-1 rounded-md px-3 py-1.5 text-xs font-medium text-on-surf-v transition-colors ' +
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec ' +
+  'aria-pressed:bg-surf-lowest aria-pressed:text-on-surf aria-pressed:shadow-level-1'
 
 interface PrecinctFormState {
   name: string
@@ -90,8 +111,37 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const [boundaryMode, setBoundaryMode] = useState<BoundaryMode>(
+    precinct === undefined || precinct.geofence_polygon ? 'outline' : 'radius',
+  )
+  const [outline, setOutline] = useState<LatLngPair[] | null>(precinct?.geofence_polygon ?? null)
+  const [candidates, setCandidates] = useState<OutlineCandidate[]>([])
+  const [candidateStatus, setCandidateStatus] = useState<CandidateStatus>('idle')
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
+  // "Save" pressed with no outline: only then is the missing outline an error worth showing.
+  const [outlineSubmitAttempted, setOutlineSubmitAttempted] = useState(false)
+  const lookupRef = useRef<AbortController | null>(null)
+  useEffect(() => () => lookupRef.current?.abort(), [])
+
   const errors = validatePrecinctForm(form)
-  const hasErrors = Object.values(errors).some((e) => e !== null)
+  // The radius is not the fence while an outline is, so its field can't block a save.
+  const relevantErrors = boundaryMode === 'outline' ? { ...errors, geofence_radius_metres: null } : errors
+  const hasErrors = Object.values(relevantErrors).some((e) => e !== null)
+
+  const pinLat = parseFloat(form.latitude)
+  const pinLng = parseFloat(form.longitude)
+  const pin: LatLngPair | null =
+    Number.isFinite(pinLat) && Number.isFinite(pinLng) && errors.latitude === null && errors.longitude === null
+      ? [pinLat, pinLng]
+      : null
+  const outlineError =
+    boundaryMode !== 'outline'
+      ? null
+      : outline !== null
+        ? validateOutline(outline, pin)
+        : outlineSubmitAttempted
+          ? 'Pick a mapped shape or start from a square, or switch to a radius.'
+          : null
 
   const mapLat = coordOr(form.latitude, DEFAULT_MAP_CENTRE.latitude)
   const mapLng = coordOr(form.longitude, DEFAULT_MAP_CENTRE.longitude)
@@ -114,10 +164,11 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
    * FormField's onChange, with one extra behaviour on the coordinate fields: pasting
    * "lat, lng" — what every maps app puts on the clipboard — fills BOTH fields.
    *
-   * This is the deliberate replacement for address geocoding: a geocoder returns a
-   * street centroid, which for a warehouse estate can sit hundreds of metres from the
-   * gate. parseCoordinatePair returns null for anything that is not a complete in-range
-   * pair, so ordinary single-number typing is never interfered with.
+   * Kept alongside address search, not replaced by it: a geocoder returns a street
+   * centroid, which for a warehouse estate can sit hundreds of metres from the gate, so a
+   * pasted pair from a maps app is still the most exact input there is.
+   * parseCoordinatePair returns null for anything that is not a complete in-range pair,
+   * so ordinary single-number typing is never interfered with.
    */
   function handleFieldChange(name: string, value: string): void {
     if (name === 'latitude' || name === 'longitude') {
@@ -136,6 +187,41 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
     }
   }
 
+  /**
+   * Ask OpenStreetMap for shapes at the pin. With `autoApply` (the Auto-fit button), the
+   * best one replaces the outline — or a starter square when OSM has nothing or is
+   * unreachable — and the rest stay listed to switch to.
+   */
+  function lookUpOutlines(lat: number, lng: number, autoApply: boolean): void {
+    lookupRef.current?.abort()
+    const controller = new AbortController()
+    lookupRef.current = controller
+    setCandidateStatus('loading')
+    fetchOutlineCandidates(lat, lng, controller.signal)
+      .then((found) => {
+        setCandidates(found)
+        setCandidateStatus('done')
+        if (!autoApply) return
+        if (found.length > 0) {
+          setOutline(found[0].polygon)
+          setSelectedCandidateId(found[0].id)
+        } else {
+          setOutline(rectangleAround(lat, lng))
+          setSelectedCandidateId(null)
+        }
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        console.warn('[PrecinctForm] outline lookup failed', err)
+        setCandidates([])
+        setCandidateStatus('error')
+        if (autoApply) {
+          setOutline(rectangleAround(lat, lng))
+          setSelectedCandidateId(null)
+        }
+      })
+  }
+
   function handleMapPosition(next: { latitude: number; longitude: number }): void {
     setForm((prev) => ({
       ...prev,
@@ -143,9 +229,47 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
       longitude: next.longitude.toFixed(CLICK_COORDINATE_PRECISION),
     }))
     setTouched((prev) => new Set(prev).add('latitude').add('longitude'))
+    // Deliberately no outline lookup: a click or drag is the dispatcher fine-tuning the
+    // gate, and must never redraw or discard an outline they have shaped.
+  }
+
+  /** Forget the outline and everything found for it — the site it belonged to is gone. */
+  function resetOutline(): void {
+    lookupRef.current?.abort()
+    setOutline(null)
+    setCandidates([])
+    setCandidateStatus('idle')
+    setSelectedCandidateId(null)
+  }
+
+  function handleOutlineEdit(next: LatLngPair[]): void {
+    setOutline(next)
+    // Edited: it is no longer the mapped shape it started from.
+    setSelectedCandidateId(null)
+  }
+
+  /**
+   * A picked search result is a NEW site: the pin moves to the geocoded point (a starting
+   * position the dispatcher corrects onto the gate), the Address label becomes the searched
+   * address, and any outline from the previous site is cleared — left in place it would
+   * sit at the old location. The dispatcher then asks for a fresh one with Auto-fit.
+   */
+  function handleAddressSelect(suggestion: AddressSuggestion): void {
+    handleMapPosition({ latitude: suggestion.latitude, longitude: suggestion.longitude })
+    setForm((prev) => ({
+      ...prev,
+      address: suggestion.detail ? `${suggestion.label}, ${suggestion.detail}` : suggestion.label,
+    }))
+    setTouched((prev) => new Set(prev).add('address'))
+    resetOutline()
   }
 
   async function handleSubmit(): Promise<void> {
+    if (boundaryMode === 'outline' && outline === null) {
+      setOutlineSubmitAttempted(true)
+      return
+    }
+    if (outlineError !== null) return
     if (hasErrors) {
       setTouched(new Set(PRECINCT_FIELD_ORDER))
       const firstInvalid = PRECINCT_FIELD_ORDER.find((f) => errors[f] !== null)
@@ -158,12 +282,17 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
     setSubmitting(true)
     setFormError(null)
     try {
+      const radiusValid = errors.geofence_radius_metres === null
       const body = {
         name: form.name,
         address: form.address || null,
         latitude: parseFloat(form.latitude),
         longitude: parseFloat(form.longitude),
-        geofence_radius_metres: parseInt(form.geofence_radius_metres, 10),
+        // Sent only when valid: under an outline the radius is unused, and an unfinished
+        // radius entry must not 422 a save it has no bearing on.
+        ...(radiusValid ? { geofence_radius_metres: parseInt(form.geofence_radius_metres, 10) } : {}),
+        // null in radius mode removes any outline, so the circle applies again.
+        geofence_polygon: boundaryMode === 'outline' ? outline : null,
         is_shared: form.is_shared,
       }
 
@@ -207,6 +336,8 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
         <div className="w-full lg:w-[380px] shrink-0 overflow-y-auto p-6 flex flex-col gap-4 border-r border-outline-v/30">
           {formError && <p className="text-sm text-red-500">{formError}</p>}
 
+          <AddressSearch onSelect={handleAddressSelect} />
+
           <FormField
             label="Name"
             name="name"
@@ -249,48 +380,91 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
             />
           </div>
           <p className="text-[11px] text-on-surf-v -mt-2">
-            Click the map to place the pin, or paste coordinates from a maps app —
-            decimal (&ldquo;lat, lng&rdquo;) or degrees/minutes/seconds both work.
+            Search an address above, click the map to place the pin, or paste coordinates
+            from a maps app — decimal (&ldquo;lat, lng&rdquo;) or degrees/minutes/seconds
+            both work.
           </p>
 
-          <div className="flex flex-col gap-2">
-            <FormField
-              label="Geofence radius (m)"
-              name="geofence_radius_metres"
-              type="number"
-              inputMode="numeric"
-              value={form.geofence_radius_metres}
-              onChange={handleFieldChange}
-              required
-              helperText="How close a handshake must be to count as at this facility."
-              error={
-                touched.has('geofence_radius_metres')
-                  ? errors.geofence_radius_metres ?? undefined
-                  : undefined
-              }
-            />
-            {/* Slider and number together: the slider grows the circle under your eye,
-                the field keeps it exact and typeable. */}
-            <input
-              type="range"
-              min={GEOFENCE_RADIUS_MIN}
-              max={GEOFENCE_RADIUS_MAX}
-              step={RADIUS_SLIDER_STEP_METRES}
-              value={sliderRadius}
-              onChange={(e) => setField('geofence_radius_metres', e.target.value)}
-              aria-label="Geofence radius in metres"
-              // accent-sec, not accent-[var(--sec)]: this codebase defines its palette in
-              // tailwind.config.ts and has no CSS custom properties, so the var() form
-              // resolves to nothing and the slider renders in the browser default colour.
-              className="w-full accent-sec"
-            />
-            <div
-              className="flex justify-between text-[10px] font-[700] tracking-[0.06em] uppercase text-on-surf-v"
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              <span>{GEOFENCE_RADIUS_MIN} m</span>
-              <span>{GEOFENCE_RADIUS_MAX} m</span>
+          <div className="flex flex-col gap-3 pt-2 border-t border-outline-v/30">
+            <span className="text-xs font-medium text-surface-on-variant">Geofence</span>
+            <div className="flex gap-1 rounded-lg bg-surf-low p-1" role="group" aria-label="Geofence shape">
+              {BOUNDARY_MODES.map(({ mode, label }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={boundaryMode === mode}
+                  onClick={() => setBoundaryMode(mode)}
+                  className={MODE_BUTTON_CLASS}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
+
+            {boundaryMode === 'outline' ? (
+              <OutlinePanel
+                outline={outline}
+                candidates={candidates}
+                status={candidateStatus}
+                selectedId={selectedCandidateId}
+                error={outlineError}
+                hasPin={pin !== null}
+                onAutoFit={() => { if (pin !== null) lookUpOutlines(pin[0], pin[1], true) }}
+                onPick={(candidate) => {
+                  setOutline(candidate.polygon)
+                  setSelectedCandidateId(candidate.id)
+                }}
+                onStartSquare={() => {
+                  if (pin === null) return
+                  setOutline(rectangleAround(pin[0], pin[1]))
+                  setSelectedCandidateId(null)
+                }}
+                onClear={() => {
+                  setOutline(null)
+                  setSelectedCandidateId(null)
+                }}
+              />
+            ) : (
+            <div className="flex flex-col gap-2">
+              <FormField
+                label="Geofence radius (m)"
+                name="geofence_radius_metres"
+                type="number"
+                inputMode="numeric"
+                value={form.geofence_radius_metres}
+                onChange={handleFieldChange}
+                required
+                helperText="How close a handshake must be to count as at this facility."
+                error={
+                  touched.has('geofence_radius_metres')
+                    ? errors.geofence_radius_metres ?? undefined
+                    : undefined
+                }
+              />
+              {/* Slider and number together: the slider grows the circle under your eye,
+                  the field keeps it exact and typeable. */}
+              <input
+                type="range"
+                min={GEOFENCE_RADIUS_MIN}
+                max={GEOFENCE_RADIUS_MAX}
+                step={RADIUS_SLIDER_STEP_METRES}
+                value={sliderRadius}
+                onChange={(e) => setField('geofence_radius_metres', e.target.value)}
+                aria-label="Geofence radius in metres"
+                // accent-sec, not accent-[var(--sec)]: this codebase defines its palette in
+                // tailwind.config.ts and has no CSS custom properties, so the var() form
+                // resolves to nothing and the slider renders in the browser default colour.
+                className="w-full accent-sec"
+              />
+              <div
+                className="flex justify-between text-[10px] font-[700] tracking-[0.06em] uppercase text-on-surf-v"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                <span>{GEOFENCE_RADIUS_MIN} m</span>
+                <span>{GEOFENCE_RADIUS_MAX} m</span>
+              </div>
+            </div>
+            )}
           </div>
 
           <div className="flex items-start justify-between gap-3 pt-2 border-t border-outline-v/30">
@@ -316,7 +490,10 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
             latitude={mapLat}
             longitude={mapLng}
             radiusMetres={mapRadius}
+            polygon={boundaryMode === 'outline' ? outline : null}
+            showCircle={boundaryMode === 'radius'}
             onPositionChange={handleMapPosition}
+            onPolygonChange={handleOutlineEdit}
             className="w-full h-full min-h-[320px]"
           />
         </div>

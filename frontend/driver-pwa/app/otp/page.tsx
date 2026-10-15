@@ -7,13 +7,17 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AuthContext } from '@/lib/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { OtpInput } from '@/components/ui/OtpInput'
+import { AuthFrame, AuthHeading, AUTH_PILL, AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
 import { ROUTES } from '@/lib/constants/routes'
 import { takeReturnPath } from '@shared/lib/session/return-path'
+import { formatPhoneForDisplay } from '@/lib/utils/format-phone'
+
 
 // Kept in step with AuthContext's own list — see that file for why '/otp' isn't in ROUTES.
 const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
 
 const OTP_LENGTH = 6
+
 
 // Cooldown between OTP sends, so drivers can't hammer the WhatsApp sandbox.
 // It starts on page load too: the login page just sent the first OTP before
@@ -26,9 +30,10 @@ export default function OtpPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-dvh items-center justify-center">
+        // Inside the dark frame too, so the flow never flashes light between screens.
+        <AuthFrame className="items-center justify-center">
           <p className="text-sm text-surface-on-variant">Loading…</p>
-        </main>
+        </AuthFrame>
       }
     >
       <OtpForm />
@@ -112,30 +117,58 @@ function OtpForm() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center p-6">
-      <h1 className="text-2xl font-semibold mb-2 text-surface-on">Enter OTP</h1>
-      <p className="text-sm text-surface-on-variant mb-8">Sent to {phone}</p>
-      <form onSubmit={handleVerify} className="w-full max-w-sm flex flex-col gap-4">
+    // Same dark frame, back button and large heading as the phone screen it follows, so
+    // the sign-in reads as one flow. Back goes to phone entry, where a mistyped number
+    // is fixed — the same place "Use a Different Number" goes.
+    <AuthFrame onBack={() => router.push(ROUTES.loginPhone)} backLabel="Back to phone number">
+      {/* "Code", not "OTP" — the same word the rest of the flow uses. */}
+      <AuthHeading title="Enter the Code">
+        {/* A refresh or a link can land here without the number; never "Sent to on WhatsApp." */}
+        {phone ? (
+          <>Sent to <span className="tabular-nums">{formatPhoneForDisplay(phone)}</span> on WhatsApp.</>
+        ) : (
+          'Sent to your phone on WhatsApp.'
+        )}
+      </AuthHeading>
+
+      <form onSubmit={handleVerify} className="mt-8 flex flex-col gap-4">
         <OtpInput length={OTP_LENGTH} value={token} onChange={handleTokenChange} autoFocus />
-        {error && <p className="text-sm text-error text-center">{error}</p>}
-        <Button type="submit" loading={loading} disabled={loading || token.length < OTP_LENGTH}>
+        {error && <p className="text-center text-footnote font-medium text-error">{error}</p>}
+        <Button
+          type="submit"
+          size="lg"
+          className={AUTH_PRIMARY_PILL}
+          loading={loading}
+          disabled={loading || token.length < OTP_LENGTH}
+        >
           {loading ? 'Verifying…' : 'Verify'}
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          loading={resending}
-          disabled={cooldownActive || resending}
-          onClick={handleResend}
-        >
-          {cooldownActive ? `Resend in ${cooldown}s` : 'Resend code'}
-        </Button>
-        {/* Full-width to match its ghost sibling (Resend code) above it, rather than
-            the old centered small-text link — both are now the same shadcn Button. */}
-        <Button type="button" variant="ghost" onClick={() => router.push(ROUTES.login)}>
-          Wrong number? Go back
-        </Button>
+        {/* The two ways out as outlined pills under the main action, full width and
+            stacked: side by side they don't fit a phone's width and each wrapped onto two
+            lines. Same width as Verify so the three read as one column of controls. */}
+        <div className="flex flex-col gap-3">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className={AUTH_PILL}
+            loading={resending}
+            disabled={cooldownActive || resending}
+            onClick={handleResend}
+          >
+            {cooldownActive ? `Resend in ${cooldown}s` : 'Resend Code'}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className={AUTH_PILL}
+            onClick={() => router.push(ROUTES.loginPhone)}
+          >
+            Use a Different Number
+          </Button>
+        </div>
       </form>
-    </main>
+    </AuthFrame>
   )
 }

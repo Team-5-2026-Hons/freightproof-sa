@@ -27,6 +27,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import polygon as geo_polygon
 from app.core.exceptions import ResourceNotFoundError
 from app.core.geo import EARTH_RADIUS_METRES
 from app.db.models.organisations import Precinct
@@ -249,6 +250,12 @@ def build_scenario_target(
             latitude=None, longitude=None, distance_metres=None,
         )
 
+    if precinct.geofence_polygon:
+        return _polygon_scenario_target(
+            trip_stop_id=trip_stop_id, precinct=precinct, scenario=scenario,
+            tolerance_metres=tolerance_metres,
+        )
+
     if precinct.latitude is None or precinct.longitude is None or precinct.geofence_radius_metres is None:
         raise TargetGeometryUnavailableError(
             f"Precinct {precinct.id} has no usable geometry to simulate a position from."
@@ -260,6 +267,73 @@ def build_scenario_target(
     latitude, longitude = destination_point(
         precinct.latitude, precinct.longitude, distance_metres=distance,
     )
+    return ScenarioTarget(
+        trip_stop_id=trip_stop_id, precinct_name=precinct.name,
+        latitude=latitude, longitude=longitude, distance_metres=distance,
+    )
+
+
+# How far along the offset bearing to look for the outline's edge. Comfortably beyond the
+# largest outline the schema allows (schemas/organisations._POLYGON_MAX_AREA_M2).
+_EDGE_SEARCH_LIMIT_METRES = 20_000.0
+# Binary-search steps: halving 20 km 30 times lands well under a millimetre.
+_EDGE_SEARCH_STEPS = 30
+
+
+def _outside_by(polygon: list[tuple[float, float]], point: tuple[Decimal, Decimal]) -> float:
+    """0 inside the outline, otherwise metres to its nearest edge — the polygon verdict's own measure."""
+    p = (float(point[0]), float(point[1]))
+    return 0.0 if geo_polygon.contains(polygon, p) else geo_polygon.distance_to_boundary_metres(polygon, p)
+
+
+def _point_outside_by(
+    polygon: list[tuple[float, float]], start: tuple[Decimal, Decimal], target_metres: float,
+) -> tuple[Decimal, Decimal]:
+    """Walk east from an inside point to where the fix sits `target_metres` outside the outline.
+
+    Binary search on the distance walked: outside_by grows as the walk continues past the
+    edge, so the search converges on the spot where it equals the target. Dev tooling —
+    a concave outline with a second lobe to the east could in principle fool it, which
+    the integration test pins against a plain rectangle.
+    """
+    low, high = 0.0, _EDGE_SEARCH_LIMIT_METRES
+    for _ in range(_EDGE_SEARCH_STEPS):
+        mid = (low + high) / 2
+        candidate = destination_point(start[0], start[1], distance_metres=mid)
+        if _outside_by(polygon, candidate) < target_metres:
+            low = mid
+        else:
+            high = mid
+    return destination_point(start[0], start[1], distance_metres=high)
+
+
+def _polygon_scenario_target(
+    *, trip_stop_id: uuid.UUID, precinct: Precinct, scenario: DevTruckScenario, tolerance_metres: int,
+) -> ScenarioTarget:
+    """The outline version of the scenario rule. distance_metres is how far OUTSIDE the
+    outline the fix lands (0 = inside), matching what the polygon verdict measures; the
+    3 km / 50 km scenarios stay plain offsets from inside the site."""
+    polygon = [(float(c[0]), float(c[1])) for c in precinct.geofence_polygon or []]
+    inside_lat, inside_lng = geo_polygon.interior_point(polygon)
+    inside = (
+        Decimal(str(inside_lat)).quantize(_COORDINATE_DECIMAL_PLACES),
+        Decimal(str(inside_lng)).quantize(_COORDINATE_DECIMAL_PLACES),
+    )
+
+    if scenario == SCENARIO_AT_STOP:
+        latitude, longitude, distance = inside[0], inside[1], 0.0
+    elif scenario in (SCENARIO_INSIDE_TOLERANCE, SCENARIO_OUTSIDE_TOLERANCE):
+        margin = (
+            -TOLERANCE_BOUNDARY_MARGIN_METRES
+            if scenario == SCENARIO_INSIDE_TOLERANCE
+            else TOLERANCE_BOUNDARY_MARGIN_METRES
+        )
+        distance = max(0.0, tolerance_metres + margin)
+        latitude, longitude = _point_outside_by(polygon, inside, distance)
+    else:
+        distance = scenario_distance_metres(scenario, radius_metres=0, tolerance_metres=tolerance_metres)
+        latitude, longitude = destination_point(inside[0], inside[1], distance_metres=distance)
+
     return ScenarioTarget(
         trip_stop_id=trip_stop_id, precinct_name=precinct.name,
         latitude=latitude, longitude=longitude, distance_metres=distance,

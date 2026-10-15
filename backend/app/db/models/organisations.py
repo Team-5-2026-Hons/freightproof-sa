@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -63,6 +63,11 @@ class Precinct(Base):
     latitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     geofence_radius_metres: Mapped[int] = mapped_column(Integer, nullable=False, server_default="200")
+    # Property outline as an open ring of [lat, lng] corners. NULL = the fence is the
+    # circle above; set = the outline IS the fence and the radius is not used for any
+    # verdict. JSONB rather than PostGIS: the check runs in Python (core/polygon.py), so
+    # the database only has to store and return the corners.
+    geofence_polygon: Mapped[Optional[list[list[float]]]] = mapped_column(JSONB, nullable=True)
     # Cross-org visibility opt-in; False means only the owning org's dispatchers can
     # see this precinct (SEC-PRECINCT-1).
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")

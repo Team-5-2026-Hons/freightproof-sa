@@ -6,6 +6,7 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+import { useBack } from '@/lib/navigation/useBack'
 
 // Route to the first step of the selected phase's own recipe.
 function firstStepRoute(phase: PhaseDescriptor): string {
@@ -18,6 +19,8 @@ function firstStepRoute(phase: PhaseDescriptor): string {
 export default function TripDetailPageClient() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+  // Back to where the driver came from (Home or Trips); Trips on a cold start.
+  const goBack = useBack(ROUTES.trips)
   // TODO Iter 2 backend: fetch from GET /driver/trips/{id}
   const trip = mockTrips.find((t) => (t.id as string) === id)
 
@@ -32,11 +35,12 @@ export default function TripDetailPageClient() {
   return (
     <TripDetailView
       trip={trip}
-      onBack={() => router.push(ROUTES.trips)}
+      onBack={goBack}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
       onSelectPhase={(phase) => router.push(firstStepRoute(phase))}
-      // This mock trip-detail screen lists every phase for context; no live progress feed yet.
-      showAllPhases
+      // Collapsed like the live route (overhaul 3.2): the demo opens trips here, and a
+      // full list up front pushed Route below the fold. "All steps" reveals it.
+      showAllPhases={false}
     />
   )
 }

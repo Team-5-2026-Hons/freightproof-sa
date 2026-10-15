@@ -229,8 +229,12 @@ async def test_exception_reads_return_the_persisted_location_assessment(
     assert queue.status_code == 200
     assert detail.status_code == 200
     queue_row = next(row for row in queue.json() if row["id"] == str(exc.id))
-    assert queue_row["action_location_assessment"] == assessment
-    assert detail.json()["action_location_assessment"] == assessment
+    # Read back through the current schema, so a field added since (the outline snapshot,
+    # policy 2026-10-14.1) appears with its default: None = no outline, which is true of
+    # every assessment stored before outlines existed.
+    expected = {**assessment, "precinct_geofence_polygon": None}
+    assert queue_row["action_location_assessment"] == expected
+    assert detail.json()["action_location_assessment"] == expected
 
 
 # ── history ───────────────────────────────────────────────────────────────────

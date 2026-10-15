@@ -322,6 +322,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/trips/me/{trip_id}/route": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/trips/pp-manifest-preview": {
     "access": "dispatcher",
     "dependencies": [

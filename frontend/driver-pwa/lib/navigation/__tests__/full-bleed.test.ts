@@ -31,6 +31,7 @@ describe('isFullBleedRoute', () => {
   it('does not exempt unrelated top-level routes', () => {
     expect(isFullBleedRoute('/')).toBe(false)
     expect(isFullBleedRoute('/settings')).toBe(false)
+    expect(isFullBleedRoute('/profile')).toBe(false)
     expect(isFullBleedRoute('/login')).toBe(false)
   })
 })

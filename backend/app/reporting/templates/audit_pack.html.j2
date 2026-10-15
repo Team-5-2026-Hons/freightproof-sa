@@ -140,7 +140,7 @@
   <table>
     <tr><th>#</th><th>Precinct</th><th>Address</th><th>Slot</th><th>Geofence</th></tr>
     {% for s in m.stops %}
-    <tr><td>{{ s.sequence }}</td><td>{{ s.precinct_name }}</td><td>{{ s.address or '—' }}</td><td>{{ s.slot_time|sast }}</td><td>{{ s.geofence_radius_metres }} m</td></tr>
+    <tr><td>{{ s.sequence }}</td><td>{{ s.precinct_name }}</td><td>{{ s.address or '—' }}</td><td>{{ s.slot_time|sast }}</td><td>{% if s.geofence_polygon %}Property outline ({{ s.geofence_polygon|length }} corners){% else %}{{ s.geofence_radius_metres }} m radius{% endif %}</td></tr>
     {% else %}
     <tr><td colspan="5" class="muted">No stops recorded.</td></tr>
     {% endfor %}
@@ -278,7 +278,7 @@
 <section id="location" class="page">
   <h2>Location evidence</h2>
   <div class="route">{{ route_svg|safe }}</div>
-  <p class="small muted">Green circles: route precincts (geofence to scale). Blue line: driver-phone trail. Grey dashes:
+  <p class="small muted">Green circles and outlines: route precincts (geofence to scale). Blue line: driver-phone trail. Grey dashes:
     periods with no position. Purple squares: tracker fixes. Blue dots: checkpoints. Red diamonds: exceptions (E-numbers
     as in the exception log). No third-party map service was used to draw this.</p>
   {% set cov = m.location_coverage %}

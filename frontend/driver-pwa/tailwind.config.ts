@@ -1,7 +1,18 @@
 import type { Config } from 'tailwindcss'
 import animate from 'tailwindcss-animate'
+import { TYPE_SCALE } from './lib/constants/type-scale'
+
+const SYSTEM_SANS = ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif']
+const SYSTEM_MONO = ['ui-monospace', 'SF Mono', 'SFMono-Regular', 'Menlo', 'Consolas', 'Roboto Mono', 'monospace']
 
 const config: Config = {
+  // Touch screens have no hover, but iOS WebKit still applies :hover on tap and leaves it
+  // stuck until the next tap elsewhere — every `hover:` tint in this app was latching on
+  // after a press. This wraps hover utilities in @media (hover: hover) so they only exist
+  // where a pointer can actually hover; presses get explicit `active:` states instead.
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     './app/**/*.{ts,tsx}',
     './components/**/*.{ts,tsx}',
@@ -49,7 +60,7 @@ const config: Config = {
         input: 'hsl(var(--input))',
         ring:  'hsl(var(--ring))',
         // Sets the default `border` utility color. Same value as outline-variant
-        // (#c7c6ca / hsl(var(--border))), which existing components already
+        // (#919099 / hsl(var(--border))), which existing components already
         // reference explicitly via border-outline-variant.
         border: 'hsl(var(--border))',
         // ── Design-system tokens ──
@@ -106,6 +117,19 @@ const config: Config = {
           c:       'rgb(var(--fp-chain-container) / <alpha-value>)',
           on:      'rgb(var(--fp-chain-on) / <alpha-value>)',
           onc:     'rgb(var(--fp-chain-on-container) / <alpha-value>)',
+          tint:    'rgb(var(--fp-chain-tint) / <alpha-value>)',
+        },
+
+        // Overhaul (Oct 2026) flat-grouping tokens: the grey face of pills, tiles and
+        // fields, and the inset rule between list rows. See app/globals.css.
+        fill:     'rgb(var(--fp-fill) / <alpha-value>)',
+        hairline: 'rgb(var(--fp-hairline) / <alpha-value>)',
+        // Waiting / under review / offline. Amber text on a pale amber ground; never red,
+        // because none of these states is an error.
+        attention: {
+          DEFAULT: 'rgb(var(--fp-attention) / <alpha-value>)',
+          tint:    'rgb(var(--fp-attention-tint) / <alpha-value>)',
+          ink:     'rgb(var(--fp-attention-ink) / <alpha-value>)',
         },
 
         outline: {
@@ -144,12 +168,16 @@ const config: Config = {
           container:     'rgb(var(--fp-success-container) / <alpha-value>)',
           on:            'rgb(var(--fp-success-on) / <alpha-value>)',
           'on-container':'rgb(var(--fp-success-on-container) / <alpha-value>)',
+          // Status-banner ground and its ink; the container above is a saturated chip fill.
+          tint:          'rgb(var(--fp-success-tint) / <alpha-value>)',
+          ink:           'rgb(var(--fp-success-ink) / <alpha-value>)',
         },
         error: {
           DEFAULT:       'rgb(var(--fp-error) / <alpha-value>)',
           container:     'rgb(var(--fp-error-container) / <alpha-value>)',
           on:            'rgb(var(--fp-error-on) / <alpha-value>)',
           'on-container':'rgb(var(--fp-error-on-container) / <alpha-value>)',
+          tint:          'rgb(var(--fp-error-tint) / <alpha-value>)',
         },
         surface: {
           DEFAULT:            'rgb(var(--fp-surface) / <alpha-value>)',
@@ -173,14 +201,26 @@ const config: Config = {
         xs: '380px',
       },
 
+      // The platform's own face, not a downloaded one: on iOS `system-ui` resolves to SF
+      // Pro, which brings Apple's optical sizes, size-specific tracking and Dynamic Type
+      // metrics with it — none of which a webfont can reproduce — and on Android it
+      // resolves to Roboto. The driver app is demoed on iPhones first, where Inter read as
+      // a ported website. headline/display/body/label stay as aliases so existing
+      // font-* classes keep resolving; they all mean "the system face" now.
       fontFamily: {
-        sans:     ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        mono:     ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        headline: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        display:  ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        body:     ['var(--font-inter)', 'system-ui', 'sans-serif'],
-        label:    ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        sans:     SYSTEM_SANS,
+        headline: SYSTEM_SANS,
+        display:  SYSTEM_SANS,
+        body:     SYSTEM_SANS,
+        label:    SYSTEM_SANS,
+        // Real monospace for measured data (coordinates, seal numbers) — the old alias
+        // pointed back at Inter, so `font-mono` silently did nothing.
+        mono:     SYSTEM_MONO,
       },
+
+      // iOS text-style roles; see lib/constants/type-scale.ts for the ratios and why the
+      // list lives outside this file.
+      fontSize: TYPE_SCALE,
 
       borderRadius: {
         none:    '0px',
@@ -252,6 +292,34 @@ const config: Config = {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-2px)' },
         },
+        // iOS push/pop (app/(app)/template.tsx). Starts at 0.6 opacity, never 0: the
+        // incoming screen is legible from the first frame, it only settles into place.
+        // An indeterminate run along the receipt's anchoring bar: Hedera gives no progress
+        // to report, so the bar says "working", never a made-up percentage.
+        'anchor-slide': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(250%)' },
+        },
+        // The panic screen's red vignette while a finger is on the swipe (7.1b): one full
+        // cycle a second (1 Hz), far under WCAG 2.3.1's three flashes, and never below a
+        // third of its strength so it reads as a glow, not a flash.
+        'panic-pulse': {
+          '0%, 100%': { opacity: '0.35' },
+          '50%': { opacity: '1' },
+        },
+        // A floating sheet rising from the bottom edge it is anchored to (Modal).
+        'sheet-up': {
+          from: { transform: 'translate3d(0, 2rem, 0)', opacity: '0' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
+        },
+        'push-in': {
+          from: { transform: 'translate3d(1.5rem, 0, 0)', opacity: '0.6' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
+        },
+        'pop-in': {
+          from: { transform: 'translate3d(-1.5rem, 0, 0)', opacity: '0.6' },
+          to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
+        },
         // Scrolls the dashed road exactly one tile per cycle, which is what makes the
         // loop seamless. --road-tile is set by the loader and read here and by the
         // `road` background image below, so the two can never drift apart.
@@ -269,6 +337,13 @@ const config: Config = {
         'radar-pulse': 'radar-pulse 1.2s ease-out infinite',
         'truck-drive': 'truck-drive 500ms ease-in-out infinite',
         'road-scroll': 'road-scroll 500ms linear infinite',
+        // Apple's own deceleration curve for navigation transitions — fast out of the
+        // gate, long gentle settle — at a short duration so it never feels like waiting.
+        'push-in': 'push-in 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'pop-in': 'pop-in 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'sheet-up': 'sheet-up 320ms cubic-bezier(0.32, 0.72, 0, 1)',
+        'anchor-slide': 'anchor-slide 1.4s ease-in-out infinite',
+        'panic-pulse': 'panic-pulse 1s ease-in-out infinite',
       },
 
       backgroundImage: {

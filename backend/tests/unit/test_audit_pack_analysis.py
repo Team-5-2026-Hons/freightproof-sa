@@ -717,3 +717,42 @@ def test_derive_observations_later_declaration_supersedes_earlier_value():
     # Assert
     assert "123/09/2026" in observations["notifications.saps"].text
     assert "WRONG/1" not in observations["notifications.saps"].text
+
+
+# ── outline precincts ────────────────────────────────────────────────────────
+
+# ~100 m box around JHB_DEPOT: the outline replaces the stop's (large) radius.
+_JHB_BOX = [(-26.2036, 28.0468), (-26.2036, 28.0478), (-26.2046, 28.0478), (-26.2046, 28.0468)]
+
+
+def _outline_stop() -> StopRecord:
+    return StopRecord(
+        trip_stop_id=uuid.uuid4(), sequence=1, precinct_id=uuid.uuid4(), precinct_name="Depot",
+        address=None, lat=JHB_DEPOT[0], lng=JHB_DEPOT[1], geofence_radius_metres=5000,
+        geofence_polygon=_JHB_BOX, slot_time=None,
+    )
+
+
+def test_find_stationary_periods_ignores_a_stop_inside_an_outline():
+    # Arrange
+    steps = int(STATIONARY_MIN_DURATION.total_seconds() // 300) + 2
+    fixes = [_phone(JHB_DEPOT, T0 + timedelta(minutes=5 * i)) for i in range(steps)]
+
+    # Act
+    periods = find_stationary_periods(fixes, stops=[_outline_stop()])
+
+    # Assert
+    assert periods == []
+
+
+def test_find_stationary_periods_flags_a_stop_outside_the_outline_but_inside_the_old_radius():
+    # Arrange: ~1 km north of the depot — inside its 5 km radius, outside its ~100 m outline.
+    nearby = (JHB_DEPOT[0] + 0.009, JHB_DEPOT[1])
+    steps = int(STATIONARY_MIN_DURATION.total_seconds() // 300) + 2
+    fixes = [_phone(nearby, T0 + timedelta(minutes=5 * i)) for i in range(steps)]
+
+    # Act
+    periods = find_stationary_periods(fixes, stops=[_outline_stop()])
+
+    # Assert
+    assert len(periods) == 1

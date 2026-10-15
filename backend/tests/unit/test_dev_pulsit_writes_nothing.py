@@ -96,6 +96,8 @@ class _FakePrecinct:
         self.latitude = _DEPOT_LAT
         self.longitude = _DEPOT_LNG
         self.geofence_radius_metres = 200
+        # A circle precinct: the geofence and scenario code read this to choose the shape.
+        self.geofence_polygon = None
 
 
 class _FakeTripStop:
@@ -225,6 +227,8 @@ class _FakeTargetPrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
+        # A circle precinct: build_scenario_target reads this to choose the shape.
+        self.geofence_polygon = None
 
 
 @pytest.fixture

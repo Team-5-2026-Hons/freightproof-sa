@@ -66,6 +66,17 @@ class Settings(BaseSettings):
     # No real scan feed exists yet, so this stays True.
     SCAN_FEED_USE_MOCK: bool = True
 
+    # OpenRouteService truck routing for the driver's planned route and ETA. Empty key
+    # = no route (the PWA falls back to planned_arrival_at), not an error.
+    ORS_API_KEY: str = ""
+    ORS_API_URL: str = "https://api.openrouteservice.org"
+    ORS_TIMEOUT_SECONDS: float = 15.0
+    # How far a precinct pin may sit from a truck-routable road and still snap to it.
+    # ORS defaults to 350 m, which a pin in the middle of a large warehouse estate can miss.
+    ORS_SNAP_RADIUS_METRES: int = 2000
+    # A trip's stops cannot change after creation, so this only bounds Redis memory.
+    TRIP_ROUTE_CACHE_TTL_SECONDS: int = 86400
+
     GPS_TOLERANCE_METRES: int = 50
 
     # Driver-vs-truck proximity check:

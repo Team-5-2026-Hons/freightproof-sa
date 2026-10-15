@@ -37,6 +37,7 @@ function describeEvent(e: Event): string {
   if (t === 'deactivated') return 'Deactivated'
   if (t === 'relocated') return 'Location corrected'
   if (t === 'geofence_resized') return 'Geofence radius changed'
+  if (t === 'geofence_reshaped') return 'Property outline changed'
   if (t === 'sharing_changed') return 'Cross-organisation sharing changed'
   if (t === 'cosmetic_update') {
     if (isPrecinct) return 'Precinct details updated'

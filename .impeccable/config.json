@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "frontend/driver-pwa/components/phase/CameraCapture.tsx"
+        ],
+        "createdAt": "2026-10-12T17:16:29.467Z",
+        "reason": "Claude triage: L68 is a code comment mentioning '<img> fallback', not an img tag; the file's real <img> elements have data-URL srcs"
+      }
+    ]
+  }
+}

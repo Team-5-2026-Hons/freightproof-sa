@@ -6,7 +6,9 @@ const cardVariants = cva('rounded-xl p-5', {
   variants: {
     variant: {
       default:   'bg-surface-container-lowest shadow-ambient',
-      exception: 'bg-surface-container-lowest shadow-ambient border-l-4 border-error',
+      // Tinted, not a thick coloured left border — that stripe is a stock template tell,
+      // and the tint carries the same "this is an alert" meaning across the whole card.
+      exception: 'bg-error-container/60 text-error-on-container',
       selected:  'bg-secondary-fixed shadow-ambient-sm',
       section:   'bg-surface-container-low',
       dark:      'bg-primary text-primary-on shadow-ambient',
@@ -50,7 +52,12 @@ export function Card({ variant = 'default', children, className, onClick }: Card
       onKeyDown={isInteractive ? handleKeyDown : undefined}
       className={cn(
         cardVariants({ variant }),
-        isInteractive && cn('cursor-pointer transition-colors duration-150', hoverClasses[resolvedVariant]),
+        // active: as well as hover: — a phone has no hover, so a tappable card needs its
+        // own press response the instant the finger lands, not on the next screen's paint.
+        isInteractive && cn(
+          'cursor-pointer transition-[transform,background-color] duration-150 active:scale-[0.98]',
+          hoverClasses[resolvedVariant],
+        ),
         className,
       )}
     >

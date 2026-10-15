@@ -3,13 +3,28 @@
 import { useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
-import { Camera as CameraIcon } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
+import { Camera as CameraIcon, Check } from 'lucide-react'
 import { useToast } from '@/lib/hooks/useToast'
+import { fileToCompressedJpegDataUrl } from '@/lib/utils/image'
+import { formatTime } from '@/lib/utils/format-time'
 
 interface CameraCaptureProps {
+  /** What the photo is — the field label and the captured image's alt text. */
   label: string
+  /** The tile's verb (overhaul 4.3: "Photograph the sheet"). Defaults to Take Photo. */
+  actionLabel?: string
+  /** One line under the verb on what makes a usable photo. */
+  hint?: string
   dataUrl: string | null
+  /** When the shown photo was taken (ISO), for the "Captured 09:58" chip. */
+  capturedAt?: string | null
+  /**
+   * 'tile' (default) is the large evidence tile; 'row' is a compact line for an optional
+   * photo on a longer form (overhaul 6.3), where a 196px tile would bury the submit.
+   */
+  variant?: 'tile' | 'row'
+  /** The row variant's second line once a photo is added ("Sends with the report"). */
+  capturedHint?: string
   onCapture: (dataUrl: string) => void
 }
 
@@ -39,78 +54,9 @@ function classifyCameraFailure(err: unknown): CameraFailure {
   return 'other'
 }
 
-interface DecodedPhoto {
-  source: ImageBitmap | HTMLImageElement
-  width: number
-  height: number
-  // Frees decode resources (bitmap memory / object URL) once the canvas draw is done.
-  release: () => void
-}
-
-// createImageBitmap with imageOrientation: 'from-image' bakes the EXIF rotation in at
-// decode time, so portrait phone photos don't land sideways on the canvas. WebViews that
-// lack the option (or can't decode the format) fall back to an <img> decode — browsers
-// have auto-oriented <img> per EXIF by default since 2020 (CSS image-orientation:
-// from-image), so orientation survives that path too.
-async function decodePhoto(file: File): Promise<DecodedPhoto> {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
-      return {
-        source: bitmap,
-        width: bitmap.width,
-        height: bitmap.height,
-        release: () => bitmap.close(),
-      }
-    } catch (err) {
-      // Not fatal — some WebViews reject the options bag or the file format. The <img>
-      // fallback below gets its own shot at decoding before we give up.
-      console.warn('createImageBitmap failed — falling back to <img> decode', err)
-    }
-  }
-
-  const objectUrl = URL.createObjectURL(file)
-  try {
-    const img = new Image()
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Image decode failed'))
-      img.src = objectUrl
-    })
-    return {
-      source: img,
-      width: img.naturalWidth,
-      height: img.naturalHeight,
-      // The object URL must stay alive until drawImage has consumed it — release
-      // revokes it only after the caller is done drawing.
-      release: () => URL.revokeObjectURL(objectUrl),
-    }
-  } catch (err) {
-    URL.revokeObjectURL(objectUrl)
-    throw err
-  }
-}
-
-// Downscale + re-encode the picked file BEFORE it reaches state/localStorage. The old
-// raw FileReader path stored multi-MB base64 strings — quota risk for drafts and a
-// guaranteed oversized upload later (see MAX_PHOTO_EDGE_PX above).
-async function fileToCompressedJpegDataUrl(file: File): Promise<string> {
-  const decoded = await decodePhoto(file)
-  try {
-    const scale = Math.min(1, MAX_PHOTO_EDGE_PX / Math.max(decoded.width, decoded.height))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(decoded.width * scale))
-    canvas.height = Math.max(1, Math.round(decoded.height * scale))
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Canvas 2D context unavailable')
-    ctx.drawImage(decoded.source, 0, 0, canvas.width, canvas.height)
-    return canvas.toDataURL('image/jpeg', JPEG_QUALITY_PERCENT / 100)
-  } finally {
-    decoded.release()
-  }
-}
-
-export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps) {
+export function CameraCapture({
+  label, actionLabel = 'Take Photo', hint, dataUrl, capturedAt = null, variant = 'tile', capturedHint, onCapture,
+}: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
   // Latches once the native camera has refused (permission denied, or no camera on the
   // device). From then on this control is a file picker, and says so, rather than a
@@ -133,7 +79,7 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
     (file: File) => {
       void (async () => {
         try {
-          onCapture(await fileToCompressedJpegDataUrl(file))
+          onCapture(await fileToCompressedJpegDataUrl(file, MAX_PHOTO_EDGE_PX, JPEG_QUALITY_PERCENT))
         } catch (err) {
           // Decode/canvas failed (exotic format, out of memory). Fall back to the raw
           // FileReader read this component always used — an oversized draft beats
@@ -223,43 +169,81 @@ export function CameraCapture({ label, dataUrl, onCapture }: CameraCaptureProps)
     }
   }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable])
 
+  const verb = isCapturing ? 'Opening Camera…' : nativeCameraUnavailable ? 'Choose a Photo Instead' : actionLabel
+
+  if (variant === 'row') {
+    return dataUrl ? (
+      <div className="grid grid-cols-[64px_1fr_auto] items-center gap-x-3 animate-fade-in-scale motion-reduce:animate-none">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={dataUrl} alt={label} className="h-14 w-16 rounded-xl object-cover" />
+        <div className="min-w-0">
+          <p className="text-headline text-surface-on">Photo added</p>
+          {capturedHint !== undefined && <p className="text-subhead text-surface-on-variant">{capturedHint}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={handleCapture}
+          className="flex min-h-11 items-center"
+        >
+          <span className="inline-flex h-9 items-center rounded-full bg-fill px-4 text-subhead font-semibold text-surface-on active:scale-95">Retake</span>
+        </button>
+      </div>
+    ) : (
+      <button
+        type="button"
+        onClick={handleCapture}
+        disabled={isCapturing}
+        className="grid min-h-14 w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-x-3 rounded-[14px] bg-fill px-4 py-2 text-left transition-transform duration-150 active:scale-[0.99] active:bg-surface-container-high disabled:opacity-60"
+      >
+        <CameraIcon className="size-5 text-surface-on" strokeWidth={1.9} aria-hidden />
+        <span className="text-headline text-surface-on">{verb}</span>
+        {hint !== undefined && <span className="text-subhead text-surface-on-variant">{hint}</span>}
+      </button>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium">{label}</p>
+      {/* A tile with a hint already says what it is for; a second label above it would
+          say it twice. Only a bare tile carries the label. */}
+      {hint === undefined && <p className="text-subhead text-surface-on-variant">{label}</p>}
       {dataUrl ? (
         <div
-          // Fixed aspect-video frame + border so the preview reads as a bounded card instead of
-          // an unframed image merging with the page at whatever height the photo happens to be.
-          className="relative aspect-video w-full rounded-xl overflow-hidden border border-outline-variant/40 bg-surface-container-low animate-fade-in-scale motion-reduce:animate-none"
+          // A fixed aspect-video frame, so the preview reads as a bounded card rather than
+          // an image at whatever height the photo happens to be.
+          className="relative aspect-video w-full overflow-hidden rounded-[20px] bg-surface-container-high animate-fade-in-scale motion-reduce:animate-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
-          <Button
+          {/* Scrim chips, not page tokens: they sit on an arbitrary photo, so they carry
+              their own contrast whatever the theme. */}
+          <span className="absolute bottom-3 left-3 inline-flex h-[30px] items-center gap-1.5 rounded-full bg-black/60 px-3 text-footnote font-semibold text-white">
+            <Check className="size-3 text-success" strokeWidth={3} aria-hidden />
+            {capturedAt === null ? 'Captured' : `Captured ${formatTime(capturedAt)}`}
+          </span>
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
             onClick={handleCapture}
-            // Overrides ghost's uppercase/bold/transparent defaults back to the original
-            // floating pill look: rounded-full, a visible scrim so it reads over any
-            // photo, and normal-case/font-medium text. Shadow lifts it off the photo so
-            // it reads as a floating control, not part of the image.
-            className="absolute bottom-2 right-2 rounded-full bg-surface-container-highest/90 font-medium normal-case tracking-normal shadow-ambient-sm hover:bg-surface-container-highest"
+            className="absolute bottom-3 right-3 h-9 rounded-full bg-white px-4 text-subhead font-semibold text-black shadow-ambient-sm transition-transform duration-100 active:scale-95"
           >
             Retake
-          </Button>
+          </button>
         </div>
       ) : (
+        // A tappable tile, not a dashed drop zone: dashes are the desktop "drag a file
+        // here" idiom, and there is nothing to drag on a phone. The ink disc and the verb
+        // say what a tap does; it dips on press like every other control.
         <button
+          type="button"
           onClick={handleCapture}
           disabled={isCapturing}
-          className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-outline-variant bg-surface-container-low text-sm text-surface-on-variant disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
+          className="flex h-[196px] w-full flex-col items-center justify-center gap-2.5 rounded-[20px] bg-fill px-6 text-center transition-transform duration-150 active:scale-[0.98] active:bg-surface-container-high disabled:opacity-60 animate-fade-in-scale motion-reduce:animate-none"
         >
-          <CameraIcon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
-          {isCapturing
-            ? 'Opening camera…'
-            : nativeCameraUnavailable
-              ? 'Choose a photo instead'
-              : 'Tap to photograph'}
+          <span className="flex size-14 items-center justify-center rounded-full bg-surface-on text-surface">
+            <CameraIcon className="size-6" strokeWidth={1.9} aria-hidden />
+          </span>
+          <span className="text-headline text-surface-on">{verb}</span>
+          {hint !== undefined && <span className="text-subhead text-surface-on-variant">{hint}</span>}
         </button>
       )}
     </div>

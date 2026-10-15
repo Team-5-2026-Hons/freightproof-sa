@@ -590,7 +590,12 @@ def _stop_records(
             precinct_name=precinct.name if visible else REDACTED_STOP_NAME,
             address=precinct.address if visible else None,
             lat=float(precinct.latitude), lng=float(precinct.longitude),
-            geofence_radius_metres=precinct.geofence_radius_metres, slot_time=stop.slot_time,
+            geofence_radius_metres=precinct.geofence_radius_metres,
+            geofence_polygon=(
+                [(float(c[0]), float(c[1])) for c in precinct.geofence_polygon]
+                if precinct.geofence_polygon else None
+            ),
+            slot_time=stop.slot_time,
         )
     return stops
 
