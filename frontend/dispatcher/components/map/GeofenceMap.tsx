@@ -116,6 +116,9 @@ interface GeofenceMapProps {
   /** The property outline. When it has 3+ corners it is drawn INSTEAD of the circle,
    *  because it replaces the circle in every verdict. */
   polygon?: readonly LatLngPair[] | null
+  /** False hides the circle even with no outline — the form's outline mode before one is
+   *  drawn, where a circle would read as the fence when it isn't. Defaults to true. */
+  showCircle?: boolean
   /** Supplied only by the create/edit form. Omit for a read-only view. */
   onPositionChange?: (next: { latitude: number; longitude: number }) => void
   /** Supplied by the form to make the outline editable (drag corners, add/remove points). */
@@ -135,6 +138,7 @@ export function GeofenceMap({
   longitude,
   radiusMetres,
   polygon = null,
+  showCircle = true,
   onPositionChange,
   onPolygonChange,
   className,
@@ -295,8 +299,9 @@ export function GeofenceMap({
 
     const outline = polygon !== null && polygon.length >= 3 ? polygon : null
     if (circle !== null) {
-      if (outline !== null && map.hasLayer(circle)) circle.remove()
-      if (outline === null && !map.hasLayer(circle)) circle.addTo(map)
+      const wantCircle = outline === null && showCircle
+      if (!wantCircle && map.hasLayer(circle)) circle.remove()
+      if (wantCircle && !map.hasLayer(circle)) circle.addTo(map)
     }
 
     if (sameOutline(lastEmittedPolygonRef.current, outline)) return
@@ -325,7 +330,7 @@ export function GeofenceMap({
 
     polygonRef.current = layer
     map.fitBounds(layer.getBounds(), { padding: [OUTLINE_FIT_PADDING_PX, OUTLINE_FIT_PADDING_PX] })
-  }, [polygon, mapReady])
+  }, [polygon, showCircle, mapReady])
 
   useEffect(() => {
     // Re-checked after each await: mapRef.current can be nulled mid-flight (e.g. the

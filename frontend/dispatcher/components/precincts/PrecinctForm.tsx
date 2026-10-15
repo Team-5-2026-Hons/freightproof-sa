@@ -188,9 +188,9 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
   }
 
   /**
-   * Ask OpenStreetMap for shapes at the pin. With `autoApply`, the best one becomes the
-   * outline straight away — or a starter square when OSM has nothing or is unreachable —
-   * so placing a pin draws a fence the dispatcher only has to adjust.
+   * Ask OpenStreetMap for shapes at the pin. With `autoApply` (the Auto-fit button), the
+   * best one replaces the outline — or a starter square when OSM has nothing or is
+   * unreachable — and the rest stay listed to switch to.
    */
   function lookUpOutlines(lat: number, lng: number, autoApply: boolean): void {
     lookupRef.current?.abort()
@@ -229,11 +229,17 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
       longitude: next.longitude.toFixed(CLICK_COORDINATE_PRECISION),
     }))
     setTouched((prev) => new Set(prev).add('latitude').add('longitude'))
-    // Auto-draw only for the FIRST pin: once an outline exists, moving the pin (to the
-    // gate, say) must not throw away the dispatcher's shaping.
-    if (boundaryMode === 'outline' && outline === null && candidateStatus !== 'loading') {
-      lookUpOutlines(next.latitude, next.longitude, true)
-    }
+    // Deliberately no outline lookup: a click or drag is the dispatcher fine-tuning the
+    // gate, and must never redraw or discard an outline they have shaped.
+  }
+
+  /** Forget the outline and everything found for it — the site it belonged to is gone. */
+  function resetOutline(): void {
+    lookupRef.current?.abort()
+    setOutline(null)
+    setCandidates([])
+    setCandidateStatus('idle')
+    setSelectedCandidateId(null)
   }
 
   function handleOutlineEdit(next: LatLngPair[]): void {
@@ -243,20 +249,19 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
   }
 
   /**
-   * A picked search result moves the pin to the geocoded point — a starting position,
-   * which the dispatcher then corrects onto the gate by clicking or dragging. Fills the
-   * Address label only when it is empty, so an edit never silently loses a curated label.
+   * A picked search result is a NEW site: the pin moves to the geocoded point (a starting
+   * position the dispatcher corrects onto the gate), the Address label becomes the searched
+   * address, and any outline from the previous site is cleared — left in place it would
+   * sit at the old location. The dispatcher then asks for a fresh one with Auto-fit.
    */
   function handleAddressSelect(suggestion: AddressSuggestion): void {
     handleMapPosition({ latitude: suggestion.latitude, longitude: suggestion.longitude })
-    setForm((prev) =>
-      prev.address.trim() === ''
-        ? {
-            ...prev,
-            address: suggestion.detail ? `${suggestion.label}, ${suggestion.detail}` : suggestion.label,
-          }
-        : prev,
-    )
+    setForm((prev) => ({
+      ...prev,
+      address: suggestion.detail ? `${suggestion.label}, ${suggestion.detail}` : suggestion.label,
+    }))
+    setTouched((prev) => new Set(prev).add('address'))
+    resetOutline()
   }
 
   async function handleSubmit(): Promise<void> {
@@ -404,7 +409,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
                 selectedId={selectedCandidateId}
                 error={outlineError}
                 hasPin={pin !== null}
-                onFind={() => { if (pin !== null) lookUpOutlines(pin[0], pin[1], false) }}
+                onAutoFit={() => { if (pin !== null) lookUpOutlines(pin[0], pin[1], true) }}
                 onPick={(candidate) => {
                   setOutline(candidate.polygon)
                   setSelectedCandidateId(candidate.id)
@@ -486,6 +491,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
             longitude={mapLng}
             radiusMetres={mapRadius}
             polygon={boundaryMode === 'outline' ? outline : null}
+            showCircle={boundaryMode === 'radius'}
             onPositionChange={handleMapPosition}
             onPolygonChange={handleOutlineEdit}
             className="w-full h-full min-h-[320px]"

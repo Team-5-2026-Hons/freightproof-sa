@@ -19,7 +19,8 @@ interface OutlinePanelProps {
   error: string | null
   /** False until a pin exists — every action here works around the pin. */
   hasPin: boolean
-  onFind: () => void
+  /** Look up the property at the pin and draw the best match (square if none). */
+  onAutoFit: () => void
   onPick: (candidate: OutlineCandidate) => void
   onStartSquare: () => void
   onClear: () => void
@@ -37,7 +38,7 @@ const CANDIDATE_BUTTON_CLASS =
  * the map itself (GeofenceMap + Leaflet-Geoman); this panel only chooses where to start.
  */
 export function OutlinePanel({
-  outline, candidates, status, selectedId, error, hasPin, onFind, onPick, onStartSquare, onClear,
+  outline, candidates, status, selectedId, error, hasPin, onAutoFit, onPick, onStartSquare, onClear,
 }: OutlinePanelProps): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3">
@@ -48,7 +49,9 @@ export function OutlinePanel({
         </div>
       ) : (
         <p className="text-xs text-on-surf-v">
-          {hasPin ? 'No outline yet.' : 'Place the pin first — the outline is found around it.'}
+          {hasPin
+            ? 'No outline yet. Auto-fit draws one around the pin from mapped property shapes.'
+            : 'Search an address or place the pin first — the outline is found around it.'}
         </p>
       )}
 
@@ -60,8 +63,8 @@ export function OutlinePanel({
       </p>
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={onFind} disabled={!hasPin || status === 'loading'}>
-          {status === 'loading' ? 'Looking up…' : 'Find mapped shapes here'}
+        <Button variant="secondary" size="sm" onClick={onAutoFit} disabled={!hasPin || status === 'loading'}>
+          {status === 'loading' ? 'Fitting…' : 'Auto-fit outline'}
         </Button>
         <Button variant="secondary" size="sm" onClick={onStartSquare} disabled={!hasPin}>
           Start from a square
