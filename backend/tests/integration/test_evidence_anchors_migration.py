@@ -60,7 +60,7 @@ async def test_migration_chain_position() -> None:
     module = _load()
 
     assert module.revision == "ciaran_evidence_anchors"
-    assert module.down_revision == "ciaran_artifact_attribution"
+    assert module.down_revision == "tim_precinct_geofence_polygon"
     assert len(module.revision) <= 32
 
 
