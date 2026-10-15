@@ -11,7 +11,7 @@ HederaService is patched so no real network calls are made.
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -160,6 +160,8 @@ def _make_trip_payload(seed: dict) -> dict:
         # can never pass phases.scheduling._reject_if_not_due (see TripCreateRequest
         # .validate_request).
         "planned_departure_at": datetime.now(UTC).isoformat(),
+        # Arrival is required at creation (FP-139).
+        "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 

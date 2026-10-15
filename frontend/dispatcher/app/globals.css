@@ -14,6 +14,13 @@
   .tracking-industrial {
     letter-spacing: 0.05em;
   }
+
+  /* Review-step CTA: grows slightly on hover instead of a border, so the fixed-size
+     Trip Summary card never reflows (a border-width change would resize the box
+     and shove surrounding content). transform is layout-inert by design. */
+  .trip-summary-cta:hover {
+    transform: scale(1.03);
+  }
 }
 
 @layer base {

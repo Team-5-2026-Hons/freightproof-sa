@@ -129,7 +129,10 @@ export function validateSchedule(shown: TimeInputs, source: TimeInputs): FieldEr
     // A null override means "keep the manifest's", so an emptied field would still lock
     // the manifest's arrival. Refuse rather than show one thing and lock another.
     errors.arrival = 'The manifest sets an expected arrival, so it cannot be removed. Change it, or use the manifest time.'
-  } else if (shown.departure && shown.arrival) {
+  } else if (!shown.arrival) {
+    // Required (FP-139): without an end time, nobody can say when the crew is free again.
+    errors.arrival = 'Enter a planned arrival.'
+  } else if (shown.departure) {
     // Both go through the same SAST reading as the payload, so the check judges the instants that
     // will actually be sent.
     const minutes = (

@@ -8,6 +8,10 @@ export interface SearchSelectOption {
   value: string
   label: string
   sublabel?: string
+  /** Shown but not choosable: the dispatcher can see it exists and read why (FP-142). */
+  disabled?: boolean
+  /** A second line that wraps rather than truncates, e.g. why the option is disabled. */
+  note?: string
 }
 
 interface Props {
@@ -66,6 +70,7 @@ export function SearchSelect({
   }
 
   function select(opt: SearchSelectOption) {
+    if (opt.disabled) return
     onChange(opt.value)
     setOpen(false)
     setQuery('')
@@ -155,9 +160,13 @@ export function SearchSelect({
                   key={opt.value}
                   type="button"
                   onClick={() => select(opt)}
+                  // disabled, not only aria-disabled: it must not be clickable or reachable by Tab.
+                  disabled={opt.disabled}
+                  aria-disabled={opt.disabled || undefined}
                   className={cn(
                     'w-full flex items-start gap-3 px-4 py-[10px] text-left',
-                    'transition-colors duration-100 hover:bg-sec-c',
+                    'transition-colors duration-100',
+                    opt.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-sec-c',
                     opt.value === value && 'bg-sec-c',
                   )}
                 >
@@ -165,6 +174,9 @@ export function SearchSelect({
                     <div className="text-[13px] font-[500] text-on-surf truncate">{opt.label}</div>
                     {opt.sublabel && (
                       <div className="text-[11px] text-on-surf-v mt-[1px] truncate">{opt.sublabel}</div>
+                    )}
+                    {opt.note && (
+                      <div className="text-[11px] font-[600] text-on-surf mt-[2px]">{opt.note}</div>
                     )}
                   </div>
                   {opt.value === value && (

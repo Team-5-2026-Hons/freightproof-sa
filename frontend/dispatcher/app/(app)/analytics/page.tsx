@@ -15,6 +15,7 @@ import {
   type MapWindow,
 } from '@/components/analytics/fleet/navigation'
 import { ActivityTab } from '@/components/analytics/fleet/tabs/ActivityTab'
+import { CostTab } from '@/components/analytics/fleet/tabs/CostTab'
 import { EvidenceTab } from '@/components/analytics/fleet/tabs/EvidenceTab'
 import { OnTimeTab } from '@/components/analytics/fleet/tabs/OnTimeTab'
 import { ProblemsTab } from '@/components/analytics/fleet/tabs/ProblemsTab'
@@ -42,6 +43,7 @@ const TABS = [
   { id: 'review', label: 'Review desk' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'routes', label: 'Routes & sites' },
+  { id: 'cost', label: 'Cost' },
 ] as const satisfies readonly Tab[]
 
 type TabId = (typeof TABS)[number]['id']
@@ -61,6 +63,7 @@ const INITIAL_CONTROLS: Record<TabId, TabControls> = {
   review: DEFAULT_CONTROLS,
   evidence: DEFAULT_CONTROLS,
   routes: DEFAULT_CONTROLS,
+  cost: DEFAULT_CONTROLS,
 }
 
 // Busy patterns need lots of history to mean anything, so they default to All time.
@@ -165,6 +168,7 @@ function FleetAnalytics() {
             {active === 'problems' && <ProblemsTab query={query} allTimeStart={allTimeStart} today={today} />}
             {active === 'review' && <ReviewDeskTab query={query} allTimeStart={allTimeStart} today={today} />}
             {active === 'evidence' && <EvidenceTab query={query} allTimeStart={allTimeStart} today={today} />}
+            {active === 'cost' && <CostTab query={query} allTimeStart={allTimeStart} today={today} />}
             {active === 'routes' && (
               <RoutesTab
                 query={query}

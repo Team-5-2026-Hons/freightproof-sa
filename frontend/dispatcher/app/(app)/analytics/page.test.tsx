@@ -5,6 +5,7 @@ import AnalyticsPage from './page'
 import { api } from '@/lib/api/client'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { addDays, todaySast } from '@/lib/format/period'
+import type { FleetCost } from '@shared/lib/types/cost-analytics'
 import type {
   FleetActivity,
   FleetEvidence,
@@ -98,6 +99,25 @@ function emptyIncidents(): FleetIncidents {
   return { period: period(), pins: [], unlocated_count: 0 }
 }
 
+function emptyCost(): FleetCost {
+  return {
+    period: period(),
+    rates: {
+      diesel_price_per_litre: 33.29, litres_per_100km: 53, fuel_per_km: 17.64, running_cost_per_km: 15.1,
+      driver_cost_per_hour: 155, delay_cost_per_hour: 1100, fixed_cost_per_trip: 0, road_factor: 1.15,
+      is_default: true, updated_at: null, updated_by_name: null,
+    },
+    operating: {
+      fuel: 0, running: 0, driver: 0, fixed: 0, total: 0,
+      trips_costed: 0, trips_not_costed: 0, distance_km: 0, legs_routed: 0, legs_estimated: 0,
+    },
+    delay: { cost: 0, late_hours: 0, problem_trips: 0, late_problem_trips: 0, lateness_unknown: 0 },
+    exposure: { under_review: 0, reviewed: 0, total: 0, trips: 0, consignments_without_value: 0, trips_without_consignments: 0 },
+    buckets: [],
+    lanes: [],
+  }
+}
+
 function emptyProblems(): FleetProblems {
   return { period: period(), per_trip: [], theft_signals: [], by_type: [], by_step: [], risky_times: [] }
 }
@@ -105,7 +125,7 @@ function emptyProblems(): FleetProblems {
 /** Answer each endpoint with its own shape, the tiles from `tiles`. */
 function serve(tiles: FleetTiles): void {
   const empty: Record<string, () => unknown> = {
-    '/activity': emptyActivity, '/patterns': emptyPatterns, '/on-time': emptyOnTime, '/problems': emptyProblems, '/review': emptyReview, '/evidence': emptyEvidence, '/routes': emptyRoutes, '/incidents': emptyIncidents,
+    '/activity': emptyActivity, '/patterns': emptyPatterns, '/on-time': emptyOnTime, '/problems': emptyProblems, '/review': emptyReview, '/evidence': emptyEvidence, '/routes': emptyRoutes, '/incidents': emptyIncidents, '/cost': emptyCost,
   }
   mockedGet.mockImplementation((path: string) => {
     const match = Object.keys(empty).find((endpoint) => path.includes(`${endpoint}?`))
@@ -187,6 +207,18 @@ describe('Analytics page', () => {
       '/api/v1/analytics/fleet/incidents', '/api/v1/analytics/fleet/routes', TILES_PATH,
     ]))
     expect(mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('grain='))).toEqual([])
+  })
+
+  it('opens the Cost tab and asks for its period with a grain', async () => {
+    searchParams = new URLSearchParams('tab=cost')
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: 'Cost at a glance' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Cost' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(requestedEndpoints()).toEqual(['/api/v1/analytics/fleet/cost', TILES_PATH]))
+    expect(mockedGet.mock.calls.some(([path]) => path.startsWith('/api/v1/analytics/fleet/cost?') && path.includes('grain=week'))).toBe(true)
+    expect(screen.getByRole('radiogroup', { name: 'View by' })).toBeInTheDocument()
   })
 
   it('shows View by on trend tabs but not on Routes & sites', async () => {

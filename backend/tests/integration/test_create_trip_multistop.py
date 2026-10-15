@@ -6,7 +6,7 @@ JWT (see tests/conftest.py) through the shared `client` fixture.
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -120,6 +120,8 @@ def _single_leg_payload(seed: dict, order_number: str = "ORD-SINGLE-001") -> dic
         # source create_trip's phase gate (_reject_if_not_due) can ever resolve —
         # see TripCreateRequest.validate_request.
         "planned_departure_at": datetime.now(UTC).isoformat(),
+        # Arrival is required at creation (FP-139).
+        "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
@@ -138,6 +140,8 @@ def _multi_stop_payload(seed: dict, order_number: str = "ORD-MULTI-001") -> dict
         # See _single_leg_payload above — required by TripCreateRequest
         # .validate_request now that a schedule must be resolvable at creation.
         "planned_departure_at": datetime.now(UTC).isoformat(),
+        # Arrival is required at creation (FP-139).
+        "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 

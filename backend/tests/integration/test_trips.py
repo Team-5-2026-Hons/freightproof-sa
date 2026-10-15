@@ -9,6 +9,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -138,14 +139,21 @@ def _schedule_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+# Arrival is required at creation (FP-139). The length only has to be plausible and
+# clear MINIMUM_TRIP_DURATION.
+_PLANNED_TRIP_LENGTH = timedelta(hours=10)
+
+
 def _make_payload(seed: dict) -> dict:
+    departure = datetime.now(UTC)
     return {
         "driver_id": str(seed["driver_id"]),
         "horse_id": str(seed["horse_id"]),
         "trailer_ids": [str(seed["trailer_id"])],
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
-        "planned_departure_at": _schedule_now(),
+        "planned_departure_at": departure.isoformat(),
+        "planned_arrival_at": (departure + _PLANNED_TRIP_LENGTH).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 
@@ -319,9 +327,14 @@ async def test_create_trip_with_stop_slot_time_only_is_accepted(client: AsyncCli
     phases.scheduling._scheduled_departure falls back to."""
     payload = _make_payload(seed_data)
     payload.pop("planned_departure_at", None)
+    payload.pop("planned_arrival_at", None)
+    departure = datetime.now(UTC)
     payload["stops"] = [
-        {"precinct_id": payload.pop("origin_precinct_id"), "sequence": 0, "slot_time": _schedule_now()},
-        {"precinct_id": payload.pop("destination_precinct_id"), "sequence": 1},
+        {"precinct_id": payload.pop("origin_precinct_id"), "sequence": 0, "slot_time": departure.isoformat()},
+        {
+            "precinct_id": payload.pop("destination_precinct_id"), "sequence": 1,
+            "slot_time": (departure + _PLANNED_TRIP_LENGTH).isoformat(),
+        },
     ]
     resp = await client.post(
         "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
@@ -822,8 +835,16 @@ async def test_create_trip_409_on_waybill_already_assigned_to_another_trip(
     assert first.status_code == 201
     first_trip_reference = first.json()["trip_reference"]
 
+    # Same crew, but booked from the moment trip A is due back, so the crew is free (FP-139)
+    # and the waybill is the only thing that can refuse trip B.
+    later = datetime.fromisoformat(payload["planned_arrival_at"])
     second = await client.post(
-        "/api/v1/trips", json=payload, headers=_auth_headers(seed_data),
+        "/api/v1/trips",
+        json={
+            **payload, "planned_departure_at": later.isoformat(),
+            "planned_arrival_at": (later + _PLANNED_TRIP_LENGTH).isoformat(),
+        },
+        headers=_auth_headers(seed_data),
     )
 
     assert second.status_code == 409
@@ -982,3 +1003,177 @@ async def test_create_trip_422_on_implausibly_short_duration(
         )
     ).scalars().all()
     assert trips == []
+
+
+# ─── Crew clashes at creation (FP-139) ──────────────────────────────────────────
+#
+# Trip A is created through the API, so its window comes from the same code path as any
+# real trip's. Trip B is an empty leg: no waybill, so only the crew can refuse it.
+
+async def _another_crew(db_session: AsyncSession, seed: dict) -> dict[str, str]:
+    """A second driver, horse and trailer in the same organisation."""
+    suffix = uuid.uuid4().hex[:6].upper()
+    driver = Driver(
+        id=uuid.uuid4(), organization_id=seed["org_id"], full_name="Second Driver",
+        id_number=f"8101015{suffix}", phone_number=f"+2782{suffix}", license_number=f"DRV-{suffix}",
+        idvs_status=IdvsStatus.PENDING,
+    )
+    horse = Vehicle(
+        id=uuid.uuid4(), organization_id=seed["org_id"], registration=f"CA {suffix}H",
+        vehicle_type=VehicleType.HORSE, pulsit_device_id=f"PLT-H-{suffix}",
+    )
+    trailer = Vehicle(
+        id=uuid.uuid4(), organization_id=seed["org_id"], registration=f"CA {suffix}T",
+        vehicle_type=VehicleType.TRAILER, pulsit_device_id=f"PLT-T-{suffix}",
+    )
+    db_session.add_all([driver, horse, trailer])
+    await db_session.flush()
+    return {"driver_id": str(driver.id), "horse_id": str(horse.id), "trailer_id": str(trailer.id)}
+
+
+def _empty_leg(seed: dict, departure: datetime, *, crew: dict[str, str] | None = None) -> dict:
+    crew = crew or {
+        "driver_id": str(seed["driver_id"]), "horse_id": str(seed["horse_id"]),
+        "trailer_id": str(seed["trailer_id"]),
+    }
+    return {
+        "driver_id": crew["driver_id"], "horse_id": crew["horse_id"], "trailer_ids": [crew["trailer_id"]],
+        "origin_precinct_id": str(seed["origin_id"]), "destination_precinct_id": str(seed["destination_id"]),
+        "trip_type": "empty_leg",
+        "planned_departure_at": departure.isoformat(),
+        "planned_arrival_at": (departure + _PLANNED_TRIP_LENGTH).isoformat(),
+    }
+
+
+async def _create(client: AsyncClient, seed: dict, payload: dict):
+    return await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed))
+
+
+async def _trip_references(db_session: AsyncSession, seed: dict) -> list[str]:
+    rows = await db_session.execute(
+        select(Trip.trip_reference).where(Trip.operator_organization_id == seed["org_id"])
+    )
+    return sorted(rows.scalars().all())
+
+
+@pytest.mark.parametrize("shared", ["driver", "horse", "trailer"])
+async def test_create_trip_409_when_one_crew_member_is_busy(
+    client: AsyncClient, seed_data, db_session, shared: str,
+):
+    departure = datetime.now(UTC)
+    first = await _create(client, seed_data, _empty_leg(seed_data, departure))
+    assert first.status_code == 201, first.text
+    crew = await _another_crew(db_session, seed_data)
+    crew[f"{shared}_id"] = str(seed_data[f"{shared}_id"])
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, departure + timedelta(hours=2), crew=crew))
+
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "CREW_UNAVAILABLE"
+    assert [c["resource_type"] for c in detail["clashes"]] == [shared]
+    assert detail["clashes"][0]["trip_reference"] == first.json()["trip_reference"]
+    assert first.json()["trip_reference"] in detail["message"]
+    assert await _trip_references(db_session, seed_data) == [first.json()["trip_reference"]]
+
+
+async def test_create_trip_409_names_the_horse_and_when_it_is_free(client: AsyncClient, seed_data, db_session):
+    departure = datetime.now(UTC)
+    first = await _create(client, seed_data, _empty_leg(seed_data, departure))
+    crew = await _another_crew(db_session, seed_data)
+    crew["horse_id"] = str(seed_data["horse_id"])
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, departure, crew=crew))
+
+    message = resp.json()["detail"]["message"]
+    assert message.startswith(f"Horse CA 123-456 is on {first.json()['trip_reference']} until ")
+    assert message.endswith("Pick another horse, or move this departure.")
+
+
+async def test_create_trip_409_lists_every_clash(client: AsyncClient, seed_data, db_session):
+    departure = datetime.now(UTC)
+    await _create(client, seed_data, _empty_leg(seed_data, departure))
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, departure + timedelta(hours=1)))
+
+    assert resp.status_code == 409, resp.text
+    assert [c["resource_type"] for c in resp.json()["detail"]["clashes"]] == ["driver", "horse", "trailer"]
+
+
+async def test_create_trip_touching_windows_are_both_created(client: AsyncClient, seed_data, db_session):
+    """FP-175: a trip starting exactly when the last one is due back does not clash ([start, end))."""
+    departure = datetime.now(UTC)
+    first = await _create(client, seed_data, _empty_leg(seed_data, departure))
+
+    second = await _create(client, seed_data, _empty_leg(seed_data, departure + _PLANNED_TRIP_LENGTH))
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert len(await _trip_references(db_session, seed_data)) == 2
+
+
+async def test_create_trip_one_minute_overlap_is_refused(client: AsyncClient, seed_data, db_session):
+    departure = datetime.now(UTC)
+    await _create(client, seed_data, _empty_leg(seed_data, departure))
+
+    resp = await _create(
+        client, seed_data, _empty_leg(seed_data, departure + _PLANNED_TRIP_LENGTH - timedelta(minutes=1)),
+    )
+
+    assert resp.status_code == 409, resp.text
+
+
+@pytest.mark.parametrize("status", [TripStatus.CLOSED, TripStatus.CANCELLED])
+async def test_create_trip_ended_trip_does_not_block(client: AsyncClient, seed_data, db_session, status: TripStatus):
+    departure = datetime.now(UTC)
+    first = await _create(client, seed_data, _empty_leg(seed_data, departure))
+    trip = await db_session.get(Trip, uuid.UUID(first.json()["id"]))
+    trip.status = status
+    await db_session.flush()
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, departure))
+
+    assert resp.status_code == 201, resp.text
+
+
+async def test_create_trip_live_trip_past_its_arrival_blocks_until_closed(
+    client: AsyncClient, seed_data, db_session,
+):
+    """D5: a truck still on the road can't be booked, however late it is running."""
+    overran = datetime.now(UTC) - 2 * _PLANNED_TRIP_LENGTH
+    first = await _create(client, seed_data, _empty_leg(seed_data, overran))
+    trip = await db_session.get(Trip, uuid.UUID(first.json()["id"]))
+    trip.status = TripStatus.ACTIVE
+    await db_session.flush()
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, datetime.now(UTC) + timedelta(days=3)))
+
+    assert resp.status_code == 409, resp.text
+    clash = resp.json()["detail"]["clashes"][0]
+    assert clash["busy_until"] is None
+    assert clash["planned_until"] is not None
+    assert "still under way" in resp.json()["detail"]["message"]
+
+
+async def test_create_trip_unstarted_trip_tomorrow_does_not_block_today(
+    client: AsyncClient, seed_data, db_session,
+):
+    """D5: windows, not "one open trip per horse", so a week can be planned ahead."""
+    today = datetime.now(UTC)
+    await _create(client, seed_data, _empty_leg(seed_data, today + timedelta(days=1)))
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, today))
+
+    assert resp.status_code == 201, resp.text
+
+
+async def test_create_trip_unstarted_trip_past_its_window_does_not_block(
+    client: AsyncClient, seed_data, db_session,
+):
+    """A CREATED trip whose window has passed was never started; it frees its crew at its planned end."""
+    stale = datetime.now(UTC) - 2 * _PLANNED_TRIP_LENGTH
+    await _create(client, seed_data, _empty_leg(seed_data, stale))
+
+    resp = await _create(client, seed_data, _empty_leg(seed_data, datetime.now(UTC)))
+
+    assert resp.status_code == 201, resp.text
