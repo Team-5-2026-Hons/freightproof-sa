@@ -1312,7 +1312,10 @@
           "driver_updated",
           "precinct_created",
           "precinct_updated",
-          "audit_pack_issued"
+          "audit_pack_issued",
+          "exception_raised",
+          "exception_reviewed",
+          "trip_cancelled"
         ],
         "title": "BlockchainReceiptType",
         "type": "string"
@@ -3086,6 +3089,22 @@
             ],
             "title": "Supporting Artifact Id"
           },
+          "supporting_artifact_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 5,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supporting Artifact Ids"
+          },
           "trailer_id": {
             "anyOf": [
               {
@@ -3891,6 +3910,47 @@
         "title": "DurationStats",
         "type": "object"
       },
+      "EvidenceAnchorSummary": {
+        "description": "Where one anchorable action on an exception stands. `pending` and `failed` are debts\nthe retry sweep owes; only `anchored` carries a receipt.",
+        "properties": {
+          "anchor_status": {
+            "$ref": "#/components/schemas/AnchorStatus"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "receipt_type": {
+            "$ref": "#/components/schemas/BlockchainReceiptType"
+          }
+        },
+        "required": [
+          "event_id",
+          "receipt_type",
+          "anchor_status",
+          "occurred_at"
+        ],
+        "title": "EvidenceAnchorSummary",
+        "type": "object"
+      },
       "EvidenceArtifactRead": {
         "properties": {
           "artifact_type": {
@@ -4260,6 +4320,46 @@
         ],
         "title": "EvidenceRole",
         "type": "string"
+      },
+      "ExceptionArtifactSummary": {
+        "description": "One photo of an exception report. Deliberately has no storage key or bucket: bytes\nare reached only through the authorised artifact endpoints.",
+        "properties": {
+          "artifact_type": {
+            "$ref": "#/components/schemas/ArtifactType"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "file_hash": {
+            "title": "File Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "artifact_type",
+          "mime_type",
+          "file_hash",
+          "captured_at"
+        ],
+        "title": "ExceptionArtifactSummary",
+        "type": "object"
       },
       "ExceptionClaimRequest": {
         "description": "Claim an exception. take_over must be explicit: replacing a colleague's claim is a\ndeliberate act, so the default can only ever claim something nobody holds.",
@@ -9883,7 +9983,8 @@
           "driver_event",
           "phase_event",
           "precinct_event",
-          "audit_pack"
+          "audit_pack",
+          "evidence_event"
         ],
         "title": "SubjectType",
         "type": "string"
@@ -10995,6 +11096,14 @@
               }
             ]
           },
+          "anchor_events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceAnchorSummary"
+            },
+            "title": "Anchor Events",
+            "type": "array"
+          },
           "checkpoint_id": {
             "anyOf": [
               {
@@ -11207,6 +11316,14 @@
               }
             ],
             "title": "Supporting Artifact Id"
+          },
+          "supporting_artifacts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExceptionArtifactSummary"
+            },
+            "title": "Supporting Artifacts",
+            "type": "array"
           },
           "trip_id": {
             "format": "uuid",

@@ -19,7 +19,14 @@ from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import HederaServiceError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import SubjectType, VerifyStatus
-from app.orchestration.verification.errors import _UnsupportedPhasePayloadVersion
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
+from app.orchestration.verification.errors import _EvidenceMissing, _UnsupportedPhasePayloadVersion
+from app.orchestration.verification.evidence_payloads import (
+    EvidencePayloadState,
+    hash_payload as _hash_evidence_payload,
+    payload_with_live_artifact_hashes as _evidence_payload_with_live_hashes,
+    reconstruct_evidence_event,
+)
 from app.orchestration.verification.fleet_events import (
     _reconstruct_driver_event_payload,
     _reconstruct_precinct_event_payload,
@@ -89,12 +96,43 @@ async def _live_artifact_mismatch(
     return None
 
 
+async def _evidence_event_mismatch(
+    db: AsyncSession, event_id: uuid.UUID, state: EvidencePayloadState, receipt: BlockchainReceipt,
+) -> VerifyOutcome | None:
+    """The live rows must rebuild to the hash frozen at the action (not only to the receipt),
+    and every photo's stored bytes must still hash to what the payload commits.
+    None means both hold; otherwise the outcome verify_subject should return."""
+    event = await db.get(EvidenceAnchorEvent, event_id)
+    if event is None or _hash_evidence_payload(state.payload) != event.event_hash:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH, receipt=receipt, expected_hash=receipt.data_hash,
+        )
+    if not state.artifacts:
+        return None
+    try:
+        live_payload = await _evidence_payload_with_live_hashes(state)
+    except EvidenceObjectIntegrityError:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH, receipt=receipt, expected_hash=receipt.data_hash,
+        )
+    except EvidenceStorageUnavailableError:
+        return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
+    live_hash = _hash_evidence_payload(live_payload)
+    if live_hash != receipt.data_hash:
+        return VerifyOutcome(
+            status=VerifyStatus.DB_MISMATCH, receipt=receipt,
+            expected_hash=receipt.data_hash, current_hash=live_hash,
+        )
+    return None
+
+
 @dataclass(frozen=True)
 class _Rebuilt:
     """What a reconstructor hands back: the payload rebuilt from live rows, plus the phase
     event's evidence commitments (None for every other subject type)."""
     payload: dict[str, Any]
     phase_state: _PhasePayloadState | None = None
+    evidence_state: EvidencePayloadState | None = None
 
 
 # A reconstructor rebuilds one subject's anchored payload from the database. It returns None
@@ -146,6 +184,20 @@ async def _rebuild_phase_event(
     return _Rebuilt(state.payload, state)
 
 
+async def _rebuild_evidence_event(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    if await db.get(EvidenceAnchorEvent, subject_id) is None:
+        return None
+    state = await reconstruct_evidence_event(
+        db, event_id=subject_id, anchored_payload=receipt.payload_json,
+    )
+    # A receipt of one kind linked to an event of another must not verify as it.
+    if state.payload["event_type"] != receipt.receipt_type:
+        raise _UnsupportedPhasePayloadVersion("receipt type does not match the evidence event")
+    return _Rebuilt(state.payload, evidence_state=state)
+
+
 # The orchestration half of the subject policy: how each verifiable subject type is rebuilt.
 # The blockchain half (tenant visibility) is SUBJECT_VISIBILITY_QUERIES in
 # blockchain/subject_visibility.py; two registries and not one object because blockchain/
@@ -156,6 +208,7 @@ SUBJECT_RECONSTRUCTORS: Mapping[SubjectType, _Reconstructor] = MappingProxyType(
     SubjectType.DRIVER_EVENT: _rebuild_driver_event,
     SubjectType.PHASE_EVENT: _rebuild_phase_event,
     SubjectType.PRECINCT_EVENT: _rebuild_precinct_event,
+    SubjectType.EVIDENCE_EVENT: _rebuild_evidence_event,
 })
 
 # Subject types verify_subject does not rebuild: they report no_receipt even when a receipt
@@ -186,7 +239,7 @@ async def verify_subject(
         rebuilt = await reconstructor(db, subject_id, receipt)
     except _UnsupportedPhasePayloadVersion:
         return VerifyOutcome(status=VerifyStatus.ERROR, receipt=receipt)
-    except _PhaseEvidenceMissing:
+    except (_PhaseEvidenceMissing, _EvidenceMissing):
         return VerifyOutcome(
             status=VerifyStatus.DB_MISMATCH,
             receipt=receipt,
@@ -207,6 +260,12 @@ async def verify_subject(
 
     if phase_state is not None and phase_state.artifacts:
         mismatch = await _live_artifact_mismatch(phase_state, receipt)
+        if mismatch is not None:
+            return mismatch
+
+    evidence_state = rebuilt.evidence_state
+    if evidence_state is not None:
+        mismatch = await _evidence_event_mismatch(db, subject_id, evidence_state, receipt)
         if mismatch is not None:
             return mismatch
 
@@ -238,7 +297,9 @@ async def verify_subject(
     return VerifyOutcome(
         status=VerifyStatus.VERIFIED,
         receipt=receipt,
-        evidence_verified=phase_state is not None and bool(phase_state.artifacts),
+        evidence_verified=any(
+            state is not None and bool(state.artifacts) for state in (phase_state, evidence_state)
+        ),
     )
 
 

@@ -30,6 +30,7 @@ from app.db.models.enums import (
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.models.receiver_verification import IdvsQuotaLedger, ReceiverIdentityVerification
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.db.models.trips import Trip
 from app.integrations.idvs import (
     IdvsClient,
@@ -261,7 +262,7 @@ async def raise_verification_exception(
     )
 
     try:
-        db.add(TripException(
+        await register_exception(db, TripException(
             trip_id=trip.id,
             phase_event_id=phase_event_id,
             trip_stop_id=trip_stop_id,

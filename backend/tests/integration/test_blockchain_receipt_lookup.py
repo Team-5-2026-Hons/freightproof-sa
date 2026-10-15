@@ -17,16 +17,22 @@ from app.blockchain.anchor_service import lookup_receipts
 from app.db.models.audit_packs import AuditPack
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
+    AnchorStatus,
     BlockchainReceiptType,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
     OrganizationType,
     PhaseType,
     SubjectType,
     VehicleType,
 )
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -420,6 +426,19 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
         )
         db_session.add_all([phase, vehicle_event, driver_event, precinct_event, audit_pack])
         await db_session.flush()
+        raised = TripException(
+            trip_id=trip.id, exception_type=ExceptionType.PANIC_BUTTON, source=ExceptionSource.DRIVER,
+            severity=ExceptionSeverity.CRITICAL, description="x",
+        )
+        db_session.add(raised)
+        await db_session.flush()
+        evidence_event = EvidenceAnchorEvent(
+            trip_id=trip.id, exception_id=raised.id, receipt_type=BlockchainReceiptType.EXCEPTION_RAISED,
+            occurred_at=now, payload_version=1, payload_json={}, event_hash="0" * 64,
+            anchor_status=AnchorStatus.PENDING,
+        )
+        db_session.add(evidence_event)
+        await db_session.flush()
 
         subjects = [
             (SubjectType.TRIP, trip.id, BlockchainReceiptType.JOURNEY_LOCK),
@@ -442,6 +461,7 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
             ),
             (SubjectType.PHASE_EVENT, phase.id, BlockchainReceiptType.PICKUP),
             (SubjectType.AUDIT_PACK, audit_pack.id, BlockchainReceiptType.AUDIT_PACK_ISSUED),
+            (SubjectType.EVIDENCE_EVENT, evidence_event.id, BlockchainReceiptType.EXCEPTION_RAISED),
         ]
         for subject_type, subject_id, receipt_type in subjects:
             receipt = _receipt(

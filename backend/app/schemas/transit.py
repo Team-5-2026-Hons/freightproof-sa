@@ -8,6 +8,9 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import (
+    AnchorStatus,
+    ArtifactType,
+    BlockchainReceiptType,
     DispatcherReviewOutcome,
     ExceptionContactMethod,
     ExceptionReviewOutcome,
@@ -18,7 +21,7 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
-from app.core.constants import MAX_BATCH_REVIEW_SIZE
+from app.core.constants import MAX_BATCH_REVIEW_SIZE, MAX_EXCEPTION_PHOTOS
 from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.text import CheckpointTypeStr, FreeText, RequiredFreeText
@@ -194,7 +197,10 @@ class DriverExceptionCreateBody(BaseModel):
     # evidence, and characters that make it render differently from what is stored are
     # exactly the tampering this platform exists to make impossible.
     description: RequiredFreeText
+    # The report's photos. `supporting_artifact_id` is the legacy single-photo field and is
+    # kept so installed apps keep working; see photo_ids for how the two combine.
     supporting_artifact_id: Optional[UUID] = None
+    supporting_artifact_ids: Optional[list[UUID]] = Field(default=None, max_length=MAX_EXCEPTION_PHOTOS)
     # The phase the driver was ON when this happened, resolved client-side from the
     # trip's plan at the moment of the event (driver-pwa lib/phase/derive.ts
     # contextPhaseEventId). Client-supplied rather than server-derived because the app
@@ -253,6 +259,30 @@ class DriverExceptionCreateBody(BaseModel):
     def validate_gps_pair(self) -> "DriverExceptionCreateBody":
         _validate_gps_pair(self.gps_lat, self.gps_lng)
         return self
+
+    @model_validator(mode="after")
+    def validate_photo_fields(self) -> "DriverExceptionCreateBody":
+        """The list is the truth; the legacy field may only agree with it, never contradict it.
+
+        Both given: the legacy field must equal the list's first photo (the one the row keeps
+        in supporting_artifact_id). An empty list alongside a photo is a contradiction, not
+        "no photos", because one of the two fields is wrong and we cannot tell which.
+        """
+        ids = self.supporting_artifact_ids
+        if ids is not None and len(set(ids)) != len(ids):
+            raise ValueError("supporting_artifact_ids must not contain duplicates")
+        if ids is not None and self.supporting_artifact_id is not None and (
+            not ids or ids[0] != self.supporting_artifact_id
+        ):
+            raise ValueError("supporting_artifact_id must equal the first of supporting_artifact_ids")
+        return self
+
+    @property
+    def photo_ids(self) -> list[UUID]:
+        """Every photo of this report, in order."""
+        if self.supporting_artifact_ids is not None:
+            return list(self.supporting_artifact_ids)
+        return [] if self.supporting_artifact_id is None else [self.supporting_artifact_id]
 
 
 class TripExceptionReviewRequest(BaseModel):
@@ -397,6 +427,33 @@ class TripExceptionDetail(TripExceptionListItem):
     supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
 
 
+class ExceptionArtifactSummary(BaseModel):
+    """One photo of an exception report. Deliberately has no storage key or bucket: bytes
+    are reached only through the authorised artifact endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    position: int
+    artifact_type: ArtifactType
+    mime_type: str
+    file_hash: str
+    captured_at: datetime
+
+
+class EvidenceAnchorSummary(BaseModel):
+    """Where one anchorable action on an exception stands. `pending` and `failed` are debts
+    the retry sweep owes; only `anchored` carries a receipt."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    event_id: UUID
+    receipt_type: BlockchainReceiptType
+    anchor_status: AnchorStatus
+    receipt_id: Optional[UUID] = None
+    occurred_at: datetime
+
+
 class TripExceptionRead(TripExceptionBase):
     id: UUID
     review_status: ExceptionReviewStatus
@@ -421,6 +478,11 @@ class TripExceptionRead(TripExceptionBase):
     # The vehicle a mechanical exception was recorded against — see
     # TripException.vehicle_id. None for every other type and for unattributed breakdowns.
     vehicle_id: Optional[UUID] = None
+    # The report's photos in order, and the anchor events its actions have produced. Both are
+    # filled by the services that build the response (orchestration/evidence_anchors/reads.py);
+    # a bare ORM object validates with neither.
+    supporting_artifacts: list[ExceptionArtifactSummary] = []
+    anchor_events: list[EvidenceAnchorSummary] = []
     # Denormalised off the Trip the exception belongs to. The dispatcher's queue spans
     # every trip in the organisation and each row has to say WHICH trip, so without this
     # both exception screens would have to fetch the trip list purely to resolve

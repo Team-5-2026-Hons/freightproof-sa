@@ -124,3 +124,27 @@ async def test_downgrade_restores_the_previous_state(supabase_defaults: AsyncSes
     assert not await _rls_enabled(db, table)
     assert ("anon", "SELECT") in await _api_privileges(db, table)
     assert ("anon", "SELECT") in await _api_privileges(db, _PROBE_TABLE)
+
+
+# ── FP-290: evidence-anchor tables (2026_10_14_ciaran_evidence_anchors) ─────────
+
+_EVIDENCE_ANCHORS_MIGRATION = _load_migration(
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_14_ciaran_evidence_anchors.py",
+    "ciaran_evidence_anchors",
+)
+
+
+@pytest.mark.parametrize("table", ["exception_artifacts", "evidence_anchor_events"])
+async def test_evidence_anchor_tables_are_locked_down(supabase_defaults: AsyncSession, table: str) -> None:
+    db = supabase_defaults
+    assert await _api_privileges(db, table), "fixture precondition: defaults grant the API roles"
+
+    await _run(db, _EVIDENCE_ANCHORS_MIGRATION.LOCKDOWN_STATEMENTS)
+
+    assert await _rls_enabled(db, table)
+    assert await _api_privileges(db, table) == set()
+
+
+def test_evidence_anchor_migration_locks_down_exactly_its_two_tables() -> None:
+    assert set(_EVIDENCE_ANCHORS_MIGRATION.NEW_TABLES) == {"exception_artifacts", "evidence_anchor_events"}
