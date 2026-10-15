@@ -38,6 +38,10 @@ FLEET_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="fl
 # Blast-radius cap: coordinates/radius decide the FP-68 geofence verdict on every handshake.
 PRECINCT_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="precinct_mutation")
 
+# An admin saving cost rates by hand; well above any real edit rate, low enough to stop a
+# script hammering a row every figure on the Cost tab depends on.
+COST_PROFILE_MUTATION = RateLimit(max_requests=30, window_seconds=_ONE_MINUTE, name="cost_profile_mutation")
+
 # Rotating-QR issuance (FP-237); sized to absorb a reconnect storm without a wedged client minting tokens in a loop.
 HANDOVER_ISSUE = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="handover_issue")
 

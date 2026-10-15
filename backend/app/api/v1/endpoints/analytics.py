@@ -21,6 +21,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.cost_profile import router as cost_profile_router
 from app.api.v1.endpoints.fleet_analytics import router as fleet_router
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
@@ -155,3 +156,5 @@ async def list_facility_analytics_endpoint(
 # The fleet-wide page's routes (/analytics/fleet/*) live in their own module but mount here,
 # so the shared main.py needs no change.
 router.include_router(fleet_router)
+# The Cost tab's rates (/analytics/cost-profile), mounted the same way (FP-294).
+router.include_router(cost_profile_router)

@@ -2305,6 +2305,304 @@
         "title": "ConsignmentRecord",
         "type": "object"
       },
+      "CostBucket": {
+        "description": "One week, month or year, by the first attested departure (as every fleet chart).",
+        "properties": {
+          "delay_cost": {
+            "title": "Delay Cost",
+            "type": "number"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "number"
+          },
+          "fixed": {
+            "title": "Fixed",
+            "type": "number"
+          },
+          "fuel": {
+            "title": "Fuel",
+            "type": "number"
+          },
+          "is_partial": {
+            "title": "Is Partial",
+            "type": "boolean"
+          },
+          "running": {
+            "title": "Running",
+            "type": "number"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "value_reviewed": {
+            "title": "Value Reviewed",
+            "type": "number"
+          },
+          "value_under_review": {
+            "title": "Value Under Review",
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "is_partial",
+          "fuel",
+          "running",
+          "driver",
+          "fixed",
+          "delay_cost",
+          "value_under_review",
+          "value_reviewed"
+        ],
+        "title": "CostBucket",
+        "type": "object"
+      },
+      "CostProfileRead": {
+        "description": "The rates in force for the caller's organisation, and where they came from.",
+        "properties": {
+          "delay_cost_per_hour": {
+            "title": "Delay Cost Per Hour",
+            "type": "number"
+          },
+          "diesel_price_per_litre": {
+            "title": "Diesel Price Per Litre",
+            "type": "number"
+          },
+          "driver_cost_per_hour": {
+            "title": "Driver Cost Per Hour",
+            "type": "number"
+          },
+          "fixed_cost_per_trip": {
+            "title": "Fixed Cost Per Trip",
+            "type": "number"
+          },
+          "fuel_per_km": {
+            "title": "Fuel Per Km",
+            "type": "number"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "litres_per_100km": {
+            "title": "Litres Per 100Km",
+            "type": "number"
+          },
+          "road_factor": {
+            "title": "Road Factor",
+            "type": "number"
+          },
+          "running_cost_per_km": {
+            "title": "Running Cost Per Km",
+            "type": "number"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name"
+          }
+        },
+        "required": [
+          "diesel_price_per_litre",
+          "litres_per_100km",
+          "fuel_per_km",
+          "running_cost_per_km",
+          "driver_cost_per_hour",
+          "delay_cost_per_hour",
+          "fixed_cost_per_trip",
+          "road_factor",
+          "is_default",
+          "updated_at",
+          "updated_by_name"
+        ],
+        "title": "CostProfileRead",
+        "type": "object"
+      },
+      "CostProfileUpdate": {
+        "additionalProperties": false,
+        "description": "An admin's change to the rates. Any field left out keeps its current value.",
+        "properties": {
+          "delay_cost_per_hour": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delay Cost Per Hour"
+          },
+          "diesel_price_per_litre": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diesel Price Per Litre"
+          },
+          "driver_cost_per_hour": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Cost Per Hour"
+          },
+          "fixed_cost_per_trip": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Cost Per Trip"
+          },
+          "litres_per_100km": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 200.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Litres Per 100Km"
+          },
+          "road_factor": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Road Factor"
+          },
+          "running_cost_per_km": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Cost Per Km"
+          }
+        },
+        "title": "CostProfileUpdate",
+        "type": "object"
+      },
+      "CostResponse": {
+        "properties": {
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/CostBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "delay": {
+            "$ref": "#/components/schemas/DelayCost"
+          },
+          "exposure": {
+            "$ref": "#/components/schemas/ValueExposed"
+          },
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/LaneCost"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "operating": {
+            "$ref": "#/components/schemas/OperatingCost"
+          },
+          "period": {
+            "$ref": "#/components/schemas/PeriodEcho"
+          },
+          "rates": {
+            "$ref": "#/components/schemas/CostProfileRead"
+          }
+        },
+        "required": [
+          "period",
+          "rates",
+          "operating",
+          "delay",
+          "exposure",
+          "buckets",
+          "lanes"
+        ],
+        "title": "CostResponse",
+        "type": "object"
+      },
       "CoverageGap": {
         "additionalProperties": false,
         "properties": {
@@ -2474,6 +2772,40 @@
         ],
         "title": "DayBlock",
         "type": "string"
+      },
+      "DelayCost": {
+        "description": "Hours late at final arrival on trips that had a problem, at the delay rate.",
+        "properties": {
+          "cost": {
+            "title": "Cost",
+            "type": "number"
+          },
+          "late_hours": {
+            "title": "Late Hours",
+            "type": "number"
+          },
+          "late_problem_trips": {
+            "title": "Late Problem Trips",
+            "type": "integer"
+          },
+          "lateness_unknown": {
+            "title": "Lateness Unknown",
+            "type": "integer"
+          },
+          "problem_trips": {
+            "title": "Problem Trips",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cost",
+          "late_hours",
+          "problem_trips",
+          "late_problem_trips",
+          "lateness_unknown"
+        ],
+        "title": "DelayCost",
+        "type": "object"
       },
       "DeliveryStopManifest": {
         "properties": {
@@ -5735,6 +6067,92 @@
         "title": "IncidentsResponse",
         "type": "object"
       },
+      "LaneCost": {
+        "properties": {
+          "delay_cost": {
+            "title": "Delay Cost",
+            "type": "number"
+          },
+          "destination_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Name"
+          },
+          "destination_precinct_id": {
+            "format": "uuid",
+            "title": "Destination Precinct Id",
+            "type": "string"
+          },
+          "distance_source": {
+            "enum": [
+              "road",
+              "estimate",
+              "mixed"
+            ],
+            "title": "Distance Source",
+            "type": "string"
+          },
+          "operating_per_trip": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Per Trip"
+          },
+          "operating_total": {
+            "title": "Operating Total",
+            "type": "number"
+          },
+          "origin_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Name"
+          },
+          "origin_precinct_id": {
+            "format": "uuid",
+            "title": "Origin Precinct Id",
+            "type": "string"
+          },
+          "trip_count": {
+            "title": "Trip Count",
+            "type": "integer"
+          },
+          "value_exposed": {
+            "title": "Value Exposed",
+            "type": "number"
+          }
+        },
+        "required": [
+          "origin_precinct_id",
+          "origin_name",
+          "destination_precinct_id",
+          "destination_name",
+          "trip_count",
+          "operating_total",
+          "operating_per_trip",
+          "delay_cost",
+          "value_exposed",
+          "distance_source"
+        ],
+        "title": "LaneCost",
+        "type": "object"
+      },
       "LaneMetricsResponse": {
         "description": "One origin -> destination lane, with both precinct names.",
         "properties": {
@@ -6483,6 +6901,65 @@
           "plan_spread"
         ],
         "title": "OnTimeResponse",
+        "type": "object"
+      },
+      "OperatingCost": {
+        "description": "Estimated operating cost of the period's costed trips, by what drives it.",
+        "properties": {
+          "distance_km": {
+            "title": "Distance Km",
+            "type": "number"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "number"
+          },
+          "fixed": {
+            "title": "Fixed",
+            "type": "number"
+          },
+          "fuel": {
+            "title": "Fuel",
+            "type": "number"
+          },
+          "legs_estimated": {
+            "title": "Legs Estimated",
+            "type": "integer"
+          },
+          "legs_routed": {
+            "title": "Legs Routed",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "trips_costed": {
+            "title": "Trips Costed",
+            "type": "integer"
+          },
+          "trips_not_costed": {
+            "title": "Trips Not Costed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fuel",
+          "running",
+          "driver",
+          "fixed",
+          "total",
+          "trips_costed",
+          "trips_not_costed",
+          "distance_km",
+          "legs_routed",
+          "legs_estimated"
+        ],
+        "title": "OperatingCost",
         "type": "object"
       },
       "OverridePhaseRequest": {
@@ -12518,6 +12995,45 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "ValueExposed": {
+        "description": "Declared waybill value on trips with a theft signal: real data, not an estimate.",
+        "properties": {
+          "consignments_without_value": {
+            "title": "Consignments Without Value",
+            "type": "integer"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "number"
+          },
+          "total": {
+            "title": "Total",
+            "type": "number"
+          },
+          "trips": {
+            "title": "Trips",
+            "type": "integer"
+          },
+          "trips_without_consignments": {
+            "title": "Trips Without Consignments",
+            "type": "integer"
+          },
+          "under_review": {
+            "title": "Under Review",
+            "type": "number"
+          }
+        },
+        "required": [
+          "under_review",
+          "reviewed",
+          "total",
+          "trips",
+          "consignments_without_value",
+          "trips_without_consignments"
+        ],
+        "title": "ValueExposed",
+        "type": "object"
+      },
       "VehicleCreateBody": {
         "description": "Fields the dispatcher submits when registering a new vehicle.\n\norganization_id is injected from the dispatcher's JWT — not accepted from the client.",
         "properties": {
@@ -13420,6 +13936,78 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/analytics/cost-profile": {
+      "get": {
+        "operationId": "get_cost_profile_endpoint_api_v1_analytics_cost_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostProfileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The cost rates the organisation's cost figures use",
+        "tags": [
+          "analytics",
+          "analytics"
+        ]
+      },
+      "patch": {
+        "operationId": "update_cost_profile_endpoint_api_v1_analytics_cost_profile_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostProfileUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostProfileRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change the organisation's cost rates (admin dispatcher only)",
+        "tags": [
+          "analytics",
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/analytics/drivers": {
       "get": {
         "operationId": "list_driver_analytics_endpoint_api_v1_analytics_drivers_get",
@@ -13612,6 +14200,80 @@
           }
         ],
         "summary": "Closed trips by departure date, and cancellations, per week/month/year",
+        "tags": [
+          "analytics",
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/fleet/cost": {
+      "get": {
+        "operationId": "get_fleet_cost_endpoint_api_v1_analytics_fleet_cost_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "grain",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Grain"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Estimated operating and delay cost, and declared cargo value on theft-signal trips (FP-294)",
         "tags": [
           "analytics",
           "analytics"
