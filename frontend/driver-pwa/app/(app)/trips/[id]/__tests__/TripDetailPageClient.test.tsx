@@ -8,6 +8,10 @@ const mockPush = vi.fn()
 // Reassigned per-test so both the found and not-found id branches can be exercised.
 let mockId = String(TRIP_0035_ID)
 
+// The trip page now keeps the tab bar (decision D3) and resolves place names from the
+// driver's trip list; neither is under test here.
+vi.mock('@/components/layout/BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigation" /> }))
+vi.mock('@/lib/hooks/useMyTrips', () => ({ useMyTrips: () => ({ trips: [], isLoading: false, loadError: null, reload: () => {} }) }))
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: mockId }),
   useRouter: () => ({ push: mockPush, back: vi.fn() }),
@@ -24,8 +28,9 @@ describe('trips/[id] TripDetailPageClient (mock trip detail)', () => {
 
     render(<TripDetailPageClient />)
 
-    expect(screen.getByRole('heading', { name: 'TRP-2026-0035' })).toBeInTheDocument()
-    expect(screen.getByText('Phases')).toBeInTheDocument()
+    expect(screen.getByText('TRP-2026-0035')).toBeInTheDocument()
+    // A closed trip opens as its record, whose timeline lists every phase.
+    expect(screen.getByRole('list', { name: 'Trip phases' })).toBeInTheDocument()
   })
 
   it('shows "Trip not found" for an id with no matching mock trip', () => {

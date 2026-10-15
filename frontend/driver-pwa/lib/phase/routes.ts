@@ -13,8 +13,11 @@ import { ROUTES } from '@/lib/constants/routes'
 import { actionablePhase, currentPhase } from './derive'
 
 /** The canonical URL for a given phase type's step — the one place a step URL is built. */
+/** Every phase-step URL starts with this — the back stack uses it to skip finished steps. */
+export const PHASE_STEP_PREFIX = '/trip/phase/'
+
 export function phaseStepRoute(phaseType: PhaseType, slug: string): string {
-  return `/trip/phase/${phaseType}/step/${slug}`
+  return `${PHASE_STEP_PREFIX}${phaseType}/step/${slug}`
 }
 
 // Empty-recipe phases (e.g. trip_creation) have no step to land on, so the search keeps

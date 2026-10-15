@@ -48,14 +48,17 @@ describe('LocationCheckModal', () => {
   it('explains a measured mismatch and requires a reason before continuing with an exception', () => {
     const { onRetry, onContinue } = renderModal({ assessment: measuredMismatch })
 
-    expect(screen.getByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    expect(screen.getByText('Phone to truck')).toBeInTheDocument()
+    expect(screen.getByText('320 m apart')).toBeInTheDocument()
+    expect(screen.getByText('Allowed')).toBeInTheDocument()
+    expect(screen.getByText('100 m')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(screen.getByText('Please provide a reason before continuing.')).toBeInTheDocument()
     expect(onContinue).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is parked at the gate.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
 
     expect(onContinue).toHaveBeenCalledWith('Truck is parked at the gate.')
     expect(onRetry).toHaveBeenCalledOnce()
@@ -67,7 +70,7 @@ describe('LocationCheckModal', () => {
     })
 
     expect(screen.getByText('Truck was recorded outside the expected precinct.')).toBeInTheDocument()
-    expect(screen.queryByText(/apart\. Limit:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Phone to truck')).not.toBeInTheDocument()
   })
 
   it('states the driver-outside-precinct warning distinctly from the truck one', () => {
@@ -90,10 +93,10 @@ describe('LocationCheckModal', () => {
     expect(screen.getByText('Truck was recorded outside the expected precinct.')).toBeInTheDocument()
     expect(screen.getByText('Your phone was recorded outside the expected precinct.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(onContinue).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Confirmed with the guard.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(onContinue).toHaveBeenCalledWith('Confirmed with the guard.')
   })
 

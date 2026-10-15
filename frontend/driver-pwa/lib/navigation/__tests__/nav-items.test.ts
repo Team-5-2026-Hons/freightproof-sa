@@ -4,7 +4,7 @@ import { isNavItemActive, NAV_ITEMS } from '../nav-items'
 import { ROUTES } from '@/lib/constants/routes'
 
 const trips = NAV_ITEMS.find((item) => item.label === 'Trips')!
-const settings = NAV_ITEMS.find((item) => item.label === 'Settings')!
+const profile = NAV_ITEMS.find((item) => item.label === 'Profile')!
 
 describe('isNavItemActive', () => {
   it('matches Home only on an exact "/" — Home has no matchPrefixes to fall back on', () => {
@@ -22,12 +22,20 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive('/trip/handshake/2/step/x', trips.href, trips.matchPrefixes)).toBe(true)
   })
 
-  it('treats any nested "/settings/..." path as Settings-active', () => {
-    expect(isNavItemActive('/settings/foo', settings.href, settings.matchPrefixes)).toBe(true)
+  it('test_profile_is_active_on_profile_and_on_the_old_settings_path', () => {
+    // /settings now redirects to /profile; while it does, the Profile tab stays lit.
+    expect(isNavItemActive('/profile', profile.href, profile.matchPrefixes)).toBe(true)
+    expect(isNavItemActive('/settings', profile.href, profile.matchPrefixes)).toBe(true)
   })
 
-  it('does not cross-match — a trips path is not Settings-active and vice versa', () => {
-    expect(isNavItemActive('/trips', settings.href, settings.matchPrefixes)).toBe(false)
-    expect(isNavItemActive('/settings', trips.href, trips.matchPrefixes)).toBe(false)
+  it('does not cross-match — a trips path is not Profile-active and vice versa', () => {
+    expect(isNavItemActive('/trips', profile.href, profile.matchPrefixes)).toBe(false)
+    expect(isNavItemActive('/profile', trips.href, trips.matchPrefixes)).toBe(false)
+  })
+
+  it('test_has_exactly_three_tabs_home_trips_profile', () => {
+    // Settings merged into Profile (Tim, 14 Oct); the separate profile button is gone.
+    expect(NAV_ITEMS.map((item) => item.label)).toEqual(['Home', 'Trips', 'Profile'])
+    expect(profile.href).toBe(ROUTES.profile)
   })
 })

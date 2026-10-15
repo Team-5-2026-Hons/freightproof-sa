@@ -32,21 +32,31 @@
     /* Neutrals. Elevation climbs from `surface` (the page) up through the container
        ramp; `container-lowest` is this app's raised-card ground (see components/ui/Card
        `default`), which is why the dark ramp below climbs rather than descends. */
-    --fp-surface:                    252 248 249;
+    /* Pure white page (overhaul, Oct 2026). The old ground was a pink-cast #fcf8f9 that
+       read as dated; the neutral ramp above it is now a true grey for the same reason. */
+    --fp-surface:                    255 255 255;
     --fp-surface-container-lowest:   255 255 255;
-    --fp-surface-container-low:      246 243 244;
-    --fp-surface-container:          240 237 238;
-    --fp-surface-container-high:     229 226 227;
-    --fp-surface-container-highest:  229 226 227;
-    --fp-surface-dim:                220 217 218;
-    --fp-surface-on:                  27  27  28;
-    --fp-surface-on-variant:          70  70  79;
+    --fp-surface-container-low:      243 243 243;
+    --fp-surface-container:          238 238 240;
+    --fp-surface-container-high:     229 229 234;
+    --fp-surface-container-highest:  222 222 226;
+    --fp-surface-dim:                214 214 218;
+    --fp-surface-on:                  20  20  20;
+    /* 5.3:1 on white, 4.8:1 on --fp-fill: lighter than before so labels sit visibly
+       under the values they name, still AA everywhere they appear. */
+    --fp-surface-on-variant:         107 107 112;
+
+    /* Flat grouping, not cards: the grey pill/tile/field face, and the inset row rule. */
+    --fp-fill:                       243 243 243;
+    --fp-hairline:                   235 235 235;
     --fp-outline:                    119 118 128;
-    --fp-outline-variant:            199 198 202;
-    --fp-canvas:                      10  10  12;
+    /* 3.0:1 on --fp-surface: the edge is all that marks out a photo tile or an option row,
+       and drivers read this screen in Highveld sun, where a 1.6:1 hairline vanishes. */
+    --fp-outline-variant:            145 144 153;
+    --fp-canvas:                     10  10  12;
 
     /* Ink — the back pill, the current-phase card, the identifier borders. */
-    --fp-primary:                     27  27  28;
+    --fp-primary:                     20  20  20;
     --fp-primary-container:           48  48  49;
     --fp-primary-on:                 255 255 255;
     --fp-primary-on-container:       115 115 116;
@@ -77,6 +87,18 @@
     --fp-chain-container:            151 240 255;
     --fp-chain-on:                   255 255 255;
     --fp-chain-on-container:           0  31  36;
+
+    /* Status-banner tints: a pale ground with a dark ink of the same hue, so a banner
+       reads as one calm surface rather than a coloured box shouting its tone. The
+       existing *-container tones are saturated chip fills and stay as they are. */
+    --fp-success-tint:               228 244 236;
+    --fp-success-ink:                 11  59  42;
+    /* "Waiting / under review / offline" — amber, never red: none of these are errors. */
+    --fp-attention:                  138  90   0;
+    --fp-attention-tint:             255 244 224;
+    --fp-attention-ink:               43  28   0;
+    --fp-error-tint:                 253 236 236;
+    --fp-chain-tint:                 227 244 246;
   }
 
   /*
@@ -109,8 +131,8 @@
     --fp-surface-on-variant:         180 178 187;
     --fp-outline:                    145 143 153;
     /* Lighter than an M3 dark outline-variant on purpose: this token is used at 10–25%
-       opacity for every table frame and row divider in the app (PhaseProgressBar,
-       TripTable), and the spec value at those alphas is invisible on a dark ground. */
+       opacity for frames and row dividers across the app, and the spec value at
+       those alphas is invisible on a dark ground. */
     --fp-outline-variant:            113 112 122;
     --fp-canvas:                      10  10  12;
 
@@ -151,6 +173,37 @@
     --fp-chain-container:              0  79  88;
     --fp-chain-on:                     0  54  61;
     --fp-chain-on-container:         151 240 255;
+
+    /* New tokens only — no existing dark value changes, which is what keeps the always-
+       dark sign-in frame (components/auth/AuthFrame) pixel-identical (Tim, 14 Oct). */
+    --fp-fill:                        38  38  44;
+    --fp-hairline:                    52  52  58;
+    --fp-success-tint:                 0  56  40;
+    --fp-success-ink:                183 240 211;
+    --fp-attention:                  240 184  92;
+    --fp-attention-tint:              64  43   6;
+    --fp-attention-ink:              255 226 182;
+    --fp-error-tint:                  72  14  16;
+    --fp-chain-tint:                   0  52  58;
+  }
+
+  /*
+   * Increase Contrast (iOS Settings › Accessibility › Display & Text Size). Hairlines and
+   * secondary text are the app's quietest elements — dividers at 25% outline-variant,
+   * captions in on-variant — and the first to disappear for a driver who has asked for
+   * more contrast. Because every class reads these variables, strengthening the two
+   * tokens strengthens every divider, border and secondary label at once: hairlines take
+   * the full outline tone, secondary text moves halfway toward primary text.
+   */
+  @media (prefers-contrast: more) {
+    :root {
+      --fp-outline-variant:     119 118 128;
+      --fp-surface-on-variant:   45  45  52;
+    }
+    .dark {
+      --fp-outline-variant:     145 143 153;
+      --fp-surface-on-variant:  210 208 216;
+    }
   }
 
   /*
@@ -164,23 +217,23 @@
    * each other by eye, not by the build. Dark values mirror the .dark block above.
    */
   :root {
-    --background: 345 40% 98%;      /* surface #fcf8f9 */
-    --foreground: 240 2% 11%;       /* surface-on #1b1b1c */
+    --background: 0 0% 100%;        /* surface #ffffff */
+    --foreground: 0 0% 8%;          /* surface-on #141414 */
 
     --card: 0 0% 100%;              /* surface-container-lowest #ffffff */
-    --card-foreground: 240 2% 11%;
+    --card-foreground: 0 0% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 240 2% 11%;
+    --popover-foreground: 0 0% 8%;
 
-    --primary: 240 2% 11%;          /* #1b1b1c */
+    --primary: 0 0% 8%;             /* #141414 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 340 14% 96%;       /* surface-container-low #f6f3f4 */
-    --secondary-foreground: 240 2% 11%;
+    --secondary: 0 0% 95%;          /* surface-container-low #f3f3f3 */
+    --secondary-foreground: 0 0% 8%;
 
-    --muted: 340 14% 96%;           /* #f6f3f4 */
-    --muted-foreground: 240 6% 29%; /* surface-on-variant #46464f */
+    --muted: 0 0% 95%;              /* #f3f3f3 */
+    --muted-foreground: 240 2% 43%; /* surface-on-variant #6b6b70 */
 
     --accent: 217 100% 42%;         /* secondary blue #0051d5 */
     --accent-foreground: 0 0% 100%;
@@ -188,8 +241,8 @@
     --destructive: 0 75% 42%;       /* error #ba1a1a */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 255 4% 78%;           /* outline-variant #c7c6ca */
-    --input: 255 4% 78%;
+    --border: 247 4% 58%;           /* outline-variant #919099 */
+    --input: 247 4% 58%;
     --ring: 217 100% 42%;           /* #0051d5 */
 
     --radius: 14px;
@@ -231,26 +284,53 @@
      blur, in either theme — the alpha is the whole point of the effect and has to
      survive the swap, hence rgb(channels / alpha) rather than a var holding a
      finished colour. */
+  /* The one material for floating chrome (sticky headers now; the tab pill and sheets as
+     they are rebuilt). Saturation lifts the colour of whatever scrolls underneath so the
+     bar reads as a pane of glass over the content rather than a grey fog on top of it —
+     the same recipe as iOS's bar material. */
   .glass-nav {
-    background: rgb(var(--fp-surface) / 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgb(var(--fp-surface) / 0.72);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+
+  /* Reduce Transparency: the driver has asked for solid surfaces, so the bar goes opaque
+     and stops sampling the content behind it. */
+  @media (prefers-reduced-transparency: reduce) {
+    .glass-nav {
+      background: rgb(var(--fp-surface));
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* Increase Contrast: a near-solid bar plus a defined edge, so the chrome/content
+     boundary never depends on a blur the driver may not be able to see. */
+  @media (prefers-contrast: more) {
+    .glass-nav {
+      background: rgb(var(--fp-surface) / 0.97);
+      box-shadow: 0 1px 0 rgb(var(--fp-outline));
+    }
   }
 
   .tracking-industrial {
     letter-spacing: 0.05em;
   }
 
-  /* Android safe-area padding for bottom bar and panic button */
+  /* Bottom clearance for the tab pill, panic button and pinned action stacks. max(), not
+     env()'s fallback argument: the fallback only applies when the variable is UNDEFINED,
+     and every current browser and WebView defines it — as 0 wherever there is no home
+     indicator (Android gesture bar, desktop, browser PWA) — so `env(…, 20px)` resolved to
+     0 and the controls sat flush on the screen edge. iPhone's 34pt inset still wins. */
   .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 20px);
+    padding-bottom: max(env(safe-area-inset-bottom), 16px);
   }
 
   /* iOS/Android status-bar clearance for top chrome. viewportFit:'cover'
      (app/layout.tsx) is what makes env(safe-area-inset-top) resolve to a real value —
      and it is also why a sticky header at top:0 otherwise draws UNDERNEATH the iOS
      notch/Dynamic Island, putting the back button on top of the clock. Deliberately the
-     raw inset with no padding of its own (unlike .pb-safe's 20px fallback, which exists
+     raw inset with no padding of its own (unlike .pb-safe's 16px floor, which exists
      because a gesture bar needs clearance even when the inset reads 0): callers keep
      owning their own visual padding on an inner element, so two padding-top declarations
      never race on one node. */
@@ -284,6 +364,21 @@
     overflow-x: hidden;
   }
 
+  /* Dynamic Type. `-apple-system-body` is WebKit's handle on the iOS Body text style, so
+     binding the root font to it makes 1rem follow the driver's Text Size setting — and,
+     because every size and most spacing in this app is rem-based, the layout scales with
+     it the way a native screen does. That is also what makes the viewport zoom lock in
+     app/layout.tsx acceptable: enlargement comes from the system setting instead.
+     Gated to touch WebKit (-webkit-touch-callout exists only on iOS) because desktop
+     Safari maps the same keyword to the 13px macOS body size. The shorthand resets
+     line-height, so the 1.5 Tailwind's preflight set is restored after it. */
+  @supports (font: -apple-system-body) and (-webkit-touch-callout: none) {
+    html {
+      font: -apple-system-body;
+      line-height: 1.5;
+    }
+  }
+
   body {
     max-width: 100vw;
   }
@@ -302,4 +397,14 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Welcome-screen backdrop: a Karoo dusk — deep blue sky to an amber horizon over dark
+   ground. It stands in until a hero photo is set (WELCOME_IMAGE_SRC in app/login/page.tsx)
+   and stays underneath it after, so a slow image load fades in over sky, never a white
+   box. Raw colours on purpose: this is artwork, not UI, and must not shift with theme. */
+.auth-dusk {
+  background:
+    radial-gradient(120% 60% at 50% 62%, rgb(214 140 72 / 0.55), transparent 60%),
+    linear-gradient(180deg, #0a1428 0%, #16305a 38%, #6a4a3a 58%, #1a1410 66%, #0b0b0d 100%);
 }

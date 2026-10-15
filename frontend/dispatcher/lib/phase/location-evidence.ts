@@ -10,7 +10,8 @@
 
 import { haversineMetres, separationMetres, toCoords, type Coords } from './geo'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
-import type { Precinct } from '@shared/lib/types/precinct'
+import type { LatLngPair, Precinct } from '@shared/lib/types/precinct'
+import { MIN_OUTLINE_CORNERS, enclosingRadiusMetres } from '@/lib/map/polygon'
 import type { ActionLocationAssessment, ProximityVerdict } from '@shared/lib/types/action-location'
 
 export type FixSource = 'driver_phone' | 'horse_tracker'
@@ -37,7 +38,11 @@ export type GeofenceVerdict =
 
 export interface BoundaryReference {
   coords: Coords
+  // For a circle, the fence. For an outline, the radius of the circle about `coords` that
+  // encloses it — used only to frame maps, never to judge anything.
   radiusMetres: number
+  // The property outline, when the fence was one. Drawn instead of the circle.
+  polygon?: LatLngPair[] | null
   precinctName: string
   // A persisted assessment owns its historical geometry. Older events did not record
   // it, so their circle is today's boundary and must remain visibly reference-only.
@@ -155,19 +160,40 @@ function verdictFor(phase: PhaseDescriptor): GeofenceVerdict {
   return 'not_verified'
 }
 
+function usableOutline(polygon: LatLngPair[] | null | undefined): LatLngPair[] | null {
+  return polygon != null && polygon.length >= MIN_OUTLINE_CORNERS ? polygon : null
+}
+
 function boundaryFor(precinct: Precinct | undefined, assessment: ActionLocationAssessment | null): BoundaryReference | null {
   // A snapshot either carries its own geometry or it does not. Falling back to the
   // current precinct here would recast today's boundary as historical evidence.
   if (assessment === null) {
     if (precinct === undefined) return null
+    const outline = usableOutline(precinct.geofence_polygon)
     return {
       coords: { lat: precinct.latitude, lng: precinct.longitude },
-      radiusMetres: precinct.geofence_radius_metres,
+      radiusMetres: outline
+        ? enclosingRadiusMetres(outline, [precinct.latitude, precinct.longitude])
+        : precinct.geofence_radius_metres,
+      // Present only for an outline, so a circle boundary reads exactly as it always has.
+      ...(outline !== null ? { polygon: outline } : {}),
       precinctName: precinct.name,
       provenance: 'current_reference_only',
     }
   }
   const recordedCoords = validCoords(assessment?.precinct_lat ?? null, assessment?.precinct_lng ?? null)
+  const recordedOutline = usableOutline(assessment.precinct_geofence_polygon)
+  if (recordedCoords && recordedOutline) {
+    return {
+      coords: recordedCoords,
+      radiusMetres: enclosingRadiusMetres(recordedOutline, [recordedCoords.lat, recordedCoords.lng]),
+      polygon: recordedOutline,
+      precinctName: precinct?.name ?? 'Recorded precinct',
+      provenance: 'recorded_snapshot',
+      policyVersion: assessment.policy_version,
+      toleranceMetres: assessment.precinct_tolerance_metres ?? undefined,
+    }
+  }
   if (recordedCoords && assessment.precinct_radius_metres !== null) {
     return {
       coords: recordedCoords,

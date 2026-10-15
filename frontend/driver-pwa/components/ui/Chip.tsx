@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils'
 
 export type ChipKind = 'verified' | 'success' | 'warning' | 'error' | 'pending' | 'neutral' | 'overridden' | 'info' | 'live'
 
-const chipVariants = cva('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider', {
+// Footnote-size semibold in the label's own case — a status reads as a word, not a stamp.
+const chipVariants = cva('inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-footnote font-semibold', {
   variants: {
     kind: {
       verified:   'bg-secondary/10 text-secondary',
@@ -31,7 +32,7 @@ interface ChipProps extends VariantProps<typeof chipVariants> {
   children: ReactNode
   animated?: boolean
   className?: string
-  // Native title tooltip — used by AnchorBadge to surface a full event hash on hover
+  // Native title tooltip — e.g. to surface a full value on hover
   // without cluttering the compact pill label itself.
   title?: string
 }

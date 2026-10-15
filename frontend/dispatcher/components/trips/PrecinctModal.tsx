@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { ROUTES } from '@/lib/constants/routes'
 import { withReturnTo } from '@/lib/navigation/returnTo'
 import { precinctLabel } from '@/lib/phase/trip-detail'
+import { describeGeofence } from '@/lib/map/polygon'
 
 interface Props {
   precinct: Precinct
@@ -28,10 +29,10 @@ export function PrecinctModal({ precinct, open, onClose, returnTo }: Props) {
     <Modal open={open} onClose={onClose} title={precinctLabel(precinct)} size="md">
       {/* Read-only (no onPositionChange): the fence is shown, never edited from a trip.
           Modal returns null while closed, so Leaflet only loads once this is opened. */}
-      <GeofenceMap latitude={precinct.latitude} longitude={precinct.longitude} radiusMetres={precinct.geofence_radius_metres} className={PRECINCT_MAP_HEIGHT_CLASS} />
+      <GeofenceMap latitude={precinct.latitude} longitude={precinct.longitude} radiusMetres={precinct.geofence_radius_metres} polygon={precinct.geofence_polygon} className={PRECINCT_MAP_HEIGHT_CLASS} />
       <InfoRow label="Address" value={precinct.address ?? 'Not recorded'} />
       <InfoRow label="Coordinates" value={`${precinct.latitude}, ${precinct.longitude}`} mono />
-      <InfoRow label="Geofence radius" value={`${precinct.geofence_radius_metres} m`} />
+      <InfoRow label="Geofence" value={describeGeofence(precinct)} />
       <div className="mt-4 flex flex-col gap-2">
         <LinkButton full href={withReturnTo(ROUTES.precinctDetail(precinct.id), returnTo)} onClick={onClose}>View precinct</LinkButton>
         <Button variant="secondary" full onClick={onClose}>Close</Button>

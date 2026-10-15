@@ -455,3 +455,43 @@ describe('locationEvidenceForAssessment: a snapshot that is not a phase', () => 
     expect(evidence.boundary).toBeNull()
   })
 })
+
+describe('outline boundaries', () => {
+  // ~100 m box around CAPE_TOWN.
+  const BOX: [number, number][] = [
+    [CAPE_TOWN.lat + 0.00045, CAPE_TOWN.lng - 0.00055], [CAPE_TOWN.lat + 0.00045, CAPE_TOWN.lng + 0.00055],
+    [CAPE_TOWN.lat - 0.00045, CAPE_TOWN.lng + 0.00055], [CAPE_TOWN.lat - 0.00045, CAPE_TOWN.lng - 0.00055],
+  ]
+
+  it('test_recorded_outline_snapshot_becomes_the_boundary_with_an_enclosing_frame_radius', () => {
+    const phase = makePhase('departure', {
+      pulsit_geofence_confirmed: true,
+      action_location_assessment: {
+        schema_version: 1, policy_version: '2026-10-14.1', evaluated_at: '2026-03-01T08:01:00Z',
+        driver_lat: CAPE_TOWN.lat, driver_lng: CAPE_TOWN.lng, driver_captured_at: '2026-03-01T08:00:00Z', driver_accuracy_metres: 5,
+        tracker_lat: CAPE_TOWN.lat, tracker_lng: CAPE_TOWN.lng, tracker_captured_at: '2026-03-01T08:00:10Z',
+        separation_metres: 0, proximity: 'within_limit', reasons: [], max_separation_metres: 100, max_age_seconds: 60, max_skew_seconds: 30, max_phone_accuracy_metres: 50,
+        expected_trip_stop_id: null, precinct_id: 'precinct-1', precinct_lat: CAPE_TOWN.lat, precinct_lng: CAPE_TOWN.lng,
+        precinct_radius_metres: null, precinct_geofence_polygon: BOX, precinct_tolerance_metres: 50,
+        driver_in_precinct: true, truck_in_precinct: true,
+      },
+    })
+
+    const boundary = locationEvidenceForPhase(phase, PRECINCT).boundary
+
+    expect(boundary?.provenance).toBe('recorded_snapshot')
+    expect(boundary?.polygon).toEqual(BOX)
+    // Half the ~107 m × 100 m box's diagonal.
+    expect(boundary?.radiusMetres).toBeGreaterThan(60)
+    expect(boundary?.radiusMetres).toBeLessThan(80)
+  })
+
+  it('test_current_reference_boundary_carries_the_precincts_outline', () => {
+    const phase = makePhase('departure', { status: 'completed' })
+
+    const boundary = locationEvidenceForPhase(phase, { ...PRECINCT, geofence_polygon: BOX }).boundary
+
+    expect(boundary?.provenance).toBe('current_reference_only')
+    expect(boundary?.polygon).toEqual(BOX)
+  })
+})

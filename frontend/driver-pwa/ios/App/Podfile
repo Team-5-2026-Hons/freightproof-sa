@@ -13,7 +13,9 @@ def capacitor_pods
   pod 'CapacitorCordova', :path => '../../node_modules/@capacitor/ios'
   pod 'CapacitorCamera', :path => '../../node_modules/@capacitor/camera'
   pod 'CapacitorGeolocation', :path => '../../node_modules/@capacitor/geolocation'
+  pod 'CapacitorHaptics', :path => '../../node_modules/@capacitor/haptics'
   pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'
+  pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
 end
 
 target 'App' do
@@ -21,6 +23,19 @@ target 'App' do
   # Add your Pods here
 end
 
+# The app's minimum iOS — kept in one place so the pods can't drift from it.
+APP_DEPLOYMENT_TARGET = '15.0'
+
 post_install do |installer|
   assertDeploymentTarget(installer)
+  # Capacitor's helper only lifts pods below 13.0, and every Capacitor 6 plugin podspec
+  # declares exactly 13.0 — which Xcode 26+ rejects (it supports 15.0 and up). Raise every
+  # pod to the app's own minimum so the Pods project matches the App target.
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < APP_DEPLOYMENT_TARGET.to_f
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = APP_DEPLOYMENT_TARGET
+      end
+    end
+  end
 end

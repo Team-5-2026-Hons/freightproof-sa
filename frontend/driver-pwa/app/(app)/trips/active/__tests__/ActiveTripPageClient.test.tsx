@@ -7,6 +7,10 @@ import { mockTrips, TRIP_0041_ID } from '@shared/lib/mocks/trips'
 const mockUseTrip = vi.fn()
 const mockPush = vi.fn()
 
+// The trip page now keeps the tab bar (decision D3) and resolves place names from the
+// driver's trip list; neither is under test here.
+vi.mock('@/components/layout/BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigation" /> }))
+vi.mock('@/lib/hooks/useMyTrips', () => ({ useMyTrips: () => ({ trips: [], isLoading: false, loadError: null, reload: () => {} }) }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, back: vi.fn() }),
 }))
@@ -56,7 +60,8 @@ describe('trips/active ActiveTripPageClient (live trip)', () => {
 
     render(<ActiveTripPageClient />)
 
-    expect(screen.getByRole('heading', { name: inTransitTrip.trip_reference })).toBeInTheDocument()
-    expect(screen.queryByText('Phases')).not.toBeInTheDocument()
+    expect(screen.getByText(inTransitTrip.trip_reference)).toBeInTheDocument()
+    // Only the current phase is offered; the full plan stays behind "All steps".
+    expect(screen.queryByRole('list', { name: 'Trip phases' })).not.toBeInTheDocument()
   })
 })

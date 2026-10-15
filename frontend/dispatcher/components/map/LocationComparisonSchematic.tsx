@@ -233,6 +233,15 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
   const boundaryCentrePx = boundary ? toPx(project(boundary.coords, originLat, originLng)) : null
   const boundaryRadiusPx = boundary ? boundary.radiusMetres * scale : 0
   const showBoundary = boundaryCentrePx !== null && Number.isFinite(boundaryRadiusPx) && boundaryRadiusPx > 0
+  // An outline fence is drawn as itself; its enclosing radius above still frames and captions it.
+  const boundaryOutlinePoints = boundary?.polygon
+    ? boundary.polygon
+        .map(([lat, lng]) => {
+          const px = toPx(project({ lat, lng }, originLat, originLng))
+          return `${px.x},${px.y}`
+        })
+        .join(' ')
+    : null
   const showBoundaryCaption = showBoundary && boundaryRadiusPx >= MIN_BOUNDARY_RADIUS_FOR_CAPTION_PX
 
   // Clamps the caption's centre x so its estimated text box never runs off the viewBox.
@@ -275,17 +284,29 @@ export function LocationComparisonSchematic({ evidence, className }: Props) {
     >
       {showBoundary && boundaryCentrePx && (
         <g>
-          <circle
-            data-testid="boundary-circle"
-            cx={boundaryCentrePx.x}
-            cy={boundaryCentrePx.y}
-            r={boundaryRadiusPx}
-            className="stroke-on-surf-v"
-            fillOpacity={0}
-            strokeOpacity={0.45}
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-          />
+          {boundaryOutlinePoints !== null ? (
+            <polygon
+              data-testid="boundary-outline"
+              points={boundaryOutlinePoints}
+              className="stroke-on-surf-v"
+              fillOpacity={0}
+              strokeOpacity={0.45}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+            />
+          ) : (
+            <circle
+              data-testid="boundary-circle"
+              cx={boundaryCentrePx.x}
+              cy={boundaryCentrePx.y}
+              r={boundaryRadiusPx}
+              className="stroke-on-surf-v"
+              fillOpacity={0}
+              strokeOpacity={0.45}
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+            />
+          )}
           {showBoundaryCaption && (
             <text
               x={boundaryLabelX}

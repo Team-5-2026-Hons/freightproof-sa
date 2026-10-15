@@ -75,7 +75,7 @@ export type DriverEvent = {
 // are separate types: one changes where the facility is, the other changes how close a
 // phase event must be to count as inside it.
 export type PrecinctEventType =
-  | 'created' | 'relocated' | 'geofence_resized'
+  | 'created' | 'relocated' | 'geofence_resized' | 'geofence_reshaped'
   | 'sharing_changed' | 'cosmetic_update';
 
 export type PrecinctEvent = {

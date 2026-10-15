@@ -1,10 +1,10 @@
 // frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { CameraCapture } from '@/components/phase/CameraCapture'
-import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
+import { WarehouseWaitAction, WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
@@ -58,52 +58,59 @@ export function Linehaul({
     })
   }
 
+  const hasPhoto = Boolean(draft.linehaulPhotoDataUrl)
+
+  if (isBlocked) {
+    // No swipe while blocked: the server would 409 it, so there is nothing to offer.
+    return (
+      <StepLayout phase={phase} stepIndex={stepIndex} showTitle={false} action={<WarehouseWaitAction />}>
+        <WarehouseWaitCard title="Loading in progress">
+          The warehouse is still loading your truck. This step will unlock on its own when
+          they finish. Nothing to do yet.
+        </WarehouseWaitCard>
+      </StepLayout>
+    )
+  }
+
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        {isBlocked ? (
-          <WarehouseWaitCard>
-            Loading is still in progress. This will unlock on its own once the warehouse
-            finishes. No action is needed from you.
-          </WarehouseWaitCard>
-        ) : (
-          <>
-            <p className="text-sm text-surface-on-variant">
-              Check this against the linehaul sheet you were given, then confirm.
-            </p>
-            <dl className="rounded-xl border border-outline-variant bg-surface-container-lowest divide-y divide-outline-variant">
-              <Row label="Vehicle" value={linehaul?.vehicle_registration ?? '—'} />
-              <Row label="Type" value={linehaul?.vehicle_type ?? '—'} />
-              <Row label="Driver" value={linehaul?.driver_full_name ?? '—'} />
-              <Row label="Units on board" value={String(linehaul?.consolidated_unit_count ?? '—')} />
-            </dl>
-            <CameraCapture
-              label="Linehaul sheet"
-              dataUrl={draft.linehaulPhotoDataUrl}
-              onCapture={handleCapture}
-            />
-          </>
-        )}
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        {!isBlocked && (
-          <SwipeToConfirm
-            label="Confirm linehaul"
-            onConfirm={onComplete}
-            disabled={!draft.linehaulPhotoDataUrl}
-          />
-        )}
-      </div>
-    </main>
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro="Compare these with the sheet you were handed, then photograph it."
+      requirements={[{ label: 'Sheet photo', met: hasPhoto }]}
+      action={
+        <SwipeToConfirm
+          label="Confirm Linehaul"
+          waitingLabel="Add the sheet photo first"
+          onConfirm={onComplete}
+          disabled={!hasPhoto}
+        />
+      }
+    >
+      {/* Grouped rows on a fill, as on the trip page: these are facts to check, not
+          controls, so they carry no chevrons and no card shadow. */}
+      <dl className="divide-y divide-hairline rounded-[18px] bg-fill px-4">
+        <Row label="Vehicle" value={linehaul?.vehicle_registration ?? '—'} />
+        <Row label="Type" value={linehaul?.vehicle_type ?? '—'} />
+        <Row label="Driver" value={linehaul?.driver_full_name ?? '—'} />
+        <Row label="Units on board" value={String(linehaul?.consolidated_unit_count ?? '—')} />
+      </dl>
+      <CameraCapture
+        label="Linehaul sheet"
+        actionLabel="Photograph the sheet"
+        hint="Fill the frame, keep the numbers sharp"
+        dataUrl={draft.linehaulPhotoDataUrl}
+        onCapture={handleCapture}
+      />
+    </StepLayout>
   )
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between p-3">
-      <dt className="text-sm text-surface-on-variant">{label}</dt>
-      <dd className="text-sm font-semibold">{value}</dd>
+    <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 py-2">
+      <dt className="text-body text-surface-on-variant">{label}</dt>
+      <dd className="text-right text-body font-semibold tabular-nums text-surface-on">{value}</dd>
     </div>
   )
 }

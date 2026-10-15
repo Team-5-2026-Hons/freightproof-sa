@@ -111,13 +111,20 @@ function legendText(boundary: LocationEvidence['boundary']): string {
   return parts.join(INLINE_SEPARATOR)
 }
 
+/** "200 m radius" or "property outline (6 corners)" — the fence named the way it was judged. */
+function fenceText(boundary: NonNullable<LocationEvidence['boundary']>): string {
+  return boundary.polygon
+    ? `property outline (${boundary.polygon.length} corners)`
+    : `${Math.round(boundary.radiusMetres)} m radius`
+}
+
 /** The Boundary field/row text, shared by the panel and the modal so both surfaces state
  *  the same fact the same way. */
 function boundaryValue(boundary: LocationEvidence['boundary'], assessmentRecorded: boolean | undefined): string {
   return boundary
     ? boundary.provenance === 'recorded_snapshot'
-      ? `Recorded boundary and policy${boundary.policyVersion ? ` (${boundary.policyVersion})` : ''}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${boundary.toleranceMetres !== undefined ? `, ${Math.round(boundary.toleranceMetres)} m tolerance` : ''}`
-      : `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius`
+      ? `Recorded boundary and policy${boundary.policyVersion ? ` (${boundary.policyVersion})` : ''}: ${boundary.precinctName}, ${fenceText(boundary)}${boundary.toleranceMetres !== undefined ? `, ${Math.round(boundary.toleranceMetres)} m tolerance` : ''}`
+      : `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${fenceText(boundary)}`
     : assessmentRecorded ? RECORDED_BOUNDARY_UNAVAILABLE : NO_BOUNDARY_RECORDED
 }
 
@@ -128,12 +135,12 @@ function distanceToPrecinctValue(distanceMetres: number): string {
   return `${formatSeparation(distanceMetres)} ${MODAL_DISTANCE_SUFFIX}`
 }
 
-/** Modal Boundary row: precinct and radius only, the "reference only" caveat lives in the label. */
+/** Modal Boundary row: precinct and fence only, the "reference only" caveat lives in the label. */
 function modalBoundaryValue(boundary: NonNullable<LocationEvidence['boundary']>): string {
   const policy = boundary.provenance === 'recorded_snapshot' && boundary.policyVersion
     ? ` · policy ${boundary.policyVersion}`
     : ''
-  return `${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${policy}`
+  return `${boundary.precinctName}, ${fenceText(boundary)}${policy}`
 }
 
 interface ModalProps {

@@ -69,10 +69,11 @@ describe('ThemeSelect', () => {
     render(<ThemeSelect />)
 
     for (const label of ['System', 'Light', 'Dark']) {
-      // The visible segment is the input's sibling — the input itself is sr-only.
+      // The visible tile is the input's sibling — the input itself is sr-only. Overhaul
+      // 10.2 draws it as a 112px preview (h-28), well over the 44px minimum.
       const segment = screen.getByRole('radio', { name: label }).nextElementSibling
 
-      expect(segment).toHaveClass('min-h-[44px]')
+      expect(segment).toHaveClass('h-28')
     }
   })
 })

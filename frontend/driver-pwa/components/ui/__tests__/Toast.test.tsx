@@ -39,4 +39,23 @@ describe('ToastViewport', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Trip started')
   })
+
+  it('test_shows_an_anchoring_receipt_as_in_progress_without_a_percentage', () => {
+    render(<ToastViewport toasts={[makeToast({ kind: 'success', title: 'Departure recorded', anchor: 'anchoring' })]} onDismiss={vi.fn()} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Anchoring…')
+    expect(screen.getByRole('status')).not.toHaveTextContent(/%/)
+  })
+
+  it('test_shows_an_anchored_receipt_as_done', () => {
+    render(<ToastViewport toasts={[makeToast({ kind: 'success', title: 'Departure recorded', anchor: 'anchored' })]} onDismiss={vi.fn()} />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('Anchored on Hedera')
+  })
+
+  it('test_has_no_anchor_row_for_ordinary_messages', () => {
+    render(<ToastViewport toasts={[makeToast({ kind: 'success', title: 'Checkpoint recorded' })]} onDismiss={vi.fn()} />)
+
+    expect(screen.getByRole('status')).not.toHaveTextContent(/Anchor/)
+  })
 })

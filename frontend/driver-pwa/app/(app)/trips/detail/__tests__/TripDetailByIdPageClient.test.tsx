@@ -14,6 +14,10 @@ vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
 const mockPush = vi.fn()
 const mockSearchParams = { get: vi.fn() }
+// The trip page now keeps the tab bar (decision D3) and resolves place names from the
+// driver's trip list; neither is under test here.
+vi.mock('@/components/layout/BottomNav', () => ({ BottomNav: () => <nav aria-label="Main navigation" /> }))
+vi.mock('@/lib/hooks/useMyTrips', () => ({ useMyTrips: () => ({ trips: [], isLoading: false, loadError: null, reload: () => {} }) }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, back: vi.fn() }),
   useSearchParams: () => mockSearchParams,
@@ -98,23 +102,25 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     render(<TripDetailByIdPageClient />)
 
     await waitFor(() => expect(mockFetchMyTrip).toHaveBeenCalledWith('trip-created'))
-    expect(await screen.findByRole('heading', { name: 'FP-UPCOMING-1' })).toBeInTheDocument()
+    expect(await screen.findByText('FP-UPCOMING-1')).toBeInTheDocument()
   })
 
   it('tells the driver an un-activated trip has not started yet', async () => {
     render(<TripDetailByIdPageClient />)
 
-    expect(await screen.findByText(/hasn’t started yet/i)).toBeInTheDocument()
+    // Overhaul 3.3: the upcoming trip page says when it starts and where to begin it.
+    expect(await screen.findByText(/Start the trip when you’re at the/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Upcoming trip' })).toBeInTheDocument()
   })
 
   it('shows only the current phase, not the whole plan', async () => {
     render(<TripDetailByIdPageClient />)
-    await screen.findByRole('heading', { name: 'FP-UPCOMING-1' })
+    await screen.findByText('FP-UPCOMING-1')
 
-    // The full-plan listing (its own "Phases" heading) belongs to the mock trips/[id]
+    // The full plan sits behind "All steps" (collapsed) — the old full-plan listing belonged to the mock trips/[id]
     // route — on a real trip it buried the one actionable card below the fold.
-    expect(screen.queryByRole('heading', { name: /^Phases$/i })).not.toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: /Activation/i })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Trip phases' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Start Trip' })).toBeInTheDocument()
   })
 
   it('points the phase flow at this trip before navigating into a phase', async () => {
@@ -122,7 +128,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     mockUseTrip.mockReturnValue({ selectTrip })
     render(<TripDetailByIdPageClient />)
     // Card gets role="button" when given an onClick, which is what isolates the CTA.
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     fireEvent.click(phaseCta)
 
@@ -140,7 +146,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
       sibling('trip-other', 'FP-ALREADY-RUNNING', 'active', SAME_DAY_05H00),
     ])
     render(<TripDetailByIdPageClient />)
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     await waitFor(() => expect(screen.getByText(/Finish FP-ALREADY-RUNNING/i)).toBeInTheDocument())
     fireEvent.click(phaseCta)
@@ -160,7 +166,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
       sibling('trip-created', 'FP-UPCOMING-1', 'created', NEXT_DAY_08H00),
     ])
     render(<TripDetailByIdPageClient />)
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     await waitFor(() => expect(screen.getByText(/isn’t due until 6 August 2026/i)).toBeInTheDocument())
     fireEvent.click(phaseCta)
@@ -178,7 +184,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
       sibling('trip-created', 'FP-UPCOMING-1', 'created', LAST_WEEK_08H00),
     ])
     render(<TripDetailByIdPageClient />)
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     fireEvent.click(phaseCta)
 
@@ -194,7 +200,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
       sibling('trip-earlier', 'FP-EARLIER-RUN', 'created', SAME_DAY_05H00),
     ])
     render(<TripDetailByIdPageClient />)
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     await waitFor(() =>
       expect(screen.getByText(/FP-EARLIER-RUN departs earlier today/i)).toBeInTheDocument(),
@@ -212,7 +218,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
       sibling('trip-later', 'FP-LATER-RUN', 'created', SAME_DAY_16H00),
     ])
     render(<TripDetailByIdPageClient />)
-    const phaseCta = await screen.findByRole('button', { name: /Activation/i })
+    const phaseCta = await screen.findByRole('button', { name: 'Start Trip' })
 
     fireEvent.click(phaseCta)
 
@@ -229,7 +235,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
 
     render(<TripDetailByIdPageClient />)
 
-    await screen.findByRole('heading', { name: 'FP-UPCOMING-1' })
+    await screen.findByText('FP-UPCOMING-1')
     expect(screen.queryByText(/hasn’t started yet/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Finish/i)).not.toBeInTheDocument()
   })
@@ -242,7 +248,7 @@ describe('trips/detail TripDetailByIdPageClient', () => {
 
     render(<TripDetailByIdPageClient />)
 
-    expect(await screen.findByRole('heading', { name: 'FP-UPCOMING-1' })).toBeInTheDocument()
+    expect(await screen.findByText('FP-UPCOMING-1')).toBeInTheDocument()
     consoleError.mockRestore()
   })
 
