@@ -15,7 +15,9 @@ from app.reporting.incident_sheet import (
     suggested_tapa_category,
 )
 from app.orchestration.audit_packs.analysis import summarise_incident
-from app.schemas.audit_pack import IncidentDeclarationRecord, PositionFix, VehicleRecord
+from app.schemas.audit_pack import (
+    ExceptionAnchorRecord, ExceptionPhoto, IncidentDeclarationRecord, PositionFix, VehicleRecord,
+)
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest
 
@@ -97,3 +99,48 @@ def test_incident_sheet_pdf_is_at_most_two_pages():
     # Assert
     assert pdf.startswith(b"%PDF-")
     assert len(PdfReader(io.BytesIO(pdf)).pages) <= 2
+
+
+def test_incident_sheet_lists_each_critical_photo_hash_with_the_receipt_status():
+    receipt = uuid.uuid4()
+    panic = make_exception(
+        "seal_broken_in_transit", "critical", tier="anchored",
+        photos=[
+            ExceptionPhoto(
+                artifact_id=uuid.uuid4(), position=i, sha256=sha * 32, mime_type="image/jpeg", captured_at=T0,
+                tier="anchored", anchor_event_id=uuid.uuid4(), anchor_receipt_id=receipt,
+            )
+            for i, sha in enumerate(("c3", "d4"))
+        ],
+        anchors=[ExceptionAnchorRecord(
+            event_id=uuid.uuid4(), action="raised", receipt_type="exception_raised", anchor_status="anchored",
+            receipt_id=receipt, occurred_at=T0, tier="anchored",
+        )],
+    )
+    manifest = make_manifest(phases=[], exceptions=[panic]).model_copy(
+        update={"incident": summarise_incident([panic], fixes=[])},
+    )
+
+    html = render_incident_sheet_html(manifest, verify_url=None)
+
+    assert "c3" * 32 in html and "d4" * 32 in html
+    assert str(receipt) in html
+    assert "does not prove" in html
+
+
+def _first_event_row(html: str) -> str:
+    start = html.index("First critical event")
+    return html[start:html.index("</tr>", start)]
+
+
+@pytest.mark.parametrize(("tier", "label"), [("anchored", "Anchored"), ("recorded", "Recorded")])
+def test_incident_sheet_summary_row_carries_the_first_critical_reports_real_tier(tier, label):
+    report = make_exception("seal_broken_in_transit", "critical", tier=tier)
+    manifest = make_manifest(phases=[], exceptions=[report]).model_copy(
+        update={"incident": summarise_incident([report], fixes=[])},
+    )
+
+    row = _first_event_row(render_incident_sheet_html(manifest, verify_url=None))
+
+    assert f"tier-{tier}" in row and label in row
+    assert ("tier-recorded" in row) == (tier == "recorded")

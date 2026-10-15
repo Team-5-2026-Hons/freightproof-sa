@@ -22,7 +22,10 @@ from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 
 # Bumped whenever a field is added, removed or changes meaning — an issued pack is
 # evidence, so a reader must be able to tell which contract it was written under.
-AUDIT_PACK_MANIFEST_VERSION = 1
+# v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
+# action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
+# still validates and reads as v1; the stored JSON itself is never rewritten.
+AUDIT_PACK_MANIFEST_VERSION = 2
 
 # anchored:     its hash is on Hedera (field-level where the anchored payload names it)
 # corroborated: independent sources agreed at capture time, but nothing is anchored
@@ -213,6 +216,39 @@ class CheckpointRecord(_Frozen):
     tier: EvidenceTier
 
 
+# The three anchorable actions on an exception, in the vocabulary a reader sees.
+AnchorAction = Literal["raised", "reviewed", "cancelled"]
+
+
+class ExceptionPhoto(_Frozen):
+    """One photo of an exception report, tied to the receipt that committed its hash.
+
+    `tier` is anchored only when that receipt is intact and commits exactly this artifact
+    with exactly this hash; otherwise the photo is FreightProof's own record.
+    """
+
+    artifact_id: UUID
+    position: int
+    sha256: str
+    mime_type: str
+    captured_at: datetime
+    tier: EvidenceTier
+    anchor_event_id: UUID | None = None
+    anchor_receipt_id: UUID | None = None
+
+
+class ExceptionAnchorRecord(_Frozen):
+    """Where one action on an exception stands. `pending`/`failed` are debts, never success."""
+
+    event_id: UUID
+    action: AnchorAction
+    receipt_type: str
+    anchor_status: str
+    receipt_id: UUID | None
+    occurred_at: datetime
+    tier: EvidenceTier
+
+
 class ExceptionRecord(_Frozen):
     exception_id: UUID
     exception_type: str
@@ -231,7 +267,14 @@ class ExceptionRecord(_Frozen):
     contact_method: str | None
     review_note: str | None
     evidence: list[EvidenceFile]
+    # The tier of the REPORT: anchored only by a matching raise receipt. A review or
+    # cancellation receipt anchors that action (see `anchors`), never the report.
     tier: EvidenceTier
+    # v2. Every photo, in submitted order (`evidence` repeats them for v1 readers).
+    photos: list[ExceptionPhoto] = []
+    anchors: list[ExceptionAnchorRecord] = []
+    # GPS is never part of any receipt, so a position is always FreightProof's own record.
+    position_tier: Literal["recorded"] = "recorded"
 
 
 class RecordChange(_Frozen):

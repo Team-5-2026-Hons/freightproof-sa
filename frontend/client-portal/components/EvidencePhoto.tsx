@@ -9,7 +9,18 @@ import { TierBadge } from './TierBadge'
 
 type Load = { state: 'loading' } | { state: 'failed' } | { state: 'ready'; url: string; bytes: ArrayBuffer }
 
-export function EvidencePhoto({ token, file }: { token: string; file: EvidenceFile }) {
+interface Props {
+  token: string
+  file: EvidenceFile
+  // Names the photo ("Photo 2 of 3") instead of its role. Exception photos have only one role.
+  label?: string
+  // The receipt that committed this photo's hash. undefined = this pack does not tie photos to
+  // receipts (manifest v1); null = it does, and no receipt covers this one.
+  receiptId?: string | null
+}
+
+export function EvidencePhoto({ token, file, label, receiptId }: Props) {
+  const name = label ?? humanise(file.role)
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [check, setCheck] = useState<{ matches: boolean; actual: string } | null>(null)
 
@@ -39,7 +50,7 @@ export function EvidencePhoto({ token, file }: { token: string; file: EvidenceFi
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-sm bg-surf-low">
         {load.state === 'ready' && isImage && (
           // eslint-disable-next-line @next/next/no-img-element -- a blob URL of evidence bytes; next/image cannot optimise it and must not alter it
-          <img src={load.url} alt={`${humanise(file.role)} evidence`} className="h-full w-full object-contain" />
+          <img src={load.url} alt={`${name} evidence`} className="h-full w-full object-contain" />
         )}
         {load.state === 'ready' && !isImage && <span className="text-[12px] text-muted">{file.mime_type} document</span>}
         {load.state === 'loading' && <span className="text-[12px] text-muted">Loading…</span>}
@@ -47,10 +58,15 @@ export function EvidencePhoto({ token, file }: { token: string; file: EvidenceFi
       </div>
       <figcaption className="mt-2 space-y-1 text-[12px]">
         <span className="flex items-center justify-between gap-2">
-          <span className="font-semibold">{humanise(file.role)}</span>
+          <span className="font-semibold">{name}</span>
           <TierBadge tier={file.tier} />
         </span>
         <span className="num block break-all text-[11px] text-muted">sha256 {file.sha256}</span>
+        {receiptId !== undefined && (
+          <span className="num block break-all text-[11px] text-muted">
+            {receiptId === null ? 'Not covered by a receipt' : `Committed by receipt ${receiptId}`}
+          </span>
+        )}
         <button
           type="button"
           disabled={load.state !== 'ready'}

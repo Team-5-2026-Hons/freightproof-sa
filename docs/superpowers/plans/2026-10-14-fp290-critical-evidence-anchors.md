@@ -161,6 +161,12 @@ Tests: extend `LogExceptionPageClient.test.tsx`, `useOfflineQueue.test.ts`, `Tri
 Run (in `frontend/driver-pwa`, Node 22): those tests, `npm run type-check`, `npm run build`.
 
 ### Task 5 — Dispatcher, audit pack, portal
+- [x] Verify green 15 Oct: backend files below + full suite (3179 passed, 4 skipped); dispatcher and client-portal `npm test`, `type-check`, `lint`, `build`. Manifest v2; `test_audit_pack_pdf.py` lives under `tests/unit/`.
+- [x] `reads.py` batched anchors + photos (exception detail, trip detail, mutation responses)
+- [x] `trips/detail.py` evidence_event receipts
+- [x] Dispatcher is review-only (decided 15 Oct): every photo on exception detail and the trip panel; no anchor status, retry text or verify buttons there (`ExceptionAnchors.tsx` was built, then removed). `anchor_events` stays in the API but has no dispatcher reader. Anchor state, hashes and receipts live in the audit pack and shared portal.
+- [x] Audit pack manifest v2, tiers, scope, exact receipts, added-since-issue
+- [x] Portal `Sections.tsx`/`EventDetail` + both PDF templates
 Build:
 - `reads.py`: batched `anchor_events` for exception detail, trip detail and mutation responses (pending shows immediately; historical rows show no events).
 - `trips/detail.py`: include `evidence_event` receipts with existing tenant joins.

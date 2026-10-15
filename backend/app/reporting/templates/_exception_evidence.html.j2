@@ -1,0 +1,28 @@
+{#- Shared by the audit pack and the incident sheet: where each action on an exception stands in
+    anchoring, and each photo's hash tied to the receipt that committed it. Rendered from the
+    frozen manifest only — a v1 exception has neither list and prints nothing here. -#}
+{% macro exception_evidence(e, tiers) %}
+{% if e.anchors or e.photos %}
+<table class="kv">
+  {# pending / failed are anchor debt the issuer still owes the ledger: stated plainly, never as anchored. #}
+  {% for a in e.anchors %}
+  <tr><th>{{ a.action|humanise }}</th><td>
+    {%- if a.anchor_status == 'anchored' and a.tier == 'anchored' -%}
+    <span class="tier tier-anchored">{{ tiers['anchored'][0] }}</span> receipt <span class="mono">{{ a.receipt_id }}</span>
+    {%- elif a.anchor_status == 'anchored' -%}
+    <span class="flag">Recorded — the record no longer matches its anchor</span>{% if a.receipt_id %} (receipt <span class="mono">{{ a.receipt_id }}</span>){% endif %}
+    {%- elif a.anchor_status == 'pending' -%}
+    <span class="flag">Recorded — anchoring pending</span>
+    {%- elif a.anchor_status == 'failed' -%}
+    <span class="flag">Recorded — anchoring failed, will retry</span>
+    {%- else -%}
+    Recorded — not anchored
+    {%- endif -%}
+  </td></tr>
+  {% endfor %}
+  {% for p in e.photos %}
+  <tr><th>Photo {{ p.position + 1 }}</th><td><span class="tier tier-{{ p.tier }}">{{ tiers[p.tier][0] }}</span> <span class="mono">sha256 {{ p.sha256 }}</span>{% if p.anchor_receipt_id %} · committed by receipt <span class="mono">{{ p.anchor_receipt_id }}</span>{% else %} · not covered by a receipt{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endmacro %}

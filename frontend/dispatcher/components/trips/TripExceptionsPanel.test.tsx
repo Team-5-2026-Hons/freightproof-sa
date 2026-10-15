@@ -418,6 +418,40 @@ describe('supporting evidence in the panel footer', () => {
     expect(within(screen.getByText('Supporting evidence').closest('details')!).getByText('Recorded, could not be retrieved')).toBeInTheDocument()
   })
 
+  it('shows every photo of a multi-photo report, each resolved from the trip artifacts', () => {
+    const { trip } = tripWithOne({
+      exception_type: 'seal_broken_in_transit', severity: 'critical', supporting_artifact_id: 'art-1',
+      supporting_artifacts: [
+        { id: 'art-1', position: 0, artifact_type: 'photo', mime_type: 'image/jpeg', file_hash: 'a'.repeat(64), captured_at: '2026-10-01T08:00:00Z' },
+        { id: 'art-2', position: 1, artifact_type: 'photo', mime_type: 'image/jpeg', file_hash: 'b'.repeat(64), captured_at: '2026-10-01T08:01:00Z' },
+      ],
+    })
+    const artifacts = new Map([['art-1', photoArtifact('art-1')], ['art-2', photoArtifact('art-2')]])
+
+    render(<TripExceptionsPanel artifactsById={artifacts} precincts={[]} trip={trip} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    const disclosure = screen.getByText('Supporting evidence').closest('details')!
+    expect(within(disclosure).getByRole('img', { name: 'Photo 1 of 2' })).toBeInTheDocument()
+    expect(within(disclosure).getByRole('img', { name: 'Photo 2 of 2' })).toBeInTheDocument()
+  })
+
+  it('shows no anchor state or verify control for an exception that has anchor events', () => {
+    const { trip } = tripWithOne({
+      exception_type: 'panic_button', severity: 'critical',
+      anchor_events: [
+        { event_id: 'ev-a', receipt_type: 'exception_raised', anchor_status: 'pending', receipt_id: null, occurred_at: '2026-10-01T08:00:00Z' },
+        { event_id: 'ev-b', receipt_type: 'exception_reviewed', anchor_status: 'anchored', receipt_id: 'r', occurred_at: '2026-10-01T09:00:00Z' },
+      ],
+    })
+
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
+    // Nothing else is worth opening, so anchors alone must not add a "Supporting evidence" disclosure.
+    expect(screen.queryByText('Supporting evidence')).not.toBeInTheDocument()
+  })
+
   it('adds no disclosure to an exception that carries neither a photo, a fix nor a position finding', () => {
     const { trip } = tripWithOne({ exception_type: 'cargo_damage' })
 

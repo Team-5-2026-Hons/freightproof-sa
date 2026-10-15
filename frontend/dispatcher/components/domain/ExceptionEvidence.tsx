@@ -12,7 +12,7 @@ import type { TripException } from '@shared/lib/types/exception'
 // for (it already has the one relevant artifact in hand).
 type ExceptionEvidenceSource = Pick<
   TripException,
-  'gps_lat' | 'gps_lng' | 'supporting_artifact_id' | 'action_location_assessment'
+  'gps_lat' | 'gps_lng' | 'supporting_artifact_id' | 'action_location_assessment' | 'supporting_artifacts'
 >
 
 interface Props {
@@ -52,7 +52,21 @@ export function exceptionHasEvidence(exception: ExceptionEvidenceSource): boolea
   const lat = exception.gps_lat
   const lng = exception.gps_lng
   const hasFix = lat !== null && lat !== undefined && lng !== null && lng !== undefined
-  return exception.supporting_artifact_id !== null || hasFix || exception.action_location_assessment != null
+  const hasPhotoList = (exception.supporting_artifacts?.length ?? 0) > 0
+  return exception.supporting_artifact_id !== null || hasPhotoList || hasFix || exception.action_location_assessment != null
+}
+
+function EvidencePhotoOrGap({ label, artifact }: { label: string; artifact: EvidenceArtifactWithUrl | undefined }) {
+  if (artifact) return <EvidencePhoto label={label} artifact={artifact} />
+  return (
+    <div>
+      <div className="text-[10px] text-on-surf-v mb-[1px]">{label}</div>
+      <div className="flex items-center gap-[5px] text-[12px] text-warn">
+        <Ic n="warn" s={12} className="text-warn" />
+        Recorded, could not be retrieved
+      </div>
+    </div>
+  )
 }
 
 export function ExceptionEvidence({ exception, artifactsById, artifact: artifactProp }: Props) {
@@ -63,6 +77,9 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
   // `artifact` is undefined here it is because there genuinely is none — falling through
   // to the id/Map lookup is exactly what the two Map-based callers still need.
   const artifact = artifactProp ?? (artifactId ? artifactsById?.get(artifactId) : undefined)
+  // A multi-photo report names every photo; each is resolved the same way as the single one,
+  // so a photo the trip fetch could not return reads "could not be retrieved", never vanishes.
+  const photoIds = (exception.supporting_artifacts ?? []).map(photo => photo.id)
 
   const lat = exception.gps_lat
   const lng = exception.gps_lng
@@ -72,22 +89,14 @@ export function ExceptionEvidence({ exception, artifactsById, artifact: artifact
   if (!exceptionHasEvidence(exception)) return null
 
   return (
-    <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex items-start gap-5">
+    <div className="mt-[8px] pt-[8px] border-t border-warn/20 flex flex-wrap items-start gap-5">
       {/* Three states, kept apart. An id with no artifact behind it is NOT "nothing was
           captured" — the record says a photo exists and we could not retrieve it, which
           is a retrieval failure the dispatcher has to be able to see. */}
-      {artifactId !== null && (
-        artifact
-          ? <EvidencePhoto label="Supporting photo" artifact={artifact} />
-          : (
-            <div>
-              <div className="text-[10px] text-on-surf-v mb-[1px]">Supporting photo</div>
-              <div className="flex items-center gap-[5px] text-[12px] text-warn">
-                <Ic n="warn" s={12} className="text-warn" />
-                Recorded, could not be retrieved
-              </div>
-            </div>
-          )
+      {photoIds.length > 1 ? photoIds.map((id, index) => (
+        <EvidencePhotoOrGap key={id} label={`Photo ${index + 1} of ${photoIds.length}`} artifact={artifactsById?.get(id)} />
+      )) : artifactId !== null && (
+        <EvidencePhotoOrGap label="Supporting photo" artifact={artifact} />
       )}
 
       {hasFix && (

@@ -6,9 +6,11 @@
 // closes a trip.ts <-> exception.ts cycle. `import type` is erased at compile time —
 // must stay type-only for that to hold.
 import type { TripStatus } from './trip'
-import type { EvidenceArtifactWithUrl } from './evidence'
+import type { ArtifactType, EvidenceArtifactWithUrl } from './evidence'
 import type { VehicleId, VehicleType } from './vehicle'
 import type { ActionLocationAssessment } from './action-location'
+import type { BlockchainReceiptType } from './blockchain'
+import type { AnchorStatus } from './phase'
 
 export type ExceptionId = string & { readonly __brand: 'ExceptionId' }
 
@@ -92,6 +94,34 @@ export type DispatcherReviewOutcome = Exclude<ExceptionReviewOutcome, 'legacy_re
 // the evidence settled the review without contact, rather than inventing contact history.
 export type ExceptionContactMethod = 'phone' | 'whatsapp' | 'in_person'
 
+// One photo of an exception report, in submitted order. No storage key or bucket: the bytes
+// are reached only through the authorised artifact endpoints. Mirrors backend
+// ExceptionArtifactSummary.
+export interface ExceptionArtifactSummary {
+  id: string
+  position: number
+  artifact_type: ArtifactType
+  mime_type: string
+  file_hash: string
+  captured_at: string
+}
+
+// Detail-screen photo: the summary plus a short-lived signed URL (null when Storage declined
+// to sign; the photo is still recorded). Mirrors backend ExceptionPhotoWithUrl.
+export interface ExceptionPhotoWithUrl extends ExceptionArtifactSummary {
+  signed_url: string | null
+}
+
+// Where one anchorable action on an exception stands. `pending` and `failed` are debts the
+// retry sweep owes; only `anchored` carries a receipt_id. Mirrors backend EvidenceAnchorSummary.
+export interface EvidenceAnchorSummary {
+  event_id: string
+  receipt_type: BlockchainReceiptType
+  anchor_status: AnchorStatus
+  receipt_id: string | null
+  occurred_at: string
+}
+
 export interface TripException {
   id: ExceptionId
   trip_id: string
@@ -131,6 +161,11 @@ export interface TripException {
   claimed_by_name: string | null
   reviewed_by_name: string | null
   action_location_assessment?: ActionLocationAssessment | null
+  // FP-290. Optional because older fixtures and the driver's own POST response predate them;
+  // the server sends both on every dispatcher read. An EMPTY anchor_events means nothing is
+  // owed for this exception (a historical row), which is not the same as "pending".
+  supporting_artifacts?: ExceptionArtifactSummary[]
+  anchor_events?: EvidenceAnchorSummary[]
   created_at: string
   updated_at: string
 }
@@ -186,4 +221,8 @@ export interface TripExceptionDetail extends TripExceptionListItem {
   // Null when there's no photo or ownership couldn't be verified. Present with
   // signed_url: null when the artifact is real but Storage declined to sign it.
   supporting_artifact: EvidenceArtifactWithUrl | null
+  // Every photo of the report in order (supporting_artifact above is only the first), each
+  // with a signed URL, and where each action on the exception stands in anchoring.
+  supporting_artifacts?: ExceptionPhotoWithUrl[]
+  anchor_events?: EvidenceAnchorSummary[]
 }

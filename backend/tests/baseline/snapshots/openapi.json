@@ -917,7 +917,7 @@
             "type": "array"
           },
           "manifest_version": {
-            "default": 1,
+            "default": 2,
             "title": "Manifest Version",
             "type": "integer"
           },
@@ -4345,6 +4345,72 @@
         "title": "EvidenceRole",
         "type": "string"
       },
+      "ExceptionAnchorRecord": {
+        "additionalProperties": false,
+        "description": "Where one action on an exception stands. `pending`/`failed` are debts, never success.",
+        "properties": {
+          "action": {
+            "enum": [
+              "raised",
+              "reviewed",
+              "cancelled"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "anchor_status": {
+            "title": "Anchor Status",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "receipt_type": {
+            "title": "Receipt Type",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event_id",
+          "action",
+          "receipt_type",
+          "anchor_status",
+          "receipt_id",
+          "occurred_at",
+          "tier"
+        ],
+        "title": "ExceptionAnchorRecord",
+        "type": "object"
+      },
       "ExceptionArtifactSummary": {
         "description": "One photo of an exception report. Deliberately has no storage key or bucket: bytes\nare reached only through the authorised artifact endpoints.",
         "properties": {
@@ -4407,9 +4473,140 @@
         "title": "ExceptionContactMethod",
         "type": "string"
       },
+      "ExceptionPhoto": {
+        "additionalProperties": false,
+        "description": "One photo of an exception report, tied to the receipt that committed its hash.\n\n`tier` is anchored only when that receipt is intact and commits exactly this artifact\nwith exactly this hash; otherwise the photo is FreightProof's own record.",
+        "properties": {
+          "anchor_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Event Id"
+          },
+          "anchor_receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Receipt Id"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "anchored",
+              "corroborated",
+              "recorded",
+              "declared"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "position",
+          "sha256",
+          "mime_type",
+          "captured_at",
+          "tier"
+        ],
+        "title": "ExceptionPhoto",
+        "type": "object"
+      },
+      "ExceptionPhotoWithUrl": {
+        "description": "A photo as the dispatcher's detail screen needs it: metadata plus a short-lived signed\nURL. signed_url is None when Storage declined to sign; the photo is still recorded.",
+        "properties": {
+          "artifact_type": {
+            "$ref": "#/components/schemas/ArtifactType"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "file_hash": {
+            "title": "File Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mime_type": {
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "signed_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed Url"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "artifact_type",
+          "mime_type",
+          "file_hash",
+          "captured_at"
+        ],
+        "title": "ExceptionPhotoWithUrl",
+        "type": "object"
+      },
       "ExceptionRecord": {
         "additionalProperties": false,
         "properties": {
+          "anchors": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExceptionAnchorRecord"
+            },
+            "title": "Anchors",
+            "type": "array"
+          },
           "checkpoint_id": {
             "anyOf": [
               {
@@ -4477,6 +4674,14 @@
             ],
             "title": "Phase Event Id"
           },
+          "photos": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ExceptionPhoto"
+            },
+            "title": "Photos",
+            "type": "array"
+          },
           "position": {
             "anyOf": [
               {
@@ -4486,6 +4691,12 @@
                 "type": "null"
               }
             ]
+          },
+          "position_tier": {
+            "const": "recorded",
+            "default": "recorded",
+            "title": "Position Tier",
+            "type": "string"
           },
           "raised_at": {
             "format": "date-time",
@@ -10737,6 +10948,13 @@
               }
             ]
           },
+          "anchor_events": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceAnchorSummary"
+            },
+            "title": "Anchor Events",
+            "type": "array"
+          },
           "claimed_at": {
             "anyOf": [
               {
@@ -10973,6 +11191,13 @@
               }
             ],
             "title": "Supporting Artifact Id"
+          },
+          "supporting_artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/ExceptionPhotoWithUrl"
+            },
+            "title": "Supporting Artifacts",
+            "type": "array"
           },
           "trailer_registrations": {
             "items": {

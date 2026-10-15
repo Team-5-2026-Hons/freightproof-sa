@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import canonicalize_payload, compute_payload_hash
@@ -25,6 +25,7 @@ from app.db.models.audit_packs import AuditPack, AuditPackAccessEvent
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import AuditPackAccessEventType, SubjectType, VerifyStatus, enum_text
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip
@@ -193,7 +194,9 @@ def _manifest_artifact_ids(manifest: AuditPackManifest) -> set[uuid.UUID]:
         *(e for c in manifest.checkpoints for e in c.evidence),
         *(e for x in manifest.exceptions for e in x.evidence),
     ]
-    return {f.artifact_id for f in files}
+    # v2 lists every exception photo twice (evidence for v1 readers, photos with receipts);
+    # either list is the issuer naming the file.
+    return {f.artifact_id for f in files} | {p.artifact_id for x in manifest.exceptions for p in x.photos}
 
 
 async def shared_artifact(db: AsyncSession, pack: AuditPack, *, artifact_id: uuid.UUID) -> tuple[str, bytes]:
@@ -228,14 +231,24 @@ async def _check_seal(pack: AuditPack, receipt: BlockchainReceipt | None, hedera
 
 
 async def _records_added_since(db: AsyncSession, pack: AuditPack) -> int:
-    exceptions = select(func.count()).select_from(TripException).where(
-        TripException.trip_id == pack.trip_id, TripException.created_at > pack.issued_at,
-    )
+    """How many things the trip has gained since issue, as a count only.
+
+    An exception counts once however it was touched: it is new itself, or it has a new
+    anchor event (e.g. a review of an exception that predates the pack). Events are dated by
+    when their row was created, so a retry or a receipt landing later on an old event is not
+    "added". The scoping rule is the exception's own, so a scoped pack never learns how
+    much another client's cargo gained.
+    """
+    in_scope = TripException.trip_id == pack.trip_id
     if pack.consignment_id is not None:
-        # A scoped pack must not learn how many exceptions another client's cargo got.
-        exceptions = exceptions.where(or_(
+        in_scope = in_scope & or_(
             TripException.consignment_id.is_(None), TripException.consignment_id == pack.consignment_id,
-        ))
+        )
+    new_exception = TripException.created_at > pack.issued_at
+    has_new_event = exists().where(
+        EvidenceAnchorEvent.exception_id == TripException.id, EvidenceAnchorEvent.created_at > pack.issued_at,
+    )
+    exceptions = select(func.count()).select_from(TripException).where(in_scope, or_(new_exception, has_new_event))
     checkpoints = select(func.count()).select_from(Checkpoint).where(
         Checkpoint.trip_id == pack.trip_id, Checkpoint.created_at > pack.issued_at,
     )
@@ -260,6 +273,9 @@ async def verify_shared_pack(db: AsyncSession, pack: AuditPack, *, now: datetime
     for record in manifest.anchored_records:
         outcome = await verify_subject(
             db, subject_type=SubjectType(record.subject_type), subject_id=record.subject_id, hedera_service=hedera,
+            # The pack froze this receipt; a later duplicate for the same subject must not
+            # change what the pack's own record is checked against.
+            receipt_id=record.receipt_id,
         )
         records.append(LiveRecordCheck(
             receipt_id=record.receipt_id, subject_type=record.subject_type, subject_id=record.subject_id,

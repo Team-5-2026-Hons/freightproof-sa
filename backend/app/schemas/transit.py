@@ -393,6 +393,40 @@ class TripExceptionListItem(BaseModel):
     reviewed_by_name: Optional[str] = None
 
 
+class ExceptionArtifactSummary(BaseModel):
+    """One photo of an exception report. Deliberately has no storage key or bucket: bytes
+    are reached only through the authorised artifact endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    position: int
+    artifact_type: ArtifactType
+    mime_type: str
+    file_hash: str
+    captured_at: datetime
+
+
+class ExceptionPhotoWithUrl(ExceptionArtifactSummary):
+    """A photo as the dispatcher's detail screen needs it: metadata plus a short-lived signed
+    URL. signed_url is None when Storage declined to sign; the photo is still recorded."""
+
+    signed_url: Optional[str] = None
+
+
+class EvidenceAnchorSummary(BaseModel):
+    """Where one anchorable action on an exception stands. `pending` and `failed` are debts
+    the retry sweep owes; only `anchored` carries a receipt."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    event_id: UUID
+    receipt_type: BlockchainReceiptType
+    anchor_status: AnchorStatus
+    receipt_id: Optional[UUID] = None
+    occurred_at: datetime
+
+
 class TripExceptionDetail(TripExceptionListItem):
     """Full record for the permalink detail screen: the compact row plus GPS, complete
     review evidence, the trip's closed time, and the one linked artifact if any."""
@@ -425,33 +459,11 @@ class TripExceptionDetail(TripExceptionListItem):
     # the opposite: real evidence, but Storage declined to sign a URL right now. The UI
     # must be able to tell "no photo" apart from "recorded, image unavailable".
     supporting_artifact: Optional["EvidenceArtifactWithUrl"] = None
-
-
-class ExceptionArtifactSummary(BaseModel):
-    """One photo of an exception report. Deliberately has no storage key or bucket: bytes
-    are reached only through the authorised artifact endpoints."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    position: int
-    artifact_type: ArtifactType
-    mime_type: str
-    file_hash: str
-    captured_at: datetime
-
-
-class EvidenceAnchorSummary(BaseModel):
-    """Where one anchorable action on an exception stands. `pending` and `failed` are debts
-    the retry sweep owes; only `anchored` carries a receipt."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    event_id: UUID
-    receipt_type: BlockchainReceiptType
-    anchor_status: AnchorStatus
-    receipt_id: Optional[UUID] = None
-    occurred_at: datetime
+    # Every photo of the report in submitted order (supporting_artifact above is only the
+    # first), and where each action on this exception stands in anchoring. Empty
+    # anchor_events means nothing is owed (a historical row), not that anchoring is pending.
+    supporting_artifacts: list[ExceptionPhotoWithUrl] = Field(default_factory=list)
+    anchor_events: list[EvidenceAnchorSummary] = Field(default_factory=list)
 
 
 class TripExceptionRead(TripExceptionBase):

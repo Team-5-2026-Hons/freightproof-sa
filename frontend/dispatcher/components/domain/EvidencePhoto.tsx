@@ -6,9 +6,15 @@ import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
+// What this component reads of an artifact. A narrower shape than EvidenceArtifactWithUrl so an
+// exception photo (which carries no storage key or coordinates) can be shown the same way.
+export type PhotoArtifact = Pick<EvidenceArtifactWithUrl, 'signed_url' | 'captured_at' | 'file_hash'>
+  & { id: string }
+  & Partial<Pick<EvidenceArtifactWithUrl, 'captured_lat' | 'captured_lng'>>
+
 interface Props {
   label: string
-  artifact: EvidenceArtifactWithUrl | undefined
+  artifact: PhotoArtifact | undefined
   artifactId?: string | null
   loading?: boolean
   error?: string | null
@@ -28,8 +34,8 @@ const THUMBNAIL_CLASS = { default: 'w-[96px] h-[96px]', compact: 'w-11 h-11' } a
  * and with it the image is proof. The backend has sent all four fields since artifacts
  * existed; the panel rendered the picture and dropped every one of them.
  */
-function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl }) {
-  const hasFix = artifact.captured_lat !== null && artifact.captured_lng !== null
+function ArtifactProvenance({ artifact }: { artifact: PhotoArtifact }) {
+  const hasFix = artifact.captured_lat != null && artifact.captured_lng != null
 
   return (
     <ForensicOnly>

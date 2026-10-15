@@ -56,17 +56,21 @@ class VerifyOutcome:
 
 
 async def _latest_receipt(
-    db: AsyncSession, subject_type: SubjectType, subject_id: uuid.UUID
+    db: AsyncSession, subject_type: SubjectType, subject_id: uuid.UUID,
+    receipt_id: uuid.UUID | None = None,
 ) -> BlockchainReceipt | None:
-    result = await db.execute(
-        select(BlockchainReceipt)
-        .where(
-            BlockchainReceipt.subject_type == subject_type,
-            BlockchainReceipt.subject_id == subject_id,
-        )
-        .order_by(desc(BlockchainReceipt.created_at))
-        .limit(1)
+    """The subject's newest receipt, or exactly `receipt_id` when given.
+
+    An exact id is still scoped to the subject: a receipt that belongs to some other subject
+    is "no receipt" here, so a frozen reference can never make one record verify as another.
+    """
+    query = select(BlockchainReceipt).where(
+        BlockchainReceipt.subject_type == subject_type,
+        BlockchainReceipt.subject_id == subject_id,
     )
+    if receipt_id is not None:
+        query = query.where(BlockchainReceipt.id == receipt_id)
+    result = await db.execute(query.order_by(desc(BlockchainReceipt.created_at)).limit(1))
     return result.scalar_one_or_none()
 
 
@@ -225,8 +229,14 @@ async def verify_subject(
     subject_type: SubjectType,
     subject_id: uuid.UUID,
     hedera_service: HederaService | None = None,
+    receipt_id: uuid.UUID | None = None,
 ) -> VerifyOutcome:
-    receipt = await _latest_receipt(db, subject_type, subject_id)
+    """Re-check a subject's receipt against live rows and Hedera.
+
+    receipt_id pins the check to one receipt (an audit pack's frozen reference); by default
+    the subject's latest receipt is checked.
+    """
+    receipt = await _latest_receipt(db, subject_type, subject_id, receipt_id)
     if receipt is None:
         return VerifyOutcome(status=VerifyStatus.NO_RECEIPT)
 
