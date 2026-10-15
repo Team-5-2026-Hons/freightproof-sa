@@ -1,5 +1,6 @@
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 import { fmtExceptionType } from '@/lib/format/exception'
+import { SEVERITY_RANK } from '@/lib/exceptions/severity'
 import { sastCalendarDay } from '@shared/lib/utils/datetime'
 import { compareText, sortRows, type Sort, type SortValue } from '@/lib/sort/sort-rows'
 
@@ -21,18 +22,17 @@ export type ExceptionSort = Sort<ExceptionSortKey>
 export const DEFAULT_EXCEPTION_SORT: ExceptionSort = { key: 'raised', dir: 'desc' }
 export const EXCEPTION_SORT_KEYS: readonly ExceptionSortKey[] = ['incident', 'trip', 'crew', 'raised', 'status']
 
-// Most severe first when ascending, so the first click on Incident surfaces what matters.
-const SEVERITY_RANK: Record<TripExceptionListItem['severity'], number> = { critical: 0, warning: 1, info: 2 }
 
 /** A value the column can order by; null means "no data" and always sorts last. */
 function sortValue(item: TripExceptionListItem, key: ExceptionSortKey): SortValue {
   switch (key) {
-    // Severity first, then the title the dispatcher reads, so equal severities group by type.
-    case 'incident': return `${SEVERITY_RANK[item.severity]} ${fmtExceptionType(item.exception_type)}`
+    // Severity first (most severe first when ascending, so the first click on Incident surfaces what
+    // matters), then the title the dispatcher reads, so equal severities group by type.
+    case 'incident': return [SEVERITY_RANK[item.severity], fmtExceptionType(item.exception_type)]
     case 'trip': return item.trip_reference
     case 'crew': return item.driver_name
     case 'raised': return Date.parse(item.created_at)
-    case 'status': return item.claimed_by_user_id === null ? '0' : `1 ${item.claimed_by_name ?? ''}`
+    case 'status': return item.claimed_by_user_id === null ? [0] : [1, item.claimed_by_name ?? '']
   }
 }
 

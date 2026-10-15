@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { api } from '@/lib/api/client'
 import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
@@ -22,6 +22,12 @@ export interface UseTripsResult {
 
 const EMPTY: TripSummary[] = []
 
+// Publishing is best-effort (core/realtime.py logs and drops a failed publish), so a connected
+// browser can miss an event and never learn of it. A slow periodic refetch bounds how stale the
+// list can get. It runs whatever the stream's state: "API up, stream down" is exactly when it is
+// the only thing keeping the list current. A minute keeps the load trivial for one list call.
+export const RECONCILE_INTERVAL_MS = 60_000
+
 export function useTrips(filter?: TripsFilter): UseTripsResult {
   const { data: allTrips, isLoading, error, refetch, refetchSilent } = useAsyncData<TripSummary[]>(
     () => api.get<TripSummary[]>('/api/v1/trips'),
@@ -32,6 +38,14 @@ export function useTrips(filter?: TripsFilter): UseTripsResult {
   // Evidence uploads change no list row, so they are filtered out; a reconnect still
   // refetches because useLiveResource does not apply the filter to that path.
   useLiveResource('trip', 'any', refetchSilent, { kinds: TRIP_RECORD_KINDS })
+
+  // Skipped while the tab is hidden; on return the stream reconnects and that refetches anyway.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') refetchSilent()
+    }, RECONCILE_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [refetchSilent])
 
   const statusKey = filter?.status?.join(',') ?? ''
   const driverId = filter?.driverId ?? ''

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { incidentSheetUrl } from '@/lib/api'
 import { formatCoord, formatRand, formatSast, humanise } from '@/lib/format'
 import { mirrorMessageUrl } from '@/lib/verify'
+import { notAnchoredReason } from '@/lib/anchors'
 import type { AuditPackManifest, ExceptionRecord, PublicPackSeal } from '@/lib/types'
 import { Card, Field } from './Card'
 import { TIER_ORDER, TierBadge, tierMeaning } from './TierBadge'
@@ -203,7 +204,7 @@ export function Cargo({ manifest }: { manifest: AuditPackManifest }) {
 
 export function Exceptions({ exceptions, onSelect }: { exceptions: ExceptionRecord[]; onSelect: (id: string) => void }) {
   return (
-    <Card title="Exceptions and response log" id="exceptions" aside={<TierBadge tier="recorded" />}>
+    <Card title="Exceptions and response log" id="exceptions">
       {exceptions.length === 0 && <p className="text-[13px] text-muted">No exceptions recorded.</p>}
       <ul className="space-y-2">
         {exceptions.map((e, i) => (
@@ -212,6 +213,7 @@ export function Exceptions({ exceptions, onSelect }: { exceptions: ExceptionReco
               E{i + 1} · {humanise(e.exception_type)}
             </button>
             <span className={`ml-2 text-[11px] font-bold uppercase ${e.severity === 'critical' ? 'text-err' : 'text-muted'}`}>{e.severity}</span>
+            <span className="ml-2 align-middle"><TierBadge tier={e.tier} /></span>
             <span className="num block text-[12px] text-muted">{formatSast(e.raised_at)} · {humanise(e.source)}</span>
             <span className="block">{e.description}</span>
             <span className="block text-[12px] text-muted">
@@ -219,6 +221,14 @@ export function Exceptions({ exceptions, onSelect }: { exceptions: ExceptionReco
               {e.reviewed_at && `, ${formatSast(e.reviewed_at)}`}{e.reviewer_name && ` by ${e.reviewer_name}`}
               {e.contact_method && ` via ${e.contact_method}`}{e.review_note && ` — “${e.review_note}”`}
             </span>
+            {(e.anchors ?? []).length > 0 && (
+              <span className="block text-[12px] text-muted">
+                {(e.anchors ?? []).map((a) => {
+                  const reason = notAnchoredReason(a)
+                  return `${humanise(a.action)} — ${reason === null ? 'Anchored' : `Recorded, ${reason}`}`
+                }).join(' · ')}
+              </span>
+            )}
           </li>
         ))}
       </ul>

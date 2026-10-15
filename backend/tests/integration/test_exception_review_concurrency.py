@@ -33,6 +33,7 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
@@ -122,6 +123,7 @@ async def _seed(session: AsyncSession) -> dict:
 
 async def _teardown(session: AsyncSession, ids: dict) -> None:
     """Delete this module's committed rows, children before parents."""
+    await session.execute(delete(EvidenceAnchorEvent).where(EvidenceAnchorEvent.exception_id == ids["exception_id"]))
     await session.execute(delete(TripException).where(TripException.id == ids["exception_id"]))
     await session.execute(delete(Trip).where(Trip.id == ids["trip_id"]))
     await session.execute(delete(Precinct).where(Precinct.id.in_([ids["origin_id"], ids["dest_id"]])))

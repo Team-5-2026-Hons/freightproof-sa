@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 {#- Incident Fact Sheet: the first page a SAPS detective, tracking company or TAPA report
     needs. Everything comes from the audit-pack manifest; free text is autoescaped. -#}
+{% from '_exception_evidence.html.j2' import exception_evidence %}
 {% macro tier(t) %}<span class="tier tier-{{ t }}">{{ tiers[t][0] }}</span>{% endmacro %}
 {% macro fix(f) %}{% if f %}{{ '%.5f'|format(f.lat) }}, {{ '%.5f'|format(f.lng) }}{% else %}—{% endif %}{% endmacro %}
 <html lang="en">
@@ -26,13 +27,26 @@
 
 <h2>What happened, where and when</h2>
 <table class="kv">
-  <tr><th>First critical event</th><td><strong>{{ inc.first_exception_type|humanise }}</strong> at {{ inc.first_raised_at|sast }} {{ tier('recorded') }}</td></tr>
+  {# The report's own tier: anchored only when its raise receipt is intact and matches. #}
+  {% set first_report = m.exceptions|selectattr('exception_id', 'equalto', inc.exception_ids[0])|first %}
+  <tr><th>First critical event</th><td><strong>{{ inc.first_exception_type|humanise }}</strong> at {{ inc.first_raised_at|sast }} {{ tier(first_report.tier if first_report else 'recorded') }}</td></tr>
   <tr><th>Where it was raised</th><td>{{ fix(inc.position) }}</td></tr>
   <tr><th>Last known position</th><td>{{ fix(inc.last_known_position) }}{% if inc.last_known_position %} · {{ inc.last_known_position.source|humanise }} · {{ inc.last_known_position.recorded_at|sast }}{% endif %}</td></tr>
   <tr><th>Operator first reviewed</th><td>{% if inc.first_reviewed_at %}{{ inc.first_reviewed_at|sast }} ({{ inc.minutes_to_first_review }} min after){% else %}No review recorded{% endif %}</td></tr>
   <tr><th>Trip status now</th><td>{{ m.trip.status|humanise }}</td></tr>
   {% if tapa %}<tr><th>Suggested TAPA category</th><td>{{ tapa }} <span class="small muted">— a suggestion; confirm before reporting</span></td></tr>{% endif %}
 </table>
+
+{% set critical_reports = m.exceptions|selectattr('severity', 'equalto', 'critical')|list %}
+{% if critical_reports %}
+<h2>Critical reports, photos and their receipts</h2>
+{% for e in critical_reports %}
+<p><strong>{{ e.exception_type|humanise }}</strong> · {{ e.raised_at|sast }} · report {{ tier(e.tier) }}</p>
+{{ exception_evidence(e, tiers) }}
+{% endfor %}
+<p class="small muted">A matching receipt shows the report and photos were not changed after anchoring; it does not prove the
+  incident happened as described, where it happened, or who is liable.</p>
+{% endif %}
 
 <h2>Vehicles and tracking</h2>
 <table>

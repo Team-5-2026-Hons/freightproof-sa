@@ -11,6 +11,7 @@ from app.db.models.enums import (
     BlockchainReceiptType, EvidenceRole, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
 )
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _dispatch_anchor
 from app.orchestration.phases.artifacts import _assert_artifacts_belong_to_trip
@@ -91,7 +92,7 @@ async def advance_departure(
         # Unloading's seal mismatch (destination) matches this precedent too —
         # neither ever holds the trip, only flags it (critical exception).
         event.status = PhaseStatus.EXCEPTION
-        db.add(TripException(
+        await register_exception(db, TripException(
             trip_id=trip_id, phase_event_id=event.id,
             exception_type=ExceptionType.SEAL_MISMATCH, source=ExceptionSource.DRIVER,
             severity=ExceptionSeverity.CRITICAL,

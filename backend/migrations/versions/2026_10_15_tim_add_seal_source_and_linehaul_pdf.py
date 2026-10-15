@@ -9,7 +9,7 @@ Both nullable: older app builds send neither, and a failed PDF build must not bl
 loading.
 
 Revision ID: tim_seal_source_linehaul_pdf
-Revises: tim_precinct_geofence_polygon
+Revises: ciaran_evidence_anchors
 Create Date: 2026-10-15
 """
 from alembic import op
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "tim_seal_source_linehaul_pdf"
-down_revision = "tim_precinct_geofence_polygon"
+down_revision = "ciaran_evidence_anchors"
 branch_labels = None
 depends_on = None
 

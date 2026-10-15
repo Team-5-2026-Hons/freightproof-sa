@@ -24,9 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import canonicalize_payload, compute_payload_hash
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import AnchorStatus, PhaseType, VehicleEventType, enum_text
+from app.db.models.enums import AnchorStatus, PhaseType, SubjectType, VehicleEventType, enum_text
 from app.db.models.events import DriverEvent, VehicleEvent
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.locations import TripLocationPing
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
@@ -35,7 +36,9 @@ from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, DriverSubstitution, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.core.display import DISPLAY_TIMEZONE
+from app.orchestration.audit_packs.anchor_tiers import ExceptionAnchors, assess_exception_anchors
 from app.orchestration.audit_packs.incident_declarations import load_declarations
+from app.orchestration.evidence_anchors.reads import load_photos_by_exception
 from app.orchestration.audit_packs.analysis import (
     derive_observations,
     find_coverage_gaps,
@@ -300,6 +303,10 @@ class _TripGraph:
     snapshots: list[TrailerGpsSnapshot]
     checkpoints: list[Checkpoint]
     exceptions: list[TripException]
+    # Photos and anchor events of the in-scope exceptions only; receipts of out-of-scope
+    # events are dropped from `receipts` at load time.
+    exception_photos: dict[uuid.UUID, list[EvidenceArtifact]]
+    evidence_events: list[EvidenceAnchorEvent]
     substitutions: list[DriverSubstitution]
     drivers: dict[uuid.UUID, Driver]
     horse: Vehicle
@@ -373,6 +380,20 @@ async def _load_exceptions(db: AsyncSession, trip_id: uuid.UUID, scope_id: uuid.
         # cargo on the truck. Only rows pinned to ANOTHER client's consignment are cut.
         if scope_id is None or e.consignment_id is None or e.consignment_id == scope_id
     ]
+
+
+async def _load_evidence_events(
+    db: AsyncSession, exceptions: Sequence[TripException],
+) -> list[EvidenceAnchorEvent]:
+    """Anchor events of exactly the exceptions that survived scoping, in one query. Taking
+    the exceptions (not the trip) is what keeps another consignment's events out of a scoped pack."""
+    if not exceptions:
+        return []
+    return list((await db.execute(
+        select(EvidenceAnchorEvent)
+        .where(EvidenceAnchorEvent.exception_id.in_([e.id for e in exceptions]))
+        .order_by(EvidenceAnchorEvent.occurred_at, EvidenceAnchorEvent.id)
+    )).scalars())
 
 
 def _crew_driver_ids(trip: Trip, substitutions: Iterable[DriverSubstitution]) -> set[uuid.UUID]:
@@ -520,7 +541,15 @@ async def _load_trip_graph(
         db, trip=trip, vehicle_ids=[horse.id, *(t.id for t in trailers)],
         driver_ids=_crew_driver_ids(trip, substitutions), window_end=window_end,
     )
-    receipts = await _load_receipts(db, trip.id, _linked_receipt_ids(vehicle_events, driver_events, substitutions))
+    exception_photos = await load_photos_by_exception(db, exceptions)
+    evidence_events = await _load_evidence_events(db, exceptions)
+    in_scope_event_ids = {e.id for e in evidence_events}
+    # Receipts of evidence events anchor exception actions; one whose exception was cut by
+    # scope must not reach the pack (its payload names that exception and its photos).
+    receipts = [
+        r for r in await _load_receipts(db, trip.id, _linked_receipt_ids(vehicle_events, driver_events, substitutions))
+        if r.subject_type != SubjectType.EVIDENCE_EVENT or r.subject_id in in_scope_event_ids
+    ]
     artifacts = await _load_artifacts(db, trip.id, _artifact_ids(phases, checkpoints, exceptions))
     pings = await _load_pings(db, trip.id)
     orgs = await _load_orgs(db, trip, consignments)
@@ -529,7 +558,7 @@ async def _load_trip_graph(
     return _TripGraph(
         trip=trip, consignments=consignments, in_scope=in_scope, parcels=parcels, stop_rows=stop_rows,
         phases=phases, snapshots=snapshots, checkpoints=checkpoints, exceptions=exceptions,
-        substitutions=substitutions, drivers=drivers, horse=horse, trailers=trailers,
+        exception_photos=exception_photos, evidence_events=evidence_events, substitutions=substitutions, drivers=drivers, horse=horse, trailers=trailers,
         vehicle_events=vehicle_events, driver_events=driver_events, receipts=receipts, artifacts=artifacts,
         pings=pings, orgs=orgs, users=users, window_start=window_start, window_end=window_end,
     )
@@ -627,7 +656,7 @@ def _checkpoint_record(c: Checkpoint, artifacts: Mapping[uuid.UUID, EvidenceArti
 
 
 def _exception_record(
-    e: TripException, artifacts: dict[uuid.UUID, EvidenceArtifact], users: dict[uuid.UUID, User],
+    e: TripException, users: dict[uuid.UUID, User], anchors: ExceptionAnchors,
 ) -> ExceptionRecord:
     return ExceptionRecord(
         exception_id=e.id, exception_type=enum_text(e.exception_type), source=enum_text(e.source),
@@ -640,11 +669,35 @@ def _exception_record(
         reviewer_name=users[e.reviewed_by_user_id].full_name if e.reviewed_by_user_id in users else None,
         contact_method=enum_text(e.contact_method) if e.contact_method is not None else None,
         review_note=e.review_note,
-        evidence=[_evidence(artifacts[e.supporting_artifact_id], "exception_supporting")]
-        if e.supporting_artifact_id in artifacts else [],
-        # Exceptions are not anchored today (plan Stage 8) — never claim more.
-        tier="recorded",
+        # v1 readers look here; v2 repeats every photo with the receipt that backs it.
+        evidence=[
+            EvidenceFile(
+                artifact_id=p.artifact_id, role="exception_supporting", sha256=p.sha256,
+                mime_type=p.mime_type, captured_at=p.captured_at, tier=p.tier,
+            )
+            for p in anchors.photos
+        ],
+        tier=anchors.tier,
+        photos=anchors.photos,
+        anchors=anchors.anchors,
     )
+
+
+def _exception_records(graph: _TripGraph, users: dict[uuid.UUID, User]) -> list[ExceptionRecord]:
+    events_by_exception: dict[uuid.UUID, list[EvidenceAnchorEvent]] = {}
+    for event in graph.evidence_events:
+        events_by_exception.setdefault(event.exception_id, []).append(event)
+    receipts = {r.id: r for r in graph.receipts}
+    return [
+        _exception_record(
+            e, users,
+            assess_exception_anchors(
+                e, graph.trip, graph.exception_photos.get(e.id, []),
+                events_by_exception.get(e.id, []), receipts,
+            ),
+        )
+        for e in graph.exceptions
+    ]
 
 
 def _all_fixes(
@@ -786,7 +839,7 @@ async def build_audit_manifest(
     stops = _stop_records(graph.stop_rows, scope.visible_stop_ids)
     phase_records = _phase_records(graph, stops, scope.shared_stop_ids)
     checkpoint_records = [_checkpoint_record(c, graph.artifacts) for c in graph.checkpoints]
-    exception_records = [_exception_record(e, graph.artifacts, graph.users) for e in graph.exceptions]
+    exception_records = _exception_records(graph, graph.users)
 
     all_fixes = _all_fixes(graph.pings, phase_records, checkpoint_records, exception_records, generated_at)
     trail, coverage = _location(

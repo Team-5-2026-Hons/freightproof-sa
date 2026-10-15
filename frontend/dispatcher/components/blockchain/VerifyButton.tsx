@@ -225,12 +225,13 @@ export function VerifyButton({
 
     if (r.status === 'verified') {
       const isPhaseReceipt = subjectType === 'phase_event'
+      const isEvidenceEvent = subjectType === 'evidence_event'
       return (
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 ${className}`}>
           <div className="rounded-[var(--r-md)] bg-ok-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-ok-c">
               <Ic n="shield" s={13} className="text-ok" />
-              {subjectType === 'trip' ? 'Committed trip details match' : isPhaseReceipt ? 'Phase receipt matches' : 'Selected record matches'}
+              {subjectType === 'trip' ? 'Committed trip details match' : isPhaseReceipt ? 'Phase receipt matches' : isEvidenceEvent ? 'Recorded action matches its anchor' : 'Selected record matches'}
             </div>
             <div className="mt-[4px] text-[11px] leading-snug text-on-ok-c/80">
               {subjectType === 'trip'
@@ -239,7 +240,9 @@ export function VerifyButton({
                   ? r.evidence_verified
                     ? 'The phase fields and linked evidence bytes match their blockchain commitment.'
                     : 'The phase fields match their anchor. This legacy receipt did not commit evidence bytes, so linked files were not checked.'
-                  : 'The selected record matches its blockchain anchor.'}
+                  : isEvidenceEvent
+                    ? 'The recorded report, review or cancellation and its photo bytes are unchanged since anchoring. This does not prove the incident occurred as described, where it happened, or who is liable.'
+                    : 'The selected record matches its blockchain anchor.'}
               <div>Checked {fmtDateTime(ui.checkedAt)}</div>
             </div>
           </div>

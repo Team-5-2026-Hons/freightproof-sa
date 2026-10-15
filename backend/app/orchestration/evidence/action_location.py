@@ -48,6 +48,7 @@ integrations/ or db/; never imports from api/.
 import asyncio
 import logging
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Optional, cast
 
@@ -60,18 +61,14 @@ from app.core.exceptions import ResourceNotFoundError
 from app.core.geo import format_distance
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import (
-    ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, PhaseType,
-    TripStatus,
+    ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, TripStatus,
 )
-from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
-from app.orchestration.evidence.geofence import (
-    DEFAULT_GEOFENCE_RADIUS_METRES, GeofenceVerdictReason, TrackerFix, evaluate_geofence,
-)
 from app.orchestration.integrity import is_unique_violation, violated_constraint
+from app.orchestration.evidence.precinct_assessment import build_phase_precinct_assessment, tracker_fix
 from app.orchestration.evidence.proximity import evaluate_proximity
 from app.orchestration.exceptions.review_policy import initial_review_status
 from app.schemas.action_location import (
@@ -125,24 +122,6 @@ def _describe_driver_reason(driver_reason: Optional[str]) -> str:
     if len(reason) > _MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION:
         reason = reason[:_MAX_DRIVER_REASON_CHARS_IN_DESCRIPTION].rstrip() + "…"
     return f' Driver\'s reason: "{reason}".'
-
-
-async def _load_precinct_for_stop(db: AsyncSession, *, trip_stop_id: uuid.UUID) -> Optional[Precinct]:
-    """The precinct a stop resolves to. Mirrors evidence.corroboration._load_precinct_
-    for_phase's join exactly — deliberately not imported from there (that helper takes
-    a PhaseEvent and this module also serves checkpoints, which have no trip_stop_id),
-    so this owns the smaller, phase-agnostic query it actually needs.
-    """
-    result = await db.execute(
-        select(Precinct).join(TripStop, TripStop.precinct_id == Precinct.id).where(TripStop.id == trip_stop_id)
-    )
-    return result.scalar_one_or_none()
-
-
-def _tracker_fix(lat: Optional[float], lng: Optional[float]) -> Optional[TrackerFix]:
-    if lat is None or lng is None:
-        return None
-    return TrackerFix(lat=lat, lng=lng)
 
 
 async def build_phase_assessment(
@@ -205,45 +184,11 @@ async def build_phase_assessment(
         max_phone_accuracy_metres=settings.DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES,
     )
 
-    precinct_id: Optional[uuid.UUID] = None
-    precinct_lat: Optional[float] = None
-    precinct_lng: Optional[float] = None
-    precinct_radius_metres: Optional[float] = None
-    precinct_geofence_polygon: Optional[list[tuple[float, float]]] = None
-    precinct_tolerance_metres: Optional[float] = None
-    driver_in_precinct: Optional[bool] = None
-    truck_in_precinct: Optional[bool] = None
-
-    checkable = (
-        PhaseType(event.phase_type) is not PhaseType.IN_TRANSIT and event.trip_stop_id is not None
+    precinct = await build_phase_precinct_assessment(
+        db, event=event,
+        driver_fix=tracker_fix(driver_lat, driver_lng),
+        truck_fix=tracker_fix(tracker_lat, tracker_lng),
     )
-    if checkable and event.trip_stop_id is not None:  # None already excluded by `checkable`; narrows for mypy
-        precinct = await _load_precinct_for_stop(db, trip_stop_id=event.trip_stop_id)
-        if precinct is not None and precinct.latitude is not None and precinct.longitude is not None:
-            precinct_id = precinct.id
-            precinct_lat = float(precinct.latitude)
-            precinct_lng = float(precinct.longitude)
-            # Exactly one of the two shapes is recorded: the one evaluate_geofence used.
-            if precinct.geofence_polygon:
-                precinct_geofence_polygon = [
-                    (float(corner[0]), float(corner[1])) for corner in precinct.geofence_polygon
-                ]
-            else:
-                precinct_radius_metres = float(
-                    DEFAULT_GEOFENCE_RADIUS_METRES
-                    if precinct.geofence_radius_metres is None
-                    else precinct.geofence_radius_metres
-                )
-            precinct_tolerance_metres = float(settings.GPS_TOLERANCE_METRES)
-
-            driver_verdict = evaluate_geofence(_tracker_fix(driver_lat, driver_lng), precinct)
-            truck_verdict = evaluate_geofence(_tracker_fix(tracker_lat, tracker_lng), precinct)
-            driver_in_precinct = (
-                driver_verdict.confirmed if driver_verdict.reason is GeofenceVerdictReason.MEASURED else None
-            )
-            truck_in_precinct = (
-                truck_verdict.confirmed if truck_verdict.reason is GeofenceVerdictReason.MEASURED else None
-            )
 
     return ActionLocationAssessment(
         policy_version=ACTION_LOCATION_POLICY_VERSION,
@@ -263,14 +208,7 @@ async def build_phase_assessment(
         max_skew_seconds=settings.DRIVER_TRUCK_MAX_SKEW_SECONDS,
         max_phone_accuracy_metres=settings.DRIVER_TRUCK_MAX_PHONE_ACCURACY_METRES,
         expected_trip_stop_id=event.trip_stop_id,
-        precinct_id=precinct_id,
-        precinct_lat=precinct_lat,
-        precinct_lng=precinct_lng,
-        precinct_radius_metres=precinct_radius_metres,
-        precinct_geofence_polygon=precinct_geofence_polygon,
-        precinct_tolerance_metres=precinct_tolerance_metres,
-        driver_in_precinct=driver_in_precinct,
-        truck_in_precinct=truck_in_precinct,
+        **asdict(precinct),
     )
 
 
@@ -576,6 +514,43 @@ async def _find_existing_driver_location_mismatch(
     return result.scalar_one_or_none()
 
 
+async def _persist_driver_location_mismatch(
+    db: AsyncSession,
+    *,
+    trip: Trip,
+    phase_event_id: uuid.UUID,
+    assessment: ActionLocationAssessment,
+    description: str,
+) -> bool:
+    """Insert the finding under a SAVEPOINT. False when the named partial unique index
+    says another request already wrote it; any other integrity fault propagates."""
+    finding = TripException(
+        trip_id=trip.id,
+        phase_event_id=phase_event_id,
+        checkpoint_id=None,
+        trip_stop_id=assessment.expected_trip_stop_id,
+        exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
+        source=ExceptionSource.SYSTEM,
+        severity=ExceptionSeverity.WARNING,
+        review_status=initial_review_status(ExceptionSeverity.WARNING),
+        description=description,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(finding)
+            await db.flush()
+    except IntegrityError as integrity_exc:
+        if (
+            not is_unique_violation(integrity_exc)
+            or violated_constraint(integrity_exc) != _PHASE_DRIVER_LOCATION_INDEX
+        ):
+            # Not the race this savepoint exists to tolerate — a real integrity
+            # fault must be visible, not folded into "someone else already wrote it".
+            raise
+        return False
+    return True
+
+
 async def record_driver_location_finding(
     db: AsyncSession,
     *,
@@ -646,31 +621,9 @@ async def record_driver_location_finding(
             f"{_describe_driver_reason(driver_reason)}"
         )
 
-        finding = TripException(
-            trip_id=trip.id,
-            phase_event_id=phase_event_id,
-            checkpoint_id=None,
-            trip_stop_id=assessment.expected_trip_stop_id,
-            exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
-            source=ExceptionSource.SYSTEM,
-            severity=ExceptionSeverity.WARNING,
-            review_status=initial_review_status(ExceptionSeverity.WARNING),
-            description=description,
-        )
-
-        try:
-            async with db.begin_nested():
-                db.add(finding)
-                await db.flush()
-        except IntegrityError as integrity_exc:
-            if (
-                not is_unique_violation(integrity_exc)
-                or violated_constraint(integrity_exc) != _PHASE_DRIVER_LOCATION_INDEX
-            ):
-                # Not the race this savepoint exists to tolerate — a real integrity
-                # fault must be visible, not folded into "someone else already wrote
-                # it".
-                raise
+        if not await _persist_driver_location_mismatch(
+            db, trip=trip, phase_event_id=phase_event_id, assessment=assessment, description=description,
+        ):
             logger.info(
                 "DRIVER_LOCATION_MISMATCH insert race for %s — another request already wrote it", context,
             )

@@ -137,7 +137,7 @@ describe('Dashboard active trips', () => {
 
     renderPage()
 
-    for (const name of ['Created', 'Trip ID', 'Driver / horse', 'Route', 'Progress', 'Status']) {
+    for (const name of ['Created', 'Trip ID', 'Driver / horse', 'Route', 'Exceptions', 'Status']) {
       expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
     }
     expect(screen.getByRole('link', { name: 'Sipho Dlamini · FP-t1' })).toHaveAttribute('href', '/trips/t1')
@@ -156,15 +156,37 @@ describe('Dashboard active trips', () => {
     expect(rowRefs()).toEqual(['FP-open'])
   })
 
-  it('keeps the order the API sent until a header is clicked', () => {
+  it('opens in attention order, most urgent first, with Exceptions marked as the sort', () => {
     mockedUseTrips.mockReturnValue(tripsState({
-      trips: [makeTrip('b', { driver: driverNamed('Zane') }), makeTrip('a', { driver: driverNamed('Aisha') })],
+      trips: [
+        makeTrip('quiet'),
+        makeTrip('warning', { needs_review_count: 2, attention: { critical: 0, warning: 2, info: 0, claimed: 0 } }),
+        makeTrip('critical', { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+      ],
     }))
 
     renderPage()
 
-    expect(rowRefs()).toEqual(['FP-b', 'FP-a'])
-    for (const header of screen.getAllByRole('columnheader')) expect(header).toHaveAttribute('aria-sort', 'none')
+    expect(rowRefs()).toEqual(['FP-critical', 'FP-warning', 'FP-quiet'])
+    expect(screen.getByRole('columnheader', { name: /exceptions/i })).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  it('lets a header click replace attention order, and Exceptions bring it back', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [
+        makeTrip('a', { driver: driverNamed('Aisha') }),
+        makeTrip('z', { driver: driverNamed('Zane'), needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+      ],
+    }))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /driver/i }))
+
+    expect(rowRefs()).toEqual(['FP-a', 'FP-z'])
+
+    fireEvent.click(screen.getByRole('button', { name: /exceptions/i }))
+
+    expect(rowRefs()).toEqual(['FP-z', 'FP-a'])
   })
 
   it('sorts by a header, reverses on a second click, and marks the sorted column', () => {

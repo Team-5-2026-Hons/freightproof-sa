@@ -1,6 +1,6 @@
 'use client'
 
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { WifiOff, Loader2, X } from 'lucide-react'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { dismissPhaseSubmissionFailure, usePhaseSubmissions } from '@/lib/submission/phase-submitter'
@@ -18,6 +18,9 @@ function subscribe(cb: () => void): () => void {
 }
 
 export function OfflineBanner() {
+  // Dismissing deletes the driver's incident report and photos for good, so it takes a
+  // second, differently-worded tap.
+  const [confirmingDismiss, setConfirmingDismiss] = useState(false)
   const online = useSyncExternalStore(subscribe, () => navigator.onLine, () => true)
   // AppShell mounts this once per screen, and whichever trip-flow page is open mounts
   // its own useOfflineQueue() instance to get enqueue*/flush — this is deliberately a
@@ -26,7 +29,7 @@ export function OfflineBanner() {
   // instance's mount-time flush could race the page instance's and double-submit
   // evidence. Both instances read the same shared state, so queueLength/droppedCount
   // here always match what the page instance sees.
-  const { queueLength, droppedCount, dismissDropped } = useOfflineQueue()
+  const { queueLength, droppedCount, dismissDropped, attentionCount, retryAttention, dismissAttention } = useOfflineQueue()
   // Same module-scope-store reasoning, for the in-memory background submitter. AppShell
   // renders this on every screen, which is exactly why it is the right home for both
   // signals: a submission handed off on the step page finishes while the driver is on
@@ -36,7 +39,7 @@ export function OfflineBanner() {
   const hasBackgroundWork = inFlight.length > 0 || failures.length > 0
 
   // Nothing to show at all — hide the wrapper entirely so it doesn't reserve space.
-  if (online && queueLength === 0 && droppedCount === 0 && !hasBackgroundWork) return null
+  if (online && queueLength === 0 && droppedCount === 0 && attentionCount === 0 && !hasBackgroundWork) return null
 
   return (
     <div className="flex flex-col">
@@ -116,6 +119,59 @@ export function OfflineBanner() {
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
+        </div>
+      )}
+
+      {/* An exception report the server refused is kept, never auto-deleted: it is the
+          driver's account of an incident. Same error-container family as the dropped
+          notice above, but with two real, labelled choices instead of a bare dismiss —
+          they are the only way out, so they get the full 44pt touch height. */}
+      {attentionCount > 0 && (
+        <div role="alert" className="flex flex-col gap-2 bg-error-container px-4 py-2 text-xs font-medium text-error-on-container">
+          <span>
+            {attentionCount} {attentionCount === 1 ? 'report needs' : 'reports need'} attention &mdash; the server
+            did not accept {attentionCount === 1 ? 'it' : 'them'}. Nothing was deleted.
+          </span>
+          <div className="flex gap-2">
+            {confirmingDismiss ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmingDismiss(false)
+                    void dismissAttention()
+                  }}
+                  className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+                >
+                  Delete {attentionCount} {attentionCount === 1 ? 'report' : 'reports'}?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDismiss(false)}
+                  className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+                >
+                  Keep
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void retryAttention()}
+                  className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+                >
+                  Try again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDismiss(true)}
+                  className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+                >
+                  Dismiss
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

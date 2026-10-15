@@ -210,31 +210,27 @@ def _classify(changed: set[str]) -> PrecinctEventType:
     return PrecinctEventType.COSMETIC_UPDATE
 
 
-async def update_precinct(
-    db: AsyncSession,
-    precinct_id: uuid.UUID,
-    organization_id: uuid.UUID,
-    data: PrecinctUpdateBody,
-    current_user_id: uuid.UUID,
-) -> PrecinctRead:
-    """Apply a partial update to a precinct owned by organization_id.
-
-    The org filter is in the WHERE clause rather than checked after loading, so a
-    precinct belonging to another org is indistinguishable from one that does not exist
-    — including a shared one the caller can see in GET /precincts. Visibility is not
-    permission.
-    """
-    precinct = (
-        await db.execute(
-            select(Precinct).where(
-                Precinct.id == precinct_id,
-                Precinct.principal_organization_id == organization_id,
-            )
+async def _get_owned_precinct(
+    db: AsyncSession, *, precinct_id: uuid.UUID, organization_id: uuid.UUID,
+) -> Precinct:
+    """The org filter is in the WHERE clause, so another org's precinct — shared or not —
+    is indistinguishable from one that does not exist."""
+    result = await db.execute(
+        select(Precinct).where(
+            Precinct.id == precinct_id,
+            Precinct.principal_organization_id == organization_id,
         )
-    ).scalar_one_or_none()
+    )
+    precinct = result.scalar_one_or_none()
     if precinct is None:
         raise ResourceNotFoundError("Precinct", str(precinct_id))
+    return precinct
 
+
+async def _validate_precinct_patch(
+    db: AsyncSession, *, precinct: Precinct, organization_id: uuid.UUID, data: PrecinctUpdateBody,
+) -> dict[str, Any]:
+    """The fields a PATCH sets, after the name-uniqueness and pin-in-outline checks."""
     # exclude_unset, not exclude_none: a PATCH that explicitly sets address to null is a
     # deliberate clear, and must not be confused with one that omitted the field.
     patched = data.model_dump(exclude_unset=True)
@@ -243,7 +239,7 @@ async def update_precinct(
             db,
             organization_id=organization_id,
             name=patched["name"],
-            exclude_precinct_id=precinct_id,
+            exclude_precinct_id=precinct.id,
         )
 
     # The schema checks pin-vs-outline only when both arrive in one body. A PATCH may move
@@ -258,6 +254,27 @@ async def update_precinct(
             )
         except ValueError as exc:
             raise InvalidGeofenceError(str(exc)) from exc
+    return patched
+
+
+async def update_precinct(
+    db: AsyncSession,
+    precinct_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    data: PrecinctUpdateBody,
+    current_user_id: uuid.UUID,
+) -> PrecinctRead:
+    """Apply a partial update to a precinct owned by organization_id.
+
+    The org filter is in the WHERE clause rather than checked after loading, so a
+    precinct belonging to another org is indistinguishable from one that does not exist
+    — including a shared one the caller can see in GET /precincts. Visibility is not
+    permission.
+    """
+    precinct = await _get_owned_precinct(db, precinct_id=precinct_id, organization_id=organization_id)
+    patched = await _validate_precinct_patch(
+        db, precinct=precinct, organization_id=organization_id, data=data,
+    )
 
     old = _geofence_snapshot(precinct)
     for field, value in patched.items():

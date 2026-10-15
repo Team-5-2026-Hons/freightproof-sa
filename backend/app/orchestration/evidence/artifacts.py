@@ -326,3 +326,15 @@ async def get_trip_scoped_artifact(
     return EvidenceArtifactWithUrl.model_validate(artifact).model_copy(
         update={"signed_url": signed_url}
     )
+
+
+async def sign_artifact_url(artifact: EvidenceArtifact) -> str | None:
+    """A short-lived read URL for an artifact the caller has already scoped to its trip.
+
+    None when Storage declines to sign (the artifact is still evidence). Callers must have
+    established ownership first; this does not check it.
+    """
+    return await create_signed_url(
+        s3_bucket=artifact.s3_bucket, s3_key=artifact.s3_key,
+        ttl_seconds=settings.EVIDENCE_SIGNED_URL_TTL_SECONDS,
+    )

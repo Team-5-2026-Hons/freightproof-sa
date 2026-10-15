@@ -29,23 +29,31 @@ from app.db.models.enums import (
 )
 from app.db.models.trips import Trip
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.reads import build_exception_read
+from app.orchestration.evidence_anchors.recording import anchor_review
 from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.schemas.transit import TripExceptionRead
 
 logger = logging.getLogger(__name__)
 
 
-def _read_with_trip(exc: TripException, trip: Trip) -> TripExceptionRead:
-    """Serialise an exception with the reference of the trip it belongs to.
+async def _flush_and_anchor(db: AsyncSession, exc: TripException) -> None:
+    """Persist a NEW review, then freeze its anchor event in the same transaction
+    (all-or-nothing) and queue it for after the outer commit. A replayed review never
+    reaches this."""
+    await db.flush()
+    await db.refresh(exc)
+    await anchor_review(db, exception=exc)
 
-    The trip comes from the org-scoping join both callers already perform, so this adds
-    no query. Without it every exception row on the dispatcher's queue would say only
-    which UUID it belonged to, and both screens would fetch the whole trip list to turn
-    that into something a human can act on.
+
+async def _read_with_anchors(db: AsyncSession, exc: TripException, trip: Trip) -> TripExceptionRead:
+    """Serialise an exception with its trip's reference, its photos and its anchor events.
+
+    The trip comes from the org-scoping join callers already perform, so the reference costs
+    no query. Without it every exception row on the dispatcher's queue would say only which
+    UUID it belonged to, and both screens would fetch the whole trip list to resolve it.
     """
-    return TripExceptionRead.model_validate(exc).model_copy(
-        update={"trip_reference": trip.trip_reference},
-    )
+    return (await build_exception_read(db, exc)).model_copy(update={"trip_reference": trip.trip_reference})
 
 
 async def _lock_for_review(
@@ -84,10 +92,11 @@ async def _lock_for_review(
 
 
 async def _read_with_names(db: AsyncSession, exc: TripException, trip: Trip) -> TripExceptionRead:
-    """Dispatcher-facing read. raise_exception (driver-facing) keeps _read_with_trip
+    """Dispatcher-facing read. raise_exception (driver-facing) builds its own read
     and gets no names by design."""
     [read] = await with_reviewer_names(
-        db, organization_id=trip.operator_organization_id, reads=[_read_with_trip(exc, trip)],
+        db, organization_id=trip.operator_organization_id,
+        reads=[await _read_with_anchors(db, exc, trip)],
     )
     return read
 
@@ -201,8 +210,7 @@ async def review_exception(
     exc.reviewed_at = now
     exc.review_note = review_note
     exc.contact_method = contact_method
-    await db.flush()
-    await db.refresh(exc)
+    await _flush_and_anchor(db, exc)
 
     # Metadata only. review_note is free text a dispatcher typed about a person and
     # about a live incident; it belongs in the record, never in the log.
@@ -359,6 +367,7 @@ async def review_exceptions_batch(
     await db.flush()
     for exc in newly_reviewed:
         await db.refresh(exc)
+        await anchor_review(db, exception=exc)
 
     if newly_reviewed:
         # Metadata only — never the note (see review_exception).
@@ -374,5 +383,5 @@ async def review_exceptions_batch(
 
     ordered = sorted(found.values(), key=lambda exc: (exc.created_at, exc.id), reverse=True)
     return await with_reviewer_names(
-        db, organization_id=organization_id, reads=[_read_with_trip(exc, trip) for exc in ordered],
+        db, organization_id=organization_id, reads=[await _read_with_anchors(db, exc, trip) for exc in ordered],
     )

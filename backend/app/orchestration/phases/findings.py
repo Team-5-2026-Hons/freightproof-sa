@@ -15,6 +15,7 @@ from app.db.models.enums import (
 )
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
 from app.db.models.transit import TripException
+from app.orchestration.evidence_anchors.recording import register_exception
 from app.db.models.trips import Consignment, Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.exceptions.review_policy import initial_review_status
@@ -232,7 +233,7 @@ async def _raise_trailer_decoupling_if_unrecorded(
             f"trailer {registration} is {format_distance(separation)} from the horse"
             for registration, separation in decoupled
         )
-        db.add(TripException(
+        await register_exception(db, TripException(
             trip_id=trip.id, phase_event_id=event.id, trip_stop_id=event.trip_stop_id,
             exception_type=ExceptionType.TRAILER_LOCATION_MISMATCH,
             source=ExceptionSource.SYSTEM,
@@ -309,7 +310,7 @@ async def _raise_scan_shortfall_if_unrecorded(
     return True
 
 
-def _record_seal_finding(
+async def _record_seal_finding(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent,
     exception_type: ExceptionType, severity: ExceptionSeverity, description: str,
 ) -> None:
@@ -317,7 +318,7 @@ def _record_seal_finding(
     becomes EXCEPTION, which _is_resolved treats as resolved: the finding is recorded
     without stopping the ledger (see the SEAL_MISMATCH comment in advance_arrival)."""
     event.status = PhaseStatus.EXCEPTION
-    db.add(TripException(
+    await register_exception(db, TripException(
         trip_id=trip.id, phase_event_id=event.id,
         exception_type=exception_type, source=ExceptionSource.SYSTEM,
         severity=severity,
