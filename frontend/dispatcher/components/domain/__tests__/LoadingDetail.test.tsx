@@ -132,6 +132,53 @@ describe('LoadingDetail', () => {
     expect(screen.getByAltText('Linehaul document')).toBeInTheDocument()
   })
 
+  it('shows the linehaul sheet PDF scanned at loading, viewable in place', () => {
+    const pdf: EvidenceArtifactWithUrl = {
+      id: 'artifact-pdf' as ArtifactId,
+      trip_id: 'trip-1',
+      artifact_type: 'document',
+      s3_key: 'key',
+      s3_bucket: 'bucket',
+      file_hash: 'def456',
+      mime_type: 'application/pdf',
+      captured_at: '2026-01-01T00:00:00Z',
+      captured_by_driver_id: null,
+      captured_by_user_id: null,
+      captured_lat: null,
+      captured_lng: null,
+      created_at: '2026-01-01T00:00:00Z',
+      phase_event_id: null,
+      evidence_role: 'linehaul_pdf',
+      signed_url: 'https://example.test/artifact-pdf',
+    }
+    render(
+      <LoadingDetail
+        phase={{ ...makePhase('loading'), status: 'completed', linehaul_pdf_artifact_id: 'artifact-pdf' }}
+        expectedCount={null}
+        liveScannedOutCount={null}
+        artifactsById={new Map([['artifact-pdf', pdf]])}
+        precinct={undefined}
+      />,
+    )
+
+    expect(screen.getByText('Linehaul sheet (PDF)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View Linehaul sheet (PDF)' })).toBeInTheDocument()
+  })
+
+  it('shows no PDF row when the loading has no linehaul PDF', () => {
+    render(
+      <LoadingDetail
+        phase={{ ...makePhase('loading'), status: 'completed', linehaul_pdf_artifact_id: null }}
+        expectedCount={null}
+        liveScannedOutCount={null}
+        artifactsById={NO_ARTIFACTS}
+        precinct={undefined}
+      />,
+    )
+
+    expect(screen.queryByText('Linehaul sheet (PDF)')).not.toBeInTheDocument()
+  })
+
   it('shows not captured when no linehaul document has been photographed yet', () => {
     render(
       <LoadingDetail
