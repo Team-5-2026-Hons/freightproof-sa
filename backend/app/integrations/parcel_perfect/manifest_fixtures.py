@@ -8,6 +8,7 @@ from app.integrations.parcel_perfect.models import PPContents, PPManifestHeader,
 from app.integrations.parcel_perfect.timestamps import _PP_DATE_FORMAT, parse_pp_datetime
 from app.integrations.parcel_perfect.waybill_fixtures import (
     MOCK_WAYBILLS,
+    _BFN,
     _CPT,
     _DEMO_PP_ACCOUNT,
     _DEMO_PP_CUSTOMER,
@@ -17,6 +18,7 @@ from app.integrations.parcel_perfect.waybill_fixtures import (
     _MANIFEST_CLOSED,
     _MANIFEST_SINGLE,
     _MANIFEST_XDOCK,
+    _Depot,
     _routed_waybill,
 )
 
@@ -62,6 +64,136 @@ MANIFEST_DEMO_WAYBILLS: dict[str, PPWaybillResponse] = {
 }
 
 MOCK_WAYBILLS.update(MANIFEST_DEMO_WAYBILLS)
+
+
+# ---------------------------------------------------------------------------
+# Testing batch: 50 waybills on 15 closed, timed manifests (84-98).
+#
+# The wizard is manifest-first and a manifest is spent once it is on a live trip, so
+# 81 alone gives one test trip and then every lookup is MANIFEST_ALREADY_ON_TRIP.
+# These are for spending freely in dev; keep 81 for the walkthrough. Most leave
+# Cape Town because that is where activation is tested on a real phone. The other
+# routes are there so non-CPT origins are exercised too.
+#
+# Waybill numbers follow 81's pattern: MFTWB + manifest number + line on the manifest.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _BatchLine:
+    parcel_count: int
+    weight_kg: float
+    declared_value: float
+    description: str
+
+
+@dataclass(frozen=True)
+class _BatchManifest:
+    origin: _Depot
+    destination: _Depot
+    lines: tuple[_BatchLine, ...]
+
+
+TESTING_BATCH_MANIFESTS: dict[int, _BatchManifest] = {
+    84: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(5, 210.0, 12400.0, "Boxed small appliances"),
+    )),
+    85: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(9, 380.0, 21600.0, "Retail apparel cartons"),
+        _BatchLine(3, 72.0, 8900.0, "Mobile handsets"),
+    )),
+    86: _BatchManifest(_CPT, _BFN, (
+        _BatchLine(12, 540.0, 26800.0, "Canned fruit"),
+        _BatchLine(4, 96.0, 5200.0, "Stationery cartons"),
+        _BatchLine(7, 310.0, 15100.0, "Garden tools"),
+    )),
+    87: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(6, 245.0, 14700.0, "Wine cases"),
+        _BatchLine(10, 455.0, 23900.0, "Bottled sauces"),
+        _BatchLine(2, 38.0, 6100.0, "Pharmaceutical samples"),
+        _BatchLine(8, 330.0, 18200.0, "Bedding sets"),
+    )),
+    88: _BatchManifest(_CPT, _BFN, (
+        _BatchLine(14, 620.0, 30500.0, "Dried fruit cartons"),
+        _BatchLine(5, 140.0, 9600.0, "Printer consumables"),
+        _BatchLine(3, 64.0, 7300.0, "Laboratory glassware"),
+        _BatchLine(9, 395.0, 19800.0, "Pet food bags"),
+        _BatchLine(6, 220.0, 11500.0, "Bathroom fittings"),
+    )),
+    89: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(11, 490.0, 27300.0, "Flat-pack furniture"),
+        _BatchLine(4, 88.0, 6400.0, "Cosmetics cartons"),
+        _BatchLine(16, 730.0, 36900.0, "Bottled juice pallets"),
+        _BatchLine(7, 260.0, 15800.0, "Sports equipment"),
+        _BatchLine(2, 45.0, 11200.0, "Camera equipment"),
+        _BatchLine(8, 350.0, 17400.0, "Kitchenware cartons"),
+    )),
+    90: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(13, 585.0, 29100.0, "Paper towels"),
+        _BatchLine(5, 175.0, 10800.0, "Electrical cable drums"),
+        _BatchLine(3, 59.0, 4700.0, "Spectacle frames"),
+    )),
+    91: _BatchManifest(_CPT, _BFN, (
+        _BatchLine(10, 440.0, 22300.0, "Bagged maize meal"),
+        _BatchLine(6, 205.0, 13600.0, "Power tools"),
+        _BatchLine(4, 115.0, 7900.0, "School textbooks"),
+        _BatchLine(8, 360.0, 16700.0, "Detergent cartons"),
+    )),
+    92: _BatchManifest(_CPT, _JHB, (
+        _BatchLine(7, 290.0, 20400.0, "Solar inverters"),
+        _BatchLine(12, 515.0, 25500.0, "Ceramic dinnerware"),
+    )),
+    93: _BatchManifest(_BFN, _JHB, (
+        _BatchLine(15, 690.0, 33200.0, "Sunflower oil cases"),
+        _BatchLine(4, 92.0, 6800.0, "Veterinary medicines"),
+        _BatchLine(9, 410.0, 19300.0, "Fencing wire coils"),
+        _BatchLine(6, 230.0, 12100.0, "Leather goods"),
+        _BatchLine(3, 70.0, 5900.0, "Seed packets"),
+    )),
+    94: _BatchManifest(_JHB, _CPT, (
+        _BatchLine(8, 340.0, 24600.0, "Computer monitors"),
+        _BatchLine(11, 470.0, 22800.0, "Engine oil cases"),
+        _BatchLine(5, 150.0, 9100.0, "Medical gloves"),
+    )),
+    95: _BatchManifest(_BFN, _CPT, (
+        _BatchLine(13, 600.0, 28700.0, "Bagged wheat flour"),
+        _BatchLine(7, 275.0, 14300.0, "Saddlery goods"),
+        _BatchLine(3, 66.0, 5400.0, "Irrigation fittings"),
+        _BatchLine(10, 450.0, 21200.0, "Canned vegetables"),
+    )),
+    96: _BatchManifest(_JHB, _BFN, (
+        _BatchLine(6, 215.0, 17900.0, "Networking switches"),
+        _BatchLine(9, 400.0, 18600.0, "Paint tins"),
+    )),
+    97: _BatchManifest(_BFN, _JHB, (
+        _BatchLine(14, 640.0, 31800.0, "Bagged animal feed"),
+        _BatchLine(5, 160.0, 10200.0, "Farm hardware"),
+        _BatchLine(2, 41.0, 3800.0, "Soil sample kits"),
+    )),
+    98: _BatchManifest(_JHB, _CPT, (
+        _BatchLine(10, 465.0, 24100.0, "Mining safety gear"),
+        _BatchLine(4, 105.0, 13400.0, "Audio equipment"),
+        _BatchLine(7, 300.0, 15600.0, "Upholstery fabric rolls"),
+    )),
+}
+
+TESTING_BATCH_WAYBILLS: dict[str, PPWaybillResponse] = {
+    w.details.waybill: w
+    for w in [
+        _routed_waybill(
+            waybill=f"MFTWB{number}{position:02d}",
+            origin=manifest.origin, destination=manifest.destination, manifest=number,
+            parcel_count=line.parcel_count, weight_kg=line.weight_kg,
+            declared_value=line.declared_value,
+            contents=[PPContents(item=1, description=line.description,
+                                 actmass=line.weight_kg, pieces=line.parcel_count)],
+        )
+        for number, manifest in TESTING_BATCH_MANIFESTS.items()
+        for position, line in enumerate(manifest.lines, start=1)
+    ]
+}
+
+MOCK_WAYBILLS.update(TESTING_BATCH_WAYBILLS)
 
 
 @dataclass(frozen=True)
@@ -128,6 +260,15 @@ MOCK_MANIFEST_HEADERS: dict[int, _ManifestHeaderFixture] = {
     ),
     MANIFEST_NO_WAYBILLS: _closed_manifest(_CPT.hub_code, _JHB.hub_code),
 }
+
+# Closed and timed like 81, so each testing-batch manifest previews with no warnings.
+MOCK_MANIFEST_HEADERS.update({
+    number: _closed_manifest(
+        manifest.origin.hub_code, manifest.destination.hub_code,
+        client_reference=f"PO-CGY-{number:04d}",
+    )
+    for number, manifest in TESTING_BATCH_MANIFESTS.items()
+})
 
 
 def _render_pp_time(when: _PPTime, today: date) -> str:
