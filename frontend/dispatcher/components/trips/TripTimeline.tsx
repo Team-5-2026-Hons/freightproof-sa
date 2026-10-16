@@ -21,6 +21,7 @@ import { currentTripPhase, precinctAtPhase, precinctLabel } from '@/lib/phase/tr
 import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR } from './PhaseTimelineItem'
 import { nextTripStop } from './PhaseEvidence'
 import { TimelinePhase } from './TimelinePhase'
+import { TripHelp } from './TripHelp'
 import { uniqueExceptionsById } from './exception-dedupe'
 import { useExceptionReveal, type RevealRequest } from './useExceptionReveal'
 import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
@@ -54,6 +55,12 @@ const CLOCK_TICK_MS = 60_000
 const TOOLBAR_AREAS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls']"
 const TOOLBAR_AREAS_WITH_STATUS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls'_'status_status'] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:[grid-template-areas:'view_status_controls']"
 const NO_OPEN: OpenException = () => undefined
+const TIMELINE_READER_HEIGHT_VAR = '--timeline-reader-height'
+// The help panel hangs from the sticky toolbar, so it stays pinned under it while the scroller's overflow clips whatever
+// runs past the scroller's bottom edge, and scrolling cannot reveal it. Capping it to the reading area below the toolbar
+// makes it scroll inside itself instead. The floor keeps it readable if the area is momentarily tiny. Written out in full, not
+// built from the two variable names: Tailwind only generates a class it can read literally in the source.
+const HELP_MAX_HEIGHT = '[&_[role=region]]:max-h-[max(8rem,calc(var(--timeline-reader-height,70vh)_-_var(--timeline-toolbar-height,0px)_-_0.5rem))]'
 
 /** Chronological, id-tie-broken order shared by every phase's exception rows, so the rail and the
  *  rows can never disagree about which came first. */
@@ -101,13 +108,17 @@ export function TripTimeline({
   const hasFreshness = lastUpdated !== null || warnings.length > 0
   const toolbarRef = useCallback((element: HTMLDivElement | null): (() => void) | undefined => {
     if (!element) return
+    // The scroller the toolbar sticks in: its height is the reading area the help panel has to fit inside.
+    const scroller = element.closest<HTMLElement>('[data-timeline-scroller]')
     const measure = (): void => {
       element.parentElement?.style.setProperty(TIMELINE_TOOLBAR_HEIGHT_VAR, `${element.getBoundingClientRect().height}px`)
+      if (scroller) element.parentElement?.style.setProperty(TIMELINE_READER_HEIGHT_VAR, `${scroller.clientHeight}px`)
     }
     // Wrapping and browser zoom change the reading space; never subtract a fixed header height.
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
+    if (scroller) observer.observe(scroller)
     window.addEventListener('resize', measure)
     return () => { observer.disconnect(); window.removeEventListener('resize', measure) }
   }, [])
@@ -159,6 +170,7 @@ export function TripTimeline({
         <RefreshStatus warnings={warnings} />
       </div>}
       <div data-toolbar-controls className="flex items-center justify-end gap-2 [grid-area:controls]">
+        <TripHelp topic="timeline" maxHeight={HELP_MAX_HEIGHT} />
         {active && trip.status !== 'created' && <Button variant="secondary" size="sm" onClick={onJump} {...keepSelection}>Jump to current phase ↓</Button>}
         {onToggleExpanded && <Button variant="secondary" size="sm" onClick={onToggleExpanded} {...keepSelection}
           aria-label={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand} title={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand}>

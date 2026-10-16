@@ -108,3 +108,13 @@ describe('TripSummary: the "need review" chip', () => {
     expect(screen.queryByRole('button', { name: /need review\. Show the first/ })).toBeNull()
   })
 })
+
+describe('TripSummary header help', () => {
+  it('offers a help button in the header that explains the header', async () => {
+    renderSummary()
+
+    await userEvent.click(screen.getByRole('button', { name: "About this trip's header" }))
+
+    expect(screen.getByRole('region', { name: "About this trip's header" })).toHaveTextContent('What the header shows')
+  })
+})

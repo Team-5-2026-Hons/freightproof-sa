@@ -1,6 +1,7 @@
 import type { JSX, Ref } from 'react'
 import { InfoPopover } from '@/components/analytics/fleet/InfoPopover'
 import { Chip } from '@/components/ui/Chip'
+import { POPOVER_ANCHOR_END } from '@/components/ui/popoverAnchor'
 import type { ParcelTraceResponse } from '@shared/lib/types/parcel-trace'
 import { ParcelHistory } from './ParcelHistory'
 import { ParcelTimeline } from './ParcelTimeline'
@@ -22,11 +23,6 @@ const POPOVER_LABEL = 'How to read this parcel record'
 const SCAN_CAVEAT = 'Parcel scans are recorded against the barcode. They do not identify the source system or whether it was simulated.'
 const POSITION_CAVEAT = 'Vehicle and phone positions are inherited from consignment evidence; they are not parcel GPS or live tracking.'
 const SEALED_CAVEAT = 'The contents of a sealed leg are not observable.'
-// InfoPopover opens its panel from the button's left edge, capped at 280px. The button sits at the card's right edge, so in a
-// 320px card the panel would run off the left of the screen. The popover is shared with analytics and is not edited for this:
-// the header row becomes the panel's positioning parent, the panel opens leftwards from the row's right edge, and its width is
-// capped to the viewport minus the page shell's gutters.
-const POPOVER_ANCHOR = '[&>span]:static [&_[role=region]]:left-auto [&_[role=region]]:right-0 [&_[role=region]]:max-w-[min(280px,calc(100vw-4rem))]'
 
 /**
  * The parcel's answer in one card: identity and status, one status line, the timeline of what was recorded for the latest journey,
@@ -41,7 +37,7 @@ export function ParcelOverview({ trace, returnTo, headingRef, loadingMore, onLoa
         <h2 ref={headingRef} tabIndex={-1} className="min-w-0 break-all rounded text-xl font-extrabold tabular-nums text-on-surf focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sec">{trace.barcode}</h2>
         <div className="flex items-center gap-2">
           {badge && <Chip {...badge} className="!whitespace-normal" />}
-          <span className={POPOVER_ANCHOR}>
+          <span className={POPOVER_ANCHOR_END}>
             <InfoPopover title={POPOVER_TITLE} ariaLabel={POPOVER_LABEL} question={POPOVER_LABEL} basis={SCAN_CAVEAT} note={POSITION_CAVEAT} source={trace.coverage_note} footnote={SEALED_CAVEAT} />
           </span>
         </div>

@@ -1665,3 +1665,36 @@ describe('TripTimeline: the toolbar keeps its controls together', () => {
     expect(toolbar.className).not.toContain('status_status')
   })
 })
+
+describe('TripTimeline: help', () => {
+  it('puts the timeline help button with the toolbar controls', async () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+
+    const controls = document.querySelector<HTMLElement>('[data-toolbar-controls]')!
+    await userEvent.click(within(controls).getByRole('button', { name: 'How to read the timeline' }))
+
+    expect(screen.getByRole('region', { name: 'How to read the timeline' })).toHaveTextContent('Each numbered card is one phase')
+  })
+
+  it('caps the help panel to the reading area below the toolbar, so the timeline scroller never clips it', async () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+    const controls = document.querySelector<HTMLElement>('[data-toolbar-controls]')!
+    await userEvent.click(within(controls).getByRole('button', { name: 'How to read the timeline' }))
+
+    const anchor = screen.getByRole('region', { name: 'How to read the timeline' }).closest('[data-keep-exception-selection]')!
+
+    expect(anchor.className).toContain('var(--timeline-reader-height')
+    expect(anchor.className).toContain('var(--timeline-toolbar-height')
+  })
+
+  it('publishes the scroller height for that cap, from the scroller the toolbar sticks in', () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(420)
+    try {
+      render(<div data-timeline-scroller><TripTimeline trip={closedTrip()} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} /></div>)
+
+      const section = screen.getByRole('region', { name: 'Trip timeline' })
+
+      expect(section.style.getPropertyValue('--timeline-reader-height')).toBe('420px')
+    } finally { height.mockRestore() }
+  })
+})

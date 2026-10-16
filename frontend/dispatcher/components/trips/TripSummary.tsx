@@ -11,6 +11,7 @@ import { Ic } from '@/components/ui/Ic'
 import { ForensicControls } from '@/components/blockchain/ForensicControls'
 import { DriverModal } from './DriverModal'
 import { VehicleModal } from './VehicleModal'
+import { TripHelp } from './TripHelp'
 import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
@@ -44,7 +45,8 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
 
   return (
     <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
-      <div className="flex flex-wrap items-start gap-3">
+      {/* `relative`: the help panel opens from this row's right edge (see TripHelp). */}
+      <div className="relative flex flex-wrap items-start gap-3">
         <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
@@ -58,6 +60,7 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
           <Chip type={status.chipType} label={status.label} />
           {facts.needsReviewCount > 0 && <NeedsReviewChip label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} onShow={onShowFirstUnreviewed} />}
           <ForensicControls />
+          <TripHelp topic="header" />
         </div>
       </div>
       {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
