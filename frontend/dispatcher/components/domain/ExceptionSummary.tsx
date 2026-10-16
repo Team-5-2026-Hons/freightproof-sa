@@ -12,6 +12,7 @@ import { withReturnTo } from '@/lib/navigation/returnTo'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META } from '@shared/lib/constants/status-meta'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { TripException } from '@shared/lib/types/exception'
+import { ExceptionRef } from './ExceptionRef'
 import { EXCEPTION_SELECTED_SURFACE, EXCEPTION_SELECTION_OUTLINE } from './ExceptionRow'
 
 interface Props {
@@ -61,7 +62,7 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
           <Ic n="clock" s={11} className="text-sec" />{fmtDateTime(exception.created_at)}
         </time>
       </div>
-      <p className="mt-1 text-xs text-on-surf-v">{EXCEPTION_SOURCE_META[exception.source].label}</p>
+      <p className="mt-1 text-xs text-on-surf-v">{EXCEPTION_SOURCE_META[exception.source].label} · <ExceptionRef id={exception.id} /></p>
       <p className="mt-2 break-words text-sm text-on-surf">{exception.description}</p>
       <p className="mt-2 text-xs font-semibold text-on-surf-v">
         {state.label}

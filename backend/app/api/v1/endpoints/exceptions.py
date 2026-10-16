@@ -23,7 +23,7 @@ from app.core.exceptions import (
 )
 from app.core.limits import EVIDENCE_WRITE, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
-from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
+from app.db.models.enums import DispatcherRole, ExceptionReviewStatus, ExceptionSeverity
 from app.db.session import get_db
 from app.orchestration.exceptions.creation import raise_exception
 from app.orchestration.exceptions.queries import (
@@ -163,6 +163,8 @@ async def get_exception_detail_endpoint(
     try:
         return await get_exception_detail(
             db, exception_id=exception_id, organization_id=current_user.organization_id,
+            # Receipts are admin-only everywhere else, so the pointer into one is too.
+            include_hedera_refs=current_user.role == DispatcherRole.ADMIN_DISPATCHER,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

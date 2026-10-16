@@ -670,6 +670,7 @@ async def test_detail_phase_and_stop_labels_populated_when_present(client: Async
     body = res.json()
     assert body["phase_label"] == PhaseType.IN_TRANSIT.value
     assert body["stop_label"] == 2
+    assert body["phase_event_id"] == str(phase_event.id)
 
 
 async def test_detail_phase_and_stop_labels_are_none_when_absent(client: AsyncClient, db_session):
@@ -683,6 +684,7 @@ async def test_detail_phase_and_stop_labels_are_none_when_absent(client: AsyncCl
     body = res.json()
     assert body["phase_label"] is None
     assert body["stop_label"] is None
+    assert body["phase_event_id"] is None
 
 
 async def test_detail_carries_the_breakdown_vehicle_for_a_horse(client: AsyncClient, db_session):
@@ -866,10 +868,14 @@ async def _make_event(
     return event
 
 
-async def _make_receipt(db_session, trip_id: uuid.UUID, subject_id: uuid.UUID) -> BlockchainReceipt:
+async def _make_receipt(
+    db_session, trip_id: uuid.UUID, subject_id: uuid.UUID,
+    *, hedera_topic_id: str | None = None, hedera_sequence_number: int | None = None,
+) -> BlockchainReceipt:
     receipt = BlockchainReceipt(
         id=uuid.uuid4(), trip_id=trip_id, subject_type=SubjectType.EVIDENCE_EVENT, subject_id=subject_id,
         receipt_type=BlockchainReceiptType.EXCEPTION_RAISED, data_hash="ab" * 32, hedera_tx_id="0.0.1@1.2",
+        hedera_topic_id=hedera_topic_id, hedera_sequence_number=hedera_sequence_number,
         payload_json={},
     )
     db_session.add(receipt)
@@ -910,6 +916,55 @@ async def test_detail_lists_each_action_anchor_with_its_own_status(client: Async
         (str(raised.id), "exception_raised", "pending", None),
         (str(reviewed.id), "exception_reviewed", "anchored", str(receipt.id)),
     ]
+
+
+async def _seed_anchored_and_pending(db_session, tag: str):
+    seed = await _seed_org(db_session, tag=tag)
+    trip = await _make_trip(db_session, seed, tag=tag)
+    exc = await _make_exception(db_session, trip, tag=tag, severity=ExceptionSeverity.CRITICAL)
+    await _make_event(db_session, exc, BlockchainReceiptType.EXCEPTION_RAISED, AnchorStatus.PENDING)
+    receipt = await _make_receipt(
+        db_session, trip.id, exc.id, hedera_topic_id="0.0.4242", hedera_sequence_number=17,
+    )
+    await _make_event(
+        db_session, exc, BlockchainReceiptType.EXCEPTION_REVIEWED, AnchorStatus.ANCHORED,
+        receipt_id=receipt.id, at=datetime.now(UTC) + timedelta(minutes=1),
+    )
+    return seed, trip, exc
+
+
+async def test_admin_detail_carries_the_hedera_topic_and_sequence_only_for_an_anchored_event(
+    client: AsyncClient, db_session,
+):
+    seed, _trip, exc = await _seed_anchored_and_pending(db_session, "hederaadmin")
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed, role="admin_dispatcher"))
+
+    events = res.json()["anchor_events"]
+    assert [(e["anchor_status"], e["hedera_topic_id"], e["hedera_sequence_number"]) for e in events] == [
+        ("pending", None, None),
+        ("anchored", "0.0.4242", 17),
+    ]
+    assert all("data_hash" not in e and "event_hash" not in e for e in events)
+
+
+async def test_non_admin_detail_never_receives_the_hedera_topic_or_sequence(client: AsyncClient, db_session):
+    seed, _trip, exc = await _seed_anchored_and_pending(db_session, "hederaplain")
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    events = res.json()["anchor_events"]
+    assert [e["anchor_status"] for e in events] == ["pending", "anchored"]
+    assert all(e["hedera_topic_id"] is None and e["hedera_sequence_number"] is None for e in events)
+
+
+async def test_trip_detail_never_carries_the_hedera_topic_or_sequence(client: AsyncClient, db_session):
+    seed, trip, _exc = await _seed_anchored_and_pending(db_session, "hederatrip")
+
+    res = await client.get(_trip_url(trip.id), headers=_headers(seed, role="admin_dispatcher"))
+
+    events = res.json()["exceptions"][0]["anchor_events"]
+    assert all(e["hedera_topic_id"] is None and e["hedera_sequence_number"] is None for e in events)
 
 
 async def test_detail_of_a_historical_exception_shows_no_events_not_pending(client: AsyncClient, db_session):

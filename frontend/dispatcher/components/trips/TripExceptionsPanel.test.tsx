@@ -65,16 +65,16 @@ describe('TripExceptionsPanel filters', () => {
 
     expect(screen.getByText('Trip-level records')).toBeInTheDocument()
     expect(screen.getByText('1 of 2 trip exceptions')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*1$/ })).toBeInTheDocument()
     expect(document.querySelectorAll('[data-exception-id]')).toHaveLength(1)
   })
   it('states the size of each filter, so the unselected one is not a blind click', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(10, 2)} filter="needs_review" onFilter={vi.fn()} returnTo="/trips/x" />)
 
     // The panel opens filtered to what needs review, so a dispatcher looking at two rows
-    // could not tell whether "All recorded" held another ten or the same two.
+    // could not tell whether "All" held another ten or the same two.
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*2$/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*12$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*12$/ })).toBeInTheDocument()
   })
 
   it('marks the active filter as the selected tab and switches on click', () => {
@@ -82,9 +82,43 @@ describe('TripExceptionsPanel filters', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(10, 2)} filter="needs_review" onFilter={onFilter} returnTo="/trips/x" />)
 
     expect(screen.getByRole('tab', { name: /^Unreviewed/ })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('tab', { name: /^All recorded/ })).toHaveAttribute('aria-selected', 'false')
-    fireEvent.click(screen.getByRole('tab', { name: /^All recorded/ }))
+    expect(screen.getByRole('tab', { name: /^All/ })).toHaveAttribute('aria-selected', 'false')
+    fireEvent.click(screen.getByRole('tab', { name: /^All/ }))
     expect(onFilter).toHaveBeenCalledWith('all')
+  })
+
+  it('offers a Reviewed filter that lists only reviewed records, with its own count', () => {
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(3, 2)} filter="reviewed" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByRole('tab', { name: /^Reviewed\s*3$/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^Unreviewed\s*2$/ })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.getByRole('tab', { name: /^All\s*5$/ })).toBeInTheDocument()
+    expect(document.querySelectorAll('[data-exception-id]')).toHaveLength(3)
+    expect(screen.getAllByText(/^Reviewed by /)).toHaveLength(3)
+  })
+
+  it('switches to the Reviewed filter on click', () => {
+    const onFilter = vi.fn()
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(3, 2)} filter="all" onFilter={onFilter} returnTo="/trips/x" />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Reviewed/ }))
+
+    expect(onFilter).toHaveBeenCalledWith('reviewed')
+  })
+
+  it('keeps a recorded-only record out of Reviewed', () => {
+    const trip = tripWith(1, 0)
+    trip.exceptions = [...trip.exceptions, { ...trip.exceptions[0]!, id: 'rec-1' as TripException['id'], review_status: 'recorded' }]
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={trip} filter="reviewed" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByRole('tab', { name: /^Reviewed\s*1$/ })).toBeInTheDocument()
+    expect(document.querySelector('[data-exception-id="rec-1"]')).toBeNull()
+  })
+
+  it('says so when nothing has been reviewed yet', () => {
+    render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={tripWith(0, 2)} filter="reviewed" onFilter={vi.fn()} returnTo="/trips/x" />)
+
+    expect(screen.getByText('No exceptions have been reviewed.')).toBeInTheDocument()
   })
 
   it('shows a zero rather than dropping the count when nothing is owed', () => {
@@ -93,7 +127,7 @@ describe('TripExceptionsPanel filters', () => {
     // "Twelve recorded, none owed" and "no exceptions at all" are different facts about a
     // trip, and only one of them is good news.
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*12$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*12$/ })).toBeInTheDocument()
   })
 
   it('counts and renders each exception id once when a polling merge repeats it', () => {
@@ -103,7 +137,7 @@ describe('TripExceptionsPanel filters', () => {
     render(<TripExceptionsPanel artifactsById={NO_ARTIFACTS} precincts={[]} trip={{ ...base, exceptions: [repeated, { ...repeated }] }} filter="all" onFilter={vi.fn()} returnTo="/trips/x" />)
 
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*1$/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*1$/ })).toBeInTheDocument()
     expect(screen.getAllByRole('heading', { name: 'Checkpoint Timeout' })).toHaveLength(1)
   })
 
@@ -122,7 +156,7 @@ describe('TripExceptionsPanel filters', () => {
     // The filter names its phase the way the group headers do, not just "Selected phase".
     expect(screen.getByText(/^Loading · (Origin|Stop|Destination) · /)).toBeInTheDocument()
     expect(screen.getByText('1 of 2 trip exceptions')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*1$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*1$/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show in timeline' }))
     // The record's own id travels with the phase, so the timeline can reveal that row.
@@ -545,6 +579,18 @@ describe('compact density', () => {
     expect(screen.getByRole('tab', { name: 'Compact' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryAllByRole('link', { name: /Review exception/ })).toHaveLength(0)
     expect(document.querySelectorAll('[id^="exception-panel-row-"]')).toHaveLength(3)
+  })
+
+  it('shows each record\'s reference on its compact line and on its opened card', () => {
+    const trip = tripWith(0, 2)
+    trip.exceptions = trip.exceptions.map((e, i) => ({ ...e, id: `${i === 0 ? '3f9a21c4' : '7d02bb10'}-0000-4000-8000-00000000000${i}` as TripException['id'] }))
+    render(<GroupingHarness trip={trip} initialDensity="compact" />)
+
+    expect(screen.getByText(/EX-3F9A21C4/)).toBeInTheDocument()
+    expect(screen.getByText(/EX-7D02BB10/)).toBeInTheDocument()
+    fireEvent.click(document.getElementById(`exception-panel-row-${trip.exceptions[0]!.id}`)!)
+    const card = document.querySelector(`[data-exception-id="${trip.exceptions[0]!.id}"]`) as HTMLElement
+    expect(within(card).getByText('EX-3F9A21C4')).toBeInTheDocument()
   })
 
   it('never wears the timeline row id, which the timeline scrolls and click-off rules key on', () => {
