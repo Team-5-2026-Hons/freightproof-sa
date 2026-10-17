@@ -208,8 +208,12 @@ export function ParcelTimeline({ journey, returnTo, headingLevel = 3 }: Props): 
   const { phaseCount, tripWideExceptionCount } = hiddenLedgerCounts(journey)
   const counts = `${countLabel(phaseCount, 'phase')}${tripWideExceptionCount > 0 ? ` · ${countLabel(tripWideExceptionCount, 'trip-wide exception')}` : ''}`
   // Rows after the steps, in order. None of them is a recorded step.
+  // "No phases attributed" is only true when nothing is shown as a phase and nothing is
+  // owed to this consignment: pending consignment phases belong in Not recorded, and
+  // recorded phases of unknown relevance are already rendered as steps.
+  const hasPhaseRows = steps.some(step => step.kind === 'phase') || journey.phases.some(phase => phase.relevance === 'consignment')
   const tail: TailRow[] = [
-    ...(steps.some(step => step.kind === 'phase') ? [] : ['no-phases' as const]),
+    ...(hasPhaseRows ? [] : ['no-phases' as const]),
     ...(missing.length > 0 ? ['not-recorded' as const] : journey.gaps.length > 0 ? ['gaps' as const] : []),
   ]
   const lineAfter = (index: number): boolean => index < tail.length - 1

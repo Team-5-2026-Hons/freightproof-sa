@@ -348,6 +348,18 @@ describe('ParcelTimeline gaps without a not-recorded row', () => {
 })
 
 describe('ParcelTimeline with no phase attributed to the consignment', () => {
+  it('keeps pending consignment phases in Not recorded without denying their attribution', () => {
+    const journey = makeJourney({
+      phases: [{ ...makePhase('loading', 0), relevance: 'consignment', status: 'pending', completed_at: null }],
+      scans: [], seal_windows: [],
+    })
+
+    const container = renderTimeline(journey)
+
+    expect(container.querySelector('[data-step="phase"]')).toBeNull()
+    expect(container.querySelector('[data-no-phases]')).toBeNull()
+    expect(container.querySelector('[data-not-recorded]')).toHaveTextContent('loading')
+  })
   it('shows one muted row saying so, then the gaps, when boundaries are unavailable', () => {
     const container = renderTimeline(makeBoundariesUnavailableJourney())
 
@@ -382,6 +394,17 @@ describe('ParcelTimeline with no phase attributed to the consignment', () => {
   })
   it('does not show the row when any phase is a step', () => {
     expect(renderTimeline(makeWayJourney()).querySelector('[data-no-phases]')).toBeNull()
+  })
+  it('does not show the row when the only phase steps are recorded with unknown relevance', () => {
+    const journey = makeJourney({
+      phases: [{ ...makePhase('loading', 0), relevance: 'unknown', status: 'completed', completed_at: '2026-10-08T05:00:00Z' }],
+      scans: [], seal_windows: [],
+    })
+
+    const container = renderTimeline(journey)
+
+    expect(container.querySelectorAll('[data-step="phase"]')).toHaveLength(1)
+    expect(container.querySelector('[data-no-phases]')).toBeNull()
   })
 })
 
