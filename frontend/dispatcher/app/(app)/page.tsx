@@ -138,11 +138,7 @@ export default function ActiveTripsPage() {
 
       {/* Trip list card */}
       <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
-        <SecHead
-          title="Active Trips"
-          action="New Trip"
-          onAction={() => router.push(ROUTES.tripNew)}
-        />
+        <SecHead title="Active Trips" />
 
         {loadFailed ? (
           <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">

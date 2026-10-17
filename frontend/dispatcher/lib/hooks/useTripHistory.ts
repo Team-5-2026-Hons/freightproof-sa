@@ -6,8 +6,8 @@ import { api } from '@/lib/api/client'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import type { CursorPage } from '@shared/lib/types/pagination'
 import type { TripHistoryListItem } from '@shared/lib/types/trip'
+import { readPreferences } from '@/lib/preferences'
 
-const PAGE_SIZE = 25
 const SEARCH_DEBOUNCE_MS = 300
 const EMPTY: TripHistoryListItem[] = []
 
@@ -42,9 +42,9 @@ interface NormalizedFilters {
   toDate: string
 }
 
-function buildQuery(filters: NormalizedFilters, cursor: string | undefined): string {
+function buildQuery(filters: NormalizedFilters, cursor: string | undefined, pageSize: number): string {
   const params = new URLSearchParams()
-  params.set('limit', String(PAGE_SIZE))
+  params.set('limit', String(pageSize))
   if (cursor) params.set('cursor', cursor)
   if (filters.q) params.set('q', filters.q)
   if (filters.precinctId) params.set('precinct_id', filters.precinctId)
@@ -62,6 +62,9 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
   const fromDate = filters.fromDate ?? ''
   const toDate = filters.toDate ?? ''
   const [debouncedQ, setDebouncedQ] = useState(rawQ)
+  // Read once per mount: a changed preference applies on the next visit, so a cursor stack
+  // built for one page size is never replayed with another.
+  const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(rawQ), SEARCH_DEBOUNCE_MS)
@@ -108,7 +111,7 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
     }
     setError(null)
 
-    api.get<CursorPage<TripHistoryListItem>>(buildQuery(normalizedFilters, cursor))
+    api.get<CursorPage<TripHistoryListItem>>(buildQuery(normalizedFilters, cursor, pageSize))
       .then((response) => {
         if (requestGenerationRef.current !== generation) return
         setItems(response.items)
@@ -185,7 +188,7 @@ export function useTripHistory(filters: TripHistoryFilters): UseTripHistoryResul
     isStale,
     totalItems,
     page: pageIndex + 1,
-    pageSize: PAGE_SIZE,
+    pageSize,
     hasPrevious,
     hasNext,
     hasNewHistory,

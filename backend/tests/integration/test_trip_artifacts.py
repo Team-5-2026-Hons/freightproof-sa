@@ -2,10 +2,13 @@
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient
+from httpx import AsyncClient, ConnectError
+from sqlalchemy.ext.asyncio import AsyncSession
+from storage3.exceptions import StorageApiError
 
 from app.db.models.enums import ArtifactType, IdvsStatus, OrganizationType, TripStatus, VehicleType
 from app.db.models.evidence import EvidenceArtifact
@@ -15,6 +18,7 @@ from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+from app.storage import supabase_storage
 
 from tests.conftest import auth_header, make_token
 
@@ -94,6 +98,45 @@ async def test_list_artifacts_returns_signed_urls_in_capture_order(client: Async
     assert [a["id"] for a in body] == [str(seal_photo.id), str(pod.id)]
     assert body[0]["signed_url"] == f"https://storage.test/{trip.id}/seal?ttl=300"
     assert body[0]["file_hash"] == "a" * 64
+
+
+@pytest.mark.parametrize("failure", [
+    StorageApiError("Object not found", "not_found", 404),
+    ConnectError("Storage unavailable"),
+])
+async def test_list_artifacts_keeps_metadata_and_other_photos_when_one_cannot_be_signed(
+    client: AsyncClient, seed_trip_with_artifacts: tuple[Trip, User, Organization, EvidenceArtifact, EvidenceArtifact],
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, failure: Exception,
+) -> None:
+    trip, user, org, seal_photo, pod = seed_trip_with_artifacts
+    unavailable_key = seal_photo.s3_key
+
+    def sign(path: str, expires_in: int) -> dict[str, str]:
+        if path == unavailable_key:
+            raise failure
+        return {"signedURL": f"https://storage.test/{path}?ttl={expires_in}"}
+
+    bucket = SimpleNamespace(create_signed_url=sign)
+    sdk = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: bucket))
+    monkeypatch.setattr(supabase_storage, "_get_client", lambda: sdk)
+    monkeypatch.setattr(supabase_storage, "_SIGNING_CLIENTS", type(supabase_storage._SIGNING_CLIENTS)())
+    # Exercise real signing; only the external SDK is replaced for this failure case.
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.create_signed_url", supabase_storage.create_signed_url)
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(org.id))
+
+    response = await client.get(
+        f"/api/v1/trips/{trip.id}/artifacts", headers={**auth_header(token), "Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    body = response.json()
+    assert [artifact["id"] for artifact in body] == [str(seal_photo.id), str(pod.id)]
+    assert body[0]["signed_url"] is None
+    assert body[0]["file_hash"] == seal_photo.file_hash
+    assert body[1]["signed_url"] == f"https://storage.test/{trip.id}/pod?ttl=300"
+    await db_session.refresh(seal_photo)
+    assert seal_photo.file_hash == "a" * 64
 
 
 @pytest.mark.asyncio

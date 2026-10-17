@@ -218,6 +218,20 @@ describe('Unreviewed tab', () => {
 
     expect(screen.getByRole('link', { name: /FP-2026-0001/ })).toHaveAttribute('href', '/exceptions/exc-123?returnTo=%2Fexceptions')
   })
+
+  it('tells two otherwise identical exceptions apart by their reference', () => {
+    mockedUseExceptionQueue.mockReturnValue(queueState({ items: [
+      makeQueueItem({ id: '3f9a21c4-0000-4000-8000-000000000001' as TripExceptionListItem['id'] }),
+      makeQueueItem({ id: '7d02bb10-0000-4000-8000-000000000002' as TripExceptionListItem['id'] }),
+    ] }))
+
+    renderPage()
+
+    expect(screen.getByText('EX-3F9A21C4')).toBeInTheDocument()
+    expect(screen.getByText('EX-7D02BB10')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /EX-3F9A21C4/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /EX-7D02BB10/ })).toBeInTheDocument()
+  })
 })
 
 describe('Claimed by me tab', () => {

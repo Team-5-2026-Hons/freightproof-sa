@@ -4406,6 +4406,28 @@
             "title": "Event Id",
             "type": "string"
           },
+          "hedera_sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Sequence Number"
+          },
+          "hedera_topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hedera Topic Id"
+          },
           "occurred_at": {
             "format": "date-time",
             "title": "Occurred At",
@@ -11735,6 +11757,18 @@
             ],
             "title": "Origin Name"
           },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          },
           "phase_label": {
             "anyOf": [
               {
@@ -12039,6 +12073,18 @@
               }
             ],
             "title": "Origin Name"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
           },
           "phase_label": {
             "anyOf": [

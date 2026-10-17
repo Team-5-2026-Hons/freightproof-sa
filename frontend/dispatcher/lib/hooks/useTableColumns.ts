@@ -74,6 +74,25 @@ function readStored(key: string, columns: readonly ColumnSpec[]): Record<string,
   }
 }
 
+/** Forgets every table's dragged column widths, returning how many tables had any saved.
+ *  Only the width keys are touched; other preferences stored beside them are left alone. A
+ *  table already on screen keeps its widths until it remounts, which is fine for the one
+ *  caller (Settings), where none is mounted. */
+export function clearSavedColumnLayouts(): number {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith(STORAGE_PREFIX)) keys.push(key)
+    }
+    keys.forEach(key => localStorage.removeItem(key))
+    return keys.length
+  } catch (error) {
+    console.warn('useTableColumns: could not clear saved column widths', error)
+    return 0
+  }
+}
+
 export interface TableColumnsApi extends ColumnLayout {
   /** Callback ref for the scrolling container whose width the columns fill. */
   containerRef: (el: HTMLDivElement | null) => void

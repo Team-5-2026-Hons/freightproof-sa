@@ -97,7 +97,9 @@ The practical consequence: a pack can read "anchored" while a file has been swap
 
 ## 7. Why the dispatcher is review-only
 
-The dispatcher sees every photo, the report, the review and the cancellation, and can review. It shows **no anchor status, retry text or Verify button** (decided 15 Oct; `ExceptionAnchors.tsx` was built and then removed). `anchor_events` is still in the API response but has no dispatcher reader. Receipts and coverage live in the audit pack (PDF and incident sheet) and the shared client portal.
+The dispatcher sees every photo, the report, the review and the cancellation, and can review. It shows **no anchor status, retry text or Verify button** (decided 15 Oct; `ExceptionAnchors.tsx` was built and then removed). The one exception, added 16 Oct: in forensic mode (admin dispatcher, toggle on) the exception detail page lists a HashScan link per action that has reached Hedera (`ExceptionHederaLinks.tsx`), built from the topic id and sequence number now carried on each `anchor_events` entry. Pending and failed events show nothing, and no hash is shown. Receipts and coverage live in the audit pack (PDF and incident sheet) and the shared client portal.
+
+The topic id and sequence number are returned only to an admin dispatcher, and only by the exception detail endpoint (`attach_hedera_refs`); every other read, and every non-admin, gets `null`. Receipts are admin-only everywhere else (`/blockchain/receipts`, trip detail's `blockchain_receipts`), so the pointer into one is too. They identify a public Hedera record that carries a hash, never personal data (POPIA).
 
 Rationale, as reflected in the design (confirm against the decision record before examination): (a) the audience for a receipt is a third party, an insurer, SAPS or a client, so that is where it is presented; (b) the dispatcher cannot act on anchor debt, because retry is automatic (§8), so a status badge there would be an alarm with no action; (c) a green tick on the working screen invites using "anchored" as an operational all-clear, which it is not (§6).
 

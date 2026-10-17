@@ -112,7 +112,9 @@ function TripDetail({ tripId }: { tripId: string }) {
   // A phase link is an evidence view, not a review queue. It must retain every record
   // for that phase when browser history restores an older narrow-filter URL. A selected
   // exception is the same: it may be reviewed already, and "needs review" would hide it.
-  const filter: ExceptionFilter = selectedPhaseId || selectedExceptionId || search.get('exceptions') === 'all' ? 'all' : 'needs_review'
+  const filterParam = search.get('exceptions')
+  const filter: ExceptionFilter = selectedPhaseId || selectedExceptionId || filterParam === 'all' ? 'all'
+    : filterParam === 'reviewed' ? 'reviewed' : 'needs_review'
   useDismissExceptionSelection(selectedExceptionId, () => {
     // Keep the evidence view and its scope; deselection should not add a history entry.
     const suffix = buildTripPanelQuery(search.toString(), { panel, filter, exceptionId: null })

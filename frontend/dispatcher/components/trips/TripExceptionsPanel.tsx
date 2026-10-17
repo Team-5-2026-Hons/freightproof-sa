@@ -12,6 +12,7 @@ import { phaseStopLabel, precinctAtPhase } from '@/lib/phase/trip-detail'
 import { ExceptionMapButton, hasExceptionMapEvidence } from './ExceptionMapButton'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { ExceptionSummary, exceptionSummaryTitleId } from '@/components/domain/ExceptionSummary'
+import { ExceptionRef } from '@/components/domain/ExceptionRef'
 import { ExceptionEvidence, exceptionHasEvidence } from '@/components/domain/ExceptionEvidence'
 import { PositionDisagreement } from '@/components/domain/PositionDisagreement'
 import { Button } from '@/components/ui/Button'
@@ -31,7 +32,7 @@ import { CompactActLine, COMPACT_COLUMNS, COMPACT_HIT_AREA, COMPACT_SUBGRID } fr
 import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
 import { fmtSastDateParts } from '@shared/lib/utils/datetime'
 
-export type ExceptionFilter = 'needs_review' | 'all'
+export type ExceptionFilter = 'needs_review' | 'reviewed' | 'all'
 export type ExceptionGrouping = 'none' | 'phase'
 export type ExceptionDensity = 'detailed' | 'compact'
 /** One sortable key today (event time). It is a Sort<K> so a second key slots into the same
@@ -53,6 +54,13 @@ const COMPACT_ROW_ID_PREFIX = 'exception-panel-row-'
 // that dialog would otherwise collapse the card, and the dialog with it.
 const KEEP_OPEN_TARGETS = 'a, button, summary, details, img, input, select, textarea, dialog, [role="button"]'
 const FILTER_TABS_PREFIX = 'exception-filter'
+// Filters name a review_status; 'all' is the only one that also keeps 'recorded' rows (nothing owed).
+const FILTER_STATUS = { needs_review: 'needs_review', reviewed: 'reviewed' } as const
+const EMPTY_MESSAGES: Record<ExceptionFilter, string> = {
+  needs_review: 'No exceptions need review.',
+  reviewed: 'No exceptions have been reviewed.',
+  all: 'No exceptions recorded.',
+}
 const RECORDS_PANEL_ID = 'exception-records'
 interface Props {
   trip: Trip; precincts: Precinct[]; filter: ExceptionFilter; onFilter: (filter: ExceptionFilter) => void; returnTo: string
@@ -150,8 +158,9 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
   // compact rows print and the timeline orders by. Id breaks ties so equal times never shuffle on refetch.
   const sortRecords = (rows: readonly TripException[]): TripException[] =>
     sortRows(rows, sort, exception => Date.parse(exceptionEventTime(exception, artifactsById)), (a, b) => compareText(a.id, b.id))
-  const exceptions = sortRecords(scopedExceptions.filter(e => filter === 'all' || e.review_status === 'needs_review'))
+  const exceptions = sortRecords(scopedExceptions.filter(e => filter === 'all' || e.review_status === FILTER_STATUS[filter]))
   const needsReview = scopedExceptions.filter(e => e.review_status === 'needs_review').length
+  const reviewed = scopedExceptions.filter(e => e.review_status === 'reviewed').length
   // Only what a dispatcher can sign for without deciding about a colleague's work or a
   // critical event: critical rows always get their own look, and a colleague's claim is
   // theirs to release or for this dispatcher to take over deliberately on the detail page.
@@ -168,7 +177,8 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
     : 'Selected phase'
   const filterTabs: readonly Tab[] = [
     { id: 'needs_review', label: 'Unreviewed', badge: String(needsReview), badgeUrgent: needsReview > 0 },
-    { id: 'all', label: 'All recorded', badge: String(scopedExceptions.length) },
+    { id: 'reviewed', label: 'Reviewed', badge: String(reviewed) },
+    { id: 'all', label: 'All', badge: String(scopedExceptions.length) },
   ]
   return <div>
     {selectedOutsideScope && <p role="status" className="mb-4 rounded-lg border border-warn/30 bg-warn-c/30 p-3 text-sm text-on-surf">The selected exception is outside this phase filter.</p>}
@@ -179,14 +189,14 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
       <Button className="mt-2" variant="secondary" size="sm" onClick={onClearPhaseFilter}>Show all {tripExceptions.length}</Button>
     </div>}
     {/* Each filter states its own size. Without it the unselected one is a blind click -
-        a dispatcher looking at two rows had no way to tell whether "All recorded" held
+        a dispatcher looking at two rows had no way to tell whether "All" held
         another ten or the same two, which is the question the button is there to answer. */}
     {/* Filters still leave the single-record view by their own action (page.tsx onFilter); the
         attribute only stops the click-off rule from navigating a second time. */}
     {/* Counts are strings because Tabs hides a numeric 0, and "Unreviewed 0" is a fact worth showing. */}
     <div className="mb-4" {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }}>
-      <Tabs tabs={filterTabs} active={filter} onChange={id => { if (id === 'needs_review' || id === 'all') onFilter(id) }}
-        size="sm" ariaLabel="Exception filters" panelId={RECORDS_PANEL_ID} idPrefix={FILTER_TABS_PREFIX} />
+      <Tabs tabs={filterTabs} active={filter} onChange={id => { if (id === 'needs_review' || id === 'reviewed' || id === 'all') onFilter(id) }}
+        size="sm" fit="content" ariaLabel="Exception filters" panelId={RECORDS_PANEL_ID} idPrefix={FILTER_TABS_PREFIX} />
     </div>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3" {...{ [KEEP_EXCEPTION_SELECTION_ATTR]: true }}>
       <Tabs tabs={DENSITY_TABS} active={density} onChange={id => { if (id === 'detailed' || id === 'compact') onDensity?.(id) }}
@@ -215,7 +225,7 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
       onCancel={() => setBatchSelection(null)}
     />}
     <div id={RECORDS_PANEL_ID} role="tabpanel" aria-labelledby={`${FILTER_TABS_PREFIX}-${filter}`}>
-      {!exceptions.length && <p className="py-5 text-sm text-on-surf-v">{filter === 'needs_review' ? 'No exceptions need review.' : 'No exceptions recorded.'}</p>}
+      {!exceptions.length && <p className="py-5 text-sm text-on-surf-v">{EMPTY_MESSAGES[filter]}</p>}
       <div className={density === 'compact' ? '' : 'space-y-3'}>{renderRecords()}</div>
     </div>
   </div>
@@ -316,7 +326,7 @@ export function TripExceptionsPanel({ trip, precincts, filter, artifactsById, se
             and wraps every row to four lines. The opened card still names its source. */}
         <CompactActLine times={[{ at, source: null }]} icon="warn" iconClassName="text-warn">
           <span className="font-semibold">{fmtExceptionType(exception.exception_type)}</span>
-          <span className="block text-on-surf-v">{severity.label} · {exceptionReviewLabel(exception)}{day && ` · ${day}`}</span>
+          <span className="block text-on-surf-v">{severity.label} · {exceptionReviewLabel(exception)}{day && ` · ${day}`} · <ExceptionRef id={exception.id} /></span>
         </CompactActLine>
       </button>
     </div>

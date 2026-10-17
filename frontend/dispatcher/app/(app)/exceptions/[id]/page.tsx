@@ -13,6 +13,8 @@ import {
   REVIEW_OUTCOME_LABELS, ReviewFields,
 } from '@/components/domain/ReviewFields'
 import { ExceptionDetailEvidence } from '@/components/exceptions/ExceptionDetailEvidence'
+import { ExceptionHederaLinks } from '@/components/exceptions/ExceptionHederaLinks'
+import { ExceptionRef } from '@/components/domain/ExceptionRef'
 import { ExceptionDetailSkeleton } from '@/components/exceptions/ExceptionDetailSkeleton'
 import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
 import { ApiError, claimException, releaseException, reviewException } from '@/lib/api/client'
@@ -31,6 +33,8 @@ import type { TripStatus } from '@shared/lib/types/trip'
 import { EXCEPTION_SEVERITY_META, EXCEPTION_SOURCE_META, TRIP_STATUS_META } from '@shared/lib/constants/status-meta'
 import { COPY }   from '@shared/lib/constants/copy'
 import { ROUTES } from '@/lib/constants/routes'
+import { TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
+import { buildTripPanelQuery } from '@/lib/trips/panel-query'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 
 // The one exception type that records which vehicle it happened to (trailer analytics).
@@ -61,6 +65,9 @@ function tripLifecycleNotice(status: TripStatus): string | null {
 
 // The left rule is Trip Detail's header-fact treatment, so a fact reads as a labelled
 // value on the page itself rather than as one more bordered card.
+// A record with no phase is a fact worth stating: it is trip-wide, not missing data.
+const NO_PHASE_LABEL = 'Trip-level record, no phase'
+
 function ContextItem({ label, value, className = '' }: { label: string; value: string; className?: string }) {
   return <div className={`min-w-0 border-l-2 border-outline-v/40 pl-3 ${className}`}>
     <dt className="text-[10px] font-[700] uppercase tracking-[0.08em] text-on-surf-v">{label}</dt>
@@ -177,6 +184,12 @@ export default function ExceptionDetailPage() {
   const srcMeta    = EXCEPTION_SOURCE_META[exception.source]
   const tripMeta   = TRIP_STATUS_META[exception.trip_status]
   const phaseStop  = fmtExceptionPhaseStop(exception.phase_label, exception.stop_label)
+  // Opens the trip's exceptions panel on this record's phase (or its trip-level list), with the record selected.
+  // undefined means the payload did not say which phase, so no phase scope is guessed; null is a genuine trip-level record.
+  const phaseScope = exception.phase_event_id === undefined ? undefined : exception.phase_event_id ?? TRIP_LEVEL_SCOPE
+  const tripQuery  = buildTripPanelQuery('', { panel: 'exceptions', filter: 'all', phaseId: phaseScope, exceptionId: exception.id })
+  // A stop with no phase is still a trip-level record; keep the stop so it is not lost.
+  const phaseValue = exception.phase_label ? phaseStop ?? NO_PHASE_LABEL : [NO_PHASE_LABEL, phaseStop].filter(Boolean).join(' · ')
   const lifecycleNotice = tripLifecycleNotice(exception.trip_status)
 
   const isReviewed   = exception.review_status === 'reviewed'
@@ -276,13 +289,13 @@ export default function ExceptionDetailPage() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* The one h1 lives in the header, with the trip reference and raise time under it,
-          so neither is repeated in a card below. */}
+      {/* The one h1 lives in the header with just the exception's reference under it. The trip,
+          source and raise time are facts a reviewer reads, so they sit in Trip context below. */}
       <TopBar title={exceptionTitle} left={backButton} identity={
         <div className="min-w-0">
           <h1 className="text-[18px] font-[800] leading-tight tracking-[-0.02em] text-on-surf">{exceptionTitle}</h1>
           <p className="mt-[2px] break-words text-xs font-medium tracking-[0.03em] text-sec tabular-nums">
-            Trip {exception.trip_reference} · {srcMeta.label} · Raised {fmtExceptionRaised(exception.created_at)}
+            <ExceptionRef id={exception.id} />
           </p>
         </div>
       } />
@@ -305,10 +318,14 @@ export default function ExceptionDetailPage() {
               incident and the assessment are the two blocks that read as containers. */}
           <section aria-label="Trip context" className="xl:col-start-1 min-w-0">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="min-w-0 text-sm font-medium text-on-surf-v">{tripMeta.label}{phaseStop ? ` · ${phaseStop}` : ''}</p>
-              <Button variant="secondary" size="sm" onClick={() => navigate(ROUTES.tripDetail(exception.trip_id))}>View trip <Ic n="chev" s={14} /></Button>
+              <p className="min-w-0 text-sm font-medium text-on-surf-v">{tripMeta.label}</p>
+              <Button variant="secondary" size="sm" onClick={() => navigate(`${ROUTES.tripDetail(exception.trip_id)}?${tripQuery}`)}>View trip <Ic n="chev" s={14} /></Button>
             </div>
             <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3">
+              <ContextItem label="Trip" value={exception.trip_reference} />
+              <ContextItem label="Raised" value={fmtExceptionRaised(exception.created_at)} />
+              <ContextItem label="Source" value={srcMeta.label} />
+              <ContextItem label="Phase" className="sm:col-span-3" value={phaseValue} />
               <ContextItem label="Route" className="sm:col-span-3" value={fmtExceptionRoute(exception.origin_name, exception.destination_name)} />
               <ContextItem label="Driver" value={exception.driver_name ?? 'Not recorded'} />
               <ContextItem label="Truck" value={exception.horse_registration ?? 'Not recorded'} />
@@ -359,6 +376,7 @@ export default function ExceptionDetailPage() {
             </section>
             <section className="xl:col-start-1 min-w-0 rounded-md border border-outline-v/30 bg-surf-lowest p-4 sm:p-6 [&>section]:mt-0 [&>section]:border-0 [&>section]:pt-0" aria-label="Incident evidence">
               <ExceptionDetailEvidence exception={exception} />
+              <ExceptionHederaLinks events={exception.anchor_events ?? []} />
             </section>
           </div>
         </div>

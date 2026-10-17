@@ -268,12 +268,14 @@ describe('Dashboard active trips', () => {
     expect(screen.getByText('No results')).toBeInTheDocument()
   })
 
-  it('goes to the new-trip form from both New Trip buttons', () => {
+  it('offers one New Trip button, in the page header, that opens the new-trip form', () => {
     renderPage()
 
-    for (const button of screen.getAllByRole('button', { name: 'New Trip' })) fireEvent.click(button)
+    const buttons = screen.getAllByRole('button', { name: 'New Trip' })
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0])
 
-    expect(push).toHaveBeenCalledTimes(2)
+    expect(push).toHaveBeenCalledTimes(1)
     expect(push).toHaveBeenCalledWith('/trips/new')
   })
 })

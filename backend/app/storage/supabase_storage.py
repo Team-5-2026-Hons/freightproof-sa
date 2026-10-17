@@ -11,9 +11,11 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
+from threading import local
 from urllib.parse import quote
 
 import httpx
+from storage3.exceptions import StorageException
 from supabase import Client, create_client
 
 from app.core.config import settings
@@ -50,6 +52,24 @@ def _get_client() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 
+class _SigningClients(local):
+    # Supabase's synchronous client has mutable lazy state. Reuse connections within a
+    # worker, without letting two signing threads initialise or mutate the same client.
+    client: Client | None = None
+
+
+_SIGNING_CLIENTS = _SigningClients()
+
+
+def _sign_url(*, s3_bucket: str, s3_key: str, ttl_seconds: int) -> str | None:
+    client = _SIGNING_CLIENTS.client
+    if client is None:
+        client = _get_client()
+        _SIGNING_CLIENTS.client = client
+    response = client.storage.from_(s3_bucket).create_signed_url(s3_key, expires_in=ttl_seconds)
+    return response.get("signedURL") if isinstance(response, dict) else None
+
+
 async def upload_evidence_file(*, trip_id: str, file_bytes: bytes, mime_type: str) -> UploadResult:
     """Upload one file under `{trip_id}/{uuid}` and return its storage location + SHA-256 hash."""
     file_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -68,10 +88,25 @@ async def create_signed_url(*, s3_bucket: str, s3_key: str, ttl_seconds: int) ->
     raising: the caller lists many artifacts and one unreadable object must degrade that row
     to metadata-only, not fail the request.
     """
-    client = _get_client()
-    response = client.storage.from_(s3_bucket).create_signed_url(s3_key, expires_in=ttl_seconds)
-
-    signed = response.get("signedURL") if isinstance(response, dict) else None
+    try:
+        # Include client creation in the worker: lazy SDK setup must not block other requests.
+        signed = await asyncio.to_thread(
+            _sign_url, s3_bucket=s3_bucket, s3_key=s3_key, ttl_seconds=ttl_seconds,
+        )
+    except (StorageException, httpx.HTTPError, json.JSONDecodeError, AttributeError) as exc:
+        # The SDK can fail to parse a gateway's HTML/partial JSON error response. Only
+        # treat parser errors as an outage when their cause chain proves an HTTP failure.
+        # `seen` stops the walk if a chain ever loops back on itself.
+        seen: set[int] = set()
+        cause: BaseException | None = exc
+        while cause is not None and id(cause) not in seen and not isinstance(cause, (StorageException, httpx.HTTPError)):
+            seen.add(id(cause))
+            cause = cause.__cause__ or cause.__context__
+        if cause is None or id(cause) in seen:
+            raise
+        # Log the failure type, not SDK error text which may contain credentials or read URLs.
+        logger.warning("Storage could not sign %s/%s (%s)", s3_bucket, s3_key, type(exc).__name__)
+        return None
     if not signed:
         logger.warning("Storage declined to sign %s/%s", s3_bucket, s3_key)
         return None

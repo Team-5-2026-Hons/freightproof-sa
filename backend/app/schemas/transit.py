@@ -378,6 +378,9 @@ class TripExceptionListItem(BaseModel):
     # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
+    # The phase event itself, so a client can link to that exact phase: phase_label alone
+    # cannot, a multi-stop trip runs the same phase type more than once.
+    phase_event_id: Optional[UUID] = None
     # A driver exception report's own capture assessment, when one was built. This is
     # projected by exceptions.queries._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
@@ -424,6 +427,11 @@ class EvidenceAnchorSummary(BaseModel):
     receipt_type: BlockchainReceiptType
     anchor_status: AnchorStatus
     receipt_id: Optional[UUID] = None
+    # Where the receipt landed on Hedera, so the dispatcher can link to HashScan. Both are
+    # None until the event is anchored. Deliberately no hash: the dispatcher screen shows a
+    # pointer to the public record, not the evidence commitment itself.
+    hedera_topic_id: Optional[str] = None
+    hedera_sequence_number: Optional[int] = None
     occurred_at: datetime
 
 

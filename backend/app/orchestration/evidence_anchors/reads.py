@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact
 from app.db.models.transit import TripException
@@ -85,6 +86,36 @@ async def load_anchor_events_by_exception(
             "receipt_id": e.receipt_id, "occurred_at": e.occurred_at,
         }))
     return events
+
+
+async def attach_hedera_refs(
+    db: AsyncSession, events: Sequence[EvidenceAnchorSummary],
+) -> list[EvidenceAnchorSummary]:
+    """Add each anchored event's Hedera topic id and sequence number, in one query.
+
+    Opt-in and separate from the loader above: those two values point into a receipt, and
+    receipts are admin-only everywhere else (/blockchain/receipts, trip detail's
+    blockchain_receipts). Only a caller that has checked the role should call this; every
+    other path keeps them None. Pending and failed events have no receipt and stay None.
+    """
+    receipt_ids = [e.receipt_id for e in events if e.receipt_id is not None]
+    if not receipt_ids:
+        return list(events)
+    refs = {
+        receipt_id: (topic_id, sequence_number)
+        for receipt_id, topic_id, sequence_number in (await db.execute(
+            select(
+                BlockchainReceipt.id, BlockchainReceipt.hedera_topic_id,
+                BlockchainReceipt.hedera_sequence_number,
+            ).where(BlockchainReceipt.id.in_(receipt_ids))
+        )).all()
+    }
+    return [
+        e.model_copy(update={
+            "hedera_topic_id": refs[e.receipt_id][0], "hedera_sequence_number": refs[e.receipt_id][1],
+        }) if e.receipt_id in refs else e
+        for e in events
+    ]
 
 
 def photo_summaries(photos: Sequence[EvidenceArtifact]) -> list[ExceptionArtifactSummary]:
