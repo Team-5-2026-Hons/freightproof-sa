@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { parseExceptionViewState, serializeExceptionViewState } from './view-state'
 describe('exception URL state', () => {
+  it('retains the page size that produced restored cursor boundaries', () => {
+    const state = parseExceptionViewState(new URLSearchParams('tab=history&cursor=after-50&page=1&pageSize=50'))
+
+    expect(state.navigation).toEqual({ cursorStack: [undefined, 'after-50'], pageIndex: 1, pageSize: 50 })
+    expect(serializeExceptionViewState(state)).toContain('pageSize=50')
+    expect(parseExceptionViewState(new URLSearchParams(serializeExceptionViewState(state)))).toEqual(state)
+  })
+  it.each(['500', 'garbage'])('does not trust an unsupported saved page size: %s', value => {
+    const state = parseExceptionViewState(new URLSearchParams(`cursor=old&page=1&pageSize=${value}`))
+
+    expect(state.navigation.pageSize).toBeUndefined()
+  })
   it('round trips filters, mine, grouping and the exact history page', () => {
     const state = parseExceptionViewState(new URLSearchParams('tab=history&q=20%25_&severity=warning&from=2026-10-01&to=2026-10-02&group=trip&cursor=opaque&page=1'))
     expect(parseExceptionViewState(new URLSearchParams(serializeExceptionViewState(state)))).toEqual(state)

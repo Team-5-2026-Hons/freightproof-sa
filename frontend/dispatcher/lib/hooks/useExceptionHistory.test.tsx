@@ -301,28 +301,54 @@ describe('URL navigation adapter', () => {
   it('restores page two on mount and reports page changes without losing the cursor stack', async () => {
     mockedGet.mockResolvedValue(makePage())
     const onChange=vi.fn()
-    const { result }=renderHook(()=>useExceptionHistory({}, {cursorStack:[undefined,'page-two'],pageIndex:1,onChange}))
+    const { result }=renderHook(()=>useExceptionHistory({}, {cursorStack:[undefined,'page-two'],pageIndex:1,pageSize:25,onChange}))
     await waitFor(()=>expect(result.current.isLoading).toBe(false))
     expect(mockedGet.mock.calls.at(-1)?.[0]).toContain('cursor=page-two')
     expect(result.current.page).toBe(2)
     act(()=>result.current.goToPreviousPage())
-    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined,'page-two'],pageIndex:0})
+    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined,'page-two'],pageIndex:0,pageSize:25})
   })
   it('never requests the old controlled cursor when filters change', async () => {
     mockedGet.mockResolvedValue(makePage())
     const onChange=vi.fn()
-    const navigation={cursorStack:[undefined,'old-cursor'],pageIndex:1,onChange}
+    const navigation={cursorStack:[undefined,'old-cursor'],pageIndex:1,pageSize:25 as const,onChange}
     const { result,rerender }=renderHook(({q})=>useExceptionHistory({q},navigation), {initialProps:{q:'old'}})
     await waitFor(()=>expect(result.current.isLoading).toBe(false))
     mockedGet.mockClear()
     rerender({q:'new'})
     await waitFor(()=>expect(mockedGet).toHaveBeenCalled())
     expect(mockedGet.mock.calls.every(call=>!String(call[0]).includes('old-cursor'))).toBe(true)
-    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined],pageIndex:0})
+    expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined],pageIndex:0,pageSize:25})
   })
 })
 
 describe('useExceptionHistory rows per page preference', () => {
+  it.each([25, undefined] as const)('resets restored cursors when their page size is %s instead of the current preference', async savedSize => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ rowsPerPage: 50 }))
+    mockedGet.mockResolvedValue(makePage())
+    const onChange = vi.fn()
+    const navigation = { cursorStack: [undefined, 'after-25'], pageIndex: 1, pageSize: savedSize, onChange }
+
+    const { result } = renderHook(() => useExceptionHistory({}, navigation))
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/exceptions/history?limit=50')
+    expect(mockedGet.mock.calls.every(([url]) => !String(url).includes('cursor='))).toBe(true)
+    expect(result.current.page).toBe(1)
+    expect(result.current.hasPrevious).toBe(false)
+    expect(onChange).toHaveBeenCalledWith({ cursorStack: [undefined], pageIndex: 0, pageSize: 50 })
+  })
+  it('saves page size with the cursor when moving forward', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ rowsPerPage: 50 }))
+    mockedGet.mockResolvedValue(makePage({ next_cursor: 'after-50' }))
+    const onChange = vi.fn()
+    const { result } = renderHook(() => useExceptionHistory({}, { cursorStack: [undefined], pageIndex: 0, onChange }))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    act(() => result.current.goToNextPage())
+
+    expect(onChange).toHaveBeenCalledWith({ cursorStack: [undefined, 'after-50'], pageIndex: 1, pageSize: 50 })
+  })
   it('requests and reports the stored page size', async () => {
     window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 50 }))
     mockedGet.mockResolvedValue(makePage())

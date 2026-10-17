@@ -70,8 +70,8 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
-  // Read once per mount: a changed preference applies on the next visit, so a cursor stack
-  // built for one page size is never replayed with another.
+  // Read once per mount. Restored URLs are checked separately below because they can
+  // contain boundaries created before this browser's preference changed.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
@@ -81,8 +81,11 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
 
   const [controlledPageReset, setControlledPageReset] = useState(false)
   if (controlledPageReset && navigation?.pageIndex === 0) setControlledPageReset(false)
-  const cursorStack = controlledPageReset ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
-  const pageIndex = controlledPageReset ? 0 : navigation?.pageIndex ?? localPageIndex
+  // Legacy URLs have no size, so their range labels cannot safely be reconstructed either.
+  const pageSizeChanged = !!navigation && navigation.cursorStack.length > 1 && navigation.pageSize !== pageSize
+  const resetNavigation = controlledPageReset || pageSizeChanged
+  const cursorStack = resetNavigation ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
+  const pageIndex = resetNavigation ? 0 : navigation?.pageIndex ?? localPageIndex
 
   // Primitive dependency key, not the filters object, so a fresh object literal every
   // render doesn't trigger a refetch (mirrors useTrips.ts's statusKey pattern).
@@ -106,10 +109,12 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
 
   const controlledFilterRef = useRef(filterKey)
   useEffect(() => {
-    if (controlledFilterRef.current === filterKey) return
+    const filtersChanged = controlledFilterRef.current !== filterKey
     controlledFilterRef.current = filterKey
-    navigation?.onChange({ cursorStack: [undefined], pageIndex: 0 })
-  }, [filterKey, navigation])
+    if (filtersChanged || pageSizeChanged) {
+      navigation?.onChange({ cursorStack: [undefined], pageIndex: 0, pageSize })
+    }
+  }, [filterKey, navigation, pageSizeChanged, pageSize])
 
   // Bumped on every fetch kicked off below; a response is applied only if this counter
   // has not moved on since, i.e. no newer request (a page change or a filter change)
@@ -156,7 +161,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
         setIsLoading(false)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, cursor])
+  }, [filterKey, cursor, pageSize])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -170,15 +175,15 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     if (!hasNext || nextCursor === null) return
     const next = cursorStack.slice(0, pageIndex + 1)
     next[pageIndex + 1] = nextCursor
-    if (navigation) navigation.onChange({ cursorStack: next, pageIndex: pageIndex + 1 })
+    if (navigation) navigation.onChange({ cursorStack: next, pageIndex: pageIndex + 1, pageSize })
     else { setCursorStack(next); setPageIndex(pageIndex + 1) }
-  }, [hasNext, nextCursor, pageIndex, cursorStack, navigation])
+  }, [hasNext, nextCursor, pageIndex, cursorStack, navigation, pageSize])
 
   const goToPreviousPage = useCallback(() => {
     if (!hasPrevious) return
-    if (navigation) navigation.onChange({ cursorStack, pageIndex: pageIndex - 1 })
+    if (navigation) navigation.onChange({ cursorStack, pageIndex: pageIndex - 1, pageSize })
     else setPageIndex(i => i - 1)
-  }, [hasPrevious, navigation, cursorStack, pageIndex])
+  }, [hasPrevious, navigation, cursorStack, pageIndex, pageSize])
 
   const refetch = useCallback(() => runFetch(true), [runFetch])
 
