@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/Button'
 import { BackButton } from '@/components/ui/BackButton'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Ic } from '@/components/ui/Ic'
-import { ForensicControls } from '@/components/blockchain/ForensicControls'
 import { DriverModal } from './DriverModal'
 import { VehicleModal } from './VehicleModal'
 import { TripHelp } from './TripHelp'
@@ -59,7 +58,6 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <div className="flex flex-wrap items-center gap-2">
           <Chip type={status.chipType} label={status.label} />
           {facts.needsReviewCount > 0 && <NeedsReviewChip label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} onShow={onShowFirstUnreviewed} />}
-          <ForensicControls />
           <TripHelp topic="header" />
         </div>
       </div>

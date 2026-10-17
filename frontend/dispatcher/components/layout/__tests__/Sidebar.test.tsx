@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Sidebar } from '../Sidebar'
 import { SidebarCollapseProvider } from '@/lib/context/SidebarCollapseContext'
+import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { ROUTES } from '@/lib/constants/routes'
 
 // The collapse behaviour is route-driven (auto-collapse on trip detail), so
@@ -42,12 +43,15 @@ vi.mock('@/lib/realtime/RealtimeProvider', () => ({
 }))
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'fp.sidebarCollapsed'
+const FORENSIC_STORAGE_KEY = 'fp.forensicOn'
 
 function renderSidebar() {
   return render(
-    <SidebarCollapseProvider>
-      <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-    </SidebarCollapseProvider>,
+    <ForensicModeProvider>
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>
+    </ForensicModeProvider>,
   )
 }
 
@@ -137,6 +141,60 @@ describe('Sidebar profile footer', () => {
   })
 })
 
+describe('Sidebar forensic indicator', () => {
+  const PILL = 'Forensic view is on. Open its setting'
+
+  it('shows a pill that opens the forensic section when an admin has the mode on', () => {
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    const pill = screen.getByRole('link', { name: PILL })
+    expect(pill).toHaveTextContent('Forensic')
+    expect(pill).toHaveAttribute('href', ROUTES.settingsSection('forensic'))
+  })
+
+  it('keeps the Settings row itself pointing at Settings, beside the pill', () => {
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    const row = screen.getByRole('link', { name: 'Settings' })
+    expect(row).toHaveAttribute('href', ROUTES.settings)
+    // Anchors cannot nest, so the pill is a sibling of the row, not inside it.
+    expect(row).not.toContainElement(screen.getByRole('link', { name: PILL }))
+  })
+
+  it('shows no pill when an admin has forensic mode off', () => {
+    mockAuth.role = 'admin_dispatcher'
+    renderSidebar()
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+  })
+
+  it('shows no pill to a regular dispatcher even with a stale stored switch', () => {
+    // A demoted admin keeps `fp.forensicOn` in their browser; the mode is no longer theirs.
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('keeps the signal in the collapsed rail as a dot on the Settings row', async () => {
+    const user = userEvent.setup()
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+    const settings = screen.getByRole('link', { name: 'Settings, forensic view on' })
+    expect(settings).toHaveAttribute('href', ROUTES.settings)
+  })
+})
+
 describe('Sidebar navigation', () => {
   it('links a regular dispatcher to analytics', () => {
     // The analytics endpoints take any dispatcher (get_current_dispatcher, not
@@ -211,9 +269,11 @@ describe('Sidebar collapse', () => {
 
     mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
 
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
@@ -242,9 +302,11 @@ describe('Sidebar collapse', () => {
     // Navigating away reverts to the untouched (default expanded) preference.
     mockUsePathname.mockReturnValue('/')
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
@@ -259,17 +321,21 @@ describe('Sidebar collapse', () => {
 
     mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
 
     mockUsePathname.mockReturnValue('/')
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()

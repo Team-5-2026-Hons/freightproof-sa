@@ -71,6 +71,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear()
   mockedGet.mockReset()
   mockedUseLiveResource.mockReset()
 })
@@ -318,5 +319,29 @@ describe('URL navigation adapter', () => {
     await waitFor(()=>expect(mockedGet).toHaveBeenCalled())
     expect(mockedGet.mock.calls.every(call=>!String(call[0]).includes('old-cursor'))).toBe(true)
     expect(onChange).toHaveBeenCalledWith({cursorStack:[undefined],pageIndex:0})
+  })
+})
+
+describe('useExceptionHistory rows per page preference', () => {
+  it('requests and reports the stored page size', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 50 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useExceptionHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/exceptions/history?limit=50')
+    expect(result.current.pageSize).toBe(50)
+  })
+
+  it('ignores a stored page size the backend would not accept', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 500 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useExceptionHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/exceptions/history?limit=25')
+    expect(result.current.pageSize).toBe(25)
   })
 })

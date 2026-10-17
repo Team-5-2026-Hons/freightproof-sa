@@ -20,6 +20,7 @@ export const ROUTES = {
   precinctEdit:    (id: string) => `/precincts/${id}/edit`,
   parcels:         '/parcels',
   settings:        '/settings',
+  settingsSection: (id: string) => `/settings?section=${id}`,
   login:           '/login',
   devTokens:       '/dev/tokens',
 } as const

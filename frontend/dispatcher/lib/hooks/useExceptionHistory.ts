@@ -10,9 +10,7 @@ import type {
   TripExceptionListItem,
 } from '@shared/lib/types/exception'
 import type { CursorPage } from '@shared/lib/types/pagination'
-
-// Matches the backend's own default (schemas/pagination.py); not dispatcher-adjustable.
-const PAGE_SIZE = 25
+import { readPreferences } from '@/lib/preferences'
 
 const EMPTY: TripExceptionListItem[] = []
 const FIRST_CURSOR_STACK: (string | undefined)[] = [undefined]
@@ -44,9 +42,9 @@ export interface UseExceptionHistoryResult {
   refetch: () => void
 }
 
-function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined): string {
+function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined, pageSize: number): string {
   const params = new URLSearchParams()
-  params.set('limit', String(PAGE_SIZE))
+  params.set('limit', String(pageSize))
   if (cursor) params.set('cursor', cursor)
   if (filters.q) params.set('q', filters.q)
   if (filters.reviewStatus) params.set('review_status', filters.reviewStatus)
@@ -72,6 +70,9 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
+  // Read once per mount: a changed preference applies on the next visit, so a cursor stack
+  // built for one page size is never replayed with another.
+  const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
   // cursor that fetches page n + 1, recorded once on first visit.
@@ -135,7 +136,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
       hasSuccessfulResultRef.current = false
     }
 
-    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor))
+    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor, pageSize))
       .then((page) => {
         if (requestGenerationRef.current !== generation) return
         setItems(page.items)
@@ -188,7 +189,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     isStale,
     totalItems,
     page: pageIndex + 1,
-    pageSize: PAGE_SIZE,
+    pageSize,
     hasPrevious,
     hasNext,
     goToNextPage,

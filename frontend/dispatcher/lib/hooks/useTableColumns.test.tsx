@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { computeColumnLayout, useTableColumns, KEYBOARD_RESIZE_STEP, type ColumnSpec } from './useTableColumns'
+import { clearSavedColumnLayouts, computeColumnLayout, useTableColumns, KEYBOARD_RESIZE_STEP, type ColumnSpec } from './useTableColumns'
 
 const COLUMNS: ColumnSpec[] = [
   { id: 'a', width: 200 },
@@ -177,5 +177,45 @@ describe('useTableColumns', () => {
       // Only b gets a stored width (rendered 190 at scale 2 = base 95); a is untouched.
       expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({ b: 95 })
     })
+  })
+})
+
+describe('clearSavedColumnLayouts', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('removes every saved table width and reports how many tables had one', () => {
+    localStorage.setItem('table-widths:v1:history', JSON.stringify({ a: 300 }))
+    localStorage.setItem('table-widths:v1:exceptions', JSON.stringify({ b: 200 }))
+
+    expect(clearSavedColumnLayouts()).toBe(2)
+
+    expect(localStorage.getItem('table-widths:v1:history')).toBeNull()
+    expect(localStorage.getItem('table-widths:v1:exceptions')).toBeNull()
+  })
+
+  it('leaves unrelated stored values alone', () => {
+    localStorage.setItem('table-widths:v1:history', '{}')
+    localStorage.setItem('fp.preferences.v1', '{"rowsPerPage":50}')
+    localStorage.setItem('fp.sidebarCollapsed', 'true')
+
+    clearSavedColumnLayouts()
+
+    expect(localStorage.getItem('fp.preferences.v1')).toBe('{"rowsPerPage":50}')
+    expect(localStorage.getItem('fp.sidebarCollapsed')).toBe('true')
+  })
+
+  it('reports zero when nothing was saved', () => {
+    expect(clearSavedColumnLayouts()).toBe(0)
+  })
+
+  it('does not throw when storage is blocked', () => {
+    // An entry must exist or the loop never calls key() and nothing can throw.
+    localStorage.setItem('table-widths:v1:history', '{}')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => { throw new Error('blocked') })
+
+    expect(clearSavedColumnLayouts()).toBe(0)
+    expect(warn).toHaveBeenCalled()
+    vi.restoreAllMocks()
   })
 })

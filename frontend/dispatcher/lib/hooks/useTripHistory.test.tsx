@@ -61,6 +61,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear()
   mockedGet.mockReset()
   mockedUseLiveResource.mockReset()
 })
@@ -283,5 +284,29 @@ describe('useTripHistory', () => {
 
     await waitFor(() => expect(result.current.page).toBe(1))
     await waitFor(() => expect(result.current.hasNewHistory).toBe(false))
+  })
+})
+
+describe('useTripHistory rows per page preference', () => {
+  it('requests and reports the stored page size', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 50 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useTripHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/trips/history?limit=50')
+    expect(result.current.pageSize).toBe(50)
+  })
+
+  it('ignores a stored page size the backend would not accept', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 500 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useTripHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/trips/history?limit=25')
+    expect(result.current.pageSize).toBe(25)
   })
 })
