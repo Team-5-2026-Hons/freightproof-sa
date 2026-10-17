@@ -267,7 +267,8 @@ describe('Parcel Search — layout, focus and announcements', () => {
 
     resolve({ barcode: BARCODE, items: [], next_after: null })
     await screen.findByRole('region', { name: 'No matching parcel' })
-    expect(button).toBeEnabled()
+    // The button follows the results by one render (the results report their loading state up), so wait for it.
+    await waitFor(() => expect(button).toBeEnabled())
   })
 
   it('keeps the same header through no-match and failure outcomes', async () => {
