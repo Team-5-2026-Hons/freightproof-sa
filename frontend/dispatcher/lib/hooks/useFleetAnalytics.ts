@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '@/lib/api/client'
 import type { ResolvedPeriod, TabQuery } from '@/lib/format/period'
+import type { FleetCost } from '@shared/lib/types/cost-analytics'
 import type {
   FleetActivity,
   FleetEvidence,
@@ -163,4 +164,9 @@ export function useFleetRoutes(period: ResolvedPeriod): FleetQueryResult<FleetRo
 /** Routes & sites tab: located reports for the incident map. */
 export function useFleetIncidents(period: ResolvedPeriod): FleetQueryResult<FleetIncidents> {
   return useFleetQuery<FleetIncidents>(fleetPath('incidents', { start: period.start, end: period.end }, null))
+}
+
+/** Cost tab (FP-294): estimated operating and delay cost, and waybill value exposed. */
+export function useFleetCost(query: TabQuery, allTimeStart: string | null): FleetQueryResult<FleetCost> {
+  return useFleetTrend<FleetCost>('cost', query, allTimeStart)
 }

@@ -32,7 +32,7 @@ from app.blockchain.anchor_service import compute_payload_hash
 from app.core.config import settings
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
-    AnchorStatus, BlockchainReceiptType, IdvsStatus, OrganizationType, PhaseStatus, PhaseType,
+    AnchorStatus, BlockchainReceiptType, EvidenceRole, IdvsStatus, OrganizationType, PhaseStatus, PhaseType,
     SealCondition, SubjectType, TripStatus, VehicleType, VerifyStatus,
 )
 from app.db.models.evidence import EvidenceArtifact
@@ -56,8 +56,8 @@ from tests.conftest import auth_header, make_token
 # test parameter below, which ruff reads as redefining the import (F811), so it is
 # re-seeded locally instead (matching test_arrival_phase.py's own precedent).
 from tests.integration.test_phases import (  # noqa: F401  (override_get_db is a fixture)
-    _complete_activation, _complete_arrival, _complete_in_transit, _make_artifact, _phase_id,
-    _walk_to_in_transit, override_get_db,
+    _complete_activation, _complete_arrival, _complete_in_transit, _make_artifact,
+    _make_attributed_artifact, _make_linehaul_pdf, _phase_id, _walk_to_in_transit, override_get_db,
 )
 
 
@@ -197,6 +197,17 @@ async def test_every_phase_of_a_completed_trip_ends_anchored_with_matching_recei
         assert receipt.subject_id == event.id
         assert receipt.receipt_type == _PHASE_RECEIPT_TYPES[phase_type]
         assert receipt.data_hash == event.event_hash
+
+    # Loading anchors v3 (linehaul PDF), every other phase keeps its existing contract.
+    loading_event = next(p for p in phases if PhaseType(p.phase_type) == PhaseType.LOADING)
+    loading_payload = await reconstruct_pending_phase_payload(db_session, loading_event)
+    assert loading_payload is not None
+    assert loading_payload["payload_version"] == 3
+    assert "linehaul_pdf_sha256" in loading_payload
+    for event in non_creation:
+        if PhaseType(event.phase_type) != PhaseType.LOADING:
+            payload = await reconstruct_pending_phase_payload(db_session, event)
+            assert payload is not None and payload.get("payload_version") != 3
 
 
 async def test_arrival_seal_mismatch_still_anchors_and_reconstructs(
@@ -370,6 +381,39 @@ async def test_recover_phase_anchor_recovers_a_loading_row_with_a_linehaul_photo
     receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
     assert receipt.receipt_type == BlockchainReceiptType.LOADING
     assert receipt.payload_json["linehaul_photo_sha256"] is not None
+
+
+async def test_loading_with_linehaul_scan_and_pdf_anchors_the_pdf_hash_and_rebuilds_to_event_hash(
+    client: AsyncClient, db_session, seed_trip,
+):
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    await _complete_activation(client, trip.id, token)
+    loading_id = await _phase_id(client, trip.id, token, "loading")
+    photo_id = await _make_attributed_artifact(db_session, trip.id, loading_id, EvidenceRole.LINEHAUL_PHOTO)
+    pdf_id = await _make_linehaul_pdf(db_session, trip.id, loading_id)
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/complete",
+        json={
+            "phase_type": "loading",
+            "linehaul_photo_artifact_id": photo_id,
+            "linehaul_pdf_artifact_id": pdf_id,
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    pdf = await db_session.get(EvidenceArtifact, uuid.UUID(pdf_id))
+    photo = await db_session.get(EvidenceArtifact, uuid.UUID(photo_id))
+    rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
+    assert rebuilt is not None
+    assert rebuilt["payload_version"] == 3
+    assert rebuilt["linehaul_pdf_sha256"] == pdf.file_hash
+    assert rebuilt["linehaul_photo_sha256"] == photo.file_hash
+    assert compute_payload_hash(rebuilt) == loading.event_hash
 
 
 # ── tamper detection: a row edited after anchoring must verify as DB_MISMATCH ──

@@ -49,3 +49,21 @@ export function fmtScheduleDelta(minutes: number | null): string {
 export function fmtOptionalCount(count: number | null): string {
   return count === null ? NO_DATA : String(count)
 }
+
+// Rand in the South African style ("R 1 284 300"). Whole rand for totals: cents on an
+// estimate would be false precision. Rates show cents, since a fuel rate is quoted that way.
+const RAND_LOCALE = 'en-ZA'
+const RAND_WHOLE = new Intl.NumberFormat(RAND_LOCALE, { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 })
+const RAND_CENTS = new Intl.NumberFormat(RAND_LOCALE, {
+  style: 'currency', currency: 'ZAR', minimumFractionDigits: 2, maximumFractionDigits: 2,
+})
+
+/** A rand total, rounded to the rand. "—" when there is no figure. */
+export function fmtRand(value: number | null): string {
+  return value === null ? NO_DATA : RAND_WHOLE.format(value)
+}
+
+/** A rand rate, to the cent, e.g. "R 17,64". "—" when there is no figure. */
+export function fmtRandRate(value: number | null): string {
+  return value === null ? NO_DATA : RAND_CENTS.format(value)
+}

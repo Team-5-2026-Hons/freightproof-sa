@@ -64,6 +64,15 @@ export interface ExpectedAct {
 
 export type PhaseAct = EvidenceAct | MilestoneAct | CompletionAct | ExceptionAct | AbsentAct | AnchorAct | ExpectedAct
 
+// Roles whose upload is a file to open, not an image to draw: the receiver's attestation and
+// the linehaul PDF. Drawn as an <img>, a PDF reads as "Image failed to load".
+const DOCUMENT_ROLES: ReadonlySet<EvidenceRole> = new Set<EvidenceRole>(['pod_signature', 'linehaul_pdf'])
+
+/** True when this role's evidence is shown as a document (and counted as files), not a photo. */
+export function isDocumentRole(role: EvidenceRole): boolean {
+  return DOCUMENT_ROLES.has(role)
+}
+
 export interface PhaseActsInput {
   phase: PhaseDescriptor
   /** Leg-scoped departure time and seal (legDepartureAt, departureSealForLeg). */
@@ -82,9 +91,10 @@ export interface PhaseActsInput {
  *  much, in either direction; below it the gap is ordinary upload latency. */
 export const RECEIVED_GAP_DISPLAY_MS = 120_000
 
-// The waybill copy is optional paperwork, so a phase without one is not "missing" it and
-// is never expected or reported absent.
-const UNTRACKED_ROLE: EvidenceRole = 'waybill_photo'
+// Optional by nature, so a phase without one is not "missing" it and is never expected or
+// reported absent: the waybill copy is optional paperwork, and the linehaul PDF is a derived
+// readable copy of the scan (the scan, linehaul_photo, is the evidence).
+const UNTRACKED_ROLES: ReadonlySet<EvidenceRole> = new Set<EvidenceRole>(['waybill_photo', 'linehaul_pdf'])
 const WAREHOUSE_SCAN_BLOCK = 'warehouse_scan'
 const ALL_ROLES = Object.keys(EVIDENCE_ROLE_FIELD) as EvidenceRole[]
 
@@ -311,7 +321,7 @@ function hasAttributedUpload(ctx: Ctx, role: EvidenceRole): boolean {
 /** Roles a phase of this type is expected to evidence, and nothing yet records. */
 function unevidencedRoles(ctx: Ctx): EvidenceRole[] {
   return EVIDENCE_ROLES[ctx.phase.phase_type].filter(role =>
-    role !== UNTRACKED_ROLE && roleColumn(ctx.phase, role) === null && !hasAttributedUpload(ctx, role))
+    !UNTRACKED_ROLES.has(role) && roleColumn(ctx.phase, role) === null && !hasAttributedUpload(ctx, role))
 }
 
 /** D35: on a closed, non-overridden phase a role with no submitted copy and no upload is a

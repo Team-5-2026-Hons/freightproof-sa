@@ -3,6 +3,8 @@
 import { useId, useState } from 'react'
 import { Ic } from '@/components/ui/Ic'
 import { SearchSelect } from '@/components/ui/SearchSelect'
+import type { AvailabilityStatus } from '@/lib/hooks/useCrewAvailability'
+import { busyNote, CREW_AVAILABILITY_COPY, type BusyById } from '@/lib/trips/crew-availability'
 import type { CrewValues, FieldErrors } from '@/lib/trips/manifest-form'
 import { MAX_TRAILERS, type TrailerCombo } from '@/lib/trips/trailer-combo'
 import type { Driver } from '@shared/lib/types/driver'
@@ -21,11 +23,23 @@ export interface CrewFieldsProps {
   trailers: readonly Vehicle[]
   combo: TrailerCombo
   errors: FieldErrors
+  /** Crew already busy in the chosen window: shown, greyed out, not choosable (FP-142). */
+  busy: BusyById
+  availability: AvailabilityStatus
 }
 
-/** Driver, horse and trailers: LFG's decision, never taken from the manifest (spec §5). */
+// What the line above the crew cards says while there is no answer to show. Nothing once ready.
+const AVAILABILITY_LINE: Partial<Record<AvailabilityStatus, string>> = {
+  idle: CREW_AVAILABILITY_COPY.needTimes,
+  loading: CREW_AVAILABILITY_COPY.checking,
+  error: CREW_AVAILABILITY_COPY.unchecked,
+}
+
+/** Driver, horse and trailers: LFG's decision, never taken from the manifest (spec §5). A
+ *  driver, horse or trailer already busy in the trip's window stays visible, greyed out with
+ *  when it is free, so the dispatcher sees why and for how long (FP-142). */
 export function CrewFields(
-  { crew, onChange, drivers, horses, trailers, combo, errors }: CrewFieldsProps,
+  { crew, onChange, drivers, horses, trailers, combo, errors, busy, availability }: CrewFieldsProps,
 ): React.JSX.Element {
   const [trailerSearch, setTrailerSearch] = useState('')
   const driverLabelId = useId()
@@ -48,15 +62,24 @@ export function CrewFields(
     onChange({ ...crew, trailerIds })
   }
 
+  const availabilityLine = AVAILABILITY_LINE[availability]
+
   return (
     <>
+      {/* aria-live so a screen reader hears when the check finishes or fails. Not role=status:
+          the trailer card's combination verdict already is the step's status region. */}
+      <p aria-live="polite" className="text-[12px] text-on-surf-v">{availabilityLine ?? ''}</p>
       <FormCard>
         <CardTitle icon="user">Driver</CardTitle>
         <FieldLabel id={driverLabelId} required>Assigned driver</FieldLabel>
         <SearchSelect
-          options={drivers.filter(d => d.is_active).map(d => ({
-            value: d.id, label: d.full_name, sublabel: `License ${d.license_number}`,
-          }))}
+          options={drivers.filter(d => d.is_active).map(d => {
+            const clash = busy.get(d.id)
+            return {
+              value: d.id, label: d.full_name, sublabel: `License ${d.license_number}`,
+              disabled: clash !== undefined, note: clash ? busyNote(clash) : undefined,
+            }
+          })}
           value={crew.driverId}
           onChange={driverId => onChange({ ...crew, driverId })}
           placeholder="Select driver…"
@@ -82,11 +105,16 @@ export function CrewFields(
         <CardTitle icon="truck">Horse (truck)</CardTitle>
         <FieldLabel id={horseLabelId} required>Horse</FieldLabel>
         <SearchSelect
-          options={horses.filter(h => h.is_active).map(h => ({
-            value: h.id,
-            label: h.registration,
-            sublabel: [h.make, h.model, h.year].filter(Boolean).join(' ') || undefined,
-          }))}
+          options={horses.filter(h => h.is_active).map(h => {
+            const clash = busy.get(h.id)
+            return {
+              value: h.id,
+              label: h.registration,
+              sublabel: [h.make, h.model, h.year].filter(Boolean).join(' ') || undefined,
+              disabled: clash !== undefined,
+              note: clash ? busyNote(clash) : undefined,
+            }
+          })}
           value={crew.horseId}
           onChange={horseId => onChange({ ...crew, horseId })}
           placeholder="Select horse…"
@@ -136,19 +164,22 @@ export function CrewFields(
                 <legend className="sr-only">Trailers</legend>
                 {shownTrailers.map(t => {
                   const checked = crew.trailerIds.includes(t.id)
-                  const atLimit = !checked && crew.trailerIds.length >= MAX_TRAILERS
+                  const clash = busy.get(t.id)
+                  // Only an unticked trailer is blocked: one already ticked stays enabled, so the
+                  // dispatcher can untick it after the times change and it turns out to be busy.
+                  const blocked = !checked && (clash !== undefined || crew.trailerIds.length >= MAX_TRAILERS)
                   return (
                     <label
                       key={t.id}
                       className={cn(
                         'flex items-start gap-3 border-b border-outline-v/10 px-4 py-[10px] transition-colors duration-100 last:border-0',
-                        checked ? 'cursor-pointer bg-sec-c' : atLimit ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-surf-low',
+                        checked ? 'cursor-pointer bg-sec-c' : blocked ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-surf-low',
                       )}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
-                        disabled={atLimit}
+                        disabled={blocked}
                         onChange={() => toggleTrailer(t.id)}
                         className="mt-[3px] h-4 w-4 shrink-0 accent-sec"
                       />
@@ -167,6 +198,7 @@ export function CrewFields(
                             {t.gross_vehicle_mass_kg != null ? ` · ${t.gross_vehicle_mass_kg.toLocaleString()} kg GVM` : ''}
                           </div>
                         )}
+                        {clash && <div className="mt-[2px] text-[11px] font-[600] text-on-surf">{busyNote(clash)}</div>}
                       </div>
                     </label>
                   )

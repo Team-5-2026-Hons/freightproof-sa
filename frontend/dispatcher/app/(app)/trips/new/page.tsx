@@ -17,6 +17,7 @@ import { ScheduleFields } from '@/components/trips/new/ScheduleFields'
 import { CrewFields } from '@/components/trips/new/CrewFields'
 import { CreateTripSummary, type SummaryRow } from '@/components/trips/new/CreateTripSummary'
 import { createTrip, createTripFromPPManifest, findLiveTripForManifest } from '@/lib/api/client'
+import { useCrewAvailability } from '@/lib/hooks/useCrewAvailability'
 import { useDrivers } from '@/lib/hooks/useDrivers'
 import { useManifestPreview } from '@/lib/hooks/useManifestPreview'
 import { usePrecincts } from '@/lib/hooks/usePrecincts'
@@ -30,6 +31,7 @@ import {
   shownTimes, validateCrew, validateEmptyLegRoute, validateManifestRoute, validateSchedule,
   type CrewValues, type FieldErrors, type RoutePicks, type ScheduleOverrides,
 } from '@/lib/trips/manifest-form'
+import { availabilityWindow, validateCrewAvailability } from '@/lib/trips/crew-availability'
 import { classifyCreateError } from '@/lib/trips/trip-api-errors'
 import { trailerCombo } from '@/lib/trips/trailer-combo'
 import { COPY } from '@shared/lib/constants/copy'
@@ -120,6 +122,9 @@ export default function TripNewPage(): React.JSX.Element {
   const preview: PPManifestPreview | null = lookup.state.status === 'loaded' ? lookup.state.preview : null
   const source = mode === 'manifest' && preview ? manifestTimes(preview) : NO_TIMES
   const shown = shownTimes(overrides, source)
+  // Who is busy in the times entered so far (FP-142). Asked again whenever they change.
+  const availability = useCrewAvailability(availabilityWindow(shown))
+  const busyErrors = validateCrewAvailability(crew, availability.busy)
   const selectedTrailers = crew.trailerIds
     .map(id => trailers.find(t => t.id === id))
     .filter((t): t is Vehicle => t !== undefined)
@@ -129,12 +134,20 @@ export default function TripNewPage(): React.JSX.Element {
 
   let errors: FieldErrors = {}
   if (mode === 'empty_leg') {
-    errors = { ...validateEmptyLegRoute(picks), ...validateSchedule(shown, source), ...validateCrew(crew, combo.valid) }
+    errors = {
+      ...validateEmptyLegRoute(picks), ...validateSchedule(shown, source), ...validateCrew(crew, combo.valid),
+      ...busyErrors,
+    }
   } else if (preview) {
-    errors = { ...validateManifestRoute(preview, picks), ...validateSchedule(shown, source), ...validateCrew(crew, combo.valid) }
+    errors = {
+      ...validateManifestRoute(preview, picks), ...validateSchedule(shown, source), ...validateCrew(crew, combo.valid),
+      ...busyErrors,
+    }
   }
   const hasErrors = Object.keys(errors).length > 0
-  const shownErrors: FieldErrors = showErrors ? errors : {}
+  // A busy pick is shown at once, not held back until Create like a missing field: it is news
+  // the dispatcher needs while still choosing (the times changed under a crew already picked).
+  const shownErrors: FieldErrors = showErrors ? errors : busyErrors
 
   // Route, times and the review state belong to one manifest or one empty leg. Crew does
   // not, so it survives every reset.
@@ -226,6 +239,11 @@ export default function TripNewPage(): React.JSX.Element {
             trip: failure.tripId ? { id: failure.tripId, reference: failure.tripReference } : undefined,
           })
           return
+        case 'crew_unavailable':
+          // Lost a race, or the check was out of date: show why, and refresh what is greyed out.
+          setNotice({ tone: 'error', message: failure.message })
+          availability.refetch()
+          return
         case 'rejected':
           setNotice({ tone: 'error', message: failure.message })
       }
@@ -238,6 +256,7 @@ export default function TripNewPage(): React.JSX.Element {
       openCreated(trip.id)
     } catch (err) {
       const failure = classifyCreateError(err)
+      if (failure.kind === 'crew_unavailable') availability.refetch()
       setNotice(
         failure.kind === 'no_response'
           ? { tone: 'error', message: TIMEOUT_EMPTY_LEG, showActiveTrips: true }
@@ -388,6 +407,8 @@ export default function TripNewPage(): React.JSX.Element {
                     trailers={trailers}
                     combo={combo}
                     errors={shownErrors}
+                    busy={availability.busy}
+                    availability={availability.status}
                   />
                 </StepSection>
               )}

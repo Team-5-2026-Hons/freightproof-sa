@@ -6,6 +6,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon, Check } from 'lucide-react'
 import { useToast } from '@/lib/hooks/useToast'
 import { fileToCompressedJpegDataUrl } from '@/lib/utils/image'
+import { EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT, EVIDENCE_PHOTO_MAX_EDGE_PX } from '@/lib/constants/evidence-photo'
 import { formatTime } from '@/lib/utils/format-time'
 
 interface CameraCaptureProps {
@@ -26,18 +27,13 @@ interface CameraCaptureProps {
   /** The row variant's second line once a photo is added ("Sends with the report"). */
   capturedHint?: string
   onCapture: (dataUrl: string) => void
+  /**
+   * Native-only replacement for the camera, e.g. the document scanner for the linehaul
+   * sheet. Resolves a JPEG data URL, or null when the driver backs out. Failures fall
+   * back to the file picker exactly like a camera failure. The browser ignores it.
+   */
+  nativeSource?: () => Promise<string | null>
 }
-
-// Longest-edge cap applied on BOTH capture paths. Captured photos live as base64 data
-// URLs in React state and localStorage evidence drafts (lib/types/evidence-draft.ts) —
-// an uncompressed phone photo is 5–12 MB, which blows the ~5 MB localStorage quota and
-// guarantees rejection against the backend's 10 MB artifact cap. 1600px keeps seals and
-// documents legible at a fraction of the size.
-const MAX_PHOTO_EDGE_PX = 1600
-
-// Single JPEG quality constant for both paths — Capacitor's `quality` option is 0–100,
-// canvas.toDataURL takes 0–1; both derive from this so the two paths can't drift apart.
-const JPEG_QUALITY_PERCENT = 70
 
 type CameraFailure = 'cancelled' | 'permission-denied' | 'other'
 
@@ -55,7 +51,7 @@ function classifyCameraFailure(err: unknown): CameraFailure {
 }
 
 export function CameraCapture({
-  label, actionLabel = 'Take Photo', hint, dataUrl, capturedAt = null, variant = 'tile', capturedHint, onCapture,
+  label, actionLabel = 'Take Photo', hint, dataUrl, capturedAt = null, variant = 'tile', capturedHint, onCapture, nativeSource,
 }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
   // Latches once the native camera has refused (permission denied, or no camera on the
@@ -79,7 +75,7 @@ export function CameraCapture({
     (file: File) => {
       void (async () => {
         try {
-          onCapture(await fileToCompressedJpegDataUrl(file, MAX_PHOTO_EDGE_PX, JPEG_QUALITY_PERCENT))
+          onCapture(await fileToCompressedJpegDataUrl(file, EVIDENCE_PHOTO_MAX_EDGE_PX, EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT))
         } catch (err) {
           // Decode/canvas failed (exotic format, out of memory). Fall back to the raw
           // FileReader read this component always used — an oversized draft beats
@@ -129,13 +125,18 @@ export function CameraCapture({
 
     setIsCapturing(true)
     try {
+      if (nativeSource !== undefined) {
+        const dataUrl = await nativeSource()
+        if (dataUrl !== null) onCapture(dataUrl)
+        return
+      }
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
-        quality: JPEG_QUALITY_PERCENT,
+        quality: EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT,
         // Native-side downscale, applied before the image crosses the bridge as
         // base64 — same cap as the browser path's canvas step.
-        width: MAX_PHOTO_EDGE_PX,
+        width: EVIDENCE_PHOTO_MAX_EDGE_PX,
       })
       if (photo.dataUrl) onCapture(photo.dataUrl)
     } catch (err) {
@@ -167,7 +168,7 @@ export function CameraCapture({
     } finally {
       setIsCapturing(false)
     }
-  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable])
+  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable, nativeSource])
 
   const verb = isCapturing ? 'Opening Camera…' : nativeCameraUnavailable ? 'Choose a Photo Instead' : actionLabel
 

@@ -61,6 +61,7 @@ def make_loaded_payload(**kwargs) -> TripCreateRequest:
         # (see TripCreateRequest.validate_request); orthogonal to the
         # consignment-loop behaviour this file exercises.
         planned_departure_at=_NOW,
+        planned_arrival_at=_NOW + timedelta(hours=10),  # required (FP-139)
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -77,6 +78,7 @@ def make_empty_leg_payload(**kwargs) -> TripCreateRequest:
         trip_type=TripType.EMPTY_LEG,
         # See make_loaded_payload above.
         planned_departure_at=_NOW,
+        planned_arrival_at=_NOW + timedelta(hours=10),  # required (FP-139)
     )
     base.update(kwargs)
     return TripCreateRequest(**base)
@@ -125,6 +127,10 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
+        # the fetches above. Their real behaviour is proved in the integration tests.
+        patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -163,6 +169,10 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
+        # the fetches above. Their real behaviour is proved in the integration tests.
+        patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -207,6 +217,10 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
+        # the fetches above. Their real behaviour is proved in the integration tests.
+        patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
             new_callable=AsyncMock,
@@ -263,6 +277,10 @@ async def test_create_trip_writes_full_pending_plan() -> None:
     with (
         patch("app.orchestration.trips.creation._fetch_driver", new_callable=AsyncMock) as mock_driver,
         patch("app.orchestration.trips.creation._fetch_vehicle", new_callable=AsyncMock) as mock_vehicle,
+        # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
+        # the fetches above. Their real behaviour is proved in the integration tests.
+        patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
         # A real dict, not a placeholder — compute_payload_hash (called for real
@@ -442,7 +460,7 @@ async def test_create_trip_anchor_failure_still_rolls_back_whole_trip(db_session
     payload = TripCreateRequest(
         driver_id=driver.id, horse_id=horse.id, trailer_ids=[],
         origin_precinct_id=origin.id, destination_precinct_id=dest.id, trip_type=TripType.EMPTY_LEG,
-        planned_departure_at=_NOW,
+        planned_departure_at=_NOW, planned_arrival_at=_NOW + timedelta(hours=10),
     )
 
     with patch(

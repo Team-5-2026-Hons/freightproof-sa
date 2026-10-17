@@ -278,7 +278,9 @@ layers =
 #     client-name and manifest-reference helpers every trip read shares, so it is the lowest tier
 #     and imports no sibling. creation, administration, queries and listing sit above it and may
 #     use it, but not each other (contract 7 already holds the first three apart; listing joins
-#     them here, so a shared helper goes down into detail rather than sideways). trips/__init__
+#     them here, so a shared helper goes down into detail rather than sideways). availability
+#     (FP-139: who is busy when) shares the lowest tier with detail; it is also read by
+#     phases.scheduling, so it imports no sibling either. trips/__init__
 #     stays empty (audit 5 rule 1). Layers are not optional: a misspelt or missing module fails
 #     the contract.
 # ---------------------------------------------------------------------------
@@ -289,7 +291,7 @@ containers =
     app.orchestration.trips
 layers =
     creation | administration | queries | listing
-    detail
+    detail | availability
 
 # ---------------------------------------------------------------------------
 # 23. Tier order inside exceptions/ (audit 5.7, stage 4). review_identity and review_policy are

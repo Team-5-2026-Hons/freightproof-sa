@@ -7,6 +7,13 @@
       "rate_limit:fleet_mutation"
     ]
   },
+  "GET /api/v1/analytics/cost-profile": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/analytics/drivers": {
     "access": "dispatcher",
     "dependencies": [
@@ -22,6 +29,13 @@
     ]
   },
   "GET /api/v1/analytics/fleet/activity": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/analytics/fleet/cost": {
     "access": "dispatcher",
     "dependencies": [
       "app.auth.dependencies.get_current_dispatcher",
@@ -287,6 +301,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/trips/availability": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/trips/history": {
     "access": "dispatcher",
     "dependencies": [
@@ -450,6 +471,15 @@
   "GET /redoc": {
     "access": "none",
     "dependencies": []
+  },
+  "PATCH /api/v1/analytics/cost-profile": {
+    "access": "admin-dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "app.auth.dependencies.require_admin_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:cost_profile_mutation"
+    ]
   },
   "PATCH /api/v1/drivers/{driver_id}": {
     "access": "admin-dispatcher",

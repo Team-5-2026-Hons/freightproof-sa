@@ -32,7 +32,10 @@ const { linehaul } = vi.hoisted(() => ({
 
 // Bare draft — every test below that doesn't care about the photo state renders with no
 // captured photo yet, matching what LOADING_INITIAL seeds a fresh step with.
-const EMPTY_DRAFT = { linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null }
+const EMPTY_DRAFT = {
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
+  linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt: null,
+}
 
 // The blocked branch now renders WarehouseWaitCard (components/phase/WarehouseWaitCard.tsx),
 // which reads useTrip() directly — every test in this file renders Linehaul bare, with no
@@ -160,7 +163,7 @@ describe('Linehaul', () => {
 
     // "Linehaul sheet" also appears in the StepHeader's phase name, so the capture
     // control is identified by its own copy instead — unique to CameraCapture.
-    expect(screen.getByRole('button', { name: /photograph the sheet/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /scan the sheet/i })).toBeInTheDocument()
   })
 
   it('disables the swipe until a photo exists', () => {

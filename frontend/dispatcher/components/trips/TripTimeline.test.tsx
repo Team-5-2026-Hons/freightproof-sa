@@ -928,6 +928,53 @@ describe('TripTimeline: what each phase type can show (design note §7.2)', () =
     expect(within(recorded).getAllByRole('img')).toHaveLength(1)
   })
 
+  it('offers the linehaul PDF as a document to open, never as an image', () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', linehaul_pdf_artifact_id: 'pdf', parcel_count_origin: 16 } })
+    const loading = phaseOf(trip, 'loading')
+    const sheet = artifact('sheet', loading.phase_event_id, 'linehaul_photo')
+    const pdf = artifact('pdf', loading.phase_event_id, 'linehaul_pdf', { artifact_type: 'document', mime_type: 'application/pdf', signed_url: 'https://example.test/pdf.pdf' })
+
+    renderTimeline(trip, { artifactsById: artifactMap(sheet, pdf) })
+
+    const recorded = zone('Loading', 'Recorded')
+    expect(within(recorded).getByText('Linehaul sheet scanned (PDF)')).toBeInTheDocument()
+    expect(within(recorded).getAllByRole('img')).toHaveLength(1)
+    expect(within(recorded).getByRole('link', { name: 'Open ↗' })).toHaveAttribute('href', 'https://example.test/pdf.pdf')
+    expect(within(recorded).queryByText('Image failed to load')).not.toBeInTheDocument()
+  })
+
+  it('counts several linehaul PDFs as files, not photos', () => {
+    const base = tripFor(TRIP_0040_ID)
+    const loading = phaseOf(base, 'loading')
+    const trip: Trip = {
+      ...base,
+      phases: base.phases.map(phase => phase.sequence_number >= loading.sequence_number
+        ? { ...phase, status: 'pending' as const, completed_at: null } : phase),
+    }
+    const uploads = ['p1', 'p2'].map(id => artifact(id, loading.phase_event_id, 'linehaul_pdf', { artifact_type: 'document', mime_type: 'application/pdf' }))
+
+    renderTimeline(trip, { artifactsById: artifactMap(...uploads) })
+
+    const recorded = zone('Loading', 'Recorded')
+    expect(within(recorded).getByText(line('2 files uploaded'))).toBeInTheDocument()
+    expect(within(recorded).queryByText(/photos uploaded/)).not.toBeInTheDocument()
+    expect(within(recorded).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('counts several linehaul PDFs as files on the collapsed card row', () => {
+    const trip = closedTrip({ loading: { linehaul_photo_artifact_id: 'sheet', linehaul_pdf_artifact_id: 'p1', parcel_count_origin: 16 } })
+    const loading = phaseOf(trip, 'loading')
+    const sheet = artifact('sheet', loading.phase_event_id, 'linehaul_photo')
+    const pdfs = ['p1', 'p2'].map(id => artifact(id, loading.phase_event_id, 'linehaul_pdf', { artifact_type: 'document', mime_type: 'application/pdf' }))
+
+    renderTimeline(trip, { artifactsById: artifactMap(sheet, ...pdfs) })
+
+    const rows = within(phaseGroup('Loading')).getAllByRole('listitem')
+    const pdfRow = rows.find(row => row.textContent?.includes('Linehaul sheet scanned (PDF)'))
+    expect(pdfRow).toHaveTextContent('2 files uploaded')
+    expect(pdfRow).not.toHaveTextContent('photos')
+  })
+
   it('still names a submitted photo whose metadata failed to load, as "Recorded artifact unavailable"', () => {
     const trip = closedTrip({ departure: { seal_number: 'FP-1', seal_photo_artifact_id: 'gone' } })
 

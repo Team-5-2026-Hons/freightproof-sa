@@ -58,7 +58,7 @@ the manifest race (Task 9) synchronises on its pre-check.
 import asyncio
 import dataclasses
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest_asyncio
@@ -81,7 +81,8 @@ from app.db.models.enums import (
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
-from app.db.models.sessions import UserSession
+from app.db.models.sessions import DriverSession, UserSession
+from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -97,6 +98,8 @@ from app.integrations.parcel_perfect import (
 )
 from app.main import app
 from app.orchestration.consignments.sync import fetch_and_sync_consignment
+from app.orchestration.phases import scheduling
+from app.orchestration.trips import creation
 from tests.conftest import auth_header, make_token
 
 # Two callers, released together. Named rather than inlined because both tests
@@ -392,11 +395,29 @@ async def racing_api_world(test_engine, monkeypatch):
         id=uuid.uuid4(), organization_id=operator.id, vehicle_type=VehicleType.TRAILER,
         registration=f"T{suffix.upper()}", pulsit_device_id=f"PUL-T-{suffix}",
     )
+    # A second, separate crew. A race about a waybill or an order must not also be a race
+    # about one horse (FP-139): the crew lock would then decide it, and a barrier placed after
+    # that lock would hang the test instead of failing it.
+    driver_b = Driver(
+        id=uuid.uuid4(), organization_id=operator.id, full_name="Driver B",
+        id_number=f"80010151{suffix[:5]}", phone_number=f"+2783{suffix[:7]}",
+        license_number=f"DRV-B-{suffix}", idvs_status=IdvsStatus.PENDING,
+    )
+    horse_b = Vehicle(
+        id=uuid.uuid4(), organization_id=operator.id, vehicle_type=VehicleType.HORSE,
+        registration=f"HB{suffix.upper()}", pulsit_device_id=f"PUL-HB-{suffix}",
+    )
+    trailer_b = Vehicle(
+        id=uuid.uuid4(), organization_id=operator.id, vehicle_type=VehicleType.TRAILER,
+        registration=f"TB{suffix.upper()}", pulsit_device_id=f"PUL-TB-{suffix}",
+    )
 
     async with sessionmaker() as session:
         session.add_all([operator, principal])
         await session.flush()
-        session.add_all([user, user_b, origin, destination, driver, horse, trailer])
+        session.add_all([
+            user, user_b, origin, destination, driver, horse, trailer, driver_b, horse_b, trailer_b,
+        ])
         await session.commit()
 
     async def _get_db():
@@ -424,6 +445,9 @@ async def racing_api_world(test_engine, monkeypatch):
         "org": operator,
         "user": user,
         "user_b": user_b,
+        "crew_b": {
+            "driver_id": str(driver_b.id), "horse_id": str(horse_b.id), "trailer_ids": [str(trailer_b.id)],
+        },
         "payload_base": {
             "driver_id": str(driver.id),
             "horse_id": str(horse.id),
@@ -431,6 +455,8 @@ async def racing_api_world(test_engine, monkeypatch):
             "origin_precinct_id": str(origin.id),
             "destination_precinct_id": str(destination.id),
             "planned_departure_at": datetime.now(UTC).isoformat(),
+            # Arrival is required at creation (FP-139).
+            "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
             "consignments": [{"pp_reference": pp_reference, "unit_count_expected": 2}],
         },
     }
@@ -457,8 +483,10 @@ async def racing_api_world(test_engine, monkeypatch):
             )
             await session.execute(delete(Consignment).where(Consignment.id.in_(consignment_ids)))
         if trip_ids:
-            # PhaseEvent before BlockchainReceipt: phase rows carry an FK to the
-            # receipt that anchored them.
+            # Exceptions first: activation can raise one (e.g. a phone/tracker mismatch), and
+            # it points at its phase row. Then PhaseEvent before BlockchainReceipt: phase rows
+            # carry an FK to the receipt that anchored them.
+            await session.execute(delete(TripException).where(TripException.trip_id.in_(trip_ids)))
             await session.execute(delete(PhaseEvent).where(PhaseEvent.trip_id.in_(trip_ids)))
             await session.execute(
                 delete(BlockchainReceipt).where(BlockchainReceipt.trip_id.in_(trip_ids))
@@ -467,9 +495,11 @@ async def racing_api_world(test_engine, monkeypatch):
             await session.execute(delete(TripStop).where(TripStop.trip_id.in_(trip_ids)))
             await session.execute(delete(Trip).where(Trip.id.in_(trip_ids)))
         await session.execute(
-            delete(Vehicle).where(Vehicle.id.in_([horse.id, trailer.id]))
+            delete(Vehicle).where(Vehicle.id.in_([horse.id, trailer.id, horse_b.id, trailer_b.id]))
         )
-        await session.execute(delete(Driver).where(Driver.id == driver.id))
+        # A driver who authenticated (the activation race) leaves a DriverSession row behind.
+        await session.execute(delete(DriverSession).where(DriverSession.driver_id.in_([driver.id, driver_b.id])))
+        await session.execute(delete(Driver).where(Driver.id.in_([driver.id, driver_b.id])))
         # Authenticating stamps a UserSession row per dispatcher (auth/sessions.py),
         # and it outlives the request that created it — so it has to go before the
         # users it points at.
@@ -507,8 +537,8 @@ async def test_concurrent_trip_creation_anchors_one_journey_lock(
         consensus_timestamp=None, transaction_id="0.0.12345@1715865600.0",
     )
 
-    def _payload(order_number: str) -> dict:
-        return {**world["payload_base"], "order_number": order_number}
+    def _payload(order_number: str, crew: dict[str, Any] | None = None) -> dict:
+        return {**world["payload_base"], **(crew or {}), "order_number": order_number}
 
     with patch("app.blockchain.anchor_service.HederaService") as MockService:
         instance = MagicMock()
@@ -518,7 +548,8 @@ async def test_concurrent_trip_creation_anchors_one_journey_lock(
         first, second = await asyncio.gather(
             client.post("/api/v1/trips", json=_payload(f"ORD-{world['pp_reference']}-A"),
                         headers=headers_a),
-            client.post("/api/v1/trips", json=_payload(f"ORD-{world['pp_reference']}-B"),
+            # Its own crew, so the waybill (FP-138) is the only thing the two contend for.
+            client.post("/api/v1/trips", json=_payload(f"ORD-{world['pp_reference']}-B", world["crew_b"]),
                         headers=headers_b),
         )
 
@@ -601,7 +632,7 @@ async def test_concurrent_creation_from_one_manifest_creates_one_trip(
         header=PPManifestHeader(
             manifest_number=900, issuer_account=account, issuer_name="Racing Client",
             origin_hub="CPT", destination_hub="JNB", created_at=now, closed_at=now,
-            planned_departure_at=now, expected_arrival_at=None, client_reference=None, notes=[],
+            planned_departure_at=now, expected_arrival_at=now + timedelta(hours=10), client_reference=None, notes=[],
         ),
         waybills=[waybill],
     )
@@ -644,3 +675,147 @@ async def test_concurrent_creation_from_one_manifest_creates_one_trip(
             select(Trip).where(Trip.operator_organization_id == world["org"].id, Trip.pp_manifest_number == 900)
         )).scalars().all()
     assert len(trips) == 1
+
+
+# ── The crew race: one horse, two dispatchers, same instant (FP-139) ──────────
+
+
+async def test_concurrent_creation_on_one_horse_creates_one_trip(
+    client: AsyncClient, racing_api_world: dict[str, Any], monkeypatch: MonkeyPatch
+) -> None:
+    """Two dispatchers book the same driver, horse and trailer for overlapping windows, at once.
+
+    Different waybills, so nothing but the crew connects the two trips: the waybill guard
+    cannot be what refuses the loser. Both callers are parked just before lock_crew, so each
+    passes the point where an unlocked check would have read "free". Without the lock both
+    insert; with it the second waits for the first to commit, sees its trip and gets
+    CREW_UNAVAILABLE. One 201, one 409, one trip.
+    """
+    world = racing_api_world
+    # No PP barrier: the loser waits inside Postgres on the crew lock, so a barrier after it
+    # (the default client's) would never fill.
+    monkeypatch.setattr(
+        "app.orchestration.consignments.sync.get_pp_client", lambda: _BarrierPPClient(asyncio.Barrier(1))
+    )
+    real_lock = creation.lock_crew
+    barrier = asyncio.Barrier(_RACERS)
+
+    async def _arrive_together_then_lock(db: AsyncSession, **kwargs: Any) -> None:
+        await barrier.wait()
+        await real_lock(db, **kwargs)
+
+    monkeypatch.setattr(creation, "lock_crew", _arrive_together_then_lock)
+    headers_a, headers_b = (
+        auth_header(make_token(sub=str(u.id), role="dispatcher", org_id=str(world["org"].id)))
+        for u in (world["user"], world["user_b"])
+    )
+    fake_receipt = HederaReceipt(
+        topic_id="0.0.12345", sequence_number=43,
+        consensus_timestamp=None, transaction_id="0.0.12345@1715865601.0",
+    )
+
+    def _payload(waybill: str) -> dict:
+        return {**world["payload_base"], "consignments": [{"pp_reference": waybill, "unit_count_expected": 2}]}
+
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        instance = MagicMock()
+        instance.submit_hash.return_value = fake_receipt
+        MockService.return_value = instance
+
+        first, second = await asyncio.gather(
+            client.post("/api/v1/trips", json=_payload(f"{world['pp_reference']}A"), headers=headers_a),
+            client.post("/api/v1/trips", json=_payload(f"{world['pp_reference']}B"), headers=headers_b),
+        )
+
+    statuses = sorted([first.status_code, second.status_code])
+    assert statuses == [201, 409], f"{first.text[:200]} | {second.text[:200]}"
+    winner, refused = (first, second) if first.status_code == 201 else (second, first)
+    detail = refused.json()["detail"]
+    assert detail["code"] == "CREW_UNAVAILABLE"
+    assert {c["resource_type"] for c in detail["clashes"]} == {"driver", "horse", "trailer"}
+    assert {c["trip_reference"] for c in detail["clashes"]} == {winner.json()["trip_reference"]}
+    async with world["sessionmaker"]() as session:
+        trips = (await session.execute(
+            select(Trip.id).where(Trip.operator_organization_id == world["org"].id)
+        )).scalars().all()
+    assert len(trips) == 1, f"{len(trips)} trips on one horse at once"
+
+
+# ── The activation race: two drivers, one horse, same instant (FP-139) ────────
+
+
+async def test_concurrent_activation_on_one_horse_starts_one_trip(
+    client: AsyncClient, racing_api_world: dict[str, Any], monkeypatch: MonkeyPatch
+) -> None:
+    """Two drivers press Start at once on two trips that share only a horse.
+
+    The trips' windows don't overlap, so creation accepts both (correctly: they were planned
+    for different times). Both are CREATED, so a check without the crew lock would let both
+    drivers see "nothing underway" and start. Both callers are parked just before lock_crew in
+    phases.scheduling. With the lock, the second waits, then sees the first ACTIVE and is refused.
+    """
+    world = racing_api_world
+    crew_b = world["crew_b"]
+    now = datetime.now(UTC)
+
+    def _empty_leg(crew: dict[str, Any], departure: datetime) -> dict[str, Any]:
+        return {
+            "driver_id": crew["driver_id"], "horse_id": crew["horse_id"], "trailer_ids": crew["trailer_ids"],
+            "origin_precinct_id": world["payload_base"]["origin_precinct_id"],
+            "destination_precinct_id": world["payload_base"]["destination_precinct_id"],
+            "trip_type": "empty_leg",
+            "planned_departure_at": departure.isoformat(),
+            "planned_arrival_at": (departure + timedelta(hours=10)).isoformat(),
+        }
+
+    crew_a = {key: world["payload_base"][key] for key in ("driver_id", "horse_id", "trailer_ids")}
+    # Trip B: driver B and trailer B, but horse A, booked to end before trip A begins.
+    horse_shared = {**crew_b, "horse_id": crew_a["horse_id"]}
+    dispatcher = auth_header(make_token(sub=str(world["user"].id), role="dispatcher", org_id=str(world["org"].id)))
+    fake_receipt = HederaReceipt(
+        topic_id="0.0.12345", sequence_number=44,
+        consensus_timestamp=None, transaction_id="0.0.12345@1715865602.0",
+    )
+    with patch("app.blockchain.anchor_service.HederaService") as MockService:
+        instance = MagicMock()
+        instance.submit_hash.return_value = fake_receipt
+        MockService.return_value = instance
+        trip_a = await client.post("/api/v1/trips", json=_empty_leg(crew_a, now - timedelta(minutes=30)), headers=dispatcher)
+        trip_b = await client.post("/api/v1/trips", json=_empty_leg(horse_shared, now - timedelta(hours=11)), headers=dispatcher)
+    assert trip_a.status_code == 201, trip_a.text
+    assert trip_b.status_code == 201, trip_b.text
+
+    real_lock = scheduling.lock_crew
+    barrier = asyncio.Barrier(_RACERS)
+
+    async def _arrive_together_then_lock(db: AsyncSession, **kwargs: Any) -> None:
+        await barrier.wait()
+        await real_lock(db, **kwargs)
+
+    monkeypatch.setattr(scheduling, "lock_crew", _arrive_together_then_lock)
+
+    async def _start(trip: Any, driver_id: str) -> Any:
+        body = trip.json()
+        activation = next(p for p in body["phases"] if p["phase_type"] == "activation")
+        return await client.post(
+            f"/api/v1/trips/{body['id']}/phases/{activation['phase_event_id']}/complete",
+            json={
+                "phase_type": "activation", "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+                "idempotency_key": str(uuid.uuid4()),
+            },
+            headers=auth_header(make_token(sub=driver_id, role="driver")),
+        )
+
+    first, second = await asyncio.gather(
+        _start(trip_a, crew_a["driver_id"]), _start(trip_b, crew_b["driver_id"]),
+    )
+
+    statuses = sorted([first.status_code, second.status_code])
+    assert statuses == [200, 409], f"{first.text[:200]} | {second.text[:200]}"
+    refused = first if first.status_code == 409 else second
+    assert "horse" in refused.json()["detail"]
+    async with world["sessionmaker"]() as session:
+        live = (await session.execute(
+            select(Trip.id).where(Trip.operator_organization_id == world["org"].id, Trip.status == TripStatus.ACTIVE)
+        )).scalars().all()
+    assert len(live) == 1, f"{len(live)} trips underway on one horse"

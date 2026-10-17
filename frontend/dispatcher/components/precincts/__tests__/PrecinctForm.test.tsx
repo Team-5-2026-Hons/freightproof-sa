@@ -38,15 +38,16 @@ vi.mock('@/lib/geocode/overpass', () => ({
 // what the form hands it (pin, outline) and lets a test click the map or drag a corner.
 const EDITED: LatLngPair[] = [[-29.79, 30.98], [-29.79, 30.99], [-29.80, 30.99], [-29.80, 30.98]]
 vi.mock('@/components/map/GeofenceMap', () => ({
-  GeofenceMap: ({ latitude, longitude, polygon, onPositionChange, onPolygonChange }: {
+  GeofenceMap: ({ latitude, longitude, polygon, showCircle, onPositionChange, onPolygonChange }: {
     latitude: number
     longitude: number
     polygon?: LatLngPair[] | null
+    showCircle?: boolean
     onPositionChange?: (p: { latitude: number; longitude: number }) => void
     onPolygonChange?: (p: LatLngPair[]) => void
   }) => (
     <div>
-      <div data-testid="map" data-corners={polygon?.length ?? 0}>{`${latitude},${longitude}`}</div>
+      <div data-testid="map" data-corners={polygon?.length ?? 0} data-circle={String(showCircle ?? true)}>{`${latitude},${longitude}`}</div>
       <button type="button" onClick={() => onPositionChange?.({ latitude: -29.7941, longitude: 30.9821 })}>click map</button>
       <button type="button" onClick={() => onPolygonChange?.(EDITED)}>drag corner</button>
     </div>
@@ -57,10 +58,18 @@ const PICK: AddressSuggestion = {
   id: 'W101', label: 'Sookhai Place', detail: 'Durban, KwaZulu-Natal', latitude: -29.7942, longitude: 30.982,
 }
 
-// The search component has its own suite; stubbed to a button that "picks" one result.
+// A second, different site ~1.5 km away, for the "new search clears the old outline" case.
+const PICK_2: AddressSuggestion = {
+  id: 'W202', label: '9 Other Road', detail: 'Durban', latitude: -29.808, longitude: 30.982,
+}
+
+// The search component has its own suite; stubbed to buttons that "pick" one result each.
 vi.mock('@/components/precincts/AddressSearch', () => ({
   AddressSearch: ({ onSelect }: { onSelect: (s: AddressSuggestion) => void }) => (
-    <button type="button" onClick={() => onSelect(PICK)}>pick address</button>
+    <>
+      <button type="button" onClick={() => onSelect(PICK)}>pick address</button>
+      <button type="button" onClick={() => onSelect(PICK_2)}>pick second address</button>
+    </>
   ),
 }))
 
@@ -89,6 +98,11 @@ function corners(): string | null {
   return screen.getByTestId('map').getAttribute('data-corners')
 }
 
+async function autoFit(): Promise<void> {
+  fireEvent.click(screen.getByRole('button', { name: 'Auto-fit outline' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Auto-fit outline' })).toBeEnabled())
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockFetchOutlineCandidates.mockResolvedValue([])
@@ -97,7 +111,7 @@ beforeEach(() => {
 })
 
 describe('PrecinctForm address search', () => {
-  it('test_picked_address_moves_the_pin_and_fills_an_empty_address', async () => {
+  it('test_picked_address_moves_the_pin_and_fills_the_address_without_drawing', () => {
     render(<PrecinctForm />)
 
     fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
@@ -106,27 +120,33 @@ describe('PrecinctForm address search', () => {
     expect(field('longitude').value).toBe('30.98200')
     expect(field('address').value).toBe('Sookhai Place, Durban, KwaZulu-Natal')
     expect(screen.getByTestId('map')).toHaveTextContent('-29.7942,30.982')
-    await waitFor(() => expect(corners()).toBe('4'))
+    // Drawing waits for Auto-fit; no circle stands in for the fence meanwhile.
+    expect(corners()).toBe('0')
+    expect(screen.getByTestId('map')).toHaveAttribute('data-circle', 'false')
+    expect(mockFetchOutlineCandidates).not.toHaveBeenCalled()
   })
 
-  it('test_picked_address_never_overwrites_an_existing_address_label', () => {
+  it('test_picked_address_replaces_the_address_and_clears_an_existing_outline', () => {
     render(<PrecinctForm precinct={OUTLINE_PRECINCT} />)
+    expect(corners()).toBe('4')
 
     fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
 
-    expect(field('address').value).toBe('Gate 3, Riverhorse Valley')
+    expect(field('address').value).toBe('Sookhai Place, Durban, KwaZulu-Natal')
     expect(field('latitude').value).toBe('-29.79420')
+    expect(corners()).toBe('0')
   })
 })
 
 describe('PrecinctForm property outline', () => {
-  it('test_new_precinct_auto_draws_the_best_mapped_shape_and_lists_the_rest', async () => {
+  it('test_auto_fit_draws_the_best_mapped_shape_and_lists_the_rest', async () => {
     mockFetchOutlineCandidates.mockResolvedValue([WAREHOUSE, ESTATE])
     render(<PrecinctForm />)
 
     fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
+    await autoFit()
 
-    await waitFor(() => expect(corners()).toBe('4'))
+    expect(corners()).toBe('4')
     expect(screen.getByRole('button', { name: /Warehouse/ })).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button', { name: /Industrial site/ }))
     expect(corners()).toBe('5')
@@ -137,9 +157,10 @@ describe('PrecinctForm property outline', () => {
     mockFetchOutlineCandidates.mockRejectedValue(new Error('HTTP 429'))
     render(<PrecinctForm />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'click map' }))
+    fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
+    await autoFit()
 
-    await waitFor(() => expect(corners()).toBe('4'))
+    expect(corners()).toBe('4')
     expect(screen.getByText(/couldn.t reach openstreetmap/i)).toBeInTheDocument()
     warn.mockRestore()
   })
@@ -149,7 +170,8 @@ describe('PrecinctForm property outline', () => {
     render(<PrecinctForm />)
     fireEvent.change(field('name'), { target: { value: 'FedEx DBN' } })
     fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
-    await waitFor(() => expect(corners()).toBe('4'))
+    await autoFit()
+    expect(corners()).toBe('4')
 
     fireEvent.click(screen.getByRole('button', { name: 'drag corner' }))
     // The edited box is ~1 km across; the pin at -29.7941, 30.9821 is inside it.
@@ -206,5 +228,29 @@ describe('PrecinctForm property outline', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(/outside the outline/)
     expect(mockPatch).not.toHaveBeenCalled()
+  })
+
+  it('test_a_new_search_clears_the_previous_sites_square', async () => {
+    render(<PrecinctForm />)
+    fireEvent.click(screen.getByRole('button', { name: 'pick address' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start from a square' }))
+    expect(corners()).toBe('4')
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick second address' }))
+
+    expect(corners()).toBe('0')
+    expect(field('address').value).toBe('9 Other Road, Durban')
+    await autoFit()
+    expect(mockFetchOutlineCandidates).toHaveBeenCalledWith(-29.808, 30.982, expect.any(AbortSignal))
+    expect(corners()).toBe('4')
+  })
+
+  it('test_map_clicks_never_look_up_or_redraw_the_outline', () => {
+    render(<PrecinctForm />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'click map' }))
+
+    expect(mockFetchOutlineCandidates).not.toHaveBeenCalled()
+    expect(corners()).toBe('0')
   })
 })

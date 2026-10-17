@@ -10,6 +10,7 @@ export type ArtifactType = 'photo' | 'document'
 // phase column (<role>_artifact_id) that records the submitted copy.
 export type EvidenceRole =
   | 'linehaul_photo'
+  | 'linehaul_pdf'
   | 'seal_photo'
   | 'waybill_photo'
   | 'pod_photo'

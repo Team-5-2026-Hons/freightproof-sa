@@ -26,6 +26,7 @@ function completion(overrides: Partial<CompletionAct> = {}): CompletionAct {
 describe('evidenceTitle', () => {
   it.each([
     ['linehaul_photo', 'loading', 'Linehaul sheet photographed'],
+    ['linehaul_pdf', 'loading', 'Linehaul sheet scanned (PDF)'],
     ['seal_photo', 'departure', 'Seal photographed'],
     ['seal_photo', 'arrival', 'Seal photographed on arrival'],
     ['pod_photo', 'confirmation', 'Proof-of-delivery photo taken'],

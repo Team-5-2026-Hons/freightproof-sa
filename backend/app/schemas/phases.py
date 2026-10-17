@@ -16,7 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.phase_meta import STEP_SLUGS
-from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType, SealCondition
+from app.db.models.enums import AnchorStatus, PhaseStatus, PhaseType, SealCondition, SealNumberSource
 from app.schemas.action_location import ActionLocationAssessment
 
 _SEAL_PATTERN = re.compile(r"^[A-Z]{2}-\d{4}$")
@@ -104,6 +104,7 @@ class PhaseEventRead(BaseModel):
     location_warning_reason: Optional[str] = None
     seal_number: Optional[str] = None
     seal_condition: Optional[SealCondition] = None
+    seal_number_source: Optional[SealNumberSource] = None
     seal_photo_artifact_id: Optional[UUID] = None
     waybill_photo_artifact_id: Optional[UUID] = None
     # No longer written (the seal photo moved to arrival's seal_photo_artifact_id).
@@ -112,6 +113,7 @@ class PhaseEventRead(BaseModel):
     pod_photo_artifact_id: Optional[UUID] = None
     pod_signature_artifact_id: Optional[UUID] = None
     linehaul_photo_artifact_id: Optional[UUID] = None
+    linehaul_pdf_artifact_id: Optional[UUID] = None
     # parcel_manifest_snapshot is deliberately absent: on H0 it holds the whole PP
     # manifest (FP-281) and this schema is served to the driver. Dispatchers read it
     # through GET /trips/{id}/manifest.
@@ -289,6 +291,22 @@ class LoadingCompleteRequest(_PhaseCompleteBase):
     # a document that does not exist is the wrong failure direction on an evidence
     # platform. See PhaseEvent.linehaul_photo_artifact_id.
     linehaul_photo_artifact_id: Optional[UUID] = None
+    # The same sheet as a one-page PDF built on the phone from the scan. Optional: a failed
+    # PDF build still completes loading with the scan image alone.
+    linehaul_pdf_artifact_id: Optional[UUID] = None
+
+    @model_validator(mode="after")
+    def validate_distinct_linehaul_artifacts(self) -> "LoadingCompleteRequest":
+        if self.linehaul_pdf_artifact_id is not None and self.linehaul_photo_artifact_id is None:
+            raise ValueError(
+                "the linehaul PDF is built from the scan image, so it cannot be submitted without it"
+            )
+        if (
+            self.linehaul_pdf_artifact_id is not None
+            and self.linehaul_pdf_artifact_id == self.linehaul_photo_artifact_id
+        ):
+            raise ValueError("the linehaul scan image and its PDF must be different artifacts")
+        return self
 
 
 class DepartureCompleteRequest(_PhaseCompleteBase):
@@ -328,6 +346,10 @@ class DepartureCompleteRequest(_PhaseCompleteBase):
     # a mistyped confirmation must stay recordable, because the mismatch is itself the
     # evidence. The ceiling only stops the field being used as unbounded storage.
     seal_number_confirmed: Optional[str] = Field(default=None, max_length=_SEAL_NUMBER_MAX_LENGTH)
+    # How seal_number was entered on the phone. Optional: app builds older than seal OCR
+    # do not send it, and NULL then records "unknown" rather than a guess. Replayed queue
+    # entries go through the current client and send "typed" when no OCR value was kept.
+    seal_number_source: Optional[SealNumberSource] = None
 
     @field_validator("seal_number")
     @classmethod
@@ -370,6 +392,8 @@ class ArrivalCompleteRequest(_PhaseCompleteBase):
     # Required in every condition. A missing seal is photographed as a missing seal:
     # the empty hasp is the evidence.
     seal_photo_artifact_id: UUID
+    # How seal_number_at_arrival was entered. Ignored for a missing seal (no number).
+    seal_number_source: Optional[SealNumberSource] = None
 
     @field_validator("seal_number_at_arrival")
     @classmethod

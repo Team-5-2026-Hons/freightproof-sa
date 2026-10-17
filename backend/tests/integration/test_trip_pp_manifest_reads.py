@@ -4,7 +4,7 @@ from httpx import AsyncClient
 from collections.abc import AsyncIterator
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -38,6 +38,7 @@ async def test_post_trips_ignores_a_legacy_order_number(client: AsyncClient, db_
         "origin_precinct_id": str(world.cape_town.id),
         "destination_precinct_id": str(world.johannesburg.id),
         "trip_type": "empty_leg", "planned_departure_at": datetime.now(UTC).isoformat(),
+        "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),  # required (FP-139)
     }
 
     resp = await client.post("/api/v1/trips", json=payload, headers=world.headers())

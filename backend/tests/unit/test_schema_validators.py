@@ -372,12 +372,32 @@ def test_trip_arrival_before_departure_still_rejected():
         )
 
 
-def test_trip_without_arrival_is_unaffected():
-    """planned_arrival_at is optional and stays optional — a trip with no declared
-    arrival has no duration to be implausible."""
-    trip = _trip_create_request(planned_arrival_at=None)
+def test_trip_without_arrival_is_rejected():
+    """FP-139: arrival is required. A trip with no end leaves no way to say when its
+    driver, horse and trailers are free again, so the clash check would have nothing to compare."""
+    with pytest.raises(ValidationError) as caught:
+        _trip_create_request(planned_arrival_at=None)
+
+    assert "a planned arrival is required" in str(caught.value)
+
+
+def test_trip_arrival_from_a_later_stop_slot_satisfies_the_requirement():
+    """A multi-stop route may carry its end on the stops instead of the trip."""
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+
+    trip = _trip_request_with_stops(departure, departure + timedelta(hours=6))
 
     assert trip.planned_arrival_at is None
+
+
+def test_trip_with_one_timed_stop_and_no_arrival_is_rejected():
+    """A single timed stop is the departure, not an end: nothing later can stand in for arrival."""
+    departure = datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc)
+
+    with pytest.raises(ValidationError) as caught:
+        _trip_request_with_stops(departure, None)
+
+    assert "a planned arrival is required" in str(caught.value)
 
 
 # ---------------------------------------------------------------------------

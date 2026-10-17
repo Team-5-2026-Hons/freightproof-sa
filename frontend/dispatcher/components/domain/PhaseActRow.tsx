@@ -11,7 +11,7 @@ import {
   absentLabel, anchorLabel, completionTimeLine, completionTitle, completionValueLines, expectedLabel,
   evidenceStateLabel, evidenceTimes, completionTimes, evidenceTitle, SERVER_CLOCK, type RecordedTime,
 } from '@/lib/phase/act-wording'
-import type { AbsentAct, AnchorAct, CompletionAct, ExpectedAct, MilestoneAct } from '@/lib/phase/acts'
+import { isDocumentRole, type AbsentAct, type AnchorAct, type CompletionAct, type ExpectedAct, type MilestoneAct } from '@/lib/phase/acts'
 import type { ActItem } from '@/lib/phase/act-groups'
 import { EvidenceGroupRow, type EvidenceLookup } from './EvidenceGroupRow'
 import type { EvidenceGroup } from '@/lib/phase/act-groups'
@@ -121,7 +121,7 @@ interface CompactRecord { times: RecordedTime[]; detail: string }
 /** Keep clock and state/provenance even when images and the value grid are collapsed. */
 function compactEvidence(group: EvidenceGroup, context: ActRowContext): CompactRecord {
   const titles = [...new Set(group.acts.map(act => evidenceTitle(act, context.phase.phase_type)))].join(' · ')
-  const count = group.acts.length > 1 ? ` · ${group.acts.length} ${group.role === 'pod_signature' ? 'files' : 'photos'} uploaded` : ''
+  const count = group.acts.length > 1 ? ` · ${group.acts.length} ${isDocumentRole(group.role) ? 'files' : 'photos'} uploaded` : ''
   const states = [...new Set(group.acts.map(evidenceStateLabel))].join(' · ')
   const times = new Map(group.acts.flatMap(act => evidenceTimes(act).map(time => [`${time.source}:${time.at}`, time] as const)))
   return { times: [...times.values()], detail: `${titles}${count} · ${states}` }

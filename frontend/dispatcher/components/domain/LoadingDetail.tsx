@@ -1,5 +1,6 @@
 'use client'
 
+import { EvidenceDocument } from './EvidenceDocument'
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
 import { PhaseLocationSection } from './PhaseLocationSection'
@@ -58,6 +59,19 @@ export function LoadingDetail({ artifactLoading, artifactError, onRetryArtifacts
           artifact={phase.linehaul_photo_artifact_id ? artifactsById.get(phase.linehaul_photo_artifact_id) : undefined}
         />
       </div>
+      {/* The PDF is a derived readable copy of the scan (the driver app drops it if it fails to
+          build, and older trips predate it), so a loading without one is not missing evidence:
+          no "Not captured" row for it. */}
+      {phase.linehaul_pdf_artifact_id && (
+        <div className="py-3 first:pt-0 last:pb-0">
+          <EvidenceDocument
+            loading={artifactLoading} error={artifactError} onRetry={onRetryArtifacts}
+            label="Linehaul sheet (PDF)"
+            artifactId={phase.linehaul_pdf_artifact_id}
+            artifact={artifactsById.get(phase.linehaul_pdf_artifact_id)}
+          />
+        </div>
+      )}
       {/* Guards against an empty "Location at loading" heading when nothing was recorded. */}
       {hasLocationEvidence(locationEvidenceForPhase(phase, precinct)) && (
         <PhaseLocationSection phase={phase} precinct={precinct} title="Location at loading" />

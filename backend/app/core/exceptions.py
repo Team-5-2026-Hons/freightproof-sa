@@ -135,6 +135,19 @@ class TripActivationBlockedError(Exception):
         self.reason = reason
 
 
+class CrewUnavailableError(Exception):
+    """Raised when a new trip's driver, horse or a trailer is already busy in its window (FP-139).
+
+    `clashes` are JSON-ready BusyEntry dicts (schemas.availability), built by the orchestration
+    layer: core sits below schemas and cannot import them. The endpoint returns them as-is, so the
+    trip wizard can grey out every clash at once, not only the one the message names.
+    """
+
+    def __init__(self, message: str, clashes: list[dict[str, Any]]) -> None:
+        super().__init__(message)
+        self.clashes = clashes
+
+
 class SubjectNotVisibleError(Exception):
     """Raised when a dispatcher queries a blockchain subject outside their organisation."""
 

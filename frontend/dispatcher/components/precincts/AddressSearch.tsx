@@ -143,7 +143,7 @@ export function AddressSearch({ onSelect }: AddressSearchProps): React.JSX.Eleme
       <span className="text-[11px] text-on-surf-v" aria-live="polite">
         {status === 'loading'
           ? 'Searching…'
-          : 'Moves the map there. Then click the gate to place the pin exactly.'}
+          : 'Moves the pin there and fills in the address. Then click the gate to place the pin exactly.'}
       </span>
 
       {showPanel && (

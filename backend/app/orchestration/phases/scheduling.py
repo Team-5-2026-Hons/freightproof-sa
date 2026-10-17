@@ -2,6 +2,7 @@
 read the DB; the name says what they decide, not that they are pure.
 """
 
+import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -10,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import PhaseTooEarlyError, TripActivationBlockedError
 from app.db.models.enums import TripStatus
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.db.models.vehicles import Vehicle
+from app.orchestration.trips.availability import (
+    LIVE_STATUSES, CrewFilter, OccupyingTrip, lock_crew, occupying_trips,
+)
 
 
 # Display format for the date a driver is told to come back on. Day-month-year with a
@@ -88,37 +93,63 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
         )
 
 
-async def _other_trips_for_driver(db: AsyncSession, trip: Trip) -> list[Trip]:
-    """Every other non-terminal trip assigned to this trip's driver.
+async def _claim_crew_for_activation(db: AsyncSession, trip: Trip) -> None:
+    """Refuse to start a trip while its driver, horse or a trailer is in use elsewhere (FP-139).
 
-    Terminal trips are excluded because they cannot obstruct anything — a closed or
-    cancelled trip is history, and counting it would mean a driver's very first completed
-    trip permanently blocked their second.
+    Locks the crew first (after the trip lock _gate_and_load already holds: trip, then crew,
+    the order every path uses), so two drivers starting two trips on one horse at the same
+    instant are serialised and the second sees the first one ACTIVE.
     """
-    result = await db.execute(
-        select(Trip).where(
-            Trip.driver_id == trip.driver_id,
-            Trip.id != trip.id,
-            Trip.status.notin_((TripStatus.CLOSED, TripStatus.CANCELLED)),
-        )
+    trailer_ids = tuple((await db.execute(
+        select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip.id)
+    )).scalars().all())
+    await lock_crew(db, driver_id=trip.driver_id, vehicle_ids=[trip.horse_id, *trailer_ids])
+    crew = CrewFilter(
+        driver_id=trip.driver_id, horse_id=trip.horse_id, trailer_ids=trailer_ids, exclude_trip_id=trip.id,
     )
-    return list(result.scalars().all())
+    others = await occupying_trips(db, organization_id=trip.operator_organization_id, crew=crew)
+    await _reject_if_another_trip_underway(db, trip, crew, others)
+    # Start-in-order is about one driver's day (spec D10): a horse shared with another driver
+    # must not let that driver's unstarted trip block this one.
+    await _reject_if_an_earlier_trip_is_due(
+        db, trip, [other.trip for other in others if other.trip.driver_id == trip.driver_id],
+    )
 
 
-def _reject_if_another_trip_underway(others: list[Trip]) -> None:
-    """One trip at a time: a trip already underway blocks starting any other.
+async def _reject_if_another_trip_underway(
+    db: AsyncSession, trip: Trip, crew: CrewFilter, others: list[OccupyingTrip],
+) -> None:
+    """One trip at a time, for the driver and for every vehicle.
 
-    Nothing at trip creation stops a dispatcher assigning a driver two overlapping trips,
-    and until now nothing stopped the driver activating both — leaving two trips claiming
-    the same driver, horse and trailers at the same moment, which makes the custody chain
-    of both unprovable. ACTIVE and EXCEPTION_HOLD both count: a held trip is still the
-    trip the driver is on, it is merely blocked from advancing.
+    Nothing stops a dispatcher assigning overlapping trips from different days or before
+    FP-139, and two trips claiming the same driver, horse or trailer at the same moment make the
+    custody chain of both unprovable. ACTIVE and EXCEPTION_HOLD both count: a held trip is
+    still the trip its crew is on. The driver is named first, then the horse, then a trailer, so
+    the reason points at what the driver can most easily act on.
     """
-    for other in others:
-        if other.status in (TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD):
+    live = [other for other in others if other.trip.status in LIVE_STATUSES]
+    for other in live:
+        if other.trip.driver_id == trip.driver_id:
+            raise TripActivationBlockedError(other.trip.trip_reference, "another trip is already underway")
+    for other in live:
+        if other.trip.horse_id == trip.horse_id:
             raise TripActivationBlockedError(
-                other.trip_reference, "another trip is already underway"
+                other.trip.trip_reference,
+                f"horse {await _registration(db, trip.horse_id)} is on another trip that is underway",
             )
+    for other in live:
+        shared = sorted(other.trailer_ids.intersection(crew.trailer_ids))
+        if shared:
+            raise TripActivationBlockedError(
+                other.trip.trip_reference,
+                f"trailer {await _registration(db, shared[0])} is on another trip that is underway",
+            )
+
+
+async def _registration(db: AsyncSession, vehicle_id: uuid.UUID) -> str:
+    """The plate the driver can see on the vehicle, for the refusal message."""
+    registration = await db.scalar(select(Vehicle.registration).where(Vehicle.id == vehicle_id))
+    return registration or "unknown"
 
 
 async def _reject_if_an_earlier_trip_is_due(

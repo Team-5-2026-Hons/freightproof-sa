@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.fleet.activity import build_activity
+from app.analytics.fleet.cost import CostInputs, LaneTotals, StopPoint, build_cost, trip_routes
 from app.analytics.fleet.base import earliest_trip_date
 from app.analytics.fleet.evidence import build_evidence
 from app.analytics.fleet.on_time import build_on_time
@@ -37,8 +38,12 @@ from app.analytics.fleet.periods import (
     today_sast,
 )
 from app.analytics.fleet.tiles import get_fleet_tiles
+from app.analytics.cost_model import to_rand
 from app.db.models.organisations import Precinct
+from app.orchestration.analytics.cost_profile import rates_with_profile
+from app.orchestration.analytics.lane_distance import LegEnds, leg_distances
 from app.schemas.analytics import DurationStats
+from app.schemas.cost_analytics import CostResponse, LaneCost
 from app.schemas.fleet_analytics import (
     ActivityResponse,
     EvidenceResponse,
@@ -192,4 +197,67 @@ async def get_incidents(
         period=PeriodEcho(start=period.start, end=period.end, grain=period.grain),
         pins=pins,
         unlocated_count=unlocated,
+    )
+
+
+def _legs_of(routes: dict[uuid.UUID, list[StopPoint]]) -> list[LegEnds]:
+    """Every distinct leg (consecutive stops) across the trips, each once."""
+    legs: dict[tuple[uuid.UUID, uuid.UUID], LegEnds] = {}
+    for stops in routes.values():
+        for a, b in zip(stops, stops[1:]):
+            legs.setdefault(
+                (a.precinct_id, b.precinct_id),
+                LegEnds(a.precinct_id, a.latitude, a.longitude, b.precinct_id, b.latitude, b.longitude),
+            )
+    return list(legs.values())
+
+
+def _lane_out(lane: LaneTotals, names: dict[uuid.UUID, str]) -> LaneCost:
+    if lane.estimated_legs == 0:
+        source = "road"
+    elif lane.routed_legs == 0:
+        source = "estimate"
+    else:
+        source = "mixed"
+    return LaneCost(
+        origin_precinct_id=lane.origin_precinct_id,
+        origin_name=names.get(lane.origin_precinct_id),
+        destination_precinct_id=lane.destination_precinct_id,
+        destination_name=names.get(lane.destination_precinct_id),
+        trip_count=lane.trip_count,
+        operating_total=to_rand(lane.operating),
+        operating_per_trip=None if lane.trips_costed == 0 else to_rand(lane.operating / lane.trips_costed),
+        delay_cost=to_rand(lane.delay),
+        value_exposed=to_rand(lane.value_exposed),
+        distance_source=source,
+    )
+
+
+async def get_cost(
+    db: AsyncSession, *, organization_id: uuid.UUID, period: Period,
+) -> CostResponse:
+    """The Cost tab (FP-294): the organisation's rates, each closed trip's leg distances
+    (road route where it can be looked up), then the figures, with lane names attached."""
+    rates, profile = await rates_with_profile(db, organization_id=organization_id)
+    routes = await trip_routes(db, organization_id=organization_id, period=period)
+    legs = await leg_distances(_legs_of(routes), road_factor=rates.road_factor)
+    figures = await build_cost(
+        db, organization_id=organization_id, period=period,
+        inputs=CostInputs(rates=rates, routes=routes, legs=legs),
+    )
+    names = await _precinct_names(
+        db, {lane.origin_precinct_id for lane in figures.lanes} | {lane.destination_precinct_id for lane in figures.lanes},
+    )
+    lanes = sorted(
+        (_lane_out(lane, names) for lane in figures.lanes),
+        key=lambda row: (-row.operating_total, row.origin_name or "", row.destination_name or ""),
+    )
+    return CostResponse(
+        period=PeriodEcho(start=period.start, end=period.end, grain=period.grain),
+        rates=profile,
+        operating=figures.operating,
+        delay=figures.delay,
+        exposure=figures.exposure,
+        buckets=figures.buckets,
+        lanes=lanes,
     )
