@@ -576,7 +576,9 @@ describe('ParcelTimeline rows (moved from the spine)', () => {
     const summary = details.querySelector('summary')!
     expect(details.open).toBe(false)
 
-    await user.tab()
+    // Focused directly rather than with user.tab(): user-event before 14.6.2 does not count <summary> as
+    // tabbable, so Tab skips it there. A real browser focuses a native <summary> from the keyboard.
+    summary.focus()
     expect(summary).toHaveFocus()
     await user.click(summary)
     expect(details.open).toBe(true)
