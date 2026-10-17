@@ -13,7 +13,10 @@ vi.mock('@/lib/api/client', () => {
   return { api: { get: vi.fn() }, ApiError }
 })
 const get = vi.mocked(api.get)
-const INTRO = 'Search an exact barcode to see what is recorded, where the consignment travelled, and which evidence supports the journey.'
+// The title and info button are the card's header in every state; they never come and go.
+const headerShown = (): boolean =>
+  screen.queryByRole('heading', { level: 1, name: 'Find a parcel' }) !== null
+  && screen.queryByRole('button', { name: 'About parcel search' }) !== null
 
 beforeEach(() => { get.mockReset(); replace.mockReset(); push.mockReset() })
 
@@ -21,11 +24,26 @@ describe('Parcel Search', () => {
   it('starts with an accessible barcode form and rejects blank input', async () => {
     const user = userEvent.setup()
     render(<ParcelSearch initialBarcode="" initialWaybill="" />)
-    expect(screen.getByText(INTRO)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Find a parcel' })).toBeInTheDocument()
+    expect(screen.queryByText(/Follow the evidence/)).not.toBeInTheDocument()
+    expect(headerShown()).toBe(true)
     expect(screen.queryByText('Start with a barcode')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Search parcel' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a barcode')
     expect(get).not.toHaveBeenCalled()
+  })
+
+  it('keeps the explanation behind the info button instead of on the card', async () => {
+    const user = userEvent.setup()
+    render(<ParcelSearch initialBarcode="" initialWaybill="" />)
+    expect(screen.queryByText(/Search an exact barcode/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Leading zeros/)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'About parcel search' }))
+
+    const panel = screen.getByRole('region', { name: 'About parcel search' })
+    expect(within(panel).getByText(/Search an exact barcode/)).toBeInTheDocument()
+    expect(within(panel).getByText(/Leading zeros and letter case are preserved/)).toBeInTheDocument()
   })
 
   it('preserves leading zeros and encodes the submitted search in the URL', async () => {
@@ -226,29 +244,42 @@ describe('Parcel Search — layout, focus and announcements', () => {
   const summary = () => screen.getByRole('heading', { level: 2, name: BARCODE })
   const loadsTrace = () => get.mockResolvedValueOnce(lookupFor(BARCODE)).mockResolvedValueOnce(makeTrace())
 
-  it('shows the centred intro only before a barcode is submitted and restores it after Clear', async () => {
+  it('keeps the same header before a search, during one and after Clear', async () => {
     const { rerender } = render(<ParcelSearch initialBarcode="" initialWaybill="" />)
-    expect(screen.getByText(INTRO)).toBeInTheDocument()
+    expect(headerShown()).toBe(true)
 
     get.mockReturnValue(new Promise(() => undefined))
     rerender(<ParcelSearch initialBarcode={BARCODE} initialWaybill="" />)
-    expect(screen.queryByText(INTRO)).not.toBeInTheDocument()
+    expect(headerShown()).toBe(true)
 
     rerender(<ParcelSearch initialBarcode="" initialWaybill="" />)
-    expect(screen.getByText(INTRO)).toBeInTheDocument()
+    expect(headerShown()).toBe(true)
     expect(box()).toHaveValue('')
   })
 
-  it('stays compact through no-match and failure outcomes', async () => {
+  it('shows the search button as loading until the lookup settles', async () => {
+    let resolve: (value: unknown) => void = () => undefined
+    get.mockReturnValueOnce(new Promise(done => { resolve = done }))
+    render(<ParcelSearch initialBarcode={BARCODE} initialWaybill="" />)
+
+    const button = screen.getByRole('button', { name: 'Search parcel' })
+    await waitFor(() => expect(button).toBeDisabled())
+
+    resolve({ barcode: BARCODE, items: [], next_after: null })
+    await screen.findByRole('region', { name: 'No matching parcel' })
+    expect(button).toBeEnabled()
+  })
+
+  it('keeps the same header through no-match and failure outcomes', async () => {
     get.mockResolvedValueOnce({ barcode: BARCODE, items: [], next_after: null })
     const { rerender } = render(<ParcelSearch initialBarcode={BARCODE} initialWaybill="" />)
     await screen.findByRole('region', { name: 'No matching parcel' })
-    expect(screen.queryByText(INTRO)).not.toBeInTheDocument()
+    expect(headerShown()).toBe(true)
 
     get.mockRejectedValueOnce(new Error('network'))
     rerender(<ParcelSearch initialBarcode="OTHER-1" initialWaybill="" />)
     await screen.findByRole('alert')
-    expect(screen.queryByText(INTRO)).not.toBeInTheDocument()
+    expect(headerShown()).toBe(true)
   })
 
   it('keeps validation attached to the field', async () => {

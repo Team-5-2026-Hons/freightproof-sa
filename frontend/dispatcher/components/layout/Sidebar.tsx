@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { X, Shield, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
-import { LiveBadge } from '@/components/layout/LiveBadge'
+import { ProfileMenu } from '@/components/layout/ProfileMenu'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
 import { useForensicMode } from '@/lib/context/ForensicModeContext'
@@ -12,7 +12,6 @@ import { SETTINGS_SECTION_IDS } from '@/lib/settings/section-query'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
-import { initialsOf, roleLabel } from '@/lib/format/dispatcher-identity'
 
 interface NavItem {
   label: string
@@ -245,8 +244,6 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
     }))
     .filter(group => group.items.length > 0)
 
-  const displayName = user?.full_name ?? 'Dispatcher'
-
   return (
     // No background of its own: the dark surface and rounded edge belong to the frame in
     // DispatcherShell (and to the drawer wrapper below), so this column is just content.
@@ -322,33 +319,11 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
         ))}
       </nav>
 
-      {/* Footer — settings, then who is signed in and whether the live stream is up */}
+      {/* Footer — settings, then the profile menu (who is signed in, log out, live status) */}
       <div className="px-3 pb-3 flex flex-col gap-0.5">
         <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} badge={forensicBadge} />
 
-        <div className={cn('mt-2 flex flex-col gap-2', collapsed ? 'items-center' : 'px-3')}>
-          <div className="flex items-center gap-2.5 min-w-0" title={collapsed ? displayName : undefined}>
-            <div className="relative shrink-0">
-              <div
-                aria-hidden
-                className="w-8 h-8 rounded-full bg-white/10 ring-1 ring-white/10 flex items-center justify-center text-[12px] font-[600] text-white/85"
-              >
-                {initialsOf(user?.full_name)}
-              </div>
-              {/* Collapsed rail has no room for a "Live" row, so the status becomes a
-                  presence dot on the avatar — a dispatcher can still see the stream is alive. */}
-              {collapsed && <LiveBadge compact className="absolute -bottom-0.5 -right-0.5" />}
-            </div>
-            {!collapsed && (
-              <div className="min-w-0">
-                <div className="text-[13px] font-[500] text-white/90 leading-tight truncate">{displayName}</div>
-                <div className="text-[11px] text-white/45 leading-tight truncate">{roleLabel(user?.role)}</div>
-              </div>
-            )}
-          </div>
-          {/* Own line, below the identity, rather than competing with the name for width. */}
-          {!collapsed && <LiveBadge />}
-        </div>
+        <ProfileMenu collapsed={collapsed} onClose={onClose} />
       </div>
     </div>
   )

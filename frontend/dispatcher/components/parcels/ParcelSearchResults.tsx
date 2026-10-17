@@ -15,6 +15,8 @@ interface Props {
   /** True after an in-page transition (submit, waybill choice, Back/Forward); false for a deep-link first load. */
   moveFocus: boolean
   onSelectWaybill: (waybill: string) => void
+  /** Lets the search form's button show the lookup in progress; the form lives in the parent. */
+  onLoadingChange: (loading: boolean) => void
 }
 
 type Outcome = 'success' | 'ambiguous' | 'no-match' | 'error'
@@ -30,7 +32,7 @@ export function parcelSearchUrl(barcode: string, waybill?: string): string {
  * refresh counter, so a new query unmounts the hook (invalidating any in-flight response)
  * and old evidence is gone before the new request renders — without touching the form.
  */
-export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybill }: Props): JSX.Element {
+export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybill, onLoadingChange }: Props): JSX.Element {
   const { lookup, trace, busy, error, search, moreMatches, moreJourneys } = useParcelTrace()
   // Consumed by the first settled outcome so pagination and later re-renders never steal focus.
   const focusPending = useRef(moveFocus)
@@ -42,6 +44,13 @@ export function ParcelSearchResults({ barcode, waybill, moveFocus, onSelectWaybi
   useEffect(() => { void search(barcode, waybill || undefined) }, [barcode, waybill, search])
 
   const loading = busy === 'lookup' || busy === 'trace'
+  // Cleanup clears it as well: a new query unmounts this component mid-request, and the button
+  // must not be left spinning for a request nobody is waiting on.
+  useEffect(() => {
+    onLoadingChange(loading)
+    return () => onLoadingChange(false)
+  }, [loading, onLoadingChange])
+
   const outcome: Outcome | null = loading ? null
     : error ? 'error'
     : trace ? 'success'

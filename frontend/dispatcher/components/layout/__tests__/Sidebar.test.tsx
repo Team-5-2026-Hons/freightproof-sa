@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Sidebar } from '../Sidebar'
@@ -10,6 +10,7 @@ import { ROUTES } from '@/lib/constants/routes'
 // usePathname is mocked at the module boundary with a controllable return value —
 // the same approach ConfirmationDetail.test.tsx uses for useAuth.
 const mockUsePathname = vi.fn(() => '/')
+const mockSignOut = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const mockAuth = vi.hoisted(() => ({
   role: 'dispatcher' as 'dispatcher' | 'admin_dispatcher',
 }))
@@ -30,7 +31,7 @@ vi.mock('@/lib/hooks/useAuth', () => ({
     },
     isLoading: false,
     signIn: vi.fn(),
-    signOut: vi.fn(),
+    signOut: mockSignOut,
   }),
 }))
 
@@ -59,6 +60,7 @@ beforeEach(() => {
   window.localStorage.clear()
   mockUsePathname.mockReturnValue('/')
   mockAuth.role = 'dispatcher'
+  mockSignOut.mockClear()
 })
 
 describe('Sidebar role-based navigation', () => {
@@ -360,5 +362,64 @@ describe('Sidebar collapse', () => {
     getItemSpy.mockRestore()
     setItemSpy.mockRestore()
     warnSpy.mockRestore()
+  })
+})
+
+describe('Sidebar profile menu', () => {
+  const trigger = () => screen.getByRole('button', { name: /Jane Dispatcher/ })
+
+  it('is closed until the profile row is pressed', () => {
+    renderSidebar()
+
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('offers View profile, pointing at Settings > Account, and Log out', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+
+    expect(trigger()).toHaveAttribute('aria-expanded', 'true')
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem')).toHaveLength(2)
+    expect(screen.getByRole('menuitem', { name: 'View profile' }))
+      .toHaveAttribute('href', ROUTES.settingsSection('account'))
+  })
+
+  it('signs out straight away from Log out and closes the menu', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+    await user.click(screen.getByRole('menuitem', { name: 'Log out' }))
+
+    expect(mockSignOut).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('closes on Escape, returning focus to the profile row, and on an outside click', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger()).toHaveFocus()
+
+    await user.click(trigger())
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(mockSignOut).not.toHaveBeenCalled()
+  })
+
+  it('is still reachable from the collapsed rail', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    await user.click(screen.getByRole('button', { name: 'Jane Dispatcher, account menu' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
   })
 })
