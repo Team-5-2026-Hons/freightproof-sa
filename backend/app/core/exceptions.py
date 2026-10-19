@@ -433,3 +433,69 @@ class IdempotencyKeyReusedError(CustodyAccessError):
 
     code = "IDEMPOTENCY_KEY_REUSED"
     message = "This request id belongs to a different submission. Start a new one."
+
+
+class SubstitutionError(Exception):
+    """A driver-handover request cannot proceed as asked (FP-83 C3).
+
+    Subclasses carry the contract's stable `code` (docs/contracts/driver-substitution-v1.md).
+    The HTTP mapping (409 unless noted) is C6's; this layer only says what went wrong.
+    `request_id`/`current_version` let a stale client refetch the arrangement it lost.
+    """
+
+    code: str = ""
+    message: str = ""
+
+    def __init__(
+        self, *, request_id: uuid.UUID | None = None, current_version: int | None = None,
+    ) -> None:
+        super().__init__(self.message)
+        self.request_id = request_id
+        self.current_version = current_version
+
+
+class SubstitutionVersionChangedError(SubstitutionError):
+    """The client acted on a version of the arrangement that has since moved on."""
+
+    code = "SUBSTITUTION_VERSION_CHANGED"
+    message = "This handover changed since you loaded it. Refresh and try again."
+
+
+class SubstitutionNotPendingError(SubstitutionError):
+    """The arrangement was already cancelled, replaced or completed."""
+
+    code = "SUBSTITUTION_NOT_PENDING"
+    message = "This handover is no longer pending."
+
+
+class IncomingDriverInactiveError(SubstitutionError):
+    code = "INCOMING_DRIVER_INACTIVE"
+    message = "The incoming driver's account is not active."
+
+
+class LicenceInvalidError(SubstitutionError):
+    code = "LICENCE_INVALID"
+    message = "The incoming driver's licence expiry is missing or has passed."
+
+
+class IncomingDriverUnavailableError(SubstitutionError):
+    code = "DRIVER_UNAVAILABLE"
+    message = "The incoming driver is committed to another trip in that window."
+
+
+class IdentityNotVerifiedError(SubstitutionError):
+    code = "IDENTITY_NOT_VERIFIED"
+    message = "The incoming driver's identity is not verified."
+
+
+class IdentityAttestationForbiddenError(SubstitutionError):
+    """A non-admin dispatcher tried to attest unavailable identity (403)."""
+
+    code = "IDENTITY_ATTESTATION_FORBIDDEN"
+    message = "Only an admin dispatcher can attest unavailable driver identity."
+
+
+class SubstitutionInvalidError(Exception):
+    """The handover content is well-formed but not acceptable (422): the same driver on both
+    sides, a capture naming the wrong vehicles, a reason that does not apply. Carries a
+    human-readable explanation; it has no contract code because no client branches on it."""

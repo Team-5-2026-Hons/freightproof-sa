@@ -1,0 +1,164 @@
+"""Builds the explicit `SubstitutionRequestRead` for a pending, completed or cancelled request.
+
+This is the one place that turns request rows into the wire shape, so the service returns the
+same thing on first call and on replay. It is NOT the role-filtered read layer (C6's reads.py):
+it carries only the fields the contract puts on `SubstitutionRequestRead`, which already
+excludes dispatcher-only attestation reasons, licence numbers and identity numbers.
+
+`completion_blocked_by` is computed live for a pending request whose two captures are both
+saved: it answers "what is stopping this from completing right now?" without changing anything.
+"""
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ResourceNotFoundError
+from app.db.models.driver_substitutions import DriverSubstitutionConfirmation, DriverSubstitutionRequest
+from app.db.models.enums import IdvsStatus, VehicleType
+from app.db.models.people import Driver
+from app.db.models.trips import DriverSubstitution, Trip, TripTrailer
+from app.db.models.vehicles import Vehicle
+from app.orchestration.substitutions.eligibility import first_completion_blocker
+from app.schemas.driver_substitutions import (
+    ConfirmationSummary, DriverContact, ExchangePoint, IdentitySnapshot, SubstitutionAction,
+    SubstitutionCompletionMode, SubstitutionCompletionRead, SubstitutionCompletionTrigger,
+    SubstitutionRequestRead, SubstitutionRole, SubstitutionState, VehicleRef,
+)
+
+_ROLE_ORDER = (SubstitutionRole.OUTGOING, SubstitutionRole.INCOMING)
+
+
+@dataclass(frozen=True)
+class Viewer:
+    """Whose permitted actions the read advertises. Presentation guidance only: the server
+    enforces each action independently."""
+
+    is_dispatcher: bool = False
+    is_admin: bool = False
+    driver_role: SubstitutionRole | None = None
+
+
+def permitted_actions(
+    *, state: SubstitutionState, viewer: Viewer, confirmed: set[SubstitutionRole], identity: IdvsStatus,
+) -> list[SubstitutionAction]:
+    if state is not SubstitutionState.PENDING:
+        return []
+    actions: list[SubstitutionAction] = []
+    if viewer.is_dispatcher:
+        actions += [SubstitutionAction.CANCEL, SubstitutionAction.REPLACE, SubstitutionAction.COMPLETE_ATTESTED]
+        if viewer.is_admin and identity is IdvsStatus.PENDING:
+            actions.append(SubstitutionAction.ATTEST_IDENTITY)
+    elif viewer.driver_role is not None and viewer.driver_role not in confirmed:
+        actions.append(SubstitutionAction.CONFIRM_OUTGOING if viewer.driver_role is SubstitutionRole.OUTGOING
+                       else SubstitutionAction.CONFIRM_INCOMING)
+    return actions
+
+
+async def trip_vehicle_ids(db: AsyncSession, trip: Trip) -> list[uuid.UUID]:
+    """The horse then its trailers: the complete assigned set a capture must cover."""
+    trailers = (await db.execute(
+        select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip.id).order_by(TripTrailer.trailer_id)
+    )).scalars().all()
+    return [trip.horse_id, *trailers]
+
+
+def _contact(driver: Driver) -> DriverContact:
+    return DriverContact(id=driver.id, full_name=driver.full_name, phone_number=driver.phone_number)
+
+
+def _number(value: Decimal | float) -> float:
+    return float(value)
+
+
+async def build_request_read(
+    db: AsyncSession, request: DriverSubstitutionRequest, *, viewer: Viewer, now: datetime,
+) -> SubstitutionRequestRead:
+    # created_at and updated_at are server-side values; reading them off a just-flushed row
+    # would lazy-load, which is illegal in an async session.
+    await db.refresh(request)
+    trip = await db.get(Trip, request.trip_id)
+    if trip is None:
+        raise ResourceNotFoundError("Trip", str(request.trip_id))
+    drivers = {
+        driver.id: driver for driver in (await db.execute(
+            select(Driver).where(Driver.id.in_([request.outgoing_driver_id, request.incoming_driver_id]))
+        )).scalars()
+    }
+    outgoing, incoming = drivers[request.outgoing_driver_id], drivers[request.incoming_driver_id]
+
+    vehicle_ids = await trip_vehicle_ids(db, trip)
+    vehicles_by_id = {
+        vehicle.id: vehicle for vehicle in (await db.execute(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))).scalars()
+    }
+    vehicles = [
+        VehicleRef(id=v.id, registration=v.registration, vehicle_type=VehicleType(v.vehicle_type))
+        for v in (vehicles_by_id[vehicle_id] for vehicle_id in vehicle_ids)
+    ]
+
+    saved = {
+        SubstitutionRole(c.role): c for c in (await db.execute(
+            select(DriverSubstitutionConfirmation).where(DriverSubstitutionConfirmation.request_id == request.id)
+        )).scalars()
+    }
+    confirmations = [
+        ConfirmationSummary(
+            id=saved[role].id, role=role, driver_id=saved[role].driver_id,
+            captured_at=saved[role].captured_at, received_at=saved[role].received_at,
+        )
+        for role in _ROLE_ORDER if role in saved
+    ]
+    state = SubstitutionState(request.state)
+
+    completed = (await db.execute(
+        select(DriverSubstitution).where(DriverSubstitution.request_id == request.id)
+    )).scalar_one_or_none() if state is SubstitutionState.COMPLETED else None
+    if completed is not None:
+        # Frozen at completion; never re-read from the driver, whose status may have moved since.
+        identity = IdentitySnapshot(
+            driver_id=incoming.id, status=IdvsStatus(completed.incoming_identity_status),
+            last_verified_at=completed.incoming_identity_last_verified_at,
+            observed_at=completed.incoming_identity_observed_at,
+        )
+    else:
+        identity = IdentitySnapshot(
+            driver_id=incoming.id, status=IdvsStatus(incoming.idvs_status),
+            last_verified_at=incoming.idvs_last_verified_at, observed_at=now,
+        )
+
+    blocked = None
+    if state is SubstitutionState.PENDING and len(saved) == len(_ROLE_ORDER):
+        blocked = await first_completion_blocker(db, trip=trip, incoming=incoming, now=now, identity_attested=False)
+
+    completion = None
+    if completed is not None:
+        by_driver = completed.completed_by_driver_id is not None
+        completion = SubstitutionCompletionRead(
+            trigger=SubstitutionCompletionTrigger.DRIVER_CONFIRMATION if by_driver
+            else SubstitutionCompletionTrigger.DISPATCHER_ACTION,
+            completed_by_driver_id=completed.completed_by_driver_id, completed_by_user_id=completed.completed_by_user_id,
+        )
+
+    return SubstitutionRequestRead(
+        id=request.id, trip_id=request.trip_id, trip_reference=trip.trip_reference, version=request.version,
+        state=state, outgoing=_contact(outgoing), incoming=_contact(incoming), vehicles=vehicles,
+        exchange=ExchangePoint(
+            label=request.exchange_label, latitude=_number(request.exchange_latitude),
+            longitude=_number(request.exchange_longitude), instructions=request.exchange_instructions,
+        ),
+        expected_at=request.expected_at, is_planned=request.is_planned, reason=request.reason,
+        created_at=request.created_at, confirmations=confirmations, identity=identity,
+        missing_confirmations=[role for role in _ROLE_ORDER if role not in saved],
+        completed_substitution_id=completed.id if completed else None,
+        effective_at=completed.substitution_at if completed else None,
+        completion_mode=SubstitutionCompletionMode(completed.completion_mode) if completed else None,
+        completion_blocked_by=blocked, replacement_request_id=request.replacement_request_id,
+        completion=completion,
+        permitted_actions=permitted_actions(
+            state=state, viewer=viewer, confirmed=set(saved), identity=identity.status,
+        ),
+    )

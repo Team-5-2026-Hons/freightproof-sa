@@ -223,6 +223,10 @@ async def tear_down(sessionmaker, world: SubWorld) -> None:
     from sqlalchemy import delete
 
     from app.db.models.blockchain import BlockchainReceipt
+    from app.db.models.driver_substitutions import (
+        DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionCorrection,
+        DriverSubstitutionNotice, DriverSubstitutionOperation,
+    )
     from app.db.models.driver_substitutions import DriverSubstitutionRequest as Request
     from app.db.models.evidence import EvidenceArtifact
     from app.db.models.organisations import Organization, Precinct
@@ -238,6 +242,20 @@ async def tear_down(sessionmaker, world: SubWorld) -> None:
             select(Trip.horse_id).where(Trip.operator_organization_id == world.org_id)
         )).scalars())
         if trip_ids:
+            request_ids = select(Request.id).where(Request.trip_id.in_(trip_ids))
+            await db.execute(delete(DriverSubstitutionOperation).where(DriverSubstitutionOperation.request_id.in_(request_ids)))
+            await db.execute(delete(DriverSubstitutionNotice).where(DriverSubstitutionNotice.request_id.in_(request_ids)))
+            await db.execute(delete(DriverSubstitutionConfirmationArtifact).where(
+                DriverSubstitutionConfirmationArtifact.confirmation_id.in_(
+                    select(DriverSubstitutionConfirmation.id).where(DriverSubstitutionConfirmation.request_id.in_(request_ids))
+                )
+            ))
+            await db.execute(delete(DriverSubstitutionConfirmation).where(DriverSubstitutionConfirmation.request_id.in_(request_ids)))
+            await db.execute(delete(DriverSubstitutionCorrection).where(
+                DriverSubstitutionCorrection.substitution_id.in_(
+                    select(DriverSubstitution.id).where(DriverSubstitution.trip_id.in_(trip_ids))
+                )
+            ))
             await db.execute(delete(DriverSubstitution).where(DriverSubstitution.trip_id.in_(trip_ids)))
             await db.execute(delete(Request).where(Request.trip_id.in_(trip_ids)))
             await db.execute(delete(Checkpoint).where(Checkpoint.trip_id.in_(trip_ids)))
