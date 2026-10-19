@@ -44,7 +44,8 @@ from app.core.config import settings
 # verifications point at confirmations and tokens, attempts and confirmations at
 # tokens, and tokens at phase_events and trip_stops. Audit packs go first of all: access
 # events and email codes point at packs, packs at consignments and trip-scoped receipts, and incident
-# declarations at exceptions. Both facts (coverage and order) are checked against the
+# declarations at exceptions. Driver-substitution support rows precede driver_substitutions (corrections
+# point at it), and requests follow it because completed substitutions point at them. Both facts (coverage and order) are checked against the
 # models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
     "audit_pack_access_events",
@@ -58,7 +59,15 @@ _DELETE_ORDER = [
     "trip_location_pings",
     "merkle_batch_leaves",
     "trailer_gps_snapshots",
+    "driver_substitution_operations",
+    "driver_substitution_corrections",
+    "driver_substitution_notices",
+    "driver_substitution_confirmation_artifacts",
+    "driver_substitution_confirmations",
+    "late_driver_evidence_artifacts",
+    "late_driver_evidence",
     "driver_substitutions",
+    "driver_substitution_requests",
     "evidence_anchor_events",
     "exception_artifacts",
     "exceptions",
