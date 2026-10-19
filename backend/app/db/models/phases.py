@@ -164,6 +164,13 @@ class PhaseEvent(Base):
         ForeignKey("blockchain_receipts.id", use_alter=True, name="fk_phase_blockchain_receipt"),
         nullable=True,
     )
+    # The driver who performed this action and the custody period they held at the time
+    # (0 = the trip's original driver). Written by the live action paths from FP-83 C5;
+    # NULL on every older row and never backfilled from whichever driver is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_phase_events_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

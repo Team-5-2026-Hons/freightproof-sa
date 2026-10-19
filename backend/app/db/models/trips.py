@@ -2,12 +2,12 @@
 
 import uuid
 from decimal import Decimal
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Numeric,
-    PrimaryKeyConstraint, String, Text, UniqueConstraint, column, desc,
+    Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric,
+    PrimaryKeyConstraint, String, Text, UniqueConstraint, column, desc, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -272,15 +272,51 @@ class TripTrailer(Base):
 
 
 class DriverSubstitution(Base):
-    """Records every mid-trip driver change — planned or unplanned. Unplanned
-    substitutions link to a TripException via exception_id and are anchored to
-    blockchain separately."""
+    """One COMPLETED custody amendment: the trip's driver changed from `original_driver_id`
+    (that event's outgoing driver) to `substituting_driver_id` (the contract's incoming
+    driver). `Trip.driver_id` never changes; the current driver is derived from the ordered
+    chain of these rows (orchestration/substitutions/access.py), ordered by
+    `sequence_number`, never by timestamp.
+
+    New substitutions are amendments, not exceptions: `exception_id` is NULL for them and is
+    kept only for genuine legacy links. Pending and cancelled arrangements live in
+    DriverSubstitutionRequest and never appear here. Rows written before the request model
+    existed (`request_id` NULL) keep their original facts; their requests, confirmations,
+    completing actors, hashes and payload versions were never recorded and stay NULL.
+    """
 
     __tablename__ = "driver_substitutions"
-    # Declared so autogenerate stops proposing to drop an index that already exists
-    # in the deployed database.
     __table_args__ = (
+        # Declared so autogenerate stops proposing to drop an index that already exists
+        # in the deployed database.
         Index("ix_driver_substitutions_trip_id", "trip_id"),
+        # The ordered chain's key: one link per position per trip, which also backs the
+        # "latest link" lookup the current-driver expression runs.
+        UniqueConstraint("trip_id", "sequence_number", name="uq_driver_substitutions_trip_sequence"),
+        # A request completes at most once. Plain unique: NULL request_ids (legacy rows)
+        # never collide in PostgreSQL.
+        UniqueConstraint("request_id", name="uq_driver_substitutions_request_id"),
+        # A chain cannot fork: each link has at most one successor.
+        Index(
+            "uq_driver_substitutions_previous",
+            "previous_substitution_id",
+            unique=True,
+            postgresql_where=text("previous_substitution_id IS NOT NULL"),
+        ),
+        CheckConstraint("sequence_number > 0", name="ck_driver_substitutions_sequence_positive"),
+        # Position 1 is the first handover from the original driver; every later link names
+        # the one before it.
+        CheckConstraint(
+            "(sequence_number = 1) = (previous_substitution_id IS NULL)",
+            name="ck_driver_substitutions_previous_link",
+        ),
+        # New rows (request-backed) record exactly one completing actor; legacy rows are
+        # exempt and must not have one invented for them.
+        CheckConstraint(
+            "(request_id IS NULL AND completed_by_driver_id IS NULL AND completed_by_user_id IS NULL) "
+            "OR (request_id IS NOT NULL AND num_nonnulls(completed_by_driver_id, completed_by_user_id) = 1)",
+            name="ck_driver_substitutions_completion_actor",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -295,15 +331,18 @@ class DriverSubstitution(Base):
     substituting_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id"), nullable=False
     )
-    # Free-text: exchange points are Pulsit geofence locations, not necessarily
-    # Precinct rows in our DB.
+    # The human label of the exchange point; the request freezes its coordinates and
+    # instructions. Free-text: exchange points are not necessarily Precinct rows.
     exchange_location: Mapped[str] = mapped_column(String(255), nullable=False)
+    # On new rows: the dispatcher who ARRANGED the handover, never a driver or whichever
+    # dispatcher later completed it. Legacy rows keep their recorded approval meaning.
     approving_dispatcher_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # The server-effective transfer time (not the claimed exchange time, see below).
     substitution_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Populated only for unplanned substitutions — links to the TripException record.
+    # NULL for every new substitution; set only on genuine legacy links.
     exception_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exceptions.id"), nullable=True
     )
@@ -313,3 +352,62 @@ class DriverSubstitution(Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    # ── Custody chain (FP-83) ────────────────────────────────────────────────
+    # The arrangement this row completed. NULL only on legacy rows: no request was ever
+    # recorded for them and none is fabricated.
+    request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("driver_substitution_requests.id", name="fk_driver_substitutions_request_id"),
+        nullable=True,
+    )
+    # 1-based position in the trip's chain (sequence 0 is the original driver's period,
+    # which has no row). The only ordering custody derivation trusts.
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    previous_substitution_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_substitutions.id", name="fk_driver_substitutions_previous_id"),
+        nullable=True,
+    )
+    # Exactly one on request-backed rows: the driver whose final confirmation completed the
+    # handover, or the dispatcher whose action did. Both NULL on legacy rows (unknown).
+    completed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_driver_substitutions_completed_by_driver"),
+        nullable=True,
+    )
+    completed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", name="fk_driver_substitutions_completed_by_user"),
+        nullable=True,
+    )
+    # SubstitutionCompletionMode: "normal" or "dispatcher_attested". NULL on legacy rows.
+    completion_mode: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    # The physical exchange time a dispatcher claimed, kept apart from substitution_at.
+    declared_exchange_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The completing dispatcher's reason when a driver confirmation was missing.
+    missing_confirmation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # The incoming driver's fleet identity exactly as observed at completion. An admin
+    # attestation is recorded separately and never relabels this status as verified.
+    incoming_identity_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    incoming_identity_last_verified_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    incoming_identity_observed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    identity_attested_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", name="fk_driver_substitutions_identity_attester"),
+        nullable=True,
+    )
+    identity_attestation_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    identity_attested_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The licence eligibility facts the completion relied on (the number is never stored here).
+    incoming_licence_expiry: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    eligibility_observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The frozen commitment, written with the completion (C5). All NULL on legacy rows:
+    # there is no payload version, hash or anchor status to carry over, and none is invented.
+    payload_version: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    payload_json: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    event_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    anchor_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

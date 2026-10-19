@@ -64,6 +64,11 @@ class DriverCheckpointCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checkpoint_type: CheckpointTypeStr
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -191,6 +196,11 @@ class DriverExceptionCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     exception_type: ExceptionType
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
     # RequiredFreeText, not str: this lands on a TEXT column with no width of its own, so
     # without a ceiling one authenticated driver can write as much as they like. It is
     # also the field most worth cleaning — an exception description is read back as

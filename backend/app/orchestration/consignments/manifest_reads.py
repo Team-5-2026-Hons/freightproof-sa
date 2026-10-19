@@ -17,6 +17,7 @@ from app.db.models.people import Driver
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.db.models.vehicles import Vehicle
 from app.orchestration.consignments.manifest_snapshot import snapshot_read
+from app.orchestration.substitutions.access import require_current_driver
 from app.schemas.trips import ConsignmentManifest, DeliveryStopManifest, LinehaulResponse, ManifestResponse
 from app.schemas.trips import ParcelRead
 
@@ -125,16 +126,15 @@ async def get_manifest_for_dispatcher(
 async def get_linehaul_for_driver(
     db: AsyncSession, trip_id: uuid.UUID, *, driver_id: uuid.UUID,
 ) -> LinehaulResponse:
-    """Raises ResourceNotFoundError if the trip doesn't exist or isn't this driver's
-    trip — 404 either way so the response never confirms another driver's trip exists."""
-    trip_result = await db.execute(select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id))
-    trip = trip_result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
+    """Raises ResourceNotFoundError if the trip doesn't exist or this driver never held it — 404
+    either way so the response never confirms another driver's trip exists — and
+    TripHandedOverError for a driver who held it earlier."""
+    trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
 
     horse_result = await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))
     horse = horse_result.scalar_one()
-    driver_result = await db.execute(select(Driver).where(Driver.id == trip.driver_id))
+    # The driver now holding the trip, which is the caller (checked above), not the original.
+    driver_result = await db.execute(select(Driver).where(Driver.id == driver_id))
     driver = driver_result.scalar_one()
 
     if trip.trip_type == TripType.EMPTY_LEG.value:

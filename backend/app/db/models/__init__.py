@@ -50,3 +50,13 @@ from app.db.models.audit_packs import (  # noqa: E402,F401
     IncidentDeclaration,
 )
 from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact  # noqa: E402,F401
+from app.db.models.driver_substitutions import (  # noqa: E402,F401
+    DriverSubstitutionConfirmation,
+    DriverSubstitutionConfirmationArtifact,
+    DriverSubstitutionCorrection,
+    DriverSubstitutionNotice,
+    DriverSubstitutionOperation,
+    DriverSubstitutionRequest,
+    LateDriverEvidence,
+    LateDriverEvidenceArtifact,
+)

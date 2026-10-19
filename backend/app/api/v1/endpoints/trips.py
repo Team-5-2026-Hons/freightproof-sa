@@ -22,7 +22,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
     ConsignmentAlreadyAssignedError,
     CrewUnavailableError,
     HederaServiceError,
@@ -359,6 +361,8 @@ async def get_my_trip_detail_endpoint(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.get(
@@ -382,6 +386,8 @@ async def get_my_trip_route_endpoint(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.get(

@@ -15,6 +15,7 @@ from app.db.models.trips import Trip
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_driver
 from app.orchestration.phases.state import _is_resolved
+from app.orchestration.substitutions.access import get_current_custody
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
@@ -97,5 +98,11 @@ async def _gate_and_load(
         gate = await blocked_on_by_stop(db, trip_id=trip_id)
         if gate.get((PhaseType(event.phase_type), event.trip_stop_id)) is not None:
             raise PhaseBlockedError(phase_label)
+
+    # Last, after every replay and sequence check: record who is completing this phase and in
+    # which custody period, so a later retry can be proven to be the same driver's own (and a
+    # handover cannot relabel the capture). Custody is read fresh under the trip lock held above.
+    event.performed_by_driver_id = driver_id
+    event.custody_sequence = (await get_current_custody(db, trip=trip)).sequence
 
     return trip, event

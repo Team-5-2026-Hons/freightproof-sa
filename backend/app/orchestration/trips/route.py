@@ -20,10 +20,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundError
 from app.core.rate_limit import get_redis
 from app.db.models.organisations import Precinct
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import TripStop
+from app.orchestration.substitutions.access import require_current_driver
 from app.integrations.routing import (
     PlannedRoute, RoutePoint, RoutingError, RoutingNotConfiguredError, compute_truck_route,
 )
@@ -90,14 +90,11 @@ async def get_trip_route_for_driver(
 ) -> TripRouteResponse | None:
     """The planned route through the trip's stops, or None when one can't be had.
 
-    Raises ResourceNotFoundError for a missing trip OR another driver's trip —
-    indistinguishable on purpose, same rule as get_own_trip_detail_for_driver.
+    Raises ResourceNotFoundError for a missing trip OR a trip this driver never held —
+    indistinguishable on purpose, same rule as get_own_trip_detail_for_driver — and
+    TripHandedOverError for one they held earlier.
     """
-    trip_exists = (
-        await db.execute(select(Trip.id).where(Trip.id == trip_id, Trip.driver_id == driver_id))
-    ).scalar_one_or_none()
-    if trip_exists is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
+    await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
 
     cached = await _read_cached(trip_id)
     if cached is not None:

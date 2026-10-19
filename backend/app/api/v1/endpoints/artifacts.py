@@ -10,7 +10,8 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
-from app.core.exceptions import EvidenceAttributionError, ResourceNotFoundError
+from app.api.v1.custody_errors import custody_http_exception
+from app.core.exceptions import CustodyAccessError, EvidenceAttributionError, ResourceNotFoundError
 from app.core.limits import ARTIFACT_UPLOAD
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import ArtifactType, EvidenceRole
@@ -41,6 +42,7 @@ async def upload_artifact_endpoint(
     captured_lng: Annotated[Decimal | None, Form()] = None,
     phase_event_id: Annotated[UUID | None, Form()] = None,
     evidence_role: Annotated[EvidenceRole | None, Form()] = None,
+    custody_sequence: Annotated[int | None, Form(ge=0)] = None,
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> EvidenceArtifactRead:
@@ -86,13 +88,14 @@ async def upload_artifact_endpoint(
             captured_lat=captured_lat,
             captured_lng=captured_lng,
             attribution=attribution,
+            custody_sequence=custody_sequence,
         )
     except (ValueError, EvidenceAttributionError) as exc:
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 # Trip-scoped read router. Separate from the /artifacts upload router because the prefix

@@ -171,7 +171,7 @@ async def test_upload_of_html_labelled_as_a_photo_is_refused(client: AsyncClient
     assert "Unsupported file type" in resp.json()["detail"]
 
 
-async def test_upload_artifact_for_someone_elses_trip_returns_403(client: AsyncClient, db_session, seed_trip):
+async def test_upload_artifact_for_someone_elses_trip_returns_404(client: AsyncClient, db_session, seed_trip):
     trip, _driver = seed_trip
     org = Organization(id=uuid.uuid4(), name="Other Org", org_type=OrganizationType.OPERATOR)
     db_session.add(org)
@@ -194,7 +194,8 @@ async def test_upload_artifact_for_someone_elses_trip_returns_403(client: AsyncC
         files={"file": ("gate.jpg", io.BytesIO(JPEG_BYTES), "image/jpeg")},
         headers=auth_header(token),
     )
-    assert resp.status_code == 403
+    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
+    assert resp.status_code == 404
 
 
 # ── Attribution columns: constraints are declared on the model, because tests build the
