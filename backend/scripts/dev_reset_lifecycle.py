@@ -43,11 +43,12 @@ from app.core.config import settings
 # precede merkle_batches for the same reason. The receiver-handover chain comes first:
 # verifications point at confirmations and tokens, attempts and confirmations at
 # tokens, and tokens at phase_events and trip_stops. Audit packs go first of all: access
-# events point at packs, packs at consignments and trip-scoped receipts, and incident
+# events and email codes point at packs, packs at consignments and trip-scoped receipts, and incident
 # declarations at exceptions. Both facts (coverage and order) are checked against the
 # models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
     "audit_pack_access_events",
+    "audit_pack_email_codes",
     "audit_packs",
     "incident_declarations",
     "receiver_identity_verifications",

@@ -183,7 +183,7 @@ async def test_consent_is_idempotent_across_a_reload(client, handover_trip, driv
     assert first.json() == second.json()
 
 
-async def test_consent_without_a_document_degrades_to_selfie_only(
+async def test_consent_without_a_document_degrades_to_typed_only(
     client, handover_trip, driver_auth,
 ):
     token = await _issue(client, handover_trip, driver_auth)
@@ -195,7 +195,7 @@ async def test_consent_without_a_document_degrades_to_selfie_only(
 
     assert res.status_code == 201
     body = res.json()
-    assert body["tier"] == "selfie_only"
+    assert body["tier"] == "typed_only"
     assert body["unverified_reason"] == "no_document"
 
 
@@ -264,7 +264,7 @@ async def test_consent_without_the_decision_field_is_rejected(
     assert verification is None
 
 
-async def test_agreeing_without_a_document_records_consent_at_selfie_only(
+async def test_agreeing_without_a_document_records_consent_at_typed_only(
     client, handover_trip, driver_auth, db_session,
 ):
     token = await _issue(client, handover_trip, driver_auth)
@@ -275,7 +275,7 @@ async def test_agreeing_without_a_document_records_consent_at_selfie_only(
     )
 
     assert res.status_code == 201
-    assert res.json()["tier"] == ReceiverVerificationTier.SELFIE_ONLY.value
+    assert res.json()["tier"] == ReceiverVerificationTier.TYPED_ONLY.value
     row = await _verification_row(db_session, token)
     assert row.consent_given_at is not None, "agreeing with no document is still consent"
     assert row.unverified_reason == ReceiverVerificationUnverifiedReason.NO_DOCUMENT
@@ -618,7 +618,7 @@ async def test_full_walk_receiver_without_an_id_still_confirms(
         f"/api/v1/handover/{token}/consent", json={**_CONSENT_BODY, "has_document": False},
     )
     assert consent.status_code == 201
-    assert consent.json()["tier"] == "selfie_only"
+    assert consent.json()["tier"] == "typed_only"
     assert consent.json()["unverified_reason"] == "no_document"
 
     confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_E2E_CONFIRM)

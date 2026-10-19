@@ -73,14 +73,26 @@ def storage(monkeypatch: pytest.MonkeyPatch, audit_trip: AuditTrip) -> dict[str,
     return store
 
 
-async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> IssuedPack:
+async def _issue_emailed(db: AsyncSession, seed: AuditTrip, **overrides: object) -> IssuedPack:
     request = AuditPackCreate.model_validate({
         "recipient_name": "Jane Adjuster", "recipient_organization": "Santam Claims",
-        "purpose": "insurance_claim", **overrides,
+        "recipient_email": "jane@santam.example", "purpose": "insurance_claim", **overrides,
     })
     return await issue_audit_pack(
         db, trip_id=seed.trip.id, issued_by=UserRead.model_validate(seed.dispatcher), request=request,
     )
+
+
+async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> IssuedPack:
+    """A pack issued before FP-291: no recipient email, so the link alone opens it.
+
+    Most tests here are about what an open link shows and logs, not about the emailed-code
+    gate (tested in test_audit_pack_email_codes.py), so they use this kind of pack.
+    """
+    issued = await _issue_emailed(db, seed, **overrides)
+    issued.pack.recipient_email = None
+    await db.flush()
+    return issued
 
 
 async def _events(db: AsyncSession) -> list[str]:

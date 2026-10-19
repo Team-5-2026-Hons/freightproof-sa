@@ -186,7 +186,7 @@ def pdf_store(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
 
 ISSUE_BODY = {
     "recipient_name": "Jane Adjuster", "recipient_organization": "Santam Claims",
-    "purpose": "insurance_claim", "external_reference": "CLM-88123",
+    "recipient_email": "jane@santam.example", "purpose": "insurance_claim", "external_reference": "CLM-88123",
 }
 
 
@@ -226,6 +226,28 @@ async def test_issue_pack_rejects_unknown_purpose(client, audit_trip, pdf_store)
     # Act
     response = await client.post(PACKS.format(trip_id=audit_trip.trip.id),
                                  json={**ISSUE_BODY, "purpose": "marketing"}, headers=_admin(audit_trip))
+
+    # Assert
+    assert response.status_code == 422
+
+
+async def test_issue_pack_requires_recipient_email(client, audit_trip, pdf_store):
+    """FP-291: the emailed code is what stops a forwarded link opening the pack."""
+    # Arrange
+    body = {k: v for k, v in ISSUE_BODY.items() if k != "recipient_email"}
+
+    # Act
+    response = await client.post(PACKS.format(trip_id=audit_trip.trip.id), json=body, headers=_admin(audit_trip))
+
+    # Assert
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("email", ["jane", "jane@santam", "jane smith@santam.example"])
+async def test_issue_pack_rejects_malformed_recipient_email(client, audit_trip, pdf_store, email):
+    # Act
+    response = await client.post(PACKS.format(trip_id=audit_trip.trip.id),
+                                 json={**ISSUE_BODY, "recipient_email": email}, headers=_admin(audit_trip))
 
     # Assert
     assert response.status_code == 422

@@ -785,17 +785,10 @@
             "type": "string"
           },
           "recipient_email": {
-            "anyOf": [
-              {
-                "maxLength": 320,
-                "minLength": 3,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recipient Email"
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Recipient Email",
+            "type": "string"
           },
           "recipient_name": {
             "maxLength": 200,
@@ -825,6 +818,7 @@
         "required": [
           "recipient_name",
           "recipient_organization",
+          "recipient_email",
           "purpose"
         ],
         "title": "AuditPackCreate",
@@ -4393,6 +4387,36 @@
           "p90"
         ],
         "title": "DurationStats",
+        "type": "object"
+      },
+      "EmailCodeEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[0-9]{6}$",
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "EmailCodeEntry",
+        "type": "object"
+      },
+      "EmailCodeSent": {
+        "additionalProperties": false,
+        "description": "Where the code went, masked (j***@santam.co.za): the holder of a forwarded link\nlearns which inbox to ask about, not the full address.",
+        "properties": {
+          "email_hint": {
+            "title": "Email Hint",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email_hint"
+        ],
+        "title": "EmailCodeSent",
         "type": "object"
       },
       "EvidenceAnchorSummary": {
@@ -14390,6 +14414,27 @@
         "title": "VerifyStatus",
         "type": "string"
       },
+      "ViewerGrant": {
+        "additionalProperties": false,
+        "description": "Sent back as the X-Audit-Pack-Grant header on every later request for the pack.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grant": {
+            "title": "Grant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant",
+          "expires_at"
+        ],
+        "title": "ViewerGrant",
+        "type": "object"
+      },
       "WaitingAgeBar": {
         "description": "Chart 4.1, right now: critical problems waiting for review, by how long they've waited.",
         "properties": {
@@ -17302,6 +17347,22 @@
               "title": "Token",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Audit-Pack-Grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Audit-Pack-Grant"
+            }
           }
         ],
         "responses": {
@@ -17354,6 +17415,22 @@
               "title": "Artifact Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Audit-Pack-Grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Audit-Pack-Grant"
+            }
           }
         ],
         "responses": {
@@ -17377,6 +17454,100 @@
         ]
       }
     },
+    "/api/v1/public/audit-packs/{token}/email-code": {
+      "post": {
+        "operationId": "request_email_code_endpoint_api_v1_public_audit_packs__token__email_code_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailCodeSent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Email a one-time code to the pack's recipient (needed once per browser)",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/email-code/verify": {
+      "post": {
+        "operationId": "verify_email_code_endpoint_api_v1_public_audit_packs__token__email_code_verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerGrant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange the emailed code for a viewer grant",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
     "/api/v1/public/audit-packs/{token}/incident-sheet.pdf": {
       "get": {
         "operationId": "shared_incident_sheet_endpoint_api_v1_public_audit_packs__token__incident_sheet_pdf_get",
@@ -17388,6 +17559,22 @@
             "schema": {
               "title": "Token",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Audit-Pack-Grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Audit-Pack-Grant"
             }
           }
         ],
@@ -17427,6 +17614,22 @@
               "title": "Token",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Audit-Pack-Grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Audit-Pack-Grant"
+            }
           }
         ],
         "responses": {
@@ -17464,6 +17667,22 @@
             "schema": {
               "title": "Token",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Audit-Pack-Grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Audit-Pack-Grant"
             }
           }
         ],

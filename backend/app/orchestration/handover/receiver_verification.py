@@ -359,15 +359,18 @@ async def record_consent_decision(
     """Create the verification row for whichever decision the receiver made.
 
     One place for the three outcomes so the endpoint cannot blur them: declined (no
-    consent stored), agreed with no document (consent stored, SELFIE_ONLY), or agreed
+    consent stored), agreed with no document (consent stored, TYPED_ONLY), or agreed
     with a document (consent stored, ready for a vendor session).
+
+    No document means TYPED_ONLY, not SELFIE_ONLY: the receiver page no longer takes a
+    selfie (FP-316 removed it), and a tier must never claim evidence nobody stored.
     """
     if not consented:
         return await record_consent_declined(db, token=token)
 
     verification = await record_consent(db, token=token, consent_text=consent_text)
     if not has_document:
-        verification.tier = ReceiverVerificationTier.SELFIE_ONLY
+        verification.tier = ReceiverVerificationTier.TYPED_ONLY
         verification.status = ReceiverVerificationStatus.UNVERIFIED
         verification.unverified_reason = ReceiverVerificationUnverifiedReason.NO_DOCUMENT
     return verification

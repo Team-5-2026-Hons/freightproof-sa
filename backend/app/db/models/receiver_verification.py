@@ -71,7 +71,8 @@ class ReceiverIdentityVerification(Base):
     identity_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     # SELFIE_ONLY tier only; our own capture in af-south-1, never sent to the vendor
-    # (avoids the s26 biometric regime).
+    # (avoids the s26 biometric regime). Unused since the receiver selfie was removed
+    # (FP-316); kept so dropping it needs no migration while other work is in flight.
     selfie_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )

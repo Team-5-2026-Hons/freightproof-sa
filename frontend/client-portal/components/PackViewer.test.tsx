@@ -8,13 +8,19 @@ import { PackViewer } from './PackViewer'
 vi.mock('next/dynamic', () => ({ default: () => () => null }))
 
 const fetchPack = vi.fn()
+const requestEmailCode = vi.fn()
+const verifyEmailCode = vi.fn()
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   fetchPack: (token: string) => fetchPack(token),
+  requestEmailCode: (token: string) => requestEmailCode(token),
+  verifyEmailCode: (token: string, code: string) => verifyEmailCode(token, code),
 }))
 
 beforeEach(() => {
   fetchPack.mockReset()
+  requestEmailCode.mockReset()
+  verifyEmailCode.mockReset()
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -92,8 +98,31 @@ describe('PackViewer incident', () => {
     expect(within(incident).getByText(/123\/09\/2026/)).toBeInTheDocument()
     expect(within(incident).getByText(/Harrismith SAPS/)).toBeInTheDocument()
     expect(within(incident).getAllByText('Declared').length).toBeGreaterThan(0)
-    expect(within(incident).getByRole('link', { name: 'Download incident fact sheet' })).toHaveAttribute(
-      'href', expect.stringContaining('/tok/incident-sheet.pdf'),
-    )
+    expect(within(incident).getByRole('button', { name: 'Download incident fact sheet' })).toBeInTheDocument()
+  })
+})
+
+describe('PackViewer emailed code (FP-291)', () => {
+  it('asks for the emailed code instead of showing an error, then opens the pack', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    fetchPack
+      .mockRejectedValueOnce(new PackError(401, 'Enter the code we email you to open this pack.', 'j***@santam.example'))
+      .mockResolvedValueOnce(makeView(makeManifest()))
+    requestEmailCode.mockResolvedValue({ email_hint: 'j***@santam.example' })
+    verifyEmailCode.mockResolvedValue(undefined)
+    render(<PackViewer token="tok" />)
+    expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument()
+    expect(screen.getByText('j***@santam.example')).toBeInTheDocument()
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Email me a code' }))
+    await user.type(await screen.findByLabelText('6-digit code'), '048213')
+    await user.click(screen.getByRole('button', { name: 'Open pack' }))
+
+    // Assert
+    expect(verifyEmailCode).toHaveBeenCalledWith('tok', '048213')
+    expect(await screen.findByRole('heading', { name: 'FP-AUDIT-AP1' })).toBeInTheDocument()
+    expect(fetchPack).toHaveBeenCalledTimes(2)
   })
 })
