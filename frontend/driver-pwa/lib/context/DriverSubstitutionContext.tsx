@@ -24,6 +24,7 @@ import {
   markSubstitutionNoticeRead,
 } from '@/lib/api/driver-substitutions'
 import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
+import { flushSubstitutionCaptures } from '@/lib/hooks/useSubstitutionCapture'
 import { substitutionRoleFor } from '@/lib/utils/driver-substitution'
 import { AuthContext } from './AuthContext'
 import { TripContext } from './TripContext'
@@ -79,6 +80,10 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
     // The interval keeps ticking while a browser tab is hidden; there is nobody to show the
     // answer to. The foreground listener refreshes the moment the app is visible again.
     if (isAppHidden()) return
+
+    // A confirmation pressed while offline (or whose answer was lost) is resent here, on the
+    // same refresh moments, before the list is read — so the list shows the server's answer.
+    await flushSubstitutionCaptures()
 
     // Settled separately: a failed notice read must not hide an arrangement that did load.
     const [pendingResult, noticeResult] = await Promise.allSettled([

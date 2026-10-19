@@ -15,6 +15,7 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { ROUTES } from '@/lib/constants/routes'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { markTransition } from '@/lib/navigation/transition-direction'
+import { captureCustody } from '@/lib/session/custody-context'
 import { cn } from '@/lib/utils'
 
 type LocationStatus = 'finding' | 'found' | 'unavailable'
@@ -62,6 +63,8 @@ export default function PanicPageClient() {
   async function handlePanic() {
     setSending(true)
     setSaveFailed(false)
+    // FP-83: the custody period at the swipe, before the bounded GPS wait.
+    const custodySequence = trip !== null ? captureCustody(String(trip.id)).custodySequence : null
     // The alert must carry the driver's own position when the phone can give one —
     // it is the primary evidence of where the driver was when they pressed panic — but
     // emergency delivery is never held behind a slow GPS. captureWithinBudget races the
@@ -85,6 +88,7 @@ export default function PanicPageClient() {
         gpsLng: fix?.longitude ?? null,
         ...(fix ? { driverCapturedAt: fix.capturedAt, driverAccuracyMetres: fix.accuracy } : {}),
         clientReportId,
+        ...(custodySequence !== null ? { custodySequence } : {}),
       })
     } catch (err) {
       // Emergency action — don't strand the driver on this screen if the network call
@@ -104,6 +108,7 @@ export default function PanicPageClient() {
         exception_type: 'panic_button',
         description,
         client_report_id: clientReportId,
+        ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),
         // Resolved HERE, not at flush time. This entry can sit in the queue until the
         // driver regains signal — possibly after they have arrived and the trip has
         // moved on — and the alert has to keep saying where the driver actually was

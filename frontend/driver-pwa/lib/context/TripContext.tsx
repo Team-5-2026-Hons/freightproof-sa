@@ -16,6 +16,7 @@ import { isTripHandedOver } from '@/lib/api/driver-substitutions'
 import { raiseException } from '@/lib/api/exceptions'
 import { actionablePhase, contextPhaseEventId } from '@/lib/phase/derive'
 import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
+import { captureCustody, setCustodyContext } from '@/lib/session/custody-context'
 import { AuthContext } from './AuthContext'
 import { ToastContext } from './ToastContext'
 
@@ -173,6 +174,19 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // the first paint is the spinner either way.
   const [selectedTripId, setSelectedTripId] = useState<string | null>(() => readSelectedTripId())
   const [handedOverTripId, setHandedOverTripId] = useState<string | null>(null)
+
+  // FP-83: publish who is signed in and which custody period the SERVER says this trip is
+  // in, so every capture can stamp both at the moment it happens. Read from serverTrip, not
+  // the optimistic trip: the period is the server's fact, never something this phone moves.
+  // Set during render, not in an effect, on purpose: child effects run BEFORE this parent's,
+  // and the offline queue's mount-time flush (a child) must already know who is signed in,
+  // or it would hold every queued capture back as "not this driver's" until the next
+  // foreground. The call is an idempotent assignment of values derived from this render.
+  setCustodyContext({
+    actorId: authCtx?.user ? String(authCtx.user.id) : null,
+    tripId: serverTrip !== null ? String(serverTrip.id) : null,
+    custodySequence: serverTrip?.driver_access?.custody_sequence ?? serverTrip?.custody_sequence ?? null,
+  })
 
   const persistSelection = useCallback((tripId: string | null) => {
     if (typeof window !== 'undefined') {
@@ -495,8 +509,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // A caller that stamped the custody period at capture (the exception page, before its
+    // GPS wait) passes it in; anything else is captured right here, at the driver's tap.
+    const custodyAtCapture = typeof payload.custodySequence === 'number'
+      ? payload.custodySequence
+      : captureCustody(String(trip.id)).custodySequence
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      ...(custodyAtCapture !== null ? { custody_sequence: custodyAtCapture } : {}),
       ...(photoIds.length > 0 ? { supporting_artifact_ids: photoIds } : {}),
       client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),

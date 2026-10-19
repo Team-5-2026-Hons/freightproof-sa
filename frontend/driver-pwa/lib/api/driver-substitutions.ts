@@ -7,12 +7,18 @@
 // independent resource the incoming driver needs even when they have no trip at all.
 
 import { api, ApiError } from './client'
+import { ARTIFACT_UPLOAD_TIMEOUT_MS, artifactFormData, type ArtifactUpload } from './artifacts'
+import type { EvidenceArtifact } from '@shared/lib/types/evidence'
 import type {
+  ConfirmSubstitutionRequest,
   DriverParticipationHistoryRead,
   DriverSubstitutionContextRead,
+  LateEvidenceRead,
+  LateEvidenceRequest,
   SubstitutionErrorCode,
   SubstitutionNoticeRead,
   SubstitutionRequestRead,
+  SubstitutionRole,
 } from '@shared/lib/types/driver-substitution'
 
 const TRIPS_ME = '/api/v1/trips/me'
@@ -45,6 +51,63 @@ export const markSubstitutionNoticeRead = (noticeId: string): Promise<Substituti
 // driver who never took part.
 export const fetchDriverParticipation = (tripId: string): Promise<DriverParticipationHistoryRead> =>
   api.get<DriverParticipationHistoryRead>(`${TRIPS_ME}/${tripId}/participation`)
+
+// ── T2: the driver's own handover check ─────────────────────────────────────────
+
+/**
+ * A photo for this driver's handover check, through the request's dedicated route. A pending
+ * INCOMING driver is not yet on the trip, so the ordinary /artifacts route (which checks
+ * trip ownership) is never assumed to accept it. `role` is only the claimed purpose; the
+ * server validates it against the signed-in account. `clientRequestId` is per photo and
+ * stable across retries, so a lost response never stores the photo twice.
+ */
+export async function uploadSubstitutionArtifact(
+  tripId: string,
+  requestId: string,
+  role: SubstitutionRole,
+  upload: ArtifactUpload & { clientRequestId: string },
+): Promise<EvidenceArtifact> {
+  const form = await artifactFormData(upload)
+  form.append('client_request_id', upload.clientRequestId)
+  form.append('role', role)
+  return api.postForm<EvidenceArtifact>(
+    `${TRIPS_ME}/${tripId}/driver-substitutions/${requestId}/artifacts`,
+    form,
+    { timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS },
+  )
+}
+
+/**
+ * Submit this driver's confirmation. 200 whether the transfer completed or the capture was
+ * saved but is still waiting (missing_confirmations / completion_blocked_by say which) —
+ * a pending answer is a SAVED capture, never a failure to retry.
+ */
+export const confirmDriverSubstitution = (
+  tripId: string,
+  requestId: string,
+  body: ConfirmSubstitutionRequest,
+): Promise<SubstitutionRequestRead> =>
+  api.post<SubstitutionRequestRead>(`${TRIPS_ME}/${tripId}/driver-substitutions/${requestId}/confirmations`, body)
+
+// ── T3: late evidence (retained for review, never a live phase action) ──────────
+
+/** A photo for a late-evidence report, tagged with the custody period it was captured in. */
+export async function uploadLateEvidenceArtifact(
+  tripId: string,
+  custodySequence: number,
+  upload: ArtifactUpload & { clientRequestId: string },
+): Promise<EvidenceArtifact> {
+  const form = await artifactFormData(upload)
+  form.append('client_request_id', upload.clientRequestId)
+  form.append('custody_sequence', String(custodySequence))
+  return api.postForm<EvidenceArtifact>(`${TRIPS_ME}/${tripId}/late-evidence/artifacts`, form, {
+    timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS,
+  })
+}
+
+/** 201 receipt; an exact replay returns the same receipt. Acknowledgement is dispatcher review. */
+export const submitLateEvidence = (tripId: string, body: LateEvidenceRequest): Promise<LateEvidenceRead> =>
+  api.post<LateEvidenceRead>(`${TRIPS_ME}/${tripId}/late-evidence`, body)
 
 export function hasErrorCode(err: unknown, code: SubstitutionErrorCode): err is ApiError {
   return err instanceof ApiError && err.code === code

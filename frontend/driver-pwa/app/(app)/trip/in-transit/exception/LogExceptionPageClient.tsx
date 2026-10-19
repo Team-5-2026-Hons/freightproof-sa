@@ -22,6 +22,7 @@ import { useLocation } from '@/lib/hooks/useLocation'
 import { captureWithinBudget, REPORT_CAPTURE_BUDGET_MS } from '@/lib/utils/bounded-capture'
 import { markTransition } from '@/lib/navigation/transition-direction'
 import { useBack } from '@/lib/navigation/useBack'
+import { captureCustody } from '@/lib/session/custody-context'
 import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 
 // Options are derived from the shared DRIVER_EXCEPTION_TYPES so the picker can never
@@ -225,6 +226,9 @@ export default function LogExceptionPageClient() {
     // Captured now, not at flush time: the exception belongs to the leg being driven,
     // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
+    // FP-83: the custody period at the tap, before the GPS wait. Stored in the report body,
+    // so every resend of this report states the period it was captured in.
+    const { custodySequence } = captureCustody(tripId)
     // Optional enrichment, bounded: the report's own phone fix feeds the backend's
     // capture-time comparison, but a broken-seal report must not sit behind
     // useLocation's full 10 s geolocation timeout. Past REPORT_CAPTURE_BUDGET_MS the
@@ -248,6 +252,7 @@ export default function LogExceptionPageClient() {
         client_report_id: clientReportId,
         ...vehicle.fields,
         ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
+        ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),
         ...(location
           ? {
               gps_lat: location.latitude,
@@ -271,6 +276,7 @@ export default function LogExceptionPageClient() {
           description,
           clientReportId,
           ...captureFields,
+          ...(custodySequence !== null ? { custodySequence } : {}),
           ...(vehicle.fields.vehicle_type ? { vehicleType: vehicle.fields.vehicle_type } : {}),
           ...(vehicle.fields.trailer_id ? { trailerId: vehicle.fields.trailer_id } : {}),
           ...(artifactIds.length > 0 ? { supporting_artifact_ids: artifactIds } : {}),

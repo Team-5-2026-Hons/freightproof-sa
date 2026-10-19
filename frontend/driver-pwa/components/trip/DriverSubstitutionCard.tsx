@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { MapPin, Phone } from 'lucide-react'
 import type {
   DriverSubstitutionContextRead,
@@ -13,9 +14,11 @@ import { coordinateDirectionsUrl } from '@/lib/utils/directions'
 import {
   blockerMessage,
   counterpartOf,
+  hasConfirmed,
   identityLabel,
   substitutionStatusLine,
 } from '@/lib/utils/driver-substitution'
+import { ROUTES } from '@/lib/constants/routes'
 import { formatDateTime } from '@/lib/utils/format-time'
 import { formatPhoneForDisplay } from '@/lib/utils/format-phone'
 import { knownPrecinctName } from '@/lib/utils/precinct-name'
@@ -94,6 +97,11 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
   const counterpart = counterpartOf(request, role)
   const isPending = request.state === 'pending'
   const blocker = request.completion_blocked_by
+  // The server's permitted actions decide whether a check can be recorded now (T2); the
+  // card only links to the driver's own capture screen, it never confirms anything itself.
+  const canRecord = isPending
+    && request.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
+  const alreadyRecorded = hasConfirmed(request, role)
 
   const toggleDetails = async () => {
     if (detailsOpen) { setDetailsOpen(false); return }
@@ -157,6 +165,16 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
         </Fact>
         <Fact label="Incoming driver identity">{identityLabel(request.identity.status)}</Fact>
       </dl>
+
+      {isPending && (canRecord || alreadyRecorded) && (
+        <Button asChild variant={alreadyRecorded ? 'secondary' : 'primary'} size="sm" className="mt-3 w-full">
+          <Link href={ROUTES.substitution(request.trip_id, request.id)}>
+            {alreadyRecorded
+              ? 'View your check'
+              : role === 'outgoing' ? 'Record your handover check' : 'Record your takeover check'}
+          </Link>
+        </Button>
+      )}
 
       {/* Live collection context only while the arrangement is pending: a cancelled or
           replaced snapshot must not lead the driver into the trip's later progress. */}

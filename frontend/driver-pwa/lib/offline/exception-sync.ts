@@ -4,23 +4,36 @@
 // to repeat: an artifact id is persisted the moment it exists (a crash never re-uploads),
 // the report is only posted with the COMPLETE id list (never a reduced set), and the
 // report's clientReportId never changes, so a lost POST response replays idempotently.
-import { ApiError } from '@/lib/api/client'
 import { uploadArtifact } from '@/lib/api/artifacts'
+import { currentActorId } from '@/lib/session/custody-context'
 import {
   markExceptionNeedsAttention,
   recordPhotoUploaded,
   removeExceptionEnvelope,
   type ExceptionEnvelope,
 } from './exception-store'
+import {
+  DEFAULT_RATE_LIMIT_RETRY_MS,
+  classifyLiveWriteFailure,
+  retainedAttention,
+  type RetainedAttention,
+} from './live-write-conflict'
+
+export { DEFAULT_RATE_LIMIT_RETRY_MS }
 
 export type ExceptionSendOutcome =
   | { kind: 'acknowledged' }
   /** Network/5xx/429/unknown: everything kept, retry later. */
   | { kind: 'transient'; retryAfterMs: number | null }
   /** Terminal 4xx (including 409): needs attention, nothing discarded. */
-  | { kind: 'rejected'; reason: string; photoId: string | null; status: number }
+  | { kind: 'rejected'; reason: string; photoId: string | null; status: number; attention: RetainedAttention }
   /** Another caller already holds this report. */
   | { kind: 'busy' }
+  /**
+   * FP-83: captured by a different account than the one signed in now (or by an unknown one).
+   * Nothing is sent: replaying A's report with B's token would file it as B's.
+   */
+  | { kind: 'not-yours' }
 
 export interface ExceptionSendOptions {
   /** False when the store refused the envelope: progress is kept in memory only. */
@@ -31,16 +44,6 @@ export interface ExceptionSendOptions {
   onProgress?: (uploaded: number, total: number) => void
 }
 
-const HTTP_CLIENT_ERROR_MIN = 400
-const HTTP_SERVER_ERROR_MIN = 500
-const HTTP_TOO_MANY_REQUESTS = 429
-// Statuses that describe the session or the request timing, not the report: an expired
-// sign-in or a dead-zone timeout must wait, not park a good report as "not accepted".
-const HTTP_UNAUTHORIZED = 401
-const HTTP_REQUEST_TIMEOUT = 408
-// A 429 without Retry-After must still schedule a retry: a null delay would leave the
-// report waiting for an unrelated flush trigger. Mirrors useOfflineQueue's own default.
-export const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000
 const MISSING_BYTES_REASON = 'photo bytes missing'
 const MISSING_BYTES_STATUS = 0
 const DATA_URL_SEPARATOR = ','
@@ -123,29 +126,29 @@ export function dataUrlToBlob(dataUrl: string): Blob {
 
 type Failure =
   | { kind: 'transient'; retryAfterMs: number | null }
-  | { kind: 'rejected'; reason: string; status: number }
+  | { kind: 'duplicate' }
+  | { kind: 'rejected'; reason: string; status: number; attention: RetainedAttention }
 
-// Only a definite client-side refusal is terminal. 429 and anything unknown are retried:
-// treating an unrecognised failure as terminal could strand a valid report.
+// Only a definite refusal is terminal; 429 and anything unknown are retried, since treating
+// an unrecognised failure as terminal could strand a valid report. A proven actor-bound
+// duplicate (EVIDENCE_ALREADY_RECORDED) is the one refusal that means "already filed".
 function classify(error: unknown): Failure {
-  if (error instanceof ApiError) {
-    if (error.status === HTTP_TOO_MANY_REQUESTS) {
-      return { kind: 'transient', retryAfterMs: error.retryAfterMs ?? DEFAULT_RATE_LIMIT_RETRY_MS }
-    }
-    if (error.status === HTTP_UNAUTHORIZED || error.status === HTTP_REQUEST_TIMEOUT) {
-      return { kind: 'transient', retryAfterMs: null }
-    }
-    if (error.status >= HTTP_CLIENT_ERROR_MIN && error.status < HTTP_SERVER_ERROR_MIN) {
-      return { kind: 'rejected', reason: error.message, status: error.status }
-    }
-  }
-  return { kind: 'transient', retryAfterMs: null }
+  const failure = classifyLiveWriteFailure(error)
+  if (failure.kind === 'transient') return failure
+  if (failure.kind === 'duplicate') return { kind: 'duplicate' }
+  return { kind: 'rejected', reason: failure.attention.reason, status: failure.attention.status, attention: failure.attention }
 }
 
-async function markAttention(envelope: ExceptionEnvelope, durable: boolean, reason: string, photoId: string | null) {
+async function markAttention(
+  envelope: ExceptionEnvelope,
+  durable: boolean,
+  reason: string,
+  photoId: string | null,
+  attention: RetainedAttention | null = null,
+) {
   if (!durable) return
   try {
-    await markExceptionNeedsAttention(envelope.clientReportId, reason, photoId)
+    await markExceptionNeedsAttention(envelope.clientReportId, reason, photoId, attention)
   } catch (err) {
     console.warn('Could not mark exception report as needing attention', err)
   }
@@ -154,6 +157,12 @@ async function markAttention(envelope: ExceptionEnvelope, durable: boolean, reas
 async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): Promise<ExceptionSendOutcome> {
   const { durable, post, onProgress } = options
   const id = envelope.clientReportId
+  // FP-83: only the capturing account may send. A legacy envelope (no actor) is quarantined
+  // by the migration and never reaches here; this guards a report from a previous sign-in.
+  if (envelope.status === 'quarantined' || (envelope.actorId != null && envelope.actorId !== currentActorId())) {
+    return { kind: 'not-yours' }
+  }
+  const custodySequence = envelope.body.custody_sequence ?? null
   const memory = volatileIds.get(id) ?? new Map<string, string>()
   volatileIds.set(id, memory)
 
@@ -165,8 +174,9 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
     if (ids[i] !== null) continue
     const item = envelope.photos[i]
     if (item.blob === null) {
-      await markAttention(envelope, durable, MISSING_BYTES_REASON, item.id)
-      return { kind: 'rejected', reason: MISSING_BYTES_REASON, photoId: item.id, status: MISSING_BYTES_STATUS }
+      const attention = retainedAttention(null, MISSING_BYTES_STATUS, MISSING_BYTES_REASON)
+      await markAttention(envelope, durable, MISSING_BYTES_REASON, item.id, attention)
+      return { kind: 'rejected', reason: MISSING_BYTES_REASON, photoId: item.id, status: MISSING_BYTES_STATUS, attention }
     }
     let artifact: Awaited<ReturnType<typeof uploadArtifact>>
     try {
@@ -175,14 +185,20 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
         artifactType: 'photo',
         dataUrl: await blobToDataUrl(item.blob),
         capturedAt: item.capturedAt,
+        custodySequence,
       })
       ids[i] = artifact.id
       memory.set(item.id, artifact.id)
     } catch (err) {
       const failure = classify(err)
       if (failure.kind === 'transient') return failure
-      await markAttention(envelope, durable, failure.reason, item.id)
-      return { ...failure, photoId: item.id }
+      // A photo upload has no actor-bound duplicate of its own: anything but transient is
+      // kept for the driver, with the server's coded reason.
+      const attention = failure.kind === 'rejected'
+        ? failure.attention
+        : retainedAttention(null, 0, 'The photo could not be stored on the server.')
+      await markAttention(envelope, durable, attention.reason, item.id, attention)
+      return { kind: 'rejected', reason: attention.reason, status: attention.status, attention, photoId: item.id }
     }
     uploaded += 1
     // Persist BEFORE the next upload: this is what makes a crash here cost nothing.
@@ -202,9 +218,13 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   } catch (err) {
     const failure = classify(err)
     if (failure.kind === 'transient') return failure
-    // 409 included: a conflicting report is for the driver to see, never auto-discarded.
-    await markAttention(envelope, durable, failure.reason, null)
-    return { ...failure, photoId: null }
+    if (failure.kind === 'rejected') {
+      // 409 included: a conflicting report is for the driver to see, never auto-discarded.
+      await markAttention(envelope, durable, failure.reason, null, failure.attention)
+      return { ...failure, photoId: null }
+    }
+    // EVIDENCE_ALREADY_RECORDED for this exact report id: the server holds it, so clear it
+    // exactly as an acknowledgement would.
   }
 
   volatileIds.delete(id)

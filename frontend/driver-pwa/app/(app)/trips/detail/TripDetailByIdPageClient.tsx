@@ -2,7 +2,7 @@
 // trips/active: this screen can open a trip the driver has not activated yet.
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
@@ -19,6 +19,9 @@ import { TruckLoader } from '@/components/ui/TruckLoader'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
 import { DriverParticipationHistory } from '@/components/trip/DriverParticipationHistory'
+import { DriverSubstitutionCard } from '@/components/trip/DriverSubstitutionCard'
+import { AuthContext } from '@/lib/context/AuthContext'
+import { substitutionRoleFor } from '@/lib/utils/driver-substitution'
 import { StatusBanner } from '@/components/ui/StatusBanner'
 import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
@@ -41,6 +44,9 @@ export default function TripDetailByIdPageClient() {
   const tripId = searchParams.get(TRIP_ID_PARAM)
   const { notify } = useToast()
   const { selectTrip, trip: workingTrip, noteTripHandedOver } = useTrip()
+  // Read directly rather than through useAuth: only needed to place this driver in a pending
+  // handover, and the page's existing test harnesses render without an AuthProvider.
+  const driverId = useContext(AuthContext)?.user?.id
 
   const [trip, setTrip] = useState<Trip | null>(null)
   // Set instead of `trip` when the server says this driver handed the trip over: they see
@@ -172,8 +178,19 @@ export default function TripDetailByIdPageClient() {
   // The upcoming page already says when the trip starts and where; the notice is only
   // for what it can't know — the activation gate refusing this trip — and the brief
   // "Starting trip" moment after Start is tapped.
-  const notice = (block !== null && notYetStarted) || isStarting ? (
+  // FP-83 T2: a handover arranged on this trip is shown on the trip itself, with the link
+  // to this driver's own check. The role comes from the arrangement, never from this screen.
+  const pendingSubstitution = trip.pending_driver_substitution ?? null
+  const substitutionRole = pendingSubstitution !== null && driverId !== undefined
+    ? substitutionRoleFor(pendingSubstitution, String(driverId))
+    : null
+  const substitutionCard = pendingSubstitution !== null && substitutionRole !== null
+    ? <DriverSubstitutionCard request={pendingSubstitution} role={substitutionRole} />
+    : null
+
+  const notice = (block !== null && notYetStarted) || isStarting || substitutionCard !== null ? (
     <div className="flex flex-col gap-3">
+      {substitutionCard}
       {block !== null && notYetStarted && (
         <StatusBanner tone="attention" title="Can’t start this trip yet">{activationBlockMessage(block)}</StatusBanner>
       )}

@@ -22,6 +22,9 @@ interface PhaseCompleteRequestBase {
   driver_captured_at: string
   location_warning_acknowledged_at?: string
   location_warning_reason?: string
+  // FP-83: the custody period the swipe happened in, captured with the evidence and replayed
+  // unchanged. Omitted when the server has sent none (only valid before any substitution).
+  custody_sequence?: number
 }
 
 // Mirrors backend schemas/phases.py's discriminated union. `Extract<PhaseType, '...'>`
@@ -175,7 +178,7 @@ function locationWarningAcknowledgement(
   }
 }
 
-interface ArtifactIdRequest {
+export interface ArtifactIdRequest {
   tripId: string
   artifactType: ArtifactType
   readyId: string | null
@@ -188,7 +191,7 @@ interface ArtifactIdRequest {
 // or uploads now if that never landed — offline at capture, or a failed request. The
 // fallback carries the same attribution the early upload would have, so a queued replay
 // is attributed too; the server de-duplicates identical bytes for the same phase and role.
-async function artifactIdFor(request: ArtifactIdRequest): Promise<string> {
+async function artifactIdFor(request: ArtifactIdRequest, custodySequence: number | null): Promise<string> {
   if (request.readyId !== null) return request.readyId
   const uploaded = await uploadArtifact({
     tripId: request.tripId,
@@ -196,18 +199,26 @@ async function artifactIdFor(request: ArtifactIdRequest): Promise<string> {
     dataUrl: request.dataUrl,
     capturedAt: request.capturedAt,
     attribution: request.attribution,
+    custodySequence,
   })
   return uploaded.id
 }
+
+/**
+ * Where a phase body's artifact ids come from. The live submit uploads through /artifacts;
+ * the FP-83 late-evidence path (lib/offline/late-evidence-sync.ts) uploads through its own
+ * retained-for-review route. Injected so both build the identical body from one switch.
+ */
+export type ArtifactResolver = (request: ArtifactIdRequest) => Promise<string>
 
 // The linehaul PDF is a derived copy of the scan (linehaul_photo is the evidence), so it
 // must never cost the driver the loading. A transient failure rethrows: the offline queue
 // retries the whole submit later and the PDF gets another chance. A terminal one (a 4xx
 // the server will never accept) would make the queue drop the entry, scan and all, so
 // the loading goes ahead without the PDF instead.
-async function optionalLinehaulPdfId(request: ArtifactIdRequest): Promise<string | null> {
+async function optionalLinehaulPdfId(resolve: ArtifactResolver, request: ArtifactIdRequest): Promise<string | null> {
   try {
-    return await artifactIdFor(request)
+    return await resolve(request)
   } catch (err) {
     if (isQueueableFailure(err)) throw err
     console.warn('Linehaul PDF upload rejected; completing loading without it.', err)
@@ -226,36 +237,30 @@ export interface SubmitPhaseResult {
   phaseStatus: PhaseStatus | null
 }
 
-// Demo mode returns a mock success immediately. Otherwise uploads any captured photos as
-// evidence artifacts, then calls completePhase() with the resulting artifact ids.
-//
-// `idempotencyKey` must be generated once per logical submission attempt and reused
-// across retries (including offline-queue replay), so the server sees the same key.
-// `position` is the driver's silent phone fix at submit time; null is legal for every
-// phase except activation, which the backend requires. `driverCapturedAt` is stamped
-// once per attempt and reused across retries, so a delayed resend still reports the
-// original swipe instant.
-export async function submitPhase(
-  tripId: string,
-  phaseEventId: string,
-  phaseType: PhaseType,
-  evidence: PhaseEvidence,
-  idempotencyKey: string,
-  position: DriverPosition | null,
-  driverCapturedAt: string,
-  acknowledgement: LocationWarningAcknowledgement | null = null,
-): Promise<SubmitPhaseResult> {
-  if (IS_DEMO_MODE) {
-    await new Promise<void>((resolve) => setTimeout(resolve, 400))
-    return { ok: true, trip: null, phaseStatus: 'completed' }
-  }
+export interface PhaseRequestInput {
+  tripId: string
+  phaseEventId: string
+  phaseType: PhaseType
+  evidence: PhaseEvidence
+  idempotencyKey: string
+  position: DriverPosition | null
+  driverCapturedAt: string
+  acknowledgement: LocationWarningAcknowledgement | null
+}
 
+/**
+ * The phase-complete body for a captured draft, without sending it. Throws the same local
+ * validation errors submitPhase always has. Shared by the live submit and the FP-83
+ * late-evidence path so a late phase report is exactly the body the live one would have been.
+ */
+export async function buildPhaseCompleteRequest(
+  input: PhaseRequestInput,
+  resolve: ArtifactResolver,
+): Promise<PhaseCompleteRequest> {
+  const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement } = input
   // Every evidence draft carries capturedAt — safe to read without a cast.
   const capturedAt = evidence.capturedAt ?? new Date().toISOString()
   const acknowledgementFields = locationWarningAcknowledgement(acknowledgement)
-
-  let updatedTrip: Trip
-
   switch (phaseType) {
     case 'activation': {
       // The one phase that cannot proceed without a fix: it records where the trip started.
@@ -264,7 +269,7 @@ export async function submitPhase(
           'Could not get your location. Move to open sky, check that Location is enabled for this app, and swipe again.',
         )
       }
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'activation',
         driver_phone_lat: position.lat,
         driver_phone_lng: position.lng,
@@ -272,14 +277,13 @@ export async function submitPhase(
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'loading': {
       // linehaulPhotoId falls back to a submit-time upload if the early upload never landed.
       const e = evidence as LoadingEvidence
       const linehaulPhotoId = e.linehaulPhotoDataUrl !== null
-        ? await artifactIdFor({
+        ? await resolve({
             tripId, artifactType: 'photo', readyId: e.linehaulPhotoArtifactId,
             dataUrl: e.linehaulPhotoDataUrl, capturedAt,
             attribution: { phaseEventId, role: 'linehaul_photo' },
@@ -287,7 +291,7 @@ export async function submitPhase(
         : null
       const linehaulPdfDataUrl = e.linehaulPdfDataUrl ?? null
       const linehaulPdfId = linehaulPdfDataUrl !== null
-        ? await optionalLinehaulPdfId({
+        ? await optionalLinehaulPdfId(resolve, {
             tripId, artifactType: 'document', readyId: e.linehaulPdfArtifactId ?? null,
             dataUrl: linehaulPdfDataUrl, capturedAt,
             attribution: { phaseEventId, role: 'linehaul_pdf' },
@@ -295,7 +299,7 @@ export async function submitPhase(
         // The offline queue drops the PDF image when storage is full but keeps the id an
         // early upload produced, so that id still goes out.
         : e.linehaulPdfArtifactId ?? null
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'loading',
         ...driverPosition(position),
         linehaul_photo_artifact_id: linehaulPhotoId,
@@ -303,8 +307,7 @@ export async function submitPhase(
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'departure': {
       const e = evidence as DepartureEvidence
@@ -317,19 +320,19 @@ export async function submitPhase(
       const legacyWaybillDataUrl = legacy.waybillPhotoDataUrl ?? null
       const [waybillPhotoId, sealPhotoId] = await Promise.all([
         legacyWaybillDataUrl !== null
-          ? artifactIdFor({
+          ? resolve({
               tripId, artifactType: 'photo', readyId: legacy.waybillPhotoArtifactId ?? null,
               dataUrl: legacyWaybillDataUrl, capturedAt,
               attribution: { phaseEventId, role: 'waybill_photo' },
             })
           : Promise.resolve(null),
-        artifactIdFor({
+        resolve({
           tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
           dataUrl: e.sealPhotoDataUrl, capturedAt,
           attribution: { phaseEventId, role: 'seal_photo' },
         }),
       ])
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'departure',
         ...driverPosition(position),
         waybill_photo_artifact_id: waybillPhotoId,
@@ -340,8 +343,7 @@ export async function submitPhase(
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'arrival': {
       const e = evidence as ArrivalEvidence
@@ -355,12 +357,12 @@ export async function submitPhase(
       if (e.sealCondition !== 'missing' && e.sealNumberAtArrival === null) {
         throw new Error('Arrival evidence incomplete — seal number is required unless the seal is missing.')
       }
-      const sealPhotoId = await artifactIdFor({
+      const sealPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
         dataUrl: e.sealPhotoDataUrl, capturedAt,
         attribution: { phaseEventId, role: 'seal_photo' },
       })
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'arrival',
         ...driverPosition(position),
         seal_condition: e.sealCondition,
@@ -374,20 +376,18 @@ export async function submitPhase(
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'unloading': {
       // No seal evidence — that moved to `arrival`, which the plan guarantees completes
       // first. Base fields only.
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'unloading',
         ...driverPosition(position),
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'confirmation': {
       const e = evidence as ConfirmationEvidence
@@ -397,13 +397,13 @@ export async function submitPhase(
       if (e.podPhotoDataUrl === null || !e.podSignatureArtifactId) {
         throw new Error('Confirmation evidence incomplete — POD photo and receiver confirmation are required.')
       }
-      const podPhotoId = await artifactIdFor({
+      const podPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.podPhotoArtifactId,
         dataUrl: e.podPhotoDataUrl, capturedAt,
         attribution: { phaseEventId, role: 'pod_photo' },
       })
       const podSignatureId = e.podSignatureArtifactId
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'confirmation',
         ...driverPosition(position),
         pod_photo_artifact_id: podPhotoId,
@@ -413,19 +413,17 @@ export async function submitPhase(
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'in_transit': {
       // No evidence upload — the attestation itself is the submission.
-      updatedTrip = await completePhase(tripId, phaseEventId, {
+      return {
         phase_type: 'in_transit',
         ...driverPosition(position),
         idempotency_key: idempotencyKey,
         driver_captured_at: driverCapturedAt,
         ...acknowledgementFields,
-      })
-      break
+      }
     }
     case 'trip_creation':
       // No request variant server-side; reaching here means a routing bug upstream.
@@ -436,6 +434,40 @@ export async function submitPhase(
       throw new Error(`submitPhase: unhandled phase type "${String(unreachable)}"`)
     }
   }
+}
+
+// Demo mode returns a mock success immediately. Otherwise uploads any captured photos as
+// evidence artifacts, then calls completePhase() with the resulting artifact ids.
+//
+// `idempotencyKey` must be generated once per logical submission attempt and reused
+// across retries (including offline-queue replay), so the server sees the same key.
+// `position` is the driver's silent phone fix at submit time; null is legal for every
+// phase except activation, which the backend requires. `driverCapturedAt` is stamped
+// once per attempt and reused across retries, so a delayed resend still reports the
+// original swipe instant. `custodySequence` (FP-83) is likewise the swipe's own period.
+export async function submitPhase(
+  tripId: string,
+  phaseEventId: string,
+  phaseType: PhaseType,
+  evidence: PhaseEvidence,
+  idempotencyKey: string,
+  position: DriverPosition | null,
+  driverCapturedAt: string,
+  acknowledgement: LocationWarningAcknowledgement | null = null,
+  custodySequence: number | null = null,
+): Promise<SubmitPhaseResult> {
+  if (IS_DEMO_MODE) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 400))
+    return { ok: true, trip: null, phaseStatus: 'completed' }
+  }
+  const request = await buildPhaseCompleteRequest(
+    { tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement },
+    (artifact) => artifactIdFor(artifact, custodySequence),
+  )
+  const updatedTrip = await completePhase(tripId, phaseEventId, {
+    ...request,
+    ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),
+  })
 
   const addressedPhase = updatedTrip.phases.find((p) => p.phase_event_id === phaseEventId) ?? null
   return { ok: true, trip: updatedTrip, phaseStatus: addressedPhase?.status ?? null }
