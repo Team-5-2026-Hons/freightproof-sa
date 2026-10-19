@@ -4,6 +4,10 @@ Every read is resolved from the link's token hash and logged, including refusals
 dispatcher seeing views of a revoked link is exactly how a leaked link gets noticed.
 Nothing here needs an account: insurers and adjusters are one-off visitors, and the
 project's rule is zero-login for roles that have no account (CLAUDE.md).
+
+A pack issued to an email address also needs a viewer grant, earned once by entering the
+code emailed to that address (FP-291, email_codes.py) — so a forwarded link alone does not
+open it. That is a one-time code, not an account.
 """
 
 import asyncio
@@ -29,6 +33,14 @@ from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip
+from app.orchestration.audit_packs.email_codes import (
+    CodeCheck,
+    check_email_code,
+    grant_is_valid,
+    mask_email,
+    requires_email_code,
+    send_email_code,
+)
 from app.orchestration.audit_packs.lifecycle import (
     hash_token,
     pack_label,
@@ -77,12 +89,31 @@ class ShareLinkClosed(Exception):
         self.reason = reason
 
 
+class EmailVerificationRequired(Exception):
+    """The link is live, but this pack opens only for a browser holding a viewer grant."""
+
+    def __init__(self, email_hint: str) -> None:
+        super().__init__("Audit pack needs an emailed code")
+        self.email_hint = email_hint
+
+
+_CODE_EVENT: dict[str, AuditPackAccessEventType] = {
+    "verified": AuditPackAccessEventType.CODE_VERIFIED,
+    "wrong": AuditPackAccessEventType.DENIED_BAD_CODE,
+    "expired": AuditPackAccessEventType.DENIED_BAD_CODE,
+    "locked": AuditPackAccessEventType.DENIED_BAD_CODE,
+}
+
+
 @dataclass(frozen=True)
 class Requester:
-    """Who opened a share link, as far as the request shows: what the access log records."""
+    """Who opened a share link, as far as the request shows. The access log records the
+    address and browser; the grant is checked, never logged — it is a credential."""
 
     client_ip: str | None
     user_agent: str | None
+    # The viewer grant this browser earned with the emailed code (FP-291), if any.
+    grant: str | None = None
 
 
 def _log(db: AsyncSession, pack: AuditPack, event_type: AuditPackAccessEventType, requester: Requester) -> None:
@@ -93,20 +124,12 @@ def _log(db: AsyncSession, pack: AuditPack, event_type: AuditPackAccessEventType
     ))
 
 
-async def open_shared_pack(
-    db: AsyncSession,
-    *,
-    raw_token: str,
-    event_type: AuditPackAccessEventType,
-    requester: Requester,
-    now: datetime | None = None,
-) -> AuditPack:
-    """Resolve a share token to its pack and record the access.
+async def _live_pack(db: AsyncSession, *, raw_token: str, requester: Requester, now: datetime) -> AuditPack:
+    """Resolve a share token to a pack whose link still works.
 
     Raises ResourceNotFoundError for an unknown token (nothing logged — there is no pack
     to log against) and ShareLinkClosed for a revoked or expired one (logged as denied).
     """
-    now = now or datetime.now(UTC)
     pack = (await db.execute(
         select(AuditPack).where(AuditPack.token_hash == hash_token(raw_token))
     )).scalar_one_or_none()
@@ -121,9 +144,66 @@ async def open_shared_pack(
         _log(db, pack, AuditPackAccessEventType.DENIED_EXPIRED, requester)
         await db.flush()
         raise ShareLinkClosed("expired")
+    return pack
+
+
+async def open_shared_pack(
+    db: AsyncSession,
+    *,
+    raw_token: str,
+    event_type: AuditPackAccessEventType,
+    requester: Requester,
+    now: datetime | None = None,
+) -> AuditPack:
+    """Resolve a share token to its pack and record the access.
+
+    Raises ResourceNotFoundError and ShareLinkClosed as _live_pack does, and
+    EmailVerificationRequired (logged as denied) when the pack needs a viewer grant and
+    requester.grant is missing or not one of this pack's. The link is checked first, so revoking
+    or expiring it also shuts out every grant earned through it.
+    """
+    now = now or datetime.now(UTC)
+    pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
+    if requires_email_code(pack) and not await grant_is_valid(db, pack, raw_grant=requester.grant, now=now):
+        _log(db, pack, AuditPackAccessEventType.DENIED_UNVERIFIED, requester)
+        await db.flush()
+        assert pack.recipient_email is not None  # requires_email_code checked it
+        raise EmailVerificationRequired(mask_email(pack.recipient_email))
     _log(db, pack, event_type, requester)
     await db.flush()
     return pack
+
+
+async def request_shared_pack_code(
+    db: AsyncSession, *, raw_token: str, requester: Requester, now: datetime | None = None,
+) -> str:
+    """Email a fresh one-time code to the pack's recipient; returns the masked address.
+
+    Raises what _live_pack and email_codes.send_email_code raise. The send is logged only
+    once SendGrid has accepted it, so the dispatcher never sees "code sent" for an email
+    that never left.
+    """
+    now = now or datetime.now(UTC)
+    pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
+    reference = (await db.execute(select(Trip.trip_reference).where(Trip.id == pack.trip_id))).scalar_one()
+    await send_email_code(db, pack, label=pack_label(reference, pack.pack_version), now=now)
+    _log(db, pack, AuditPackAccessEventType.CODE_SENT, requester)
+    await db.flush()
+    assert pack.recipient_email is not None  # send_email_code refuses a pack without one
+    return mask_email(pack.recipient_email)
+
+
+async def verify_shared_pack_code(
+    db: AsyncSession, *, raw_token: str, code: str, requester: Requester, now: datetime | None = None,
+) -> CodeCheck:
+    """Check a code entered on the portal. Every attempt is logged, right or wrong, so the
+    issuing dispatcher can see someone guessing at a forwarded link."""
+    now = now or datetime.now(UTC)
+    pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
+    check = await check_email_code(db, pack, code=code, now=now)
+    _log(db, pack, _CODE_EVENT[check.outcome], requester)
+    await db.flush()
+    return check
 
 
 async def _seal_receipt(db: AsyncSession, pack: AuditPack) -> BlockchainReceipt | None:

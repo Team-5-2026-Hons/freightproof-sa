@@ -19,7 +19,8 @@ export const AUDIT_PACK_EXPIRY_OPTIONS: AuditPackExpiryDays[] = [7, 30, 90]
 export interface AuditPackCreate {
   recipient_name: string
   recipient_organization: string
-  recipient_email: string | null
+  // Required since FP-291: the pack opens only after a code emailed here is entered.
+  recipient_email: string
   purpose: AuditPackPurpose
   external_reference: string | null
   scope_consignment_id: string | null

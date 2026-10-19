@@ -341,6 +341,11 @@ class FileStorageUnavailableError(Exception):
     Domain-side twin of the storage layer's availability error."""
 
 
+class EmailUnavailableError(Exception):
+    """An email could not be handed to the provider, or none is configured (503). Lives
+    here so the API layer can map it without importing app.integrations."""
+
+
 class HandoverLinkInvalidError(Exception):
     """A presented handover link cannot be used, for any reason (404).
 

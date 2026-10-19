@@ -9,7 +9,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Swipe } from '@/components/Swipe'
 import { ConsentGate } from '@/components/ConsentGate'
-import { SelfieCapture } from '@/components/SelfieCapture'
 import {
   confirmHandover,
   fetchScan,
@@ -78,9 +77,9 @@ function clearStashedIdentity(): void {
   }
 }
 
-// 'consent' / 'verifying' / 'selfie' sit between 'loading' and 'ready'. None may become a
-// dead end — every path out of them lands back on 'ready'.
-type Status = 'loading' | 'invalid' | 'consent' | 'verifying' | 'selfie' | 'ready' | 'signing' | 'done'
+// 'consent' / 'verifying' sit between 'loading' and 'ready'. Neither may become a dead
+// end — every path out of them lands back on 'ready'.
+type Status = 'loading' | 'invalid' | 'consent' | 'verifying' | 'ready' | 'signing' | 'done'
 
 /** Resolves to a fix, or to null on refusal, failure or timeout. Never rejects. */
 function capturePosition(): Promise<PositionFix | null> {
@@ -108,8 +107,6 @@ export function HandoverPageClient({ token }: { token: string }) {
   // Busy flag for ConsentGate's `busy` prop: the consent-record call stays on this screen
   // in flight rather than swapping pages.
   const [consentBusy, setConsentBusy] = useState(false)
-  // Tier-3 artifact — held here between capture and confirm; no upload endpoint yet.
-  const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -234,7 +231,9 @@ export function HandoverPageClient({ token }: { token: string }) {
     setConsentBusy(true)
     try {
       await recordConsent(token, consentPayloadText(), false)
-      setStatus('selfie')
+      // No selfie step: one that was never stored proved nothing (FP-316), so a receiver
+      // with no ID goes straight to confirming, recorded as typed-only.
+      setStatus('ready')
     } catch (err: unknown) {
       console.warn('[handover] consent record failed:', err)
       setStatus('ready')
@@ -257,15 +256,6 @@ export function HandoverPageClient({ token }: { token: string }) {
       setStatus('ready')
     }
   }, [token])
-
-  const handleSelfieCaptured = useCallback((dataUrl: string) => {
-    setSelfiePhoto(dataUrl)
-    setStatus('ready')
-  }, [])
-
-  const handleSelfieSkip = useCallback(() => {
-    setStatus('ready')
-  }, [])
 
   // Shared by both the consent screen and the ready screen.
   const showIdShapeHint = idNumber.trim().length > 0 && !looksLikeSaIdNumber(idNumber)
@@ -316,7 +306,7 @@ export function HandoverPageClient({ token }: { token: string }) {
     )
   }
 
-  if (status === 'consent' || status === 'selfie') {
+  if (status === 'consent') {
     const identityKnown = hasRecipientIdentity(name, idNumber)
 
     return (
@@ -357,9 +347,7 @@ export function HandoverPageClient({ token }: { token: string }) {
           </label>
         </div>
 
-        {status === 'selfie' ? (
-          <SelfieCapture onCaptured={handleSelfieCaptured} onSkip={handleSelfieSkip} />
-        ) : identityKnown ? (
+        {identityKnown ? (
           <ConsentGate
             onProceed={(hasDocument) => { void handleConsentProceed(hasDocument) }}
             onDecline={() => { void handleConsentDecline() }}
