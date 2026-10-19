@@ -399,7 +399,6 @@ export function ProblemsTab({ query, allTimeStart, today }: ProblemsTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[12px] text-on-surf-v">{COPY.tabNote}</p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PerTripCard problems={problems} grain={grain} today={today} />
         <TheftCard problems={problems} grain={grain} today={today} />

@@ -62,13 +62,12 @@ beforeEach(() => {
 })
 
 describe('ReviewDeskTab', () => {
-  it('asks once and says the tab covers open and closed trips alike', async () => {
+  it('asks once for the tab period', async () => {
     mockedGet.mockResolvedValue(makeReview(true))
 
     renderTab()
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(PATH))
-    expect(screen.getByText(/on open and closed trips alike/)).toBeInTheDocument()
   })
 
   it('bands the waiting queue by age and links to it', async () => {

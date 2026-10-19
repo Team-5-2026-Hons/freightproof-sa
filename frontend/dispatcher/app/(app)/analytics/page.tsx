@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import { FleetTiles } from '@/components/analytics/fleet/FleetTiles'
 import { ControlRow, type TabControls } from '@/components/analytics/fleet/controls/ControlRow'
+import { COST_COPY } from '@/components/analytics/fleet/costCopy'
 import { FLEET_COPY } from '@/components/analytics/fleet/copy'
 import {
   TAB_PARAM,
@@ -64,6 +65,19 @@ const INITIAL_CONTROLS: Record<TabId, TabControls> = {
   evidence: DEFAULT_CONTROLS,
   routes: DEFAULT_CONTROLS,
   cost: DEFAULT_CONTROLS,
+}
+
+// Every tab shares the page's two notes; a few add one of their own after them.
+const PAGE_NOTES: readonly string[] = [FLEET_COPY.scopeNote, FLEET_COPY.dataNote]
+const TAB_NOTES: Partial<Record<TabId, string>> = {
+  problems: FLEET_COPY.problems.tabNote,
+  review: FLEET_COPY.review.tabNote,
+  cost: COST_COPY.tabNote,
+}
+
+function notesFor(tab: TabId): readonly string[] {
+  const tabNote = TAB_NOTES[tab]
+  return tabNote === undefined ? PAGE_NOTES : [...PAGE_NOTES, tabNote]
 }
 
 // Busy patterns need lots of history to mean anything, so they default to All time.
@@ -150,10 +164,8 @@ function FleetAnalytics() {
               showGrain={!TABS_WITHOUT_GRAIN.includes(active)}
               today={today}
               allTimeStart={allTimeStart}
+              notes={notesFor(active)}
             />
-            <p className="text-[12px] text-on-surf-v">{FLEET_COPY.scopeNote}</p>
-            {/* Where the figures come from, once for the page; each card's "i" names its own. */}
-            <p className="text-[12px] text-on-surf-v">{FLEET_COPY.dataNote}</p>
             {/* Only the open tab is mounted, so only its requests run. */}
             {active === 'activity' && (
               <ActivityTab

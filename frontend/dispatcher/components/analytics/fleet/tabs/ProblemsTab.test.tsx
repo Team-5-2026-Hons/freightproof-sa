@@ -74,13 +74,12 @@ beforeEach(() => {
 })
 
 describe('ProblemsTab', () => {
-  it('asks once for the tab period and says dispatcher notes are not counted', async () => {
+  it('asks once for the tab period', async () => {
     mockedGet.mockResolvedValue(makeProblems(8))
 
     renderTab()
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(PATH))
-    expect(screen.getByText(/Dispatcher notes .* are not counted as problems/)).toBeInTheDocument()
   })
 
   it('counts problems over time, with the rate per trip beside the trips it rests on', async () => {

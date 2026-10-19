@@ -159,7 +159,6 @@ describe('Analytics page', () => {
     expect(await screen.findByText('Live trips')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Activity' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('heading', { name: 'Trips over time' })).toBeInTheDocument()
-    expect(screen.getByText(/Trends count closed trips/)).toBeInTheDocument()
   })
 
   it('opens the tab named in the address', async () => {
@@ -271,13 +270,33 @@ describe('Analytics page', () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/analytics?tab=problems', { scroll: false }))
   })
 
-  it('says where the page\'s figures come from, including the simulated feeds', async () => {
+  it('keeps the page notes behind the Information button until it is clicked', async () => {
+    renderPage()
+    await screen.findByText('Live trips')
+
+    expect(screen.queryByText(/Trends count closed trips/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Information' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'About these figures' })
+    expect(within(dialog).getByText(/Trends count closed trips/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Every figure comes from FreightProof/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/simulated and mock feeds until live credentials arrive/)).toBeInTheDocument()
+  })
+
+  it.each([
+    ['cost', /Estimates use your cost rates below/],
+    ['problems', /Dispatcher notes .* are not counted as problems/],
+    ['review', /on open and closed trips alike/],
+  ])('adds the %s tab\'s own note to the Information pop-up', async (tab, note) => {
+    searchParams = new URLSearchParams(`tab=${tab}`)
     renderPage()
 
-    expect(await screen.findByText(/Every figure comes from FreightProof/)).toBeInTheDocument()
-    expect(screen.getByText(/simulated and mock feeds until live credentials arrive/)).toBeInTheDocument()
-    // The existing scope note stays beside it, not replaced by it.
-    expect(screen.getByText(/Trends count closed trips/)).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'Information' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'About these figures' })
+    expect(within(dialog).getByText(note)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Trends count closed trips/)).toBeInTheDocument()
   })
 
   it('opens the incident map on Today when the address says so, and asks only for today', async () => {
