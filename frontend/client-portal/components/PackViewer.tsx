@@ -2,11 +2,13 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useState } from 'react'
-import { PackError, fetchPack, pdfUrl } from '@/lib/api'
+import { PackError, fetchPack } from '@/lib/api'
 import { formatSast, humanise } from '@/lib/format'
 import { buildTimeline } from '@/lib/timeline'
 import type { PublicAuditPackView } from '@/lib/types'
 import { Card } from './Card'
+import { DownloadButton } from './DownloadButton'
+import { EmailCodeGate } from './EmailCodeGate'
 import { EventDetail } from './EventDetail'
 import { PdfCheck } from './PdfCheck'
 import { Cargo, Coverage, DataProtection, Exceptions, Incident, Integrity, Observations, Parties, TierLegend } from './Sections'
@@ -19,11 +21,17 @@ const RouteMap = dynamic(() => import('./RouteMap'), {
   loading: () => <div className="h-[380px] animate-pulse rounded-md bg-surf-low sm:h-[460px]" />,
 })
 
-type Load = { state: 'loading' } | { state: 'ready'; view: PublicAuditPackView } | { state: 'error'; status: number; message: string }
+type Load =
+  | { state: 'loading' }
+  | { state: 'ready'; view: PublicAuditPackView }
+  | { state: 'needs-code'; emailHint: string }
+  | { state: 'error'; status: number; message: string }
 
 export function PackViewer({ token }: { token: string }) {
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Bumped after the emailed code is accepted, so the pack is fetched again with the grant.
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -31,6 +39,10 @@ export function PackViewer({ token }: { token: string }) {
       .then((view) => !cancelled && setLoad({ state: 'ready', view }))
       .catch((err: unknown) => {
         if (cancelled) return
+        if (err instanceof PackError && err.verificationRequired) {
+          setLoad({ state: 'needs-code', emailHint: err.emailHint ?? '' })
+          return
+        }
         const status = err instanceof PackError ? err.status : 0
         const message = err instanceof PackError ? err.message : 'The audit pack could not be loaded. Check your connection and try again.'
         setLoad({ state: 'error', status, message })
@@ -38,13 +50,25 @@ export function PackViewer({ token }: { token: string }) {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, attempt])
 
   const items = useMemo(() => (load.state === 'ready' ? buildTimeline(load.view.manifest) : []), [load])
   const selected = items.find((i) => i.id === selectedId) ?? null
 
   if (load.state === 'loading') {
     return <p className="px-4 py-24 text-center text-sm text-muted">Opening audit pack…</p>
+  }
+  if (load.state === 'needs-code') {
+    return (
+      <EmailCodeGate
+        token={token}
+        emailHint={load.emailHint}
+        onVerified={() => {
+          setLoad({ state: 'loading' })
+          setAttempt((n) => n + 1)
+        }}
+      />
+    )
   }
   if (load.state === 'error') {
     return (
@@ -76,9 +100,14 @@ export function PackViewer({ token }: { token: string }) {
               </p>
               <p className="num text-[12px] text-white/60">Issued {formatSast(seal.issued_at)} · link valid until {formatSast(seal.expires_at)}</p>
             </div>
-            <a href={pdfUrl(token)} className="no-print rounded-md border border-white/20 bg-gradient-to-br from-ink to-ink-soft px-4 py-2 text-[13px] font-semibold hover:border-white/40">
+            <DownloadButton
+              token={token}
+              file="pdf"
+              filename={`${seal.pack_label}.pdf`}
+              className="rounded-md border border-white/20 bg-gradient-to-br from-ink to-ink-soft px-4 py-2 text-[13px] font-semibold hover:border-white/40 disabled:opacity-60"
+            >
               Download PDF
-            </a>
+            </DownloadButton>
           </div>
         </div>
       </header>

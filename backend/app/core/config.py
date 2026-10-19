@@ -34,13 +34,18 @@ class Settings(BaseSettings):
     # The Hedera SDK has no built-in timeout.
     HEDERA_SUBMIT_TIMEOUT_SECONDS: float = 15.0
 
-    # Twilio and SendGrid are not implemented yet.
+    # Twilio is not implemented yet.
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
 
+    # SendGrid sends one thing: the one-time code that opens an audit pack (FP-291). Empty
+    # key = codes cannot be sent, so emailed packs refuse to open (503) rather than open
+    # without the check. FROM must be a sender verified in the SendGrid account.
     SENDGRID_API_KEY: str = ""
     SENDGRID_FROM_EMAIL: str = ""
+    SENDGRID_API_URL: str = "https://api.sendgrid.com"
+    SENDGRID_TIMEOUT_SECONDS: float = 10.0
 
     # Full admin access: server-side only, never sent to a browser.
     SUPABASE_SERVICE_ROLE_KEY: str

@@ -10,6 +10,7 @@ chain-verified (FP-161 review: "avoid exporting a polished document that implies
 included fact is chain-verified"). Pure module: no DB, no HTTP.
 """
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -451,8 +452,22 @@ RECIPIENT_EMAIL_MAX_LENGTH = 320  # audit_packs.recipient_email (RFC 5321 ceilin
 _RecipientStr = Annotated[
     str, StringConstraints(min_length=1, max_length=RECIPIENT_MAX_LENGTH), AfterValidator(clean_text)
 ]
+# Shape only (one @, a dotted domain, no spaces). Whether the inbox exists is proved by
+# the recipient entering the emailed code, which no syntax check could do.
+_EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _email_shaped(value: str) -> str:
+    if not _EMAIL_SHAPE.fullmatch(value):
+        raise ValueError("Enter the recipient's email address, e.g. name@insurer.co.za")
+    return value
+
+
 _RecipientEmail = Annotated[
-    str, StringConstraints(min_length=3, max_length=RECIPIENT_EMAIL_MAX_LENGTH), AfterValidator(clean_text)
+    str,
+    StringConstraints(min_length=3, max_length=RECIPIENT_EMAIL_MAX_LENGTH),
+    AfterValidator(clean_text),
+    AfterValidator(_email_shaped),
 ]
 _Reference = Annotated[
     str, StringConstraints(min_length=1, max_length=REFERENCE_MAX_LENGTH), AfterValidator(clean_text)
@@ -464,7 +479,9 @@ class AuditPackCreate(BaseModel):
 
     recipient_name: _RecipientStr
     recipient_organization: _RecipientStr
-    recipient_email: _RecipientEmail | None = None
+    # Required since FP-291: the pack opens only after a code sent here is entered, so a
+    # forwarded link alone is not enough. Packs issued before then may have none.
+    recipient_email: _RecipientEmail
     purpose: AuditPackPurpose
     external_reference: _Reference | None = None
     scope_consignment_id: UUID | None = None
@@ -620,3 +637,28 @@ class IncidentDeclarationCreate(BaseModel):
         if all(getattr(self, name) is None for name in _DECLARED_FACTS):
             raise ValueError("Declare at least one police or notification fact.")
         return self
+
+
+# ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+
+EMAIL_CODE_PATTERN = r"^[0-9]{6}$"
+
+
+class EmailCodeSent(_Frozen):
+    """Where the code went, masked (j***@santam.co.za): the holder of a forwarded link
+    learns which inbox to ask about, not the full address."""
+
+    email_hint: str
+
+
+class EmailCodeEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=EMAIL_CODE_PATTERN)]
+
+
+class ViewerGrant(_Frozen):
+    """Sent back as the X-Audit-Pack-Grant header on every later request for the pack."""
+
+    grant: str
+    expires_at: datetime

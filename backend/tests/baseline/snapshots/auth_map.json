@@ -266,24 +266,28 @@
   "GET /api/v1/public/audit-packs/{token}": {
     "access": "none",
     "dependencies": [
+      "app.api.v1.endpoints.audit_packs_public._grant_header",
       "rate_limit:audit_pack_public"
     ]
   },
   "GET /api/v1/public/audit-packs/{token}/artifacts/{artifact_id}": {
     "access": "none",
     "dependencies": [
+      "app.api.v1.endpoints.audit_packs_public._grant_header",
       "rate_limit:audit_pack_public"
     ]
   },
   "GET /api/v1/public/audit-packs/{token}/incident-sheet.pdf": {
     "access": "none",
     "dependencies": [
+      "app.api.v1.endpoints.audit_packs_public._grant_header",
       "rate_limit:audit_pack_public"
     ]
   },
   "GET /api/v1/public/audit-packs/{token}/pdf": {
     "access": "none",
     "dependencies": [
+      "app.api.v1.endpoints.audit_packs_public._grant_header",
       "rate_limit:audit_pack_public"
     ]
   },
@@ -605,9 +609,22 @@
       "rate_limit:precinct_mutation"
     ]
   },
+  "POST /api/v1/public/audit-packs/{token}/email-code": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_email_code"
+    ]
+  },
+  "POST /api/v1/public/audit-packs/{token}/email-code/verify": {
+    "access": "none",
+    "dependencies": [
+      "rate_limit:audit_pack_email_code"
+    ]
+  },
   "POST /api/v1/public/audit-packs/{token}/verify": {
     "access": "none",
     "dependencies": [
+      "app.api.v1.endpoints.audit_packs_public._grant_header",
       "rate_limit:blockchain_verify"
     ]
   },

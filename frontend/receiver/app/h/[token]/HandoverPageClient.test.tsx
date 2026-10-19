@@ -76,4 +76,15 @@ describe('HandoverPageClient consent handlers', () => {
     await waitFor(() => expect(api.recordConsent).toHaveBeenCalledWith(TOKEN, consentPayloadText(), false))
     expect(api.recordConsentDecline).not.toHaveBeenCalled()
   })
+
+  it('goes straight to confirming when the receiver has no ID — no selfie step', async () => {
+    const user = await reachConsentGate()
+
+    await user.click(await screen.findByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /don.t have my id/i }))
+
+    expect(await screen.findByLabelText('Swipe to confirm delivery')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /identity check/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/selfie|photo of your face/i)).not.toBeInTheDocument()
+  })
 })

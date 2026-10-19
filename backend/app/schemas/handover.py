@@ -120,7 +120,7 @@ class HandoverConsentRequest(BaseModel):
     # sends its decline without it, so a default of True would store that refusal as
     # agreement. A missing decision is rejected (422) and the stale page has to reload.
     consented: bool
-    has_document: bool = True  # False routes to selfie-only tier, not a refusal
+    has_document: bool = True  # False records consent at the typed-only tier, not a refusal
 
 
 class HandoverResolveRequest(BaseModel):

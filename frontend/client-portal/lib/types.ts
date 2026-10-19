@@ -379,3 +379,15 @@ export interface LiveVerification {
   records: LiveRecordCheck[]
   records_added_since_issue: number
 }
+
+// ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+
+export interface EmailCodeSent {
+  /** Masked, e.g. j***@santam.co.za. */
+  email_hint: string
+}
+
+export interface ViewerGrant {
+  grant: string
+  expires_at: string
+}
