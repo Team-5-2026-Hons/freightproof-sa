@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
+from app.orchestration.substitutions.access import lock_trip_statement, require_current_driver
 
 
 def _lock_trip(statement: Select[tuple[Trip]]) -> Select[tuple[Trip]]:
@@ -21,24 +22,40 @@ def _lock_trip(statement: Select[tuple[Trip]]) -> Select[tuple[Trip]]:
     Always taken before the PhaseEvent lock, so every path locks in the same order: a phase
     write and a cancellation queue behind each other but can never deadlock.
 
-    FOR NO KEY UPDATE, not FOR UPDATE: the anchor worker holds a phase row and inserts a
-    BlockchainReceipt, whose trip_id foreign key takes FOR KEY SHARE on the trip. FOR UPDATE
-    conflicts with that, so a replayed completion (trip lock, then queue on the phase row)
-    would deadlock with the worker. FOR NO KEY UPDATE still conflicts with cancel_trip's
-    FOR UPDATE and with itself, which is all the serialisation needed here.
+    The mode and its reasoning (FOR NO KEY UPDATE, compatible with the anchor worker's
+    receipt FK insert) live in substitutions.access.lock_trip_statement, shared with the
+    driver-substitution lock order so every path locks the trip identically.
     """
-    return statement.with_for_update(of=Trip, key_share=True)
+    return lock_trip_statement(statement)
 
 
 async def _load_trip_for_driver(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, lock: bool = False,
 ) -> Trip:
-    statement = select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
-    result = await db.execute(_lock_trip(statement) if lock else statement)
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-    return trip
+    """The trip, for the driver who holds it now.
+
+    Not `Trip.driver_id == driver_id`: that is the journey lock's original driver and never
+    changes. 404 for anyone who never held the trip; a former driver gets TripHandedOverError.
+    """
+    return await require_current_driver(db, trip_id=trip_id, driver_id=driver_id, lock=lock)
+
+
+async def _find_own_completion(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
+    idempotency_key: str,
+) -> uuid.UUID | None:
+    """The addressed phase's id if THIS driver already had it accepted under THIS key.
+
+    Both halves are the proof: the key alone could be another driver's, and the actor alone
+    could be a different submission. Rows written before actors were stamped never match, so a
+    legacy completion is never mistaken for a driver's own.
+    """
+    return (await db.execute(
+        select(PhaseEvent.id).where(
+            PhaseEvent.id == phase_event_id, PhaseEvent.trip_id == trip_id,
+            PhaseEvent.idempotency_key == idempotency_key, PhaseEvent.performed_by_driver_id == driver_id,
+        )
+    )).scalar_one_or_none()
 
 
 async def _load_trip_for_dispatcher(

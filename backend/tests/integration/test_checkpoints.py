@@ -105,7 +105,8 @@ async def test_driver_cannot_log_checkpoint_on_someone_elses_trip(client: AsyncC
         json={"checkpoint_type": "manual"},
         headers=auth_header(token),
     )
-    assert resp.status_code == 403
+    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
+    assert resp.status_code == 404
 
 
 async def test_checkpoint_replay_preserves_validated_phase_context(client: AsyncClient, db_session, seed_trip):
@@ -233,14 +234,21 @@ async def _delete_committed_checkpoint_race_world(session: AsyncSession, ids: di
     await session.commit()
 
 
+# How long the first session waits for a partner that the trip lock keeps out.
+_RACE_BARRIER_SECONDS = 1.0
+
+
 async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separation_finding(
     test_engine, monkeypatch,
 ):
-    """Two sessions cross the real replay lookup together and recover the unique race.
+    """Two sessions replay the same queued checkpoint together and one checkpoint results.
 
-    The barrier sits immediately after the actual first existence SELECT: both sessions
-    have observed no checkpoint, so the loser must recover the database uniqueness race
-    rather than merely taking the ordinary sequential replay branch.
+    The barrier sits immediately after the actual first existence SELECT, to make both
+    sessions observe "no checkpoint" and force the database uniqueness race. Since FP-83 C2
+    log_checkpoint takes the trip lock before that lookup, so the second session cannot reach
+    the barrier until the first has committed: the barrier is bounded and its timeout is the
+    expected outcome, after which the second session takes the ordinary replay branch. The
+    unique index remains as the backstop, and the end state asserted below is unchanged.
     """
     async with AsyncSession(test_engine, expire_on_commit=False) as seed_session:
         ids = await _seed_committed_checkpoint_race_world(seed_session)
@@ -254,7 +262,10 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
         existing = await original_lookup(*args, **kwargs)
         if lookup_calls < 2:
             lookup_calls += 1
-            await barrier.wait()
+            try:
+                await asyncio.wait_for(barrier.wait(), _RACE_BARRIER_SECONDS)
+            except (TimeoutError, asyncio.BrokenBarrierError):
+                pass  # serialised by the trip lock: the other session is queued behind this one
         return existing
 
     captured_at = datetime.now(UTC)

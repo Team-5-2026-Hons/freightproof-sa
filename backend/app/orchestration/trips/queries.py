@@ -10,11 +10,11 @@ import uuid
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ResourceNotFoundError
 from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, TripStatus
 from app.db.models.organisations import Precinct
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
+from app.orchestration.substitutions.access import current_driver_id_expression, require_current_driver
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import DriverTripListItemResponse, TripDetailResponse
 
@@ -61,7 +61,11 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     )
     result = await db.execute(
         select(Trip)
-        .where(Trip.driver_id == driver_id, Trip.status.notin_(inactive))
+        .where(
+            # The driver holding the trip now; Trip.driver_id is only the journey lock's original.
+            current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id) == driver_id,
+            Trip.status.notin_(inactive),
+        )
         .order_by(
             underway_first,
             Trip.planned_departure_at.asc().nulls_last(),
@@ -187,8 +191,8 @@ async def get_own_trip_detail_for_driver(
 ) -> TripDetailResponse:
     """Full detail for one of THIS driver's trips — backs GET /trips/me/{trip_id}.
 
-    Raises ResourceNotFoundError when the trip does not exist OR belongs to another
-    driver. The two are deliberately indistinguishable: a driver enumerating trip
+    Raises ResourceNotFoundError when the trip does not exist OR this driver never held it.
+    The two are deliberately indistinguishable: a driver enumerating trip
     UUIDs must not be able to tell a real trip from a stranger's one, so a
     404 covers both rather than a 403 confirming existence.
 
@@ -196,13 +200,9 @@ async def get_own_trip_detail_for_driver(
     blockchain_receipts (hashes and tx ids only, no PII) because the PWA renders
     the anchor state.
     """
-    trip = (
-        await db.execute(
-            select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
-        )
-    ).scalars().first()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
+    # 404 for a driver who never held the trip, TripHandedOverError for one who held it earlier
+    # (their history is a separate, restricted read); never the current trip data.
+    trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
     return _driver_view(
         await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
     )

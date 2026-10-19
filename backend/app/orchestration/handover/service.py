@@ -32,6 +32,9 @@ from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.orchestration.evidence.artifacts import create_receiver_artifact
 from app.orchestration.evidence.attribution import EvidenceAttribution
+from app.orchestration.substitutions.access import (
+    WriteClaim, authorise_driver_write, require_current_driver,
+)
 from app.orchestration.handover.capability import (
     HandoverRedemptionResult,
     RotationResult,
@@ -119,23 +122,15 @@ class VerificationStart:
     session_url: Optional[str]
 
 
-async def load_confirmation_target(
-    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID, driver_id: uuid.UUID,
+async def _confirmation_target(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID,
 ) -> ConfirmationTarget:
-    """Resolve a confirmation phase event the given driver actually owns.
-
-    Ownership is checked in the same query, not after it: a driver who doesn't own the
-    trip gets the same not-found as a trip that doesn't exist, so no row detail leaks.
-    """
     event = (
         await db.execute(
-            select(PhaseEvent)
-            .join(Trip, Trip.id == PhaseEvent.trip_id)
-            .where(
+            select(PhaseEvent).where(
                 PhaseEvent.id == phase_event_id,
                 PhaseEvent.trip_id == trip_id,
                 PhaseEvent.phase_type == PhaseType.CONFIRMATION,
-                Trip.driver_id == driver_id,
             )
         )
     ).scalar_one_or_none()
@@ -145,6 +140,31 @@ async def load_confirmation_target(
     return ConfirmationTarget(
         event_id=event.id, trip_id=event.trip_id, trip_stop_id=event.trip_stop_id,
     )
+
+
+async def load_confirmation_target(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID, driver_id: uuid.UUID,
+) -> ConfirmationTarget:
+    """Resolve a confirmation phase event on a trip the given driver holds right now (a read).
+
+    Authority is decided against current custody, not Trip.driver_id (the original driver): a
+    stranger gets the same not-found as a missing trip, and a driver who held the trip earlier
+    gets TripHandedOverError.
+    """
+    await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
+    return await _confirmation_target(db, trip_id=trip_id, phase_event_id=phase_event_id)
+
+
+async def load_confirmation_target_for_write(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID, driver_id: uuid.UUID,
+    custody_sequence: int | None,
+) -> ConfirmationTarget:
+    """As load_confirmation_target, for issuing a receiver link: a live write, so it locks the
+    trip and requires the capture's custody sequence. A former driver cannot mint a new link."""
+    await authorise_driver_write(
+        db, trip_id=trip_id, driver_id=driver_id, claim=WriteClaim(custody_sequence),
+    )
+    return await _confirmation_target(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
 
 async def ensure_handover_open(db: AsyncSession, *, target: ConfirmationTarget) -> None:

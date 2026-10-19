@@ -16,7 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
     EvidenceAttributionError,
     PhaseBlockedError,
     PhaseSequenceError,
@@ -63,6 +65,8 @@ async def list_phases_endpoint(
         events = await list_phases(db, trip_id=trip_id, driver_id=current_driver.id)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return [
@@ -87,6 +91,8 @@ async def next_phase_endpoint(
         event = await next_phase(db, trip_id=trip_id, driver_id=current_driver.id)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     if event is None:
         return None
     stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
@@ -121,6 +127,8 @@ async def preview_phase_location_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PhaseLocationPreviewConflictError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.post(
@@ -150,6 +158,8 @@ async def complete_phase_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     except (
         PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
         TripActivationBlockedError, PhaseBlockedError,

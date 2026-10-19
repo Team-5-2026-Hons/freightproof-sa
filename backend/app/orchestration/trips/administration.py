@@ -18,6 +18,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.orchestration.evidence_anchors.recording import register_exception
 from app.orchestration.exceptions.review_policy import dispatcher_authored_review
+from app.orchestration.substitutions.termination import cancel_pending_for_terminal_trip
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
@@ -26,6 +27,9 @@ from app.schemas.trips import TripDetailResponse
 # A stable prefix, not free prose, so the actor stays greppable (and parseable by a
 # future migration that moves it into a real raised_by_user_id column).
 _CANCELLED_BY_PREFIX = "Cancelled by user "
+
+# Why a pending driver handover was ended when its trip was cancelled.
+TRIP_CANCELLED_REASON = "Trip cancelled"
 
 
 async def cancel_trip(
@@ -58,6 +62,9 @@ async def cancel_trip(
 
     trip.status = TripStatus.CANCELLED
     trip.closed_at = datetime.now(UTC)
+    # A pending driver handover cannot outlive its trip: cancel it, free the incoming driver's
+    # reservation and notify both drivers in this same transaction (FP-83).
+    await cancel_pending_for_terminal_trip(db, trip=trip, reason=TRIP_CANCELLED_REASON)
 
     # Phase rows are deliberately left untouched — they stay whatever they were
     # (most still PENDING), which is the honest record of a plan abandoned partway

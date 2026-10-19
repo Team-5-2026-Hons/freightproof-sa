@@ -170,6 +170,11 @@ class _PhaseCompleteBase(BaseModel):
     # sending a longer key gets a 500 from Postgres on the INSERT rather than a 422, and
     # on the one path where replay-safety matters most.
     idempotency_key: str = Field(..., min_length=1, max_length=_IDEMPOTENCY_KEY_MAX_LENGTH)
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
     # Where the driver's phone was when this phase was completed. Every phase carries
     # it now, not just activation: the PWA captures the fix silently at submit time
     # (there is no longer a "Capture GPS Location" step for the driver to tap), and

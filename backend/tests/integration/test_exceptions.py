@@ -281,7 +281,8 @@ async def test_driver_cannot_raise_exception_on_someone_elses_trip(client: Async
         json={"exception_type": "panic_button", "description": "x"},
         headers=auth_header(token),
     )
-    assert resp.status_code == 403
+    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
+    assert resp.status_code == 404
 
 
 async def test_driver_raises_exception_on_unknown_trip_returns_404(client: AsyncClient, db_session):

@@ -12,7 +12,8 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
-from app.core.exceptions import ResourceNotFoundError
+from app.api.v1.custody_errors import custody_http_exception
+from app.core.exceptions import CustodyAccessError, ResourceNotFoundError
 from app.core.limits import EVIDENCE_WRITE
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
@@ -37,9 +38,10 @@ async def record_locations_endpoint(
     try:
         recorded = await record_location_pings(
             db, trip_id=trip_id, driver_id=current_driver.id, pings=payload.pings,
+            custody_sequence=payload.custody_sequence,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     return LocationPingBatchResult(recorded=recorded)

@@ -370,3 +370,132 @@ class EvidenceAttributionError(Exception):
     """An artifact's phase/role attribution is not allowed: a role the phase type does not
     take, a role a driver may not claim, or a cited artifact attributed to something else
     (422 at the route)."""
+
+
+class CustodyAccessError(Exception):
+    """A driver is known to the trip but may not act on it as they tried (409).
+
+    Subclasses carry the contract's stable `code` (docs/contracts/driver-substitution-v1.md).
+    The API layer renders `{code, message, evidence_id?}`; nothing here names the current
+    driver or any trip data, so a former participant learns only that custody moved.
+    """
+
+    code: str = ""
+    # Safe to show a driver; never includes a trip, driver or evidence detail.
+    message: str = ""
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class TripHandedOverError(CustodyAccessError):
+    """The caller held this trip earlier but is not the current driver."""
+
+    code = "TRIP_HANDED_OVER"
+    message = "This trip has been handed to another driver. Your earlier evidence is kept."
+
+
+class CustodyContextChangedError(CustodyAccessError):
+    """The evidence was captured under a custody period that is no longer current."""
+
+    code = "CUSTODY_CONTEXT_CHANGED"
+    message = "This was captured before the trip changed driver. Submit it as late evidence."
+
+
+class CustodyContextRequiredError(CustodyAccessError):
+    """The trip has changed driver, so the capture must say which custody period it belongs to."""
+
+    code = "CUSTODY_CONTEXT_REQUIRED"
+    message = "This trip has changed driver; the capture must state its custody period."
+
+
+class EvidenceAlreadyRecordedError(CustodyAccessError):
+    """A former driver's retry of an action this same driver already had accepted (409).
+
+    `evidence_id` is the stored record's own id: an opaque reference the client uses to clear
+    exactly that queued item, and nothing else about the trip.
+    """
+
+    code = "EVIDENCE_ALREADY_RECORDED"
+    message = "This was already recorded before the trip changed driver."
+
+    def __init__(self, evidence_id: uuid.UUID) -> None:
+        super().__init__()
+        self.evidence_id = evidence_id
+
+
+class IdempotencyKeyReusedError(CustodyAccessError):
+    """A request id already used by a different driver's submission on this trip (409).
+
+    Only raised once a trip has changed driver, where answering "already recorded" would hand
+    one driver another's evidence as their own success.
+    """
+
+    code = "IDEMPOTENCY_KEY_REUSED"
+    message = "This request id belongs to a different submission. Start a new one."
+
+
+class SubstitutionError(Exception):
+    """A driver-handover request cannot proceed as asked (FP-83 C3).
+
+    Subclasses carry the contract's stable `code` (docs/contracts/driver-substitution-v1.md).
+    The HTTP mapping (409 unless noted) is C6's; this layer only says what went wrong.
+    `request_id`/`current_version` let a stale client refetch the arrangement it lost.
+    """
+
+    code: str = ""
+    message: str = ""
+
+    def __init__(
+        self, *, request_id: uuid.UUID | None = None, current_version: int | None = None,
+    ) -> None:
+        super().__init__(self.message)
+        self.request_id = request_id
+        self.current_version = current_version
+
+
+class SubstitutionVersionChangedError(SubstitutionError):
+    """The client acted on a version of the arrangement that has since moved on."""
+
+    code = "SUBSTITUTION_VERSION_CHANGED"
+    message = "This handover changed since you loaded it. Refresh and try again."
+
+
+class SubstitutionNotPendingError(SubstitutionError):
+    """The arrangement was already cancelled, replaced or completed."""
+
+    code = "SUBSTITUTION_NOT_PENDING"
+    message = "This handover is no longer pending."
+
+
+class IncomingDriverInactiveError(SubstitutionError):
+    code = "INCOMING_DRIVER_INACTIVE"
+    message = "The incoming driver's account is not active."
+
+
+class LicenceInvalidError(SubstitutionError):
+    code = "LICENCE_INVALID"
+    message = "The incoming driver's licence expiry is missing or has passed."
+
+
+class IncomingDriverUnavailableError(SubstitutionError):
+    code = "DRIVER_UNAVAILABLE"
+    message = "The incoming driver is committed to another trip in that window."
+
+
+class IdentityNotVerifiedError(SubstitutionError):
+    code = "IDENTITY_NOT_VERIFIED"
+    message = "The incoming driver's identity is not verified."
+
+
+class IdentityAttestationForbiddenError(SubstitutionError):
+    """A non-admin dispatcher tried to attest unavailable identity (403)."""
+
+    code = "IDENTITY_ATTESTATION_FORBIDDEN"
+    message = "Only an admin dispatcher can attest unavailable driver identity."
+
+
+class SubstitutionInvalidError(Exception):
+    """The handover content is well-formed but not acceptable (422): the same driver on both
+    sides, a capture naming the wrong vehicles, a reason that does not apply. Carries a
+    human-readable explanation; it has no contract code because no client branches on it."""

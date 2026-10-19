@@ -157,7 +157,7 @@ async def test_record_locations_401_on_an_undecodable_token(client: AsyncClient,
     assert resp.status_code == 401
 
 
-async def test_record_locations_403_for_another_drivers_trip(client: AsyncClient, db_session):
+async def test_record_locations_404_for_another_drivers_trip(client: AsyncClient, db_session):
     trip, _ = await _seed_trip(db_session)
     _, other_driver = await _seed_trip(db_session)
     token = make_token(sub=str(other_driver.id), role="driver")
@@ -168,7 +168,8 @@ async def test_record_locations_403_for_another_drivers_trip(client: AsyncClient
         headers=auth_header(token),
     )
 
-    assert resp.status_code == 403
+    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
+    assert resp.status_code == 404
     stored = (await db_session.execute(
         select(TripLocationPing).where(TripLocationPing.trip_id == trip.id)
     )).scalars().all()
