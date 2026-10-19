@@ -84,9 +84,9 @@ Explicitly shared files expected during implementation: `backend/app/db/models/_
 
 **Interfaces:** publish the exact request/response types and errors in the API contract. All types named in the API contract must match Python and TypeScript, including `DriverSubstitutionContextRead`, `SubstitutionCorrectionRead`, `CustodyIntegrityRead`, `SubstitutionCompletionRead`, `LateEvidenceDetailRead`, `DriverAccess`, `DriverParticipationHistoryRead` and all request bodies/unions. Use a substitution-specific seal condition type rather than broadening the existing phase `SealCondition`. Publish named fixtures for every contract state before Tim starts.
 
-- [ ] Write schema tests rejecting partial coordinates, invalid state/role/condition, duplicate vehicle IDs, malformed identity overrides and oversized text. Cross-trip vehicle membership is tested against the DB in C4. Add fixture assertions for incoming-with-no-active-trip, cancelled/replaced, former-participant, per-vehicle not-applicable reason, identity FAILED, missing/expired licence, saved-but-blocked confirmation, clarification, custody-integrity debt and flag-off states. Verify the endpoint/status/code matrix, not just error text.
-- [ ] Run `cd backend && pytest tests/unit/test_driver_substitution_schemas.py -q`; record the expected missing-contract failure before implementing the schemas.
-- [ ] Implement the contract schemas and typed fixtures. Add fields with compatible defaults to existing ordinary-trip mocks. Define remaining-stop and relevant-finding DTOs by reusing existing driver-safe stop/exception schemas rather than inventing parcel data. Test the new-arrangement setting as absent, blank, false and true; disabled is the default and never disables completed-chain reads.
+- [x] Write schema tests rejecting partial coordinates, invalid state/role/condition, duplicate vehicle IDs, malformed identity overrides and oversized text. Cross-trip vehicle membership is tested against the DB in C4. Add fixture assertions for incoming-with-no-active-trip, cancelled/replaced, former-participant, per-vehicle not-applicable reason, identity FAILED, missing/expired licence, saved-but-blocked confirmation, clarification, custody-integrity debt and flag-off states. Verify the endpoint/status/code matrix, not just error text.
+- [x] Run `cd backend && pytest tests/unit/test_driver_substitution_schemas.py -q`; record the expected missing-contract failure before implementing the schemas.
+- [x] Implement the contract schemas and typed fixtures. Add fields with compatible defaults to existing ordinary-trip mocks. Define remaining-stop and relevant-finding DTOs by reusing existing driver-safe stop/exception schemas rather than inventing parcel data. Test the new-arrangement setting as absent, blank, false and true; disabled is the default and never disables completed-chain reads.
 - [ ] Run the schema tests; in both frontend packages run `npm run type-check`. Run `cd frontend/dispatcher && npm test -- lib/trips/driver-substitution-contract.test.ts`, without adding dependencies.
 - [ ] Record the source of genuine verified-driver records or the explicit PENDING/admin-only operational path, the confirmed submission/demo date, the integration cut-off, and who will supply the admin at demonstration. Do not invent dates or mark this checkpoint complete without the team's actual information.
 - [ ] Walk the fixture pack with Tim: field names, nullability, final-confirmation result, artifact payloads and conflict behaviour. Record the contract checkpoint here. Tim may now execute T1 and T2 without waiting for backend delivery.
@@ -101,9 +101,9 @@ Explicitly shared files expected during implementation: `backend/app/db/models/_
 
 **Evidence:** the existing Session `after_commit` listener drains the session outbox on savepoint release while the outer transaction is still open. A local reproduction queued an event before `begin_nested()`, released the savepoint and observed publication before rolling back the outer transaction. Merely avoiding enqueue calls inside savepoints does not fix it.
 
-- [ ] Write failing tests: enqueue before and inside a successful savepoint produces no publication until outer commit; outer rollback publishes nothing; nested rollback discards that savepoint's events while retaining earlier parent events; a successful inner savepoint followed by another rolled-back savepoint retains only committed-scope events; repeated registration does not duplicate publication; ordinary non-nested commit still publishes once.
-- [ ] Run the focused hook tests and capture the savepoint failure before modifying the hook. Mock only the publisher in unit tests, not SQLAlchemy transaction callbacks.
-- [ ] Make outbox ownership transaction-aware so publication occurs once after the outermost successful commit. Handle savepoint commit/rollback without draining or clearing the parent's pending events. Keep notices as durable DB rows and preserve existing dispatcher events.
+- [x] Write failing tests: enqueue before and inside a successful savepoint produces no publication until outer commit; outer rollback publishes nothing; nested rollback discards that savepoint's events while retaining earlier parent events; a successful inner savepoint followed by another rolled-back savepoint retains only committed-scope events; repeated registration does not duplicate publication; ordinary non-nested commit still publishes once.
+- [x] Run the focused hook tests and capture the savepoint failure before modifying the hook. Mock only the publisher in unit tests, not SQLAlchemy transaction callbacks.
+- [x] Make outbox ownership transaction-aware so publication occurs once after the outermost successful commit. Handle savepoint commit/rollback without draining or clearing the parent's pending events. Keep notices as durable DB rows and preserve existing dispatcher events.
 - [ ] Run `cd backend && pytest tests/unit/test_realtime_emit.py tests/integration/test_realtime_transactions.py -q` with PostgreSQL cases executing; then run existing realtime integration tests. Add C3/C6 rollback tests using the repaired hook rather than replacing it with an unconditional mock.
 
 **Done:** a savepoint cannot expose an uncommitted lifecycle event; an outer rollback leaves no published event or durable notice.
@@ -301,7 +301,7 @@ The unit test for custody derivation must make the invariant concrete: `assert r
 ## Completion checklist and next session
 
 - [ ] C0 contract/types/fixtures reviewed with Tim; identity provenance and actual release cut-off recorded
-- [ ] C0R transaction-boundary event regression passes
+- [x] C0R transaction-boundary event regression passes
 - [ ] C1 schema and migration verified
 - [ ] C2 access and availability verified
 - [ ] C3 lifecycle verified

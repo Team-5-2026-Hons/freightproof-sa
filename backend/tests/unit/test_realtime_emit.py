@@ -798,3 +798,121 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "Every TripException construction must route its review state through "
         "review_policy (initial_review_status or dispatcher_authored_review)."
     )
+
+
+# ── C0R: outbox ownership across SAVEPOINT boundaries ─────────────────────────
+# Real SQLAlchemy transaction callbacks on a throwaway in-memory SQLite Session; only the
+# publisher (_schedule_publish) is replaced. The PostgreSQL equivalents, through the
+# async session the app uses, are in tests/integration/test_realtime_transactions.py.
+
+
+@pytest.fixture
+def published(monkeypatch: pytest.MonkeyPatch) -> list[tuple[uuid.UUID, object]]:
+    from app.core import realtime
+
+    sent: list[tuple[uuid.UUID, object]] = []
+    monkeypatch.setattr(realtime, "_schedule_publish", lambda org_id, event: sent.append((org_id, event)))
+    realtime.register_realtime_hook()
+    return sent
+
+
+@pytest.fixture
+def hooked_session():
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    engine = create_engine("sqlite://")
+    with Session(engine) as session:
+        session.execute(text("SELECT 1"))  # autobegin so begin_nested() has a parent transaction
+        yield session
+    engine.dispose()
+
+
+def _queue(session, label: str):
+    from app.core.realtime import TripEvent, enqueue_event
+
+    event = TripEvent(id=uuid.uuid4(), kind=RealtimeKind.PHASE_COMPLETED)
+    enqueue_event(session, uuid.uuid4(), event)  # type: ignore[arg-type]  # only .info is used
+    return event
+
+
+def test_savepoint_release_defers_publication_in_process(published, hooked_session) -> None:
+    before = _queue(hooked_session, "before")
+    with hooked_session.begin_nested():
+        inside = _queue(hooked_session, "inside")
+
+    assert published == []
+
+    hooked_session.commit()
+
+    assert [event for _org, event in published] == [before, inside]
+
+
+def test_outer_rollback_after_savepoint_release_publishes_nothing_in_process(published, hooked_session) -> None:
+    _queue(hooked_session, "before")
+    with hooked_session.begin_nested():
+        _queue(hooked_session, "inside")
+
+    hooked_session.rollback()
+    hooked_session.commit()
+
+    assert published == []
+
+
+def test_nested_rollback_keeps_parent_events_in_process(published, hooked_session) -> None:
+    kept = _queue(hooked_session, "parent")
+    nested = hooked_session.begin_nested()
+    _queue(hooked_session, "discarded")
+    nested.rollback()
+
+    hooked_session.commit()
+
+    assert [event for _org, event in published] == [kept]
+
+
+def test_nested_savepoints_discard_only_the_failed_scope_in_process(published, hooked_session) -> None:
+    outer_event = _queue(hooked_session, "outer")
+    with hooked_session.begin_nested():
+        middle_event = _queue(hooked_session, "middle")
+        inner = hooked_session.begin_nested()
+        _queue(hooked_session, "inner")
+        inner.rollback()
+
+    hooked_session.commit()
+
+    assert [event for _org, event in published] == [outer_event, middle_event]
+
+
+def test_ordinary_commit_publishes_once_and_does_not_republish_in_process(published, hooked_session) -> None:
+    only = _queue(hooked_session, "only")
+
+    hooked_session.commit()
+    hooked_session.commit()
+
+    assert [event for _org, event in published] == [only]
+
+
+def test_repeated_registration_does_not_double_publish_in_process(published, hooked_session) -> None:
+    from app.core.realtime import register_realtime_hook
+
+    register_realtime_hook()
+    register_realtime_hook()
+    only = _queue(hooked_session, "only")
+
+    hooked_session.commit()
+
+    assert [event for _org, event in published] == [only]
+
+
+def test_outer_rollback_with_open_savepoint_publishes_nothing_in_process(published, hooked_session) -> None:
+    from sqlalchemy import text
+
+    _queue(hooked_session, "parent")
+    hooked_session.begin_nested()
+    _queue(hooked_session, "inside")
+
+    hooked_session.rollback()
+    hooked_session.execute(text("SELECT 1"))
+    hooked_session.commit()
+
+    assert published == []

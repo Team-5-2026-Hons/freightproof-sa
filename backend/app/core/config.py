@@ -1,7 +1,8 @@
 """Application settings loaded from environment variables or backend/.env."""
 
-from typing import List
+from typing import Any, List
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -101,6 +102,11 @@ class Settings(BaseSettings):
 
     DEMO_MODE: bool = False
 
+    # FP-83: gates only NEW driver-handover arrangements and replacements. Off by default so
+    # nothing partial is exposed; existing pending handovers, completed-chain reads, history
+    # and recovery keep working when it is off.
+    DRIVER_SUBSTITUTIONS_ENABLED: bool = False
+
     # Sole gate for the dev panel: the demo deploy runs as production but still needs it.
     DEV_PANEL_ENABLED: bool = False
 
@@ -163,6 +169,15 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3001",
     ]
+
+    @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", mode="before")
+    @classmethod
+    def _blank_substitutions_flag_is_false(cls, value: Any) -> Any:
+        # Field-local on purpose: .env.example ships this key empty, and a blank string would
+        # otherwise fail bool parsing at startup. Other boolean settings keep strict parsing.
+        if isinstance(value, str) and not value.strip():
+            return False
+        return value
 
     @property
     def cors_allowed_origins(self) -> List[str]:

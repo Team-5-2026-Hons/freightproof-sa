@@ -302,7 +302,7 @@ const PLAN_0043 = walkPlan(
 
 // ─── Trip objects ──────────────────────────────────────────────────────────────
 
-export const mockTrips: Trip[] = [
+const baseTrips: Trip[] = [
   // TRP-2026-0035 — closed
   {
     id: TRIP_0035_ID,
@@ -585,3 +585,19 @@ export const mockTrips: Trip[] = [
     updated_at: '2026-06-22T09:00:00Z',
   },
 ]
+
+// FP-83: every trip above is an ordinary trip that has never been handed over, so it gets the
+// contract's no-substitution defaults — original driver = current driver, custody sequence 0,
+// nothing pending, new arrangements off. Applied once here rather than repeated per trip so a
+// future field cannot be forgotten on one of them. Substitution states live in
+// ./driver-substitutions.
+export const mockTrips: Trip[] = baseTrips.map(trip => ({
+  ...trip,
+  original_driver: trip.driver,
+  driver_substitutions: [],
+  pending_driver_substitution: null,
+  custody_sequence: 0,
+  custody_integrity: null,
+  driver_substitutions_enabled: false,
+  driver_access: null,
+}))
