@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { mockTrips, TRIP_0041_ID } from '@shared/lib/mocks/trips'
 import type { Trip } from '@shared/lib/types/trip'
+import { substitutionErrorFixtures, substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
 import TripDetailByIdPageClient from '../TripDetailByIdPageClient'
 
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
@@ -34,6 +35,12 @@ const mockFetchMyTrips = vi.fn()
 vi.mock('@/lib/api/trips', () => ({
   fetchMyTrip: (id: string) => mockFetchMyTrip(id),
   fetchMyTrips: () => mockFetchMyTrips(),
+}))
+
+const mockFetchDriverParticipation = vi.fn()
+vi.mock('@/lib/api/driver-substitutions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/driver-substitutions')>()),
+  fetchDriverParticipation: (id: string) => mockFetchDriverParticipation(id),
 }))
 
 // jsdom has no scrollIntoView; TripDetailView's PhaseProgressBar calls it on the current
@@ -278,5 +285,66 @@ describe('trips/detail TripDetailByIdPageClient', () => {
 
     expect(await screen.findByText(/No trip was specified/i)).toBeInTheDocument()
     expect(mockFetchMyTrip).not.toHaveBeenCalled()
+  })
+
+  // FP-83 T1: a known former participant gets TRIP_HANDED_OVER from the current-assignment
+  // read and sees their own restricted record instead — never the next driver's live trip.
+  describe('a trip this driver handed over', () => {
+    const history = substitutionFixturePack.formerParticipantHistory.history
+
+    async function handedOver() {
+      const { ApiError } = await import('@/lib/api/client')
+      const fixture = substitutionErrorFixtures.TRIP_HANDED_OVER
+      return new ApiError(fixture.http_status, fixture.body.detail.message, undefined, {
+        code: fixture.body.detail.code, requestId: null, currentVersion: null, evidenceId: null,
+      })
+    }
+
+    beforeEach(async () => {
+      mockSearchParams.get.mockReturnValue(history.trip_id)
+      mockFetchMyTrip.mockRejectedValue(await handedOver())
+      mockFetchDriverParticipation.mockResolvedValue(history)
+    })
+
+    it('test_handed_over_trip_shows_participation_history', async () => {
+      render(<TripDetailByIdPageClient />)
+
+      expect(await screen.findByRole('heading', { name: 'Your record' })).toBeInTheDocument()
+      expect(mockFetchDriverParticipation).toHaveBeenCalledWith(history.trip_id)
+      // The real trip status, stated as the trip's — not presented as this driver's work.
+      expect(screen.getByText(/Trip status now: Active/)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Start|Continue Driving/ })).not.toBeInTheDocument()
+    })
+
+    it('test_reading_history_never_makes_the_trip_working_context', async () => {
+      const selectTrip = vi.fn()
+      const noteTripHandedOver = vi.fn()
+      mockUseTrip.mockReturnValue({ selectTrip, trip: null, noteTripHandedOver })
+
+      render(<TripDetailByIdPageClient />)
+      await screen.findByRole('heading', { name: 'Your record' })
+
+      expect(selectTrip).not.toHaveBeenCalled()
+      expect(noteTripHandedOver).not.toHaveBeenCalled()
+    })
+
+    it('test_handed_over_working_trip_is_dropped_from_the_phase_flow', async () => {
+      const noteTripHandedOver = vi.fn()
+      mockUseTrip.mockReturnValue({ selectTrip: vi.fn(), trip: { id: history.trip_id }, noteTripHandedOver })
+
+      render(<TripDetailByIdPageClient />)
+
+      await waitFor(() => expect(noteTripHandedOver).toHaveBeenCalledWith(history.trip_id))
+    })
+
+    it('test_history_failure_still_says_the_trip_was_handed_over', async () => {
+      mockFetchDriverParticipation.mockRejectedValue(new Error('offline'))
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      render(<TripDetailByIdPageClient />)
+
+      expect(await screen.findByText(/You handed this trip over/)).toBeInTheDocument()
+      consoleError.mockRestore()
+    })
   })
 })

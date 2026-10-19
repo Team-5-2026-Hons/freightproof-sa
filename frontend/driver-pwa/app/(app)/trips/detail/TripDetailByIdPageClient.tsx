@@ -6,7 +6,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Trip } from '@shared/lib/types/trip'
+import type { DriverParticipationHistoryRead } from '@shared/lib/types/driver-substitution'
 import { fetchMyTrip, fetchMyTrips } from '@/lib/api/trips'
+import { fetchDriverParticipation, isTripHandedOver } from '@/lib/api/driver-substitutions'
 import { ApiError } from '@/lib/api/client'
 import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES, TRIP_ID_PARAM } from '@/lib/constants/routes'
@@ -16,6 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { TruckLoader } from '@/components/ui/TruckLoader'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+import { DriverParticipationHistory } from '@/components/trip/DriverParticipationHistory'
 import { StatusBanner } from '@/components/ui/StatusBanner'
 import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-gate'
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
@@ -37,9 +40,12 @@ export default function TripDetailByIdPageClient() {
   const searchParams = useSearchParams()
   const tripId = searchParams.get(TRIP_ID_PARAM)
   const { notify } = useToast()
-  const { selectTrip } = useTrip()
+  const { selectTrip, trip: workingTrip, noteTripHandedOver } = useTrip()
 
   const [trip, setTrip] = useState<Trip | null>(null)
+  // Set instead of `trip` when the server says this driver handed the trip over: they see
+  // their own restricted record, never the current driver's live detail.
+  const [history, setHistory] = useState<DriverParticipationHistoryRead | null>(null)
   // The driver's other trips, needed to answer "may this one be started yet". Read from
   // the list endpoint since TripContext only holds whichever single trip is current.
   const [siblings, setSiblings] = useState<ActivationCandidate[]>([])
@@ -55,6 +61,7 @@ export default function TripDetailByIdPageClient() {
     }
     setIsLoading(true)
     setLoadError(null)
+    setHistory(null)
     // The sibling list is best-effort: its own failure must not stop the trip itself
     // rendering, because the server enforces every one of these rules regardless. A
     // failed list only costs the driver an up-front explanation, not correctness.
@@ -63,7 +70,18 @@ export default function TripDetailByIdPageClient() {
       .catch((err: unknown) => console.error('Could not load sibling trips for the activation gate', err))
     fetchMyTrip(tripId)
       .then(setTrip)
-      .catch((err: unknown) => {
+      .catch(async (err: unknown) => {
+        if (isTripHandedOver(err)) {
+          // Reading the history must not make the trip working context again — this page
+          // never calls selectTrip on this path.
+          try {
+            setHistory(await fetchDriverParticipation(tripId))
+          } catch (historyErr: unknown) {
+            console.error('Failed to load participation history', historyErr)
+            setLoadError('You handed this trip over. Your record could not be loaded — check your connection and try again.')
+          }
+          return
+        }
         // 404 is the backend refusing to confirm another driver's trip exists, so it and a
         // genuinely missing trip get the same copy. Everything else is a transport problem
         // and says so, rather than claiming the trip is gone.
@@ -80,11 +98,22 @@ export default function TripDetailByIdPageClient() {
 
   useEffect(() => { load() }, [load])
 
+  // The server just told us this driver no longer holds the trip. If it is also the trip the
+  // phase flow is pointed at, drop it there too, so Home stops offering its live actions.
+  const workingTripId = workingTrip ? String(workingTrip.id) : null
+  useEffect(() => {
+    if (history !== null && workingTripId === history.trip_id) noteTripHandedOver(history.trip_id)
+  }, [history, workingTripId, noteTripHandedOver])
+
   if (isLoading) {
     // Centred on the viewport rather than on AppShell's slot, which reserves bottom
     // padding for the nav pill and so pulled the old indicator above the middle of the
     // screen — see LoadingScreen.tsx.
     return <LoadingScreen label="Loading trip" />
+  }
+
+  if (history !== null) {
+    return <DriverParticipationHistory history={history} onBack={goBack} />
   }
 
   if (loadError !== null || trip === null) {
