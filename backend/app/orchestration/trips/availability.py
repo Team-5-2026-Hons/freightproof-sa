@@ -14,8 +14,12 @@ The rule (spec 2026-10-14 D3-D5):
   * a live trip that has overrun its planned end, or any trip with no end at all, is busy until it
     is closed or cancelled. Nobody can promise when a truck still on the road comes back.
 
-Layering: a leaf of trips/ (imports core/, db/ and schemas/ only), so phases.scheduling can use it
-without a cycle.
+FP-83: a live trip occupies its CURRENT driver (the highest completed handover's incoming driver),
+and a pending takeover reserves the incoming driver from the exchange time to the trip's end. The
+rules for both live in orchestration/substitutions/availability.py.
+
+Layering: a leaf of trips/ (imports core/, db/, schemas/ and orchestration/substitutions only), so
+phases.scheduling can use it without a cycle.
 """
 
 import uuid
@@ -29,9 +33,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models.enums import TripStatus
+from app.db.models.driver_substitutions import DriverSubstitutionRequest
 from app.db.models.people import Driver
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.substitutions.access import current_driver_id_expression
+from app.orchestration.substitutions.availability import (
+    PendingReservation, current_driver_ids, pending_reservations, reservation_window,
+)
 from app.schemas.availability import BusyEntry, CrewResourceType
 
 # Tuples, not sets: a row's status can come back as a plain str, and a str-Enum member hashes by
@@ -78,6 +87,10 @@ class OccupyingTrip:
     trailer_ids: frozenset[uuid.UUID]
     # Every timed stop, in stop-sequence order.
     slot_times: tuple[datetime, ...]
+    # Who holds the trip now. Trip.driver_id is only the original driver.
+    current_driver_id: uuid.UUID
+    # The pending takeover, if any: it reserves the incoming driver (see substitutions.availability).
+    reservation: PendingReservation | None = None
 
 
 def as_utc(moment: datetime) -> datetime:
@@ -134,16 +147,28 @@ def clash_message(entries: Sequence[BusyEntry]) -> str:
 
 
 async def lock_crew(db: AsyncSession, *, driver_id: uuid.UUID, vehicle_ids: Sequence[uuid.UUID]) -> None:
-    """Serialise everyone claiming this crew, before anyone checks whether it is free.
+    """Serialise everyone claiming this crew, before anyone checks whether it is free."""
+    await lock_crew_set(db, driver_ids=[driver_id], vehicle_ids=vehicle_ids)
+
+
+async def lock_crew_set(
+    db: AsyncSession, *, driver_ids: Sequence[uuid.UUID], vehicle_ids: Sequence[uuid.UUID],
+) -> None:
+    """Serialise everyone claiming these drivers and vehicles, before anyone checks they are free.
 
     Without it, two dispatchers both read "free" and both insert. The lock makes the second wait
     for the first to commit, then see the first trip. FOR NO KEY UPDATE (key_share=True) blocks
     another claimer but not ordinary inserts that merely reference the row by foreign key (tracker
     fixes, exceptions), so nothing unrelated stalls while a creation waits on its Hedera anchor.
-    Order is fixed - driver, then vehicles by ascending id - so two claimers of overlapping crews
-    can never deadlock each other (spec D8).
+    Order is fixed - drivers by ascending id, then vehicles by ascending id - so two claimers of
+    overlapping crews can never deadlock each other (spec D8). A handover claims two drivers,
+    which is why the driver side takes a sorted set rather than one id. Callers that also hold the
+    trip lock take it first; never lock another trip while holding these.
     """
-    await db.execute(select(Driver.id).where(Driver.id == driver_id).with_for_update(key_share=True))
+    if driver_ids:
+        await db.execute(
+            select(Driver.id).where(Driver.id.in_(driver_ids)).order_by(Driver.id).with_for_update(key_share=True)
+        )
     if vehicle_ids:
         await db.execute(
             select(Vehicle.id).where(Vehicle.id.in_(vehicle_ids)).order_by(Vehicle.id)
@@ -161,7 +186,15 @@ async def occupying_trips(
     )
     shares: list[ColumnElement[bool]] = []
     if crew.driver_id is not None:
-        shares.append(Trip.driver_id == crew.driver_id)
+        # The current driver, not Trip.driver_id (the original), and the incoming driver of a
+        # pending takeover: both occupy this driver, at different times.
+        shares.append(current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id) == crew.driver_id)
+        shares.append(Trip.id.in_(
+            select(DriverSubstitutionRequest.trip_id).where(
+                DriverSubstitutionRequest.state == "pending",
+                DriverSubstitutionRequest.incoming_driver_id == crew.driver_id,
+            )
+        ))
     if crew.horse_id is not None:
         shares.append(Trip.horse_id == crew.horse_id)
     if crew.trailer_ids:
@@ -189,8 +222,13 @@ async def occupying_trips(
         .order_by(TripStop.trip_id, TripStop.sequence)
     )).all():
         slots[trip_id].append(slot_time)
+    drivers = await current_driver_ids(db, trips)
+    reservations = await pending_reservations(db, trip_ids)
     return [
-        OccupyingTrip(trip=trip, trailer_ids=frozenset(trailers[trip.id]), slot_times=tuple(slots[trip.id]))
+        OccupyingTrip(
+            trip=trip, trailer_ids=frozenset(trailers[trip.id]), slot_times=tuple(slots[trip.id]),
+            current_driver_id=drivers[trip.id], reservation=reservations.get(trip.id),
+        )
         for trip in trips
     ]
 
@@ -212,18 +250,32 @@ def _occupied_window(
     return start, busy_until(status, planned_end, now), planned_end
 
 
+_Held = tuple[datetime, datetime | None, datetime | None]  # (busy_from, busy_until, planned_end)
+
+
 def _shared_resources(
-    occupying: OccupyingTrip, crew: CrewFilter,
-) -> Iterator[tuple[CrewResourceType, uuid.UUID]]:
-    """The resources this trip holds that the caller asked about (all of them for the fleet view)."""
+    occupying: OccupyingTrip, crew: CrewFilter, held: _Held, now: datetime,
+) -> Iterator[tuple[CrewResourceType, uuid.UUID, _Held]]:
+    """The resources this trip holds that the caller asked about (all of them for the fleet view),
+    each with the window it is held for.
+
+    The current driver is held for the trip's own window. The incoming driver of a pending
+    takeover is held for the reservation window instead: from the exchange, not from departure.
+    """
     trip, everything = occupying.trip, crew.everything
-    if everything or trip.driver_id == crew.driver_id:
-        yield CrewResourceType.DRIVER, trip.driver_id
+    if everything or occupying.current_driver_id == crew.driver_id:
+        yield CrewResourceType.DRIVER, occupying.current_driver_id, held
+    reservation = occupying.reservation
+    if reservation is not None and reservation.incoming_driver_id != occupying.current_driver_id and (
+        everything or reservation.incoming_driver_id == crew.driver_id
+    ):
+        start, until = reservation_window(expected_at=reservation.expected_at, planned_end=held[2], now=now)
+        yield CrewResourceType.DRIVER, reservation.incoming_driver_id, (start, until, held[2])
     if everything or trip.horse_id == crew.horse_id:
-        yield CrewResourceType.HORSE, trip.horse_id
+        yield CrewResourceType.HORSE, trip.horse_id, held
     for trailer_id in sorted(occupying.trailer_ids):
         if everything or trailer_id in crew.trailer_ids:
-            yield CrewResourceType.TRAILER, trailer_id
+            yield CrewResourceType.TRAILER, trailer_id, held
 
 
 async def busy_crew_in_window(
@@ -240,10 +292,11 @@ async def busy_crew_in_window(
     hits: list[tuple[CrewResourceType, uuid.UUID, OccupyingTrip, datetime, datetime | None, datetime | None]] = []
     for occupied in occupying:
         held = _occupied_window(occupied, now)
-        if held is None or not windows_overlap(held[0], held[1], start, end):
+        if held is None:
             continue
-        for resource_type, resource_id in _shared_resources(occupied, crew):
-            hits.append((resource_type, resource_id, occupied, *held))
+        for resource_type, resource_id, window in _shared_resources(occupied, crew, held, now):
+            if windows_overlap(window[0], window[1], start, end):
+                hits.append((resource_type, resource_id, occupied, *window))
     if not hits:
         return []
 

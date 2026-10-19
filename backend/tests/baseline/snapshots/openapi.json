@@ -299,6 +299,18 @@
       "ActivationCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -561,6 +573,18 @@
       "ArrivalCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -1386,6 +1410,18 @@
             ],
             "title": "Captured Lng"
           },
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "evidence_role": {
             "anyOf": [
               {
@@ -1832,6 +1868,18 @@
       "ConfirmationCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -2843,6 +2891,18 @@
       "DepartureCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -3131,6 +3191,18 @@
               }
             ],
             "title": "Client Report Id"
+          },
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
           },
           "driver_accuracy_metres": {
             "anyOf": [
@@ -3484,6 +3556,18 @@
               }
             ],
             "title": "Client Report Id"
+          },
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
           },
           "description": {
             "maxLength": 2000,
@@ -5904,6 +5988,18 @@
       "InTransitCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -6878,6 +6974,18 @@
       "LoadingCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -7101,6 +7209,18 @@
       "LocationPingBatch": {
         "description": "The request body — one or more fixes for a single trip.",
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "pings": {
             "items": {
               "$ref": "#/components/schemas/LocationPingCreate"
@@ -13335,6 +13455,18 @@
       "UnloadingCompleteRequest": {
         "additionalProperties": false,
         "properties": {
+          "custody_sequence": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custody Sequence"
+          },
           "driver_accuracy_metres": {
             "anyOf": [
               {
@@ -19412,7 +19544,7 @@
     },
     "/api/v1/trips/{trip_id}/phases/{phase_event_id}/handover/tokens": {
       "post": {
-        "description": "Mint the next code. `force=true` is the driver's \"show a new code\" escape hatch.",
+        "description": "Mint the next code. `force=true` is the driver's \"show a new code\" escape hatch.\n\nA former driver cannot mint a new receiver link: only whoever holds the trip now can.",
         "operationId": "issue_handover_token_endpoint_api_v1_trips__trip_id__phases__phase_event_id__handover_tokens_post",
         "parameters": [
           {
@@ -19443,6 +19575,23 @@
               "default": false,
               "title": "Force",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "custody_sequence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Custody Sequence"
             }
           }
         ],

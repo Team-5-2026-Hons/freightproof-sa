@@ -71,6 +71,7 @@ from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.evidence.precinct_assessment import build_phase_precinct_assessment, tracker_fix
 from app.orchestration.evidence.proximity import evaluate_proximity
 from app.orchestration.exceptions.review_policy import initial_review_status
+from app.orchestration.substitutions.access import require_current_driver
 from app.schemas.action_location import (
     ACTION_LOCATION_POLICY_VERSION, ActionLocationAssessment, DriverLocationCapture,
 )
@@ -221,12 +222,8 @@ async def preview_phase_location(
     capture: DriverLocationCapture,
 ) -> ActionLocationAssessment:
     """Evaluate a fresh phone capture without altering phase or evidence records."""
-    trip_result = await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.driver_id == driver_id)
-    )
-    trip = trip_result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
+    # A read-only comparison, so no lock or sequence: but only for the driver holding the trip.
+    trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
 
     event_result = await db.execute(
         select(PhaseEvent).where(PhaseEvent.id == phase_event_id, PhaseEvent.trip_id == trip.id)

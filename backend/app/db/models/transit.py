@@ -83,6 +83,13 @@ class Checkpoint(Base):
     phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("phase_events.id"), nullable=True
     )
+    # The driver who took this checkpoint and the custody period they held (0 = the trip's
+    # original driver). Lets a retry after a handover be proven to be the same driver's own
+    # report. NULL on older rows; never backfilled from whoever is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_checkpoints_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

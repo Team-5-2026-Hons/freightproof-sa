@@ -370,3 +370,66 @@ class EvidenceAttributionError(Exception):
     """An artifact's phase/role attribution is not allowed: a role the phase type does not
     take, a role a driver may not claim, or a cited artifact attributed to something else
     (422 at the route)."""
+
+
+class CustodyAccessError(Exception):
+    """A driver is known to the trip but may not act on it as they tried (409).
+
+    Subclasses carry the contract's stable `code` (docs/contracts/driver-substitution-v1.md).
+    The API layer renders `{code, message, evidence_id?}`; nothing here names the current
+    driver or any trip data, so a former participant learns only that custody moved.
+    """
+
+    code: str = ""
+    # Safe to show a driver; never includes a trip, driver or evidence detail.
+    message: str = ""
+
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+
+class TripHandedOverError(CustodyAccessError):
+    """The caller held this trip earlier but is not the current driver."""
+
+    code = "TRIP_HANDED_OVER"
+    message = "This trip has been handed to another driver. Your earlier evidence is kept."
+
+
+class CustodyContextChangedError(CustodyAccessError):
+    """The evidence was captured under a custody period that is no longer current."""
+
+    code = "CUSTODY_CONTEXT_CHANGED"
+    message = "This was captured before the trip changed driver. Submit it as late evidence."
+
+
+class CustodyContextRequiredError(CustodyAccessError):
+    """The trip has changed driver, so the capture must say which custody period it belongs to."""
+
+    code = "CUSTODY_CONTEXT_REQUIRED"
+    message = "This trip has changed driver; the capture must state its custody period."
+
+
+class EvidenceAlreadyRecordedError(CustodyAccessError):
+    """A former driver's retry of an action this same driver already had accepted (409).
+
+    `evidence_id` is the stored record's own id: an opaque reference the client uses to clear
+    exactly that queued item, and nothing else about the trip.
+    """
+
+    code = "EVIDENCE_ALREADY_RECORDED"
+    message = "This was already recorded before the trip changed driver."
+
+    def __init__(self, evidence_id: uuid.UUID) -> None:
+        super().__init__()
+        self.evidence_id = evidence_id
+
+
+class IdempotencyKeyReusedError(CustodyAccessError):
+    """A request id already used by a different driver's submission on this trip (409).
+
+    Only raised once a trip has changed driver, where answering "already recorded" would hand
+    one driver another's evidence as their own success.
+    """
+
+    code = "IDEMPOTENCY_KEY_REUSED"
+    message = "This request id belongs to a different submission. Start a new one."
