@@ -244,3 +244,44 @@ def test_enforce_raises_with_every_error_in_the_message() -> None:
 
 def test_enforce_is_silent_for_a_correct_config() -> None:
     enforce_production_config(_settings())
+
+
+# ── FP-83: DRIVER_SUBSTITUTIONS_ENABLED ───────────────────────────────────────
+# Gates only NEW arrangements; off by default so a deploy never exposes a half-built feature.
+# A blank value must read as false because backend/.env.example ships the key empty and a
+# developer copying it must not hit a startup validation error.
+
+
+def test_driver_substitutions_flag_is_off_when_the_key_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DRIVER_SUBSTITUTIONS_ENABLED", raising=False)
+
+    assert _settings().DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_driver_substitutions_flag_treats_a_blank_value_as_false(blank: str) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=blank).DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+def test_driver_substitutions_flag_treats_a_blank_environment_variable_as_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRIVER_SUBSTITUTIONS_ENABLED", "")
+
+    assert _settings().DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("value", ["false", "False", False])
+def test_driver_substitutions_flag_accepts_false(value: object) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=value).DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("value", ["true", "True", True])
+def test_driver_substitutions_flag_accepts_true(value: object) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=value).DRIVER_SUBSTITUTIONS_ENABLED is True
+
+
+def test_a_blank_substitutions_flag_does_not_loosen_other_boolean_fields() -> None:
+    # The blank->false mapping is field-local: global parsing must still reject a blank bool.
+    with pytest.raises(ValueError):
+        _settings(RATE_LIMIT_ENABLED="")
