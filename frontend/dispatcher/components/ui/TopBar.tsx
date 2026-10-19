@@ -1,10 +1,6 @@
 'use client'
 
-// ForensicControls reads a client hook; coupling this primitive to app context is an
-// accepted tradeoff so the forensic toggle appears on every TopBar.
-
 import type { ReactNode } from 'react'
-import { ForensicControls } from '@/components/blockchain/ForensicControls'
 
 interface TopBarProps {
   title: string
@@ -42,7 +38,6 @@ export function TopBar({ title, identity, badge, sub, left, children }: TopBarPr
         )}
       </div>
       <div className="ml-auto flex gap-2 items-center shrink-0">
-        <ForensicControls />
         {children}
       </div>
     </div>

@@ -17,6 +17,8 @@ import { DEFAULT_EXCEPTION_RECORD_SORT, EXCEPTION_RECORD_SORT_KEYS, firstExcepti
 import { useTableSort } from '@/lib/hooks/useTableSort'
 import { TRIP_PANELS, type TripPanel } from './TripSummary'
 import { uniqueExceptionsById } from './exception-dedupe'
+import { TripHelp } from './TripHelp'
+import type { TripHelpTopic } from './trip-help-copy'
 import { LEGACY_AUDIT_PANEL } from '@/lib/trips/panel-query'
 
 export { LEGACY_AUDIT_PANEL }
@@ -24,6 +26,7 @@ export const TRIP_AUDIT_PACKS_SECTION_ID = 'trip-audit-packs'
 const AUDIT_HEADING_ID = `${TRIP_AUDIT_PACKS_SECTION_ID}-heading`
 const PANEL_SCROLLER_SELECTOR = '[role="tabpanel"], dialog'
 const TITLES: Record<TripPanel, string> = { information: 'Trip information', manifest: 'Cargo', exceptions: 'Trip exceptions' }
+const HELP_TOPIC: Record<TripPanel, TripHelpTopic> = { information: 'info', manifest: 'cargo', exceptions: 'exceptions' }
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
@@ -108,6 +111,10 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   return <>
     <DetailPanel tabs={tabs} active={panel} onSelect={id => onSelect(id as TripPanel)} title={TITLES[panel]}
       onClose={onClose} overlayOpen={overlayOpen} ariaLabel="Trip detail">
+      {/* A zero-height row with the icon lifted into the panel's own top padding (20px, docked and in the overlay), so the help
+          costs no space and the content starts exactly where it would without it. The 14px glyph sits 5px inside its 24px
+          button, so the button overhangs the padding by that much to put the glyph on the content's right edge. */}
+      <div className="relative h-0"><TripHelp topic={HELP_TOPIC[panel]} className="absolute -top-[22px] -right-[5px]" /></div>
       {panel === TRIP_PANELS.information && <div className="space-y-6">
         <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />
         <section ref={auditSectionRef} id={TRIP_AUDIT_PACKS_SECTION_ID} aria-labelledby={AUDIT_HEADING_ID} style={{ minHeight: auditMinimumHeight || undefined }} className="border-t border-outline-v/30 pt-6">

@@ -75,6 +75,26 @@ export function fmtExceptionPhaseStop(phase: string | null, stop: number | null)
   return [phase ? phase.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null, stop !== null ? `Recorded stop ${stop}` : null].filter(Boolean).join(' · ') || null
 }
 
+const EXCEPTION_REF_PREFIX = 'EX-'
+// Eight hex characters is 32 bits: enough that two exceptions on one screen never collide in
+// practice, short enough to scan in a list. Display only; every link and API call uses the full id.
+const EXCEPTION_REF_LENGTH = 8
+
+/** A short, stable label for telling identical-looking exceptions apart: "EX-3F9A21C4". Derived
+ *  from the exception's id, so there is nothing extra to store and it cannot drift. */
+export function exceptionReference(id: string): string {
+  return `${EXCEPTION_REF_PREFIX}${id.replaceAll('-', '').slice(0, EXCEPTION_REF_LENGTH).toUpperCase()}`
+}
+
+/** Whether `query` (already non-empty) is part of the exception's reference. Matches the hex part
+ *  only, or the whole "EX-…" form: matching the fixed prefix itself would make 'x' or 'ex' hit every row. */
+export function matchesExceptionReference(id: string, query: string): boolean {
+  const hex = exceptionReference(id).slice(EXCEPTION_REF_PREFIX.length).toLowerCase()
+  const q = query.toLowerCase()
+  const prefix = EXCEPTION_REF_PREFIX.toLowerCase()
+  return hex.includes(q.startsWith(prefix) ? q.slice(prefix.length) : q)
+}
+
 export const ROUTE_NOT_RECORDED = 'Route not recorded'
 const UNKNOWN_PLACE = 'Unknown'
 

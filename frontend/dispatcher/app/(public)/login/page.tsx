@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { ProfileUnavailableError } from '@/lib/context/AuthContext'
 import { ROUTES } from '@/lib/constants/routes'
+import { landingHref, readPreferences } from '@/lib/preferences'
 import { cn } from '@shared/lib/utils/cn'
 import { takeReturnPath } from '@shared/lib/session/return-path'
 
@@ -47,9 +48,10 @@ export default function LoginPage() {
       // pushing to will already see an authenticated user — see AuthContext.signIn.
       await signIn({ email, password })
       // Send the dispatcher back to whatever guarded screen they were bounced from (idle
-      // expiry or a silently-expired token) when there is one; otherwise the default.
+      // expiry or a silently-expired token) when there is one; otherwise the landing page
+      // they chose in Settings (the Dashboard unless changed).
       const returnTo = takeReturnPath(window.localStorage, AUTH_ROUTE_PREFIXES)
-      router.push(returnTo ?? ROUTES.home)
+      router.push(returnTo ?? landingHref(readPreferences().landingPage))
     } catch (err) {
       setError(err instanceof ProfileUnavailableError ? err.message : INVALID_CREDENTIALS)
       triggerShake()

@@ -4,13 +4,14 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { X, Shield, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
-import { LiveBadge } from '@/components/layout/LiveBadge'
+import { ProfileMenu } from '@/components/layout/ProfileMenu'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
+import { useForensicMode } from '@/lib/context/ForensicModeContext'
+import { SETTINGS_SECTION_IDS } from '@/lib/settings/section-query'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
-import type { DispatcherUser } from '@/lib/types/user'
 
 interface NavItem {
   label: string
@@ -78,24 +79,6 @@ const SETTINGS_ITEM: NavItem = {
   activePatterns: ['/settings'],
 }
 
-// Shown when there is no name to take initials from (session still loading).
-const FALLBACK_INITIALS = 'D'
-
-// Humanizes the DispatcherUser role for display; falls back to the base
-// "Dispatcher" label when the role is the non-admin variant or user is unknown.
-function roleLabel(role: DispatcherUser['role'] | undefined): string {
-  return role === 'admin_dispatcher' ? 'Admin Dispatcher' : 'Dispatcher'
-}
-
-// First letter of the first and last name — a single-word name yields one letter.
-function initialsOf(fullName: string | undefined): string {
-  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return FALLBACK_INITIALS
-  const first = parts[0][0]
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : ''
-  return (first + last).toUpperCase()
-}
-
 function isActive(pathname: string, patterns: string[]): boolean {
   return patterns.some(p => {
     if (p === '/') return pathname === '/'
@@ -106,38 +89,86 @@ function isActive(pathname: string, patterns: string[]): boolean {
 // Shared by every interactive element on the dark surface so keyboard focus looks the same.
 const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-white/40'
 
-function NavLink({ item, pathname, onClose, collapsed }: {
+// Light-blue fill on the dark surface, the same `sec` container pair the Chip uses for
+// in-progress states. A solid fill, not a leading bar: it reads as a label, not a selection.
+const FORENSIC_BADGE: NavBadge = {
+  text: 'Forensic',
+  href: ROUTES.settingsSection(SETTINGS_SECTION_IDS.forensic),
+  label: 'Forensic view is on. Open its setting',
+  collapsedLabel: 'Settings, forensic view on',
+}
+
+interface NavBadge {
+  text: string
+  /** Where the pill goes. A separate link from the row: anchors cannot nest. */
+  href: string
+  /** Accessible name of the pill link. */
+  label: string
+  /** Accessible name of the row in the icon rail, where the pill shrinks to a dot. */
+  collapsedLabel: string
+}
+
+// Room the pill takes at the row's end, so a long label never runs underneath it.
+const BADGE_GUTTER = 'pr-[88px]'
+
+function NavLink({ item, pathname, onClose, collapsed, badge }: {
   item: NavItem
   pathname: string
   onClose?: () => void
   collapsed?: boolean
+  /** Status pill at the row's end; becomes a dot on the icon in the collapsed rail. */
+  badge?: NavBadge
 }) {
   const active = isActive(pathname, item.activePatterns)
+  const label = badge && collapsed ? badge.collapsedLabel : item.label
   return (
-    <Link
-      href={item.href}
-      onClick={onClose}
-      aria-label={item.label}
-      aria-current={active ? 'page' : undefined}
-      title={item.label}
-      className={cn(
-        'group flex items-center gap-3 h-9 px-3 rounded-lg text-[14px] transition-colors duration-[120ms]',
-        FOCUS_RING,
-        collapsed && 'justify-center px-0 h-10',
-        // Raised pill rather than a recolour: a lighter fill with an inner hairline reads
-        // as "lifted" on the dark surface without introducing a second accent colour.
-        active
-          ? 'bg-white/[0.10] ring-1 ring-inset ring-white/[0.08] text-white font-medium'
-          : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
+    <div className="relative">
+      <Link
+        href={item.href}
+        onClick={onClose}
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        title={label}
+        className={cn(
+          'group flex items-center gap-3 h-9 px-3 rounded-lg text-[14px] transition-colors duration-[120ms]',
+          FOCUS_RING,
+          collapsed && 'justify-center px-0 h-10',
+          badge && !collapsed && BADGE_GUTTER,
+          // Raised pill rather than a recolour: a lighter fill with an inner hairline reads
+          // as "lifted" on the dark surface without introducing a second accent colour.
+          active
+            ? 'bg-white/[0.10] ring-1 ring-inset ring-white/[0.08] text-white font-medium'
+            : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
+        )}
+      >
+        <span className="relative shrink-0">
+          <Ic
+            n={item.icon}
+            s={16}
+            className={cn('transition-colors', active ? 'text-white' : 'text-white/50 group-hover:text-white/80')}
+          />
+          {/* The ring matches the sidebar surface so the dot reads as cut out of the icon. */}
+          {badge && collapsed && (
+            <span aria-hidden className="absolute -top-1 -right-1 w-[8px] h-[8px] rounded-full bg-sec-c ring-2 ring-primary" />
+          )}
+        </span>
+        {!collapsed && <span className="truncate">{item.label}</span>}
+      </Link>
+      {badge && !collapsed && (
+        <Link
+          href={badge.href}
+          onClick={onClose}
+          aria-label={badge.label}
+          className={cn(
+            'absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-sec-c px-[6px] py-[1px]',
+            'text-[11px] font-[600] text-sec-onc transition-[filter] duration-[120ms] hover:brightness-95',
+            FOCUS_RING,
+          )}
+        >
+          {badge.text}
+        </Link>
       )}
-    >
-      <Ic
-        n={item.icon}
-        s={16}
-        className={cn('shrink-0 transition-colors', active ? 'text-white' : 'text-white/50 group-hover:text-white/80')}
-      />
-      {!collapsed && <span className="truncate">{item.label}</span>}
-    </Link>
+    </div>
   )
 }
 
@@ -202,14 +233,16 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { canViewForensics, forensicOn } = useForensicMode()
+  // Gated on the role as well as the switch: a stale `fp.forensicOn` in a demoted user's
+  // storage must not advertise a mode they can no longer use.
+  const forensicBadge = canViewForensics && forensicOn ? FORENSIC_BADGE : undefined
   const visibleGroups = NAV_GROUPS
     .map(group => ({
       ...group,
       items: group.items.filter(item => !item.adminOnly || user?.role === 'admin_dispatcher'),
     }))
     .filter(group => group.items.length > 0)
-
-  const displayName = user?.full_name ?? 'Dispatcher'
 
   return (
     // No background of its own: the dark surface and rounded edge belong to the frame in
@@ -286,33 +319,11 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
         ))}
       </nav>
 
-      {/* Footer — settings, then who is signed in and whether the live stream is up */}
+      {/* Footer — settings, then the profile menu (who is signed in, log out, live status) */}
       <div className="px-3 pb-3 flex flex-col gap-0.5">
-        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} />
+        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} badge={forensicBadge} />
 
-        <div className={cn('mt-2 flex flex-col gap-2', collapsed ? 'items-center' : 'px-3')}>
-          <div className="flex items-center gap-2.5 min-w-0" title={collapsed ? displayName : undefined}>
-            <div className="relative shrink-0">
-              <div
-                aria-hidden
-                className="w-8 h-8 rounded-full bg-white/10 ring-1 ring-white/10 flex items-center justify-center text-[12px] font-[600] text-white/85"
-              >
-                {initialsOf(user?.full_name)}
-              </div>
-              {/* Collapsed rail has no room for a "Live" row, so the status becomes a
-                  presence dot on the avatar — a dispatcher can still see the stream is alive. */}
-              {collapsed && <LiveBadge compact className="absolute -bottom-0.5 -right-0.5" />}
-            </div>
-            {!collapsed && (
-              <div className="min-w-0">
-                <div className="text-[13px] font-[500] text-white/90 leading-tight truncate">{displayName}</div>
-                <div className="text-[11px] text-white/45 leading-tight truncate">{roleLabel(user?.role)}</div>
-              </div>
-            )}
-          </div>
-          {/* Own line, below the identity, rather than competing with the name for width. */}
-          {!collapsed && <LiveBadge />}
-        </div>
+        <ProfileMenu collapsed={collapsed} onClose={onClose} />
       </div>
     </div>
   )

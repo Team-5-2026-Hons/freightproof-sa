@@ -23,7 +23,7 @@ from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
 from app.orchestration.evidence.artifacts import get_trip_scoped_artifact, sign_artifact_url
 from app.orchestration.evidence_anchors.reads import (
-    load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
+    attach_hedera_refs, load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
 )
 from app.orchestration.exceptions.review_identity import name_of, user_names
 from app.schemas.pagination import CursorPage
@@ -142,6 +142,7 @@ def _to_list_item(
         trailer_registrations=context.trailer_registrations,
         phase_label=phase_type,
         stop_label=stop_sequence,
+        phase_event_id=exc.phase_event_id,
         # This is the capture-time verdict stored with the driver report, not a
         # present-day recomputation. Dispatcher list and detail responses share this
         # projection so either surface can explain what evidence was available then.
@@ -316,8 +317,12 @@ async def list_exception_history(
 
 async def get_exception_detail(
     db: AsyncSession, *, exception_id: uuid.UUID, organization_id: uuid.UUID,
+    include_hedera_refs: bool = False,
 ) -> TripExceptionDetail:
     """One exception, any review state, any trip lifecycle — a permalink target.
+
+    `include_hedera_refs` adds each anchored action's Hedera topic id and sequence number; the
+    endpoint passes True for an admin dispatcher only, as receipts are admin-only elsewhere.
 
     Org-scoped by the same Trip join review_exception uses. Raises
     ResourceNotFoundError (-> 404, not 403) for a missing or cross-organisation id — a
@@ -370,6 +375,8 @@ async def get_exception_detail(
     photos = (await load_photos_by_exception(db, [exc]))[exc.id]
     signed = [await sign_artifact_url(a) for a in photos]
     anchor_events = (await load_anchor_events_by_exception(db, [exc.id]))[exc.id]
+    if include_hedera_refs:
+        anchor_events = await attach_hedera_refs(db, anchor_events)
     return TripExceptionDetail(
         **list_item.model_dump(),
         supporting_artifacts=[

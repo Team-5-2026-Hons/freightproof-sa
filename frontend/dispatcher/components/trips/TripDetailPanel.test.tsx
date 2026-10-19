@@ -316,3 +316,37 @@ describe('TripDetailPanel exceptions tab', () => {
     expect(onClearExceptionSelection).toHaveBeenCalledOnce()
   })
 })
+
+describe('TripDetailPanel tab help', () => {
+  it.each([
+    ['information', 'About the Info tab', 'What the Info tab holds'],
+    ['manifest', 'About the Cargo tab', 'What the Cargo tab shows'],
+    ['exceptions', 'About the Exceptions tab', 'What the Exceptions tab shows'],
+  ] as const)('%s tab: a help button opens its explanation', async (panel, label, question) => {
+    renderPanel(vi.fn(), trip, { panel })
+
+    await userEvent.click(screen.getByRole('button', { name: label }))
+
+    expect(screen.getByRole('region', { name: label })).toHaveTextContent(question)
+  })
+
+  it('shows only the help for the tab that is open', () => {
+    renderPanel(vi.fn(), trip, { panel: 'manifest' })
+
+    expect(screen.queryByRole('button', { name: 'About the Info tab' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'About the Exceptions tab' })).not.toBeInTheDocument()
+  })
+
+  it('adds no row of its own: the icon sits in the panel padding above the content', () => {
+    renderPanel(vi.fn(), trip, { panel: 'information' })
+
+    const anchor = screen.getByRole('button', { name: 'About the Info tab' }).closest('[data-keep-exception-selection]')!
+
+    // A zero-height row, with the icon lifted into the padding, so the content starts where it did before the help existed.
+    expect(anchor.parentElement!.className).toContain('h-0')
+    expect(anchor.className).toContain('absolute')
+    expect(anchor.className).toContain('-top-[22px]')
+    // The 14px glyph sits 5px inside its 24px button, so the button overhangs the padding by that much to put the glyph on the content's right edge.
+    expect(anchor.className).toContain('-right-[5px]')
+  })
+})

@@ -21,6 +21,9 @@ interface TabsProps {
   panelId?: string
   ariaLabel?: string
   size?: 'sm' | 'md'
+  /** 'equal' gives every tab the same width; 'content' sizes each to its label, for a row where
+   *  one label is much longer than the rest and would otherwise be truncated. */
+  fit?: 'equal' | 'content'
   className?: string
   /** Multiple controls can share view names without sharing DOM ids or keyboard focus. */
   idPrefix?: string
@@ -29,7 +32,7 @@ interface TabsProps {
 
 /** Segmented control. Use for switching between mutually exclusive views of the same
  *  subject — a Switch is for a single on/off setting and cannot express three states. */
-export function Tabs({ tabs, active, onChange, panelId, ariaLabel, size = 'md', className, idPrefix = 'tab', disabled = false }: TabsProps): React.JSX.Element {
+export function Tabs({ tabs, active, onChange, panelId, ariaLabel, size = 'md', fit = 'equal', className, idPrefix = 'tab', disabled = false }: TabsProps): React.JSX.Element {
   return (
     <div role="tablist" aria-label={ariaLabel} className={cn('flex gap-1 rounded-[10px] bg-surf-low p-1', className)}>
       {tabs.map(tab => {
@@ -57,8 +60,9 @@ export function Tabs({ tabs, active, onChange, panelId, ariaLabel, size = 'md', 
             }}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'flex min-w-0 flex-1 items-center justify-center gap-[6px] rounded-md font-[700] uppercase tracking-[0.06em] transition-all duration-150',
+              'flex min-w-0 items-center justify-center gap-[6px] rounded-md font-[700] uppercase tracking-[0.06em] transition-all duration-150',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sec',
+              fit === 'equal' ? 'flex-1' : 'flex-auto',
               size === 'sm' ? 'px-2 py-[6px] text-[10px]' : 'px-4 py-2 text-[11px]',
               isActive
                 ? 'bg-surf-lowest text-on-surf shadow-[0_1px_0_rgba(27,27,28,0.06)]'

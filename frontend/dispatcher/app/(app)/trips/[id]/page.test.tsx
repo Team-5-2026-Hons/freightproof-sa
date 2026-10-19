@@ -663,7 +663,7 @@ describe('Trip detail summary and panels', () => {
     rendered.rerender(<TripDetailPage />)
 
     // This rerender models browser Back/Forward restoring an older query string.
-    const allRecorded = screen.getByRole('tab', { name: /^All recorded\s*2$/ })
+    const allRecorded = screen.getByRole('tab', { name: /^All\s*2$/ })
     expect(allRecorded).toHaveAttribute('aria-selected', 'true')
   })
 
@@ -941,7 +941,7 @@ describe('Trip detail exceptions panel opened on one exception', () => {
 
     expect(document.querySelector('[data-exception-id="trip-level-exception"]')).toHaveAttribute('aria-current', 'true')
     expect(screen.queryByText(/^Selected phase/)).toBeNull()
-    expect(screen.getByRole('tab', { name: /^All recorded\s*3$/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^All\s*3$/ })).toBeInTheDocument()
   })
 
   it('keeps the phase filter and marks the record when both are in the URL', () => {
@@ -980,6 +980,22 @@ describe('Trip detail exceptions panel opened on one exception', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^Unreviewed\s*0$/ }))
 
     expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=needs_review`, { scroll: false })
+  })
+
+  it('opens on the Reviewed filter when the URL asks for it', () => {
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=reviewed')
+    render(<TripDetailPage />)
+
+    expect(screen.getByRole('tab', { name: /^Reviewed/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('puts the Reviewed filter in the URL when a reader picks it', () => {
+    navigation.search = new URLSearchParams('panel=exceptions&exceptions=all&exception=' + EARLIER_ID)
+    render(<TripDetailPage />)
+
+    fireEvent.click(screen.getByRole('tab', { name: /^Reviewed/ }))
+
+    expect(push).toHaveBeenCalledWith(`/trips/${TRIP_0040_ID}?panel=exceptions&exceptions=reviewed`, { scroll: false })
   })
 
   it('routes "+n more" to the phase-scoped panel with no exception selected', () => {

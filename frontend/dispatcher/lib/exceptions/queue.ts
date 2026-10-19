@@ -1,5 +1,5 @@
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { fmtExceptionType, matchesExceptionReference } from '@/lib/format/exception'
 import { SEVERITY_RANK } from '@/lib/exceptions/severity'
 import { sastCalendarDay } from '@shared/lib/utils/datetime'
 import { compareText, sortRows, type Sort, type SortValue } from '@/lib/sort/sort-rows'
@@ -48,7 +48,7 @@ export function filterQueue(items: readonly TripExceptionListItem[], filters: Qu
   const q = (filters.q ?? '').toLocaleLowerCase()
   return items.filter(item => {
     if (filters.severity && item.severity !== filters.severity) return false
-    if (q && !`${item.description}\n${item.trip_reference}`.toLocaleLowerCase().includes(q)) return false
+    if (q && !`${item.description}\n${item.trip_reference}`.toLocaleLowerCase().includes(q) && !matchesExceptionReference(item.id, q)) return false
     if (!filters.fromDate && !filters.toDate) return true
     const day = sastCalendarDay(item.created_at)
     if (!day) return false
