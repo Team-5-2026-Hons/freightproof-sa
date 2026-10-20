@@ -73,7 +73,9 @@ def hedera(monkeypatch: pytest.MonkeyPatch) -> HederaSwitch:
     adapter = hedera_module._SdkHederaAdapter  # the stub installed by tests/integration/conftest.py
     healthy_submit = adapter.submit_message
 
-    def submit_message(self: object, topic_id: str, message: str) -> object:
+    def submit_message(
+        self: hedera_module._SdkHederaAdapter, topic_id: str, message: str,
+    ) -> hedera_module.HederaReceipt:
         if switch.down:
             raise ConnectionError("hedera unreachable")
         return healthy_submit(self, topic_id, message)

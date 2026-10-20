@@ -7,7 +7,10 @@ from datetime import timedelta
 from pypdf import PdfReader
 
 from app.reporting.pdf_renderer import render_audit_pack_html, render_audit_pack_pdf
-from app.schemas.audit_pack import AnchoredRecord, ExceptionAnchorRecord, ExceptionPhoto, PackIssue
+from app.schemas.audit_pack import (
+    AnchoredRecord, AuditPackManifest, DriverSubstitutionRecord, ExceptionAnchorRecord,
+    ExceptionPhoto, HandoverDeclarationRecord, PackIssue, SubstitutionClarificationRecord,
+)
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest, make_phase
 
@@ -33,6 +36,43 @@ def _record() -> AnchoredRecord:
 
 def _text(pdf: bytes) -> str:
     return "\n".join(page.extract_text() for page in PdfReader(io.BytesIO(pdf)).pages)
+
+
+def immediate_transfer_manifest() -> AuditPackManifest:
+    manifest = make_manifest(phases=[make_phase(0, "activation"), make_phase(1, "loading")])
+    incoming = uuid.uuid4()
+    transfer = DriverSubstitutionRecord(
+        substitution_id=uuid.uuid4(), original_driver_name="Outgoing sample driver",
+        substituting_driver_name="Incoming sample driver", exchange_location=None, is_planned=None,
+        substitution_at=T0 + timedelta(minutes=5), anchor_receipt_id=None, tier="declared",
+        sequence_number=1, completion_mode="normal", arranged_by_name="Sample dispatcher",
+        request_format="immediate_v2", confirmation_policy="incoming_acceptance_v2",
+        completed_by="driver", completed_by_driver_id=incoming, completed_by_name="Incoming sample driver",
+        declarations=[HandoverDeclarationRecord(
+            role="incoming", driver_id=incoming, driver_name="Incoming sample driver", captured_at=T0,
+            received_at=T0 + timedelta(minutes=4), location_recorded=True, latitude=-30, longitude=25,
+            accuracy_metres=8, location_observed_at=T0 - timedelta(minutes=1),
+            location_observation_committed=True, seal_readings=["AB-1234 intact"], photo_sha256=[], discrepancy_note=None,
+        )],
+        corrections=[SubstitutionClarificationRecord(
+            id=uuid.uuid4(), recorded_by_user_id=uuid.uuid4(), recorded_by_name="Sample reviewer",
+            recorded_at=T0 + timedelta(hours=1), reason="Clarify seal", correction_note="Read at rear doors",
+            event_hash="a" * 64, anchor_status="pending", receipt_id=None,
+        )],
+    )
+    return manifest.model_copy(update={"driver": manifest.driver.model_copy(update={"substitutions": [transfer]})})
+
+
+def test_immediate_transfer_pdf_names_actual_actor_and_observation_without_outgoing_declaration() -> None:
+    manifest = immediate_transfer_manifest()
+
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+    text = " ".join(_text(render_audit_pack_pdf(manifest, issue=None, mirror_base_url=MIRROR)).split())
+
+    assert "Outgoing driver: Not requested — notification only" in html
+    assert "Outgoing declaration" not in html
+    for fact in ("Incoming sample driver", "covered by custody commitment", "Sample reviewer", "Read at rear doors"):
+        assert fact in html and fact in text
 
 
 def test_render_audit_pack_pdf_produces_multi_page_pdf_with_trip_reference():

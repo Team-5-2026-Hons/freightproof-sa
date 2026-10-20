@@ -13,6 +13,7 @@ export type RealtimeKind =
   | 'evidence_uploaded'
   // FP-83: a driver handover was arranged, cancelled, replaced or completed.
   | 'driver_substitution_changed'
+  | 'late_driver_evidence_changed'
 
 // Whether an event can change the trip record, its manifest or the live trip list. A
 // Record, not a list, so adding a kind to RealtimeKind fails to compile until someone
@@ -28,6 +29,7 @@ export const KIND_CHANGES_TRIP_RECORD: Record<RealtimeKind, boolean> = {
   evidence_uploaded: false,
   // The trip's current driver, pending arrangement and custody chain live on the trip record.
   driver_substitution_changed: true,
+  late_driver_evidence_changed: false,
 }
 
 // Derived from the map above so the subscription filter cannot drift from the decision.

@@ -106,6 +106,8 @@ class CaptureCommitment:
     seal_checks_sha256: str
     note_sha256: str | None
     photos: tuple[PhotoCommitment, ...]
+    location_observed_at: datetime | None = None
+    location_unavailable_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,10 +133,10 @@ class CompletedSubstitutionRecord:
     outgoing_driver_id: uuid.UUID
     incoming_driver_id: uuid.UUID
     arranged_by_user_id: uuid.UUID
-    is_planned: bool
+    is_planned: bool | None
     reason_sha256: str
-    exchange_sha256: str
-    expected_at: datetime
+    exchange_sha256: str | None
+    expected_at: datetime | None
     effective_at: datetime
     declared_exchange_at: datetime | None
     completion_mode: str | None
@@ -145,6 +147,8 @@ class CompletedSubstitutionRecord:
     licence_expiry: date | None
     eligibility_observed_at: datetime | None
     captures: tuple[CaptureCommitment, ...]
+    request_format: str = "planned_v1"
+    reservation_start_at: datetime | None = None
 
 
 def _capture_payload(capture: CaptureCommitment) -> dict[str, Any]:
@@ -161,12 +165,14 @@ def _capture_payload(capture: CaptureCommitment) -> dict[str, Any]:
     }
 
 
-def compute_substitution_payload(*, record: CompletedSubstitutionRecord) -> dict[str, Any]:
+def compute_substitution_payload(*, record: CompletedSubstitutionRecord, payload_version: int = 1) -> dict[str, Any]:
     """The anchored payload for one completed handover (payload_version 1)."""
     identity = record.identity
+    if payload_version not in (1, 2):
+        raise UnsupportedPayload("Unknown driver substitution payload version")
     by_role = {capture.role: capture for capture in record.captures}
-    return {
-        "payload_version": SUBSTITUTION_PAYLOAD_VERSION,
+    payload: dict[str, Any] = {
+        "payload_version": payload_version,
         "event_type": SUBSTITUTION_EVENT_TYPE,
         "substitution_id": str(record.substitution_id),
         "trip_id": str(record.trip_id),
@@ -203,6 +209,21 @@ def compute_substitution_payload(*, record: CompletedSubstitutionRecord) -> dict
             for role in ("outgoing", "incoming")
         },
     }
+    if payload_version == 2:
+        if record.request_format != "immediate_v2" or record.reservation_start_at is None:
+            raise UnsupportedPayload("Immediate commitment needs its persisted request format and start")
+        if "outgoing" in by_role or "incoming" not in by_role:
+            raise UnsupportedPayload("Immediate commitment requires actual incoming acceptance only")
+        for key in ("is_planned", "exchange_sha256", "expected_at"):
+            del payload[key]
+        payload.update(request_format=record.request_format, reservation_start_at=_iso(record.reservation_start_at),
+                       confirmation_policy="incoming_acceptance_v2", required_confirmation_roles=["incoming"])
+        for role, capture in by_role.items():
+            payload["captures"][role].update(location_observed_at=_iso(capture.location_observed_at),
+                                             location_unavailable_reason=capture.location_unavailable_reason)
+    elif record.request_format != "planned_v1":
+        raise UnsupportedPayload("Legacy commitment requires its original request format")
+    return payload
 
 
 def exchange_hash(*, label: str, latitude: Decimal | float, longitude: Decimal | float, instructions: str | None) -> str:
@@ -228,10 +249,20 @@ def validate_substitution_payload(payload: object) -> dict[str, Any]:
     """The stored payload, if it is a version and kind this module rebuilds."""
     if (
         not isinstance(payload, dict)
-        or payload.get("payload_version") != SUBSTITUTION_PAYLOAD_VERSION
+        or payload.get("payload_version") not in (1, 2)
         or payload.get("event_type") != SUBSTITUTION_EVENT_TYPE
     ):
         raise UnsupportedPayload("not a known driver substitution payload")
+    if payload["payload_version"] == 2:
+        captures = payload.get("captures")
+        if (payload.get("request_format") != "immediate_v2"
+                or payload.get("confirmation_policy") != "incoming_acceptance_v2"
+                or payload.get("required_confirmation_roles") != ["incoming"]
+                or payload.get("reservation_start_at") is None
+                or any(key in payload for key in ("expected_at", "exchange_sha256", "is_planned"))
+                or not isinstance(captures, dict) or captures.get("outgoing") is not None
+                or not isinstance(captures.get("incoming"), dict)):
+            raise UnsupportedPayload("inconsistent immediate driver substitution payload")
     return payload
 
 

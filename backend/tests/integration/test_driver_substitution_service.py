@@ -1262,3 +1262,19 @@ async def test_another_organisations_substitution_cannot_be_corrected(db_session
             db_session, trip_id=w.trip_id, substitution_id=uuid.uuid4(), actor=dispatcher(w), payload=correction())
 
     assert await count(db_session, DriverSubstitutionCorrection) == 0
+
+async def test_completed_transfer_preserves_exception_hold(db_session: AsyncSession):
+    w, pending = await armed(db_session)
+    trip = await get_row(db_session, Trip, w.trip_id)
+    trip.status = TripStatus.EXCEPTION_HOLD
+    await db_session.flush()
+    before = await trip_fingerprint(db_session, w)
+    phase_before = (trip.current_phase, trip.current_stop)
+
+    result = await both_confirmed(db_session, w, pending)
+
+    assert result.state is SubstitutionState.COMPLETED
+    await db_session.refresh(trip)
+    assert trip.status == TripStatus.EXCEPTION_HOLD
+    assert (trip.current_phase, trip.current_stop) == phase_before
+    assert await trip_fingerprint(db_session, w) == before

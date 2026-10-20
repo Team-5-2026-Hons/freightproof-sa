@@ -11,6 +11,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type {
   ConfirmSubstitutionRequest,
+  ConfirmSubstitutionObservationRequest,
   DriverSubstitutionContextRead,
   SealCheck,
   SubstitutionConfirmationDetail,
@@ -37,7 +38,7 @@ import {
   type CaptureSealCheck,
   type SubstitutionCapture,
 } from '@/lib/offline/substitution-store'
-import { currentActorId } from '@/lib/session/custody-context'
+import { captureActorLease, currentActorId, isActorLeaseCurrent } from '@/lib/session/custody-context'
 import { substitutionRoleFor } from '@/lib/utils/driver-substitution'
 import { isValidSealFormat, normalizeSeal } from '@/lib/utils/seal-format'
 
@@ -79,6 +80,7 @@ export function newCapture(
     expectedVersion: context.version,
     clientRequestId: crypto.randomUUID(),
     submittedBody: null,
+    captureFormat: 'observation_v2', locationObservedAt: null, locationUnavailableReason: null,
     confirmedVehicleIds: [],
     sealChecks: sealApplicableVehicles(context.vehicles).map((vehicle) => emptySealCheck(vehicle.id)),
     discrepancyNote: '',
@@ -142,7 +144,7 @@ function sealCheckBody(check: CaptureSealCheck, condition: SubstitutionSealCondi
 }
 
 /** The wire body, from a capture whose photos are all uploaded. Built from the shared schema. */
-export function confirmationBody(capture: SubstitutionCapture): ConfirmSubstitutionRequest {
+function legacyConfirmationBody(capture: SubstitutionCapture): ConfirmSubstitutionRequest {
   if (capture.capturedAt === null) throw new Error('A confirmation needs its capture time.')
   const note = capture.discrepancyNote.trim()
   return {
@@ -157,6 +159,12 @@ export function confirmationBody(capture: SubstitutionCapture): ConfirmSubstitut
     seal_checks: capture.sealChecks.flatMap((check) => (check.condition === null ? [] : [sealCheckBody(check, check.condition)])),
     discrepancy_note: note === '' ? null : note,
   }
+}
+
+export function confirmationBody(capture: SubstitutionCapture): ConfirmSubstitutionObservationRequest {
+  return { ...legacyConfirmationBody(capture), capture_format: 'observation_v2',
+    location_observed_at: capture.locationObservedAt ?? null,
+    location_unavailable_reason: capture.locationUnavailableReason ?? null }
 }
 
 /** This driver's submitted declaration, if the server already holds one. */
@@ -195,14 +203,16 @@ async function backToDraft(capture: SubstitutionCapture, note: string): Promise<
 }
 
 async function runSend(key: string): Promise<CaptureSendOutcome> {
+  const lease = captureActorLease()
   const capture = await getCapture(key)
-  if (capture === null || capture.status !== 'sending' || capture.actorId !== currentActorId()) return { kind: 'busy' }
+  if (lease === null || !isActorLeaseCurrent(lease) || capture === null || capture.status !== 'sending' || capture.actorId !== lease.actorId) return { kind: 'busy' }
 
   // Photos first, each with its own stable request id and its artifact id saved on landing.
   const working: SubstitutionCapture = { ...capture, sealChecks: capture.sealChecks.map((check) => ({ ...check, photos: [...check.photos] })) }
   for (const check of working.sealChecks) {
     for (const [index, photo] of check.photos.entries()) {
       if (photo.uploadedArtifactId !== null) continue
+      if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
       try {
         const artifact = await uploadSubstitutionArtifact(working.tripId, working.requestId, working.role, {
           artifactType: 'photo', dataUrl: photo.dataUrl, capturedAt: photo.capturedAt, clientRequestId: photo.uploadRequestId,
@@ -223,13 +233,15 @@ async function runSend(key: string): Promise<CaptureSendOutcome> {
   }
 
   // The body is fixed once and saved BEFORE the POST: every retry resends exactly it.
-  const body = working.submittedBody ?? confirmationBody(working)
+  if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
+  const body = working.submittedBody ?? (working.captureFormat === 'observation_v2' ? confirmationBody(working) : legacyConfirmationBody(working))
   if (working.submittedBody === null) {
     working.submittedBody = body
     await saveCapture(working)
   }
 
   try {
+    if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
     const result = await confirmDriverSubstitution(working.tripId, working.requestId, body)
     // Bytes are on the server now; drop the local copies, keep the ids and the answer.
     await saveCapture({
@@ -283,11 +295,13 @@ export async function sendSubstitutionCapture(key: string): Promise<CaptureSendO
  * refresh, so it runs on foreground, reconnect and the visible-app interval.
  */
 export async function flushSubstitutionCaptures(): Promise<boolean> {
+  const lease = captureActorLease()
   const actorId = currentActorId()
   if (actorId === null) return false
   let anySaved = false
   try {
     for (const capture of await listCaptures()) {
+      if (lease === null || !isActorLeaseCurrent(lease)) break
       if (capture.status !== 'sending' || capture.actorId !== actorId) continue
       const outcome = await sendSubstitutionCapture(capture.key)
       if (outcome.kind === 'saved') anySaved = true
@@ -355,9 +369,11 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
   }, [])
 
   const refetch = useCallback(async () => {
+    const lease = captureActorLease()
     setLoadError(null)
     try {
-      setContext(await fetchDriverSubstitutionContext(tripId, requestId))
+      const loaded = await fetchDriverSubstitutionContext(tripId, requestId)
+      if (lease !== null && isActorLeaseCurrent(lease)) setContext(loaded)
     } catch (err: unknown) {
       console.error('useSubstitutionCapture: could not load the handover context', err)
       setLoadError(LOAD_ERROR)
@@ -389,6 +405,7 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
       if (loaded !== null) {
         const loadedRole = substitutionRoleFor(loaded, actorId)
         if (loadedRole === null) setLoadError(NOT_NAMED_ERROR)
+        else if (loaded.request_format === 'immediate_v2' && loadedRole === 'outgoing') setCapture(null)
         else if (stored === null) setCapture(newCapture(actorId, loaded, loadedRole))
         else if (stored.status === 'sending' && ownConfirmation(loaded, actorId) !== null) {
           // The response was lost but the server has it: the original saved result stands.
@@ -443,10 +460,15 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
   }, [edit])
 
   const runAndReload = useCallback(async (key: string): Promise<CaptureSendOutcome> => {
+    const lease = captureActorLease()
     setIsSending(true)
     try {
       const outcome = await sendSubstitutionCapture(key)
+      // A receipt may finish safely for its original actor; it must not launch a
+      // context read or replace another account's UI after that account changes.
+      if (lease === null || !isActorLeaseCurrent(lease)) return outcome
       const reloaded = await getCapture(key).catch(() => null)
+      if (!isActorLeaseCurrent(lease)) return outcome
       if (reloaded !== null) setCapture(reloaded)
       // Every terminal answer changes what the server holds: read it again, never assume.
       if (outcome.kind !== 'waiting' && outcome.kind !== 'busy') await refetch()
@@ -457,13 +479,17 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
   }, [refetch])
 
   const submit = useCallback(async (): Promise<CaptureSendOutcome | null> => {
+    const lease = captureActorLease()
     const current = captureRef.current
-    if (current === null || current.status !== 'draft' || context === null) return null
+    if (lease === null || current === null || current.actorId !== lease.actorId || current.status !== 'draft' || context === null) return null
+    if (context.state !== 'pending' || (context.request_format === 'immediate_v2' && current.role === 'outgoing')) return null
     if (captureProblems(current, context.vehicles).length > 0) return null
     // The moment of the declaration, taken on this device. Position is best effort: a phone
     // that cannot give one records "unavailable" (null), it never blocks or invents a fix.
     const capturedAt = new Date().toISOString()
-    const fix = location !== null ? await location.capturePosition() : null
+    const observation = location !== null ? await location.captureObservation() : { position: null, unavailableReason: 'unknown' as const }
+    const fix = observation.position
+    if (!isActorLeaseCurrent(lease) || captureRef.current !== current) return null
     const sending: SubstitutionCapture = {
       ...current,
       status: 'sending',
@@ -472,6 +498,8 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
       expectedVersion: context.version,
       submittedBody: null,
       capturedAt,
+      captureFormat: 'observation_v2', locationObservedAt: fix?.capturedAt ?? null,
+      locationUnavailableReason: observation.unavailableReason,
       position: fix !== null ? { latitude: fix.lat, longitude: fix.lng, accuracyMetres: fix.accuracyM } : null,
       note: null,
     }
@@ -484,6 +512,7 @@ export function useSubstitutionCapture(tripId: string, requestId: string, actorI
       return null
     }
     setCapture(sending)
+    if (!isActorLeaseCurrent(lease)) return { kind: 'waiting' }
     return runAndReload(sending.key)
   }, [context, location, runAndReload])
 

@@ -1,5 +1,6 @@
 // frontend/driver-pwa/lib/api/artifacts.ts
 import { api, ApiError } from './client'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 import type { EvidenceRole } from '@shared/lib/types/evidence'
 
 export interface UploadedArtifact {
@@ -74,7 +75,9 @@ function fileExtension(blob: Blob): string {
 // Converts the capture and enforces the size cap before any network call, then returns the
 // shared multipart fields. Callers append their route-specific extras.
 export async function artifactFormData(upload: ArtifactUpload): Promise<FormData> {
+  const generation = actorGeneration()
   const blob = await dataUrlToBlob(upload.dataUrl)
+  assertActorGeneration(generation)
 
   // Synthetic 413 (never emitted by the fetch wrapper itself) keeps this failure
   // TERMINAL: offline-queue classification (isQueueableFailure) only retries status 0
@@ -94,7 +97,9 @@ export async function artifactFormData(upload: ArtifactUpload): Promise<FormData
 }
 
 export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
+  const generation = actorGeneration()
   const form = await artifactFormData(params)
+  assertActorGeneration(generation)
   form.append('trip_id', params.tripId)
   if (params.attribution !== undefined) {
     form.append('phase_event_id', params.attribution.phaseEventId)

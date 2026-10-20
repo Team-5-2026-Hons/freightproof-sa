@@ -72,6 +72,7 @@ class RealtimeKind(str, Enum):
     # FP-83: a driver handover was arranged, cancelled, replaced or completed. Ids only, INFO;
     # the dispatcher refetches the trip. Drivers learn of it from their durable notices.
     DRIVER_SUBSTITUTION_CHANGED = "driver_substitution_changed"
+    LATE_DRIVER_EVIDENCE_CHANGED = "late_driver_evidence_changed"
 
 
 class EventSeverity(str, Enum):

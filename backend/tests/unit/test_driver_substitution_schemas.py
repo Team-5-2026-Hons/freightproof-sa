@@ -792,3 +792,11 @@ def test_typescript_error_status_table_matches_python() -> None:
     ts_table = {code: int(status) for code, status in re.findall(r"([A-Z_]+):\s*(\d{3})", block.group(1))}
 
     assert ts_table == {c.value: s for c, s in ds.SUBSTITUTION_ERROR_STATUS.items()}
+
+
+def test_immediate_arrangement_has_no_planning_fields():
+    body = ds.ArrangeImmediateSubstitutionRequest(client_request_id=_id(), request_format='immediate_v2', incoming_driver_id=_id(), reason=' Relief ')
+    assert body.reason == 'Relief'
+    assert set(body.model_dump()) == {'client_request_id', 'request_format', 'incoming_driver_id', 'reason'}
+    with pytest.raises(ValidationError):
+        ds.ArrangeImmediateSubstitutionRequest(**body.model_dump(), expected_at='2026-10-20T10:00:00+02:00')

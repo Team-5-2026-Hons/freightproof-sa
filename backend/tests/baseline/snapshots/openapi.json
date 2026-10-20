@@ -592,6 +592,40 @@
         "title": "AnchoredRecord",
         "type": "object"
       },
+      "ArrangeImmediateSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "incoming_driver_id": {
+            "format": "uuid",
+            "title": "Incoming Driver Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_format": {
+            "const": "immediate_v2",
+            "title": "Request Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "request_format",
+          "incoming_driver_id",
+          "reason"
+        ],
+        "title": "ArrangeImmediateSubstitutionRequest",
+        "type": "object"
+      },
       "ArrangeSubstitutionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1018,7 +1052,7 @@
             "type": "array"
           },
           "manifest_version": {
-            "default": 2,
+            "default": 3,
             "title": "Manifest Version",
             "type": "integer"
           },
@@ -2150,6 +2184,524 @@
           "expected_version"
         ],
         "title": "CompleteSubstitutionRequest",
+        "type": "object"
+      },
+      "CompletedSubstitutionDetail": {
+        "properties": {
+          "anchor_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arranged_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arranged By User Id"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactWithUrl"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmation_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "two_driver_v1",
+                  "incoming_acceptance_v2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Policy"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionConfirmationDetail"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "corrections": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionCorrectionRead"
+            },
+            "title": "Corrections",
+            "type": "array"
+          },
+          "custody_integrity": {
+            "$ref": "#/components/schemas/CustodyIntegrityRead"
+          },
+          "declared_exchange_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Exchange At"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "identity_attestation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentityAttestationRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "incoming": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "missing_confirmation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Confirmation Reason"
+          },
+          "outgoing": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "outgoing_notices": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionNoticeRead"
+            },
+            "title": "Outgoing Notices",
+            "type": "array"
+          },
+          "phase_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionPhaseContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "request_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planned_v1",
+                  "immediate_v2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Format"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "required_confirmation_roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SubstitutionRole"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Confirmation Roles"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "substitution_id": {
+            "format": "uuid",
+            "title": "Substitution Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "substitution_id",
+          "request_id",
+          "sequence_number",
+          "outgoing",
+          "incoming",
+          "effective_at",
+          "completion_mode",
+          "anchor_status",
+          "receipt_id",
+          "phase_context",
+          "request_format",
+          "required_confirmation_roles",
+          "confirmation_policy",
+          "reason",
+          "confirmations",
+          "artifacts",
+          "corrections",
+          "arranged_by_user_id",
+          "completion",
+          "identity_attestation",
+          "declared_exchange_at",
+          "missing_confirmation_reason",
+          "custody_integrity"
+        ],
+        "title": "CompletedSubstitutionDetail",
+        "type": "object"
+      },
+      "CompletedSubstitutionSummary": {
+        "properties": {
+          "anchor_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmation_policy": {
+            "anyOf": [
+              {
+                "enum": [
+                  "two_driver_v1",
+                  "incoming_acceptance_v2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Policy"
+          },
+          "effective_at": {
+            "format": "date-time",
+            "title": "Effective At",
+            "type": "string"
+          },
+          "incoming": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "outgoing": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "phase_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionPhaseContext"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "request_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planned_v1",
+                  "immediate_v2"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Format"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "required_confirmation_roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SubstitutionRole"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Confirmation Roles"
+          },
+          "sequence_number": {
+            "title": "Sequence Number",
+            "type": "integer"
+          },
+          "substitution_id": {
+            "format": "uuid",
+            "title": "Substitution Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "substitution_id",
+          "request_id",
+          "sequence_number",
+          "outgoing",
+          "incoming",
+          "effective_at",
+          "completion_mode",
+          "anchor_status",
+          "receipt_id",
+          "phase_context",
+          "request_format",
+          "required_confirmation_roles",
+          "confirmation_policy"
+        ],
+        "title": "CompletedSubstitutionSummary",
+        "type": "object"
+      },
+      "ConfirmSubstitutionObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy_metres": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Metres"
+          },
+          "capture_format": {
+            "const": "observation_v2",
+            "title": "Capture Format",
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "confirmed_vehicle_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Confirmed Vehicle Ids",
+            "type": "array"
+          },
+          "discrepancy_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discrepancy Note"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "location_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Observed At"
+          },
+          "location_unavailable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "permission_denied",
+                  "timeout",
+                  "position_unavailable",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Unavailable Reason"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "seal_checks": {
+            "items": {
+              "$ref": "#/components/schemas/SealCheck"
+            },
+            "title": "Seal Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "captured_at",
+          "confirmed_vehicle_ids",
+          "seal_checks",
+          "capture_format",
+          "location_observed_at",
+          "location_unavailable_reason"
+        ],
+        "title": "ConfirmSubstitutionObservationRequest",
         "type": "object"
       },
       "ConfirmSubstitutionRequest": {
@@ -4867,6 +5419,15 @@
               }
             ]
           },
+          "confirmation_policy": {
+            "default": "two_driver_v1",
+            "enum": [
+              "two_driver_v1",
+              "incoming_acceptance_v2"
+            ],
+            "title": "Confirmation Policy",
+            "type": "string"
+          },
           "confirmations": {
             "items": {
               "$ref": "#/components/schemas/SubstitutionConfirmationDetail"
@@ -4902,12 +5463,26 @@
             "title": "Effective At"
           },
           "exchange": {
-            "$ref": "#/components/schemas/ExchangePoint"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExchangePoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "expected_at": {
-            "format": "date-time",
-            "title": "Expected At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected At"
           },
           "findings": {
             "items": {
@@ -4928,8 +5503,15 @@
             "$ref": "#/components/schemas/DriverContact"
           },
           "is_planned": {
-            "title": "Is Planned",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Planned"
           },
           "missing_confirmations": {
             "items": {
@@ -4970,6 +5552,34 @@
               }
             ],
             "title": "Replacement Request Id"
+          },
+          "request_format": {
+            "default": "planned_v1",
+            "enum": [
+              "planned_v1",
+              "immediate_v2"
+            ],
+            "title": "Request Format",
+            "type": "string"
+          },
+          "required_confirmation_roles": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionRole"
+            },
+            "title": "Required Confirmation Roles",
+            "type": "array"
+          },
+          "reservation_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Start At"
           },
           "state": {
             "$ref": "#/components/schemas/SubstitutionState"
@@ -5073,6 +5683,41 @@
             ],
             "title": "Completed By"
           },
+          "completed_by_driver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By Driver Id"
+          },
+          "completed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By Name"
+          },
+          "completed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By User Id"
+          },
           "completion_mode": {
             "anyOf": [
               {
@@ -5084,6 +5729,25 @@
             ],
             "title": "Completion Mode"
           },
+          "confirmation_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Policy"
+          },
+          "corrections": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionClarificationRecord"
+            },
+            "title": "Corrections",
+            "type": "array"
+          },
           "declarations": {
             "default": [],
             "items": {
@@ -5093,8 +5757,26 @@
             "type": "array"
           },
           "exchange_location": {
-            "title": "Exchange Location",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchange Location"
+          },
+          "identity_attestation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Attestation Reason"
           },
           "identity_attested_at": {
             "anyOf": [
@@ -5142,8 +5824,15 @@
             "title": "Incoming Licence Expiry"
           },
           "is_planned": {
-            "title": "Is Planned",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Planned"
           },
           "missing_confirmation_reason": {
             "anyOf": [
@@ -5159,6 +5848,31 @@
           "original_driver_name": {
             "title": "Original Driver Name",
             "type": "string"
+          },
+          "request_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Format"
+          },
+          "required_confirmation_roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Confirmation Roles"
           },
           "sequence_number": {
             "anyOf": [
@@ -6779,6 +7493,17 @@
         "additionalProperties": false,
         "description": "One driver's own capture at a handover (FP-83): what they declared, on their device.",
         "properties": {
+          "accuracy_metres": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Metres"
+          },
           "captured_at": {
             "format": "date-time",
             "title": "Captured At",
@@ -6795,13 +7520,75 @@
             ],
             "title": "Discrepancy Note"
           },
+          "driver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Id"
+          },
           "driver_name": {
             "title": "Driver Name",
             "type": "string"
           },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "location_observation_committed": {
+            "default": false,
+            "title": "Location Observation Committed",
+            "type": "boolean"
+          },
+          "location_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Observed At"
+          },
           "location_recorded": {
             "title": "Location Recorded",
             "type": "boolean"
+          },
+          "location_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Unavailable Reason"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
           },
           "photo_sha256": {
             "items": {
@@ -7091,6 +7878,31 @@
           "checks"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IdentityAttestationRead": {
+        "properties": {
+          "attested_at": {
+            "format": "date-time",
+            "title": "Attested At",
+            "type": "string"
+          },
+          "attested_by_user_id": {
+            "format": "uuid",
+            "title": "Attested By User Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attested_by_user_id",
+          "reason",
+          "attested_at"
+        ],
+        "title": "IdentityAttestationRead",
         "type": "object"
       },
       "IdentitySnapshot": {
@@ -12426,6 +13238,53 @@
         "title": "RecordChange",
         "type": "object"
       },
+      "ReplaceImmediateSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "incoming_driver_id": {
+            "format": "uuid",
+            "title": "Incoming Driver Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "replacement_reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Replacement Reason",
+            "type": "string"
+          },
+          "request_format": {
+            "const": "immediate_v2",
+            "title": "Request Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "request_format",
+          "incoming_driver_id",
+          "reason",
+          "expected_version",
+          "replacement_reason"
+        ],
+        "title": "ReplaceImmediateSubstitutionRequest",
+        "type": "object"
+      },
       "ReplaceSubstitutionRequest": {
         "additionalProperties": false,
         "description": "Cancels the old request and creates a fresh one atomically: the complete new\narrangement, with its own ``reason``, plus why it replaces the old one.",
@@ -12986,6 +13845,92 @@
         "title": "SubstitutionAction",
         "type": "string"
       },
+      "SubstitutionClarificationRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Status"
+          },
+          "correction_note": {
+            "title": "Correction Note",
+            "type": "string"
+          },
+          "event_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Hash"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
+          },
+          "recorded_by_user_id": {
+            "format": "uuid",
+            "title": "Recorded By User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "recorded_by_user_id",
+          "recorded_by_name",
+          "recorded_at",
+          "reason",
+          "correction_note",
+          "event_hash",
+          "anchor_status",
+          "receipt_id"
+        ],
+        "title": "SubstitutionClarificationRecord",
+        "type": "object"
+      },
       "SubstitutionCompletionBlocker": {
         "description": "Declaration order IS the contract's fixed precedence when several checks fail.",
         "enum": [
@@ -13053,6 +13998,27 @@
       "SubstitutionConfirmationDetail": {
         "description": "Summary plus the permitted declaration, for the context read and participation history.",
         "properties": {
+          "accuracy_metres": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Metres"
+          },
+          "action_location_assessment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActionLocationAssessment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "captured_at": {
             "format": "date-time",
             "title": "Captured At",
@@ -13086,6 +14052,62 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "location_observation_committed": {
+            "default": false,
+            "title": "Location Observation Committed",
+            "type": "boolean"
+          },
+          "location_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Observed At"
+          },
+          "location_unavailable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "permission_denied",
+                  "timeout",
+                  "position_unavailable",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Unavailable Reason"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
           },
           "received_at": {
             "format": "date-time",
@@ -13316,6 +14338,24 @@
         "title": "SubstitutionNoticeRead",
         "type": "object"
       },
+      "SubstitutionPhaseContext": {
+        "properties": {
+          "phase_event_id": {
+            "format": "uuid",
+            "title": "Phase Event Id",
+            "type": "string"
+          },
+          "phase_type": {
+            "$ref": "#/components/schemas/PhaseType"
+          }
+        },
+        "required": [
+          "phase_event_id",
+          "phase_type"
+        ],
+        "title": "SubstitutionPhaseContext",
+        "type": "object"
+      },
       "SubstitutionRequestRead": {
         "description": "An explicit response schema, not a raw ORM dump (contract \"Types\").",
         "properties": {
@@ -13361,6 +14401,15 @@
               }
             ]
           },
+          "confirmation_policy": {
+            "default": "two_driver_v1",
+            "enum": [
+              "two_driver_v1",
+              "incoming_acceptance_v2"
+            ],
+            "title": "Confirmation Policy",
+            "type": "string"
+          },
           "confirmations": {
             "items": {
               "$ref": "#/components/schemas/ConfirmationSummary"
@@ -13386,12 +14435,26 @@
             "title": "Effective At"
           },
           "exchange": {
-            "$ref": "#/components/schemas/ExchangePoint"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExchangePoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "expected_at": {
-            "format": "date-time",
-            "title": "Expected At",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected At"
           },
           "id": {
             "format": "uuid",
@@ -13405,8 +14468,15 @@
             "$ref": "#/components/schemas/DriverContact"
           },
           "is_planned": {
-            "title": "Is Planned",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Planned"
           },
           "missing_confirmations": {
             "items": {
@@ -13440,6 +14510,34 @@
               }
             ],
             "title": "Replacement Request Id"
+          },
+          "request_format": {
+            "default": "planned_v1",
+            "enum": [
+              "planned_v1",
+              "immediate_v2"
+            ],
+            "title": "Request Format",
+            "type": "string"
+          },
+          "required_confirmation_roles": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionRole"
+            },
+            "title": "Required Confirmation Roles",
+            "type": "array"
+          },
+          "reservation_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reservation Start At"
           },
           "state": {
             "$ref": "#/components/schemas/SubstitutionState"
@@ -13858,6 +14956,14 @@
               }
             ],
             "title": "Closed At"
+          },
+          "completed_driver_substitutions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CompletedSubstitutionSummary"
+            },
+            "title": "Completed Driver Substitutions",
+            "type": "array"
           },
           "consignments": {
             "default": [],
@@ -21087,7 +22193,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfirmSubstitutionRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ConfirmSubstitutionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfirmSubstitutionObservationRequest"
+                  }
+                ],
+                "title": "Payload"
               }
             }
           },
@@ -22062,7 +23176,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ArrangeSubstitutionRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ArrangeSubstitutionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArrangeImmediateSubstitutionRequest"
+                  }
+                ],
+                "title": "Payload"
               }
             }
           },
@@ -22116,6 +23238,64 @@
           }
         ],
         "summary": "Arrange Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/completed/{substitution_id}": {
+      "get": {
+        "operationId": "completed_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions_completed__substitution_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "substitution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Substitution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompletedSubstitutionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Completed Substitution Endpoint",
         "tags": [
           "driver-substitutions"
         ]
@@ -22482,7 +23662,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReplaceSubstitutionRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReplaceSubstitutionRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReplaceImmediateSubstitutionRequest"
+                  }
+                ],
+                "title": "Payload"
               }
             }
           },

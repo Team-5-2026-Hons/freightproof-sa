@@ -40,6 +40,45 @@ from app.schemas.trips import (
 from app.schemas.vehicles import VehicleRead
 
 
+async def _attention_by_trip(
+    db: AsyncSession, trip_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, TripAttentionResponse]:
+    # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
+    # notes, which are saved already reviewed) are excluded — only unreviewed rows are
+    # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
+    # One grouped query yields the severity and claim split the dashboard ranks by.
+    exc_result = await db.execute(
+        select(
+            TripException.trip_id,
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.CRITICAL
+            ),
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.WARNING
+            ),
+            func.count(TripException.id).filter(
+                TripException.severity == ExceptionSeverity.INFO
+            ),
+            func.count(TripException.id).filter(
+                TripException.claimed_by_user_id.is_not(None)
+            ),
+        )
+        .where(
+            TripException.trip_id.in_(trip_ids),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+        )
+        .group_by(TripException.trip_id)
+    )
+    attention_by_trip: dict[uuid.UUID, TripAttentionResponse] = {
+        row[0]: TripAttentionResponse(
+            critical=row[1], warning=row[2], info=row[3], claimed=row[4]
+        )
+        for row in exc_result.all()
+    }
+
+    return attention_by_trip
+
+
 async def list_trips(
     db: AsyncSession,
     operator_organization_id: uuid.UUID,
@@ -87,38 +126,7 @@ async def list_trips(
         if tt.trailer_id in trailers_by_id:
             trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
 
-    # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
-    # notes, which are saved already reviewed) are excluded — only unreviewed rows are
-    # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
-    # One grouped query yields the severity and claim split the dashboard ranks by.
-    exc_result = await db.execute(
-        select(
-            TripException.trip_id,
-            func.count(TripException.id).filter(
-                TripException.severity == ExceptionSeverity.CRITICAL
-            ),
-            func.count(TripException.id).filter(
-                TripException.severity == ExceptionSeverity.WARNING
-            ),
-            func.count(TripException.id).filter(
-                TripException.severity == ExceptionSeverity.INFO
-            ),
-            func.count(TripException.id).filter(
-                TripException.claimed_by_user_id.is_not(None)
-            ),
-        )
-        .where(
-            TripException.trip_id.in_(trip_ids),
-            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
-        )
-        .group_by(TripException.trip_id)
-    )
-    attention_by_trip: dict[uuid.UUID, TripAttentionResponse] = {
-        row[0]: TripAttentionResponse(
-            critical=row[1], warning=row[2], info=row[3], claimed=row[4]
-        )
-        for row in exc_result.all()
-    }
+    attention_by_trip = await _attention_by_trip(db, trip_ids)
 
     # Same batching shape as exc_counts above: one grouped query for the page.
     # `completed` here means "resolved" in the ledger's sense (phases.state): an overridden

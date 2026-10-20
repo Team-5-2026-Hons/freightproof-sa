@@ -75,6 +75,12 @@ async def test_reservation_ends_exactly_at_the_trips_planned_end(db_session: Asy
 
 async def test_open_ended_trip_keeps_the_reservation_open_ended(db_session: AsyncSession):
     w = await build_world(db_session, departure=BASE, arrival=None)
+    # build_world supplies a default arrival for None; this case needs a genuine
+    # open-ended trip rather than the fixture's normal eight-hour journey.
+    trip = await db_session.get(Trip, w.trip_id)
+    assert trip is not None
+    trip.planned_arrival_at = None
+    await db_session.flush()
     await add_pending(db_session, w, outgoing=w.a, incoming=w.b, expected_at=BASE + 4 * HOUR)
 
     far_future = await _busy(db_session, w, w.b, BASE + 400 * HOUR, BASE + 401 * HOUR, now=BASE + HOUR)

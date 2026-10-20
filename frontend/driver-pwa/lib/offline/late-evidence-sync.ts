@@ -16,7 +16,7 @@ import type {
 import { submitLateEvidence, uploadLateEvidenceArtifact } from '@/lib/api/driver-substitutions'
 import { buildPhaseCompleteRequest, type ArtifactIdRequest } from '@/lib/api/phases'
 import { checkpointRequestBody } from '@/lib/api/checkpoints'
-import { currentActorId } from '@/lib/session/custody-context'
+import { assertActorLease, captureActorLease, currentActorId, isActorLeaseCurrent } from '@/lib/session/custody-context'
 import { blobToDataUrl } from './exception-sync'
 import {
   getExceptionEnvelope,
@@ -217,7 +217,9 @@ export async function reloadLateEvidenceSource(source: LateEvidenceSource): Prom
 }
 
 export async function sendLateEvidence(listed: LateEvidenceSource): Promise<LateEvidenceOutcome> {
+  const lease = captureActorLease()
   const source = await reloadLateEvidenceSource(listed)
+  if (lease === null || !isActorLeaseCurrent(lease)) return { kind: 'not-eligible', reason: NOT_ELIGIBLE_ACTOR }
   if (source === null) return { kind: 'already-recorded' }
   const blocker = lateEvidenceBlocker(source)
   if (blocker !== null) return { kind: 'not-eligible', reason: blocker }
@@ -254,6 +256,7 @@ export async function sendLateEvidence(listed: LateEvidenceSource): Promise<Late
     const requestId = known?.requestId ?? crypto.randomUUID()
     working.uploads[slot] = { requestId, artifactId: null }
     await saveLateProgress(working)
+    assertActorLease(lease)
     const artifact = await uploadLateEvidenceArtifact(tripId, custodySequence, {
       artifactType: 'photo', dataUrl, capturedAt, clientRequestId: requestId,
     })
@@ -269,6 +272,7 @@ export async function sendLateEvidence(listed: LateEvidenceSource): Promise<Late
 
   try {
     const report = await buildReport(source, upload)
+    assertActorLease(lease)
     const receipt = await submitLateEvidence(tripId, {
       client_request_id: working.clientRequestId,
       custody_sequence: custodySequence,

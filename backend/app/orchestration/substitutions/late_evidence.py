@@ -23,6 +23,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError, SubstitutionInvalidError, SubstitutionVersionChangedError
+from app.core.realtime import EventSeverity, RealtimeKind, TripEvent, enqueue_event
+from app.db.models.evidence import EvidenceArtifact
+from app.db.models.trips import DriverSubstitution, Trip
 from app.db.models.driver_substitutions import (
     DriverSubstitutionUpload, LateDriverEvidence, LateDriverEvidenceArtifact,
 )
@@ -39,6 +42,35 @@ from app.schemas.people import DriverRead, UserRead
 
 ACTION_LATE_EVIDENCE = "late_evidence"
 ACTION_ACKNOWLEDGE = "acknowledge_late_evidence"
+
+
+async def _ordinary_attachments(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, custody_sequence: int,
+    artifact_ids: list[uuid.UUID],
+) -> set[uuid.UUID]:
+    """Server upload times must lie strictly inside the claimed period; device time proves none."""
+    trip = await db.get(Trip, trip_id)
+    boundaries = {sequence: moment for sequence, moment in (await db.execute(select(
+        DriverSubstitution.sequence_number, DriverSubstitution.substitution_at,
+    ).where(DriverSubstitution.trip_id == trip_id))).all()}
+    start = trip.created_at if trip is not None and custody_sequence == 0 else boundaries.get(custody_sequence)
+    end = boundaries.get(custody_sequence + 1)
+    if start is None or end is None or start >= end:
+        return set()
+    return set((await db.execute(select(EvidenceArtifact.id).where(
+        EvidenceArtifact.id.in_(artifact_ids), EvidenceArtifact.trip_id == trip_id,
+        EvidenceArtifact.captured_by_driver_id == driver_id,
+        EvidenceArtifact.created_at > start, EvidenceArtifact.created_at < end,
+        ~select(DriverSubstitutionUpload.artifact_id).where(
+            DriverSubstitutionUpload.artifact_id == EvidenceArtifact.id,
+        ).exists(),
+    ))).scalars())
+
+
+def _notify_late_evidence(db: AsyncSession, trip: Trip) -> None:
+    enqueue_event(db, trip.operator_organization_id, TripEvent(
+        id=trip.id, kind=RealtimeKind.LATE_DRIVER_EVIDENCE_CHANGED, severity=EventSeverity.INFO,
+    ))
 
 
 def payload_sha256(evidence_json: object) -> str:
@@ -78,6 +110,9 @@ async def _check_attachments(
         DriverSubstitutionUpload.driver_id == driver_id, DriverSubstitutionUpload.purpose == PURPOSE_LATE,
         DriverSubstitutionUpload.custody_sequence == custody_sequence,
     ))).scalars())
+    own.update(await _ordinary_attachments(
+        db, trip_id=trip_id, driver_id=driver_id, custody_sequence=custody_sequence, artifact_ids=artifact_ids,
+    ))
     used = (await db.execute(select(LateDriverEvidenceArtifact.artifact_id).where(
         LateDriverEvidenceArtifact.artifact_id.in_(artifact_ids),
     ).limit(1))).first()
@@ -123,6 +158,7 @@ async def retain_late_evidence(
 
     result = await build_late_evidence_read(db, row)
     record_operation(db, key, request_id=None, result=result, late_evidence_id=row.id)
+    _notify_late_evidence(db, trip)
     await db.flush()
     return result
 
@@ -160,5 +196,6 @@ async def acknowledge_late_evidence(
     await db.refresh(row)
     result = await build_late_evidence_read(db, row)
     record_operation(db, key, request_id=None, result=result, late_evidence_id=row.id)
+    _notify_late_evidence(db, trip)
     await db.flush()
     return result

@@ -139,6 +139,24 @@ async def _corroborate_and_assess(
         )
 
 
+async def _load_checkpoint_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID | None,
+) -> PhaseEvent | None:
+    phase_event: PhaseEvent | None = None
+    if phase_event_id is not None:
+        phase_result = await db.execute(
+            select(PhaseEvent).where(
+                PhaseEvent.id == phase_event_id,
+                PhaseEvent.trip_id == trip_id,
+            )
+        )
+        phase_event = phase_result.scalar_one_or_none()
+        if phase_event is None:
+            raise ResourceNotFoundError("PhaseEvent", str(phase_event_id))
+
+    return phase_event
+
+
 async def log_checkpoint(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: DriverCheckpointCreateBody,
 ) -> CheckpointRead:
@@ -166,17 +184,9 @@ async def log_checkpoint(
                 raise IdempotencyKeyReusedError()
             return CheckpointRead.model_validate(existing)
 
-    phase_event: PhaseEvent | None = None
-    if payload.phase_event_id is not None:
-        phase_result = await db.execute(
-            select(PhaseEvent).where(
-                PhaseEvent.id == payload.phase_event_id,
-                PhaseEvent.trip_id == trip_id,
-            )
-        )
-        phase_event = phase_result.scalar_one_or_none()
-        if phase_event is None:
-            raise ResourceNotFoundError("PhaseEvent", str(payload.phase_event_id))
+    phase_event = await _load_checkpoint_phase(
+        db, trip_id=trip_id, phase_event_id=payload.phase_event_id,
+    )
 
     await _validate_trip_artifact(
         db, trip_id=trip_id, artifact_id=payload.selfie_artifact_id,

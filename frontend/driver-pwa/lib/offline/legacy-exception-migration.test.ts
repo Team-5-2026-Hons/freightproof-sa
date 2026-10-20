@@ -58,11 +58,11 @@ describe('legacy exception migration', () => {
     expect(stored?.photos[0].uploadedArtifactId).toBeNull()
     expect(stored?.photos[0].blob).toBeInstanceOf(Blob)
     expect(stored?.body).not.toHaveProperty('supporting_artifact_id')
-    expect(stored?.status).toBe('pending')
+    expect(stored).toMatchObject({ status: 'quarantined', actorId: null })
     expect(dropLegacy).toHaveBeenCalledWith([e.id])
   })
 
-  test('test_legacy_entry_with_uploaded_artifact_id_and_no_bytes_keeps_id_and_never_reuploads', async () => {
+  test('test_legacy_entry_with_uploaded_artifact_id_keeps_id_in_quarantine_without_sending', async () => {
     const e = entry()
     e.body = { ...e.body, supporting_artifact_id: 'known-artifact' }
 
@@ -72,9 +72,10 @@ describe('legacy exception migration', () => {
     const outcome = await sendExceptionReport(stored!, { durable: true, post })
 
     expect(stored?.photos[0]).toMatchObject({ blob: null, uploadedArtifactId: 'known-artifact' })
-    expect(outcome.kind).toBe('acknowledged')
+    expect(outcome.kind).toBe('not-yours')
     expect(upload).not.toHaveBeenCalled()
-    expect(post).toHaveBeenCalledWith(['known-artifact'])
+    expect(post).not.toHaveBeenCalled()
+    expect(await getExceptionEnvelope(e.body.client_report_id!)).toMatchObject({ status: 'quarantined', actorId: null })
   })
 
   test('test_legacy_entry_with_dataurl_and_known_id_keeps_both', () => {

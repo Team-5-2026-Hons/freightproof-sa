@@ -13,6 +13,7 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { sealNumberSource, type SealNumberSource } from '@/lib/ocr/sealSource'
 import { uploadArtifact, type ArtifactAttribution, type ArtifactType } from './artifacts'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 
 // idempotency_key lets a resubmitted completion return the current state instead of
 // duplicating evidence. driver_captured_at is stamped once at submit time and reused on
@@ -456,14 +457,19 @@ export async function submitPhase(
   acknowledgement: LocationWarningAcknowledgement | null = null,
   custodySequence: number | null = null,
 ): Promise<SubmitPhaseResult> {
+  const generation = actorGeneration()
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
     return { ok: true, trip: null, phaseStatus: 'completed' }
   }
   const request = await buildPhaseCompleteRequest(
     { tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement },
-    (artifact) => artifactIdFor(artifact, custodySequence),
+    (artifact) => {
+      assertActorGeneration(generation)
+      return artifactIdFor(artifact, custodySequence)
+    },
   )
+  assertActorGeneration(generation)
   const updatedTrip = await completePhase(tripId, phaseEventId, {
     ...request,
     ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),

@@ -9,6 +9,7 @@
 //   3. It stops everything once confirmed, so a closed handover does not keep polling.
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { useRotatingHandover } from '@/lib/hooks/useRotatingHandover'
 
 vi.mock('@/lib/api/handover', () => ({
@@ -27,6 +28,7 @@ const UNCONFIRMED = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  authenticateTestDriver(TRIP, 2)
   vi.mocked(issueHandoverToken).mockResolvedValue({
     scan_url: 'https://r.test/h/aaa',
     expires_at: '2026-09-13T10:10:00Z',
@@ -130,7 +132,7 @@ describe('useRotatingHandover', () => {
 
     await act(async () => { result.current.forceNewCode() })
 
-    await waitFor(() => expect(issueHandoverToken).toHaveBeenCalledWith(TRIP, EVENT, true))
+    await waitFor(() => expect(issueHandoverToken).toHaveBeenCalledWith(TRIP, EVENT, true, 2))
   })
 
   it('a poll failure is swallowed rather than shown under a working QR', async () => {

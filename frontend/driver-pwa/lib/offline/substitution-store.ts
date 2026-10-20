@@ -9,6 +9,8 @@
 //     ID, per-photo upload IDs and, once it exists, the server's receipt.
 import type {
   ConfirmSubstitutionRequest,
+  ConfirmSubstitutionObservationRequest,
+  LocationUnavailableReason,
   LateEvidenceRead,
   SubstitutionRequestRead,
   SubstitutionRole,
@@ -68,7 +70,10 @@ export interface SubstitutionCapture {
   /** The confirmation's client_request_id. Replaced only by a new intentional submit. */
   clientRequestId: string
   /** Exactly what was (or is being) sent. null while still a draft. */
-  submittedBody: ConfirmSubstitutionRequest | null
+  submittedBody: ConfirmSubstitutionRequest | ConfirmSubstitutionObservationRequest | null
+  captureFormat?: 'observation_v2' | null
+  locationObservedAt?: string | null
+  locationUnavailableReason?: LocationUnavailableReason | null
   confirmedVehicleIds: string[]
   sealChecks: CaptureSealCheck[]
   discrepancyNote: string
@@ -234,7 +239,11 @@ export function captureKey(actorId: string, requestId: string): string {
   return `${actorId}:${requestId}`
 }
 
-export const getCapture = (key: string): Promise<SubstitutionCapture | null> => getOne<SubstitutionCapture>(CAPTURES, key)
+export const getCapture = async (key: string): Promise<SubstitutionCapture | null> => {
+  const capture = await getOne<SubstitutionCapture>(CAPTURES, key)
+  return capture === null ? null : { ...capture, captureFormat: capture.captureFormat ?? null,
+    locationObservedAt: capture.locationObservedAt ?? null, locationUnavailableReason: capture.locationUnavailableReason ?? null }
+}
 
 export const listCaptures = (): Promise<SubstitutionCapture[]> => getAll<SubstitutionCapture>(CAPTURES)
 

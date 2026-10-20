@@ -216,3 +216,25 @@ async def test_another_organisation_cannot_acknowledge(db_session: AsyncSession)
             db_session, trip_id=w.trip_id, evidence_id=receipt.id,
             actor=dispatcher(w, organization_id=w.other_org_id), payload=ack(),
         )
+
+@pytest.mark.usefixtures('storage')
+async def test_ordinary_upload_before_transfer_can_be_retained_once(db_session: AsyncSession):
+    from app.db.models.enums import ArtifactType
+    from app.orchestration.evidence.artifacts import create_artifact
+    from tests.integration.test_driver_substitution_artifacts import jpeg
+
+    w = await build_world(db_session)
+    photo = await create_artifact(
+        db_session, trip_id=w.trip_id, file_bytes=jpeg(), mime_type='image/jpeg',
+        artifact_type=ArtifactType.PHOTO, captured_at=CAPTURED, captured_by_driver_id=w.a, custody_sequence=0,
+    )
+    await complete_handover(db_session, w, outgoing=w.a, incoming=w.b)
+    before = await snapshot(db_session, w)
+    payload = late(artifacts=[photo.id])
+
+    receipt = await retain(db_session, w, w.a, payload)
+    replay = await retain(db_session, w, w.a, payload)
+
+    assert receipt.id == replay.id
+    assert receipt.artifact_ids == [photo.id]
+    assert await snapshot(db_session, w) == before

@@ -29,6 +29,15 @@ _PNG_DATA_URL_PREFIX = "data:image/png;base64,"
 _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
+class IssueTokenQuery(BaseModel):
+    """Query string of the issue-link route."""
+
+    # The driver's "show a new code" escape hatch.
+    force: bool = False
+    # The custody period the driver is acting in (see the driver-substitution contract).
+    custody_sequence: int | None = Field(default=None, ge=0)
+
+
 class HandoverTokenResponse(BaseModel):
     """One frame of the driver's rotating QR.
 

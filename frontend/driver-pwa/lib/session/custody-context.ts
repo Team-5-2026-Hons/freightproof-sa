@@ -26,9 +26,66 @@ interface CustodyContextState {
 }
 
 let state: CustodyContextState = { actorId: null, tripId: null, custodySequence: null }
+let generation = 0
+let authSubject: string | null = null
+
+export interface ActorLease {
+  actorId: string
+  generation: number
+}
+
+export function actorGeneration(): number {
+  return generation
+}
+
+export function assertActorGeneration(expectedGeneration: number): void {
+  if (generation !== expectedGeneration) throw new Error('Account changed; captured work is retained.')
+}
+
+export function invalidateActorLease(): number {
+  generation += 1
+  state = { actorId: null, tripId: null, custodySequence: null }
+  announceActor(null)
+  return generation
+}
+
+// Supabase subjects and fleet driver IDs are different identities. A session boundary
+// invalidates immediately; only its resolved profile may later bind the fleet ID.
+export function observeAuthSession(subject: string | null): number {
+  if (subject !== authSubject) {
+    authSubject = subject
+    invalidateActorLease()
+  }
+  return generation
+}
+
+export function bindActorLease(actorId: string, expectedGeneration: number): boolean {
+  if (generation !== expectedGeneration) return false
+  if (state.actorId !== actorId) {
+    state = { actorId, tripId: null, custodySequence: null }
+    announceActor(actorId)
+  }
+  return true
+}
+
+export function captureActorLease(): ActorLease | null {
+  return state.actorId === null ? null : { actorId: state.actorId, generation }
+}
+
+export function isActorLeaseCurrent(lease: ActorLease): boolean {
+  return lease.generation === generation && lease.actorId === state.actorId
+}
+
+export function assertActorLease(lease: ActorLease): void {
+  if (!isActorLeaseCurrent(lease)) throw new Error('Account changed; captured work is retained.')
+}
 
 type ActorListener = (actorId: string | null) => void
 const actorListeners = new Set<ActorListener>()
+
+function announceActor(actorId: string | null): void {
+  setTimeout(() => actorListeners.forEach((listener) => listener(actorId)), 0)
+}
 
 /**
  * Fed by TripContext whenever the signed-in driver or the server's trip answer changes.
@@ -37,11 +94,9 @@ const actorListeners = new Set<ActorListener>()
  * doing that mid-render would be a React error.
  */
 export function setCustodyContext(next: CustodyContextState): void {
-  const actorChanged = next.actorId !== state.actorId
+  // A stale TripContext render cannot revive a signed-out or superseded profile.
+  if (next.actorId !== state.actorId) return
   state = next
-  if (!actorChanged || actorListeners.size === 0) return
-  const actorId = next.actorId
-  setTimeout(() => actorListeners.forEach((listener) => listener(actorId)), 0)
 }
 
 /**
@@ -72,4 +127,6 @@ export function currentActorId(): string | null {
 
 export function __resetCustodyContextForTests(): void {
   state = { actorId: null, tripId: null, custodySequence: null }
+  generation += 1
+  authSubject = null
 }

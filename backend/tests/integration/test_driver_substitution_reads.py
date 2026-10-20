@@ -102,6 +102,7 @@ async def test_a_cancelled_arrangement_is_a_snapshot_without_live_context(db_ses
     assert (snapshot.state.value, snapshot.remaining_stops, snapshot.findings, snapshot.current_phase) == (
         "cancelled", [], [], None,
     )
+    assert snapshot.exchange is not None
     assert snapshot.exchange.label == "Beaufort West depot"
 
 
@@ -159,3 +160,22 @@ async def test_an_exception_row_names_the_driver_who_raised_it_after_a_handover(
     assert context.driver_for(report(w.a)) == names[w.a]
     # A system finding on a shared trip has no actor: no one is blamed for it.
     assert context.driver_for(report(None)) is None
+
+async def test_completed_projection_includes_requestless_legacy_once(db_session: AsyncSession):
+    from app.db.models.trips import DriverSubstitution
+    from app.orchestration.substitutions import reads
+    from tests.integration.test_driver_substitution_service import NOW
+    w = await world_with_licences(db_session)
+    legacy = DriverSubstitution(id=uuid.uuid4(), trip_id=w.trip_id, original_driver_id=w.a, substituting_driver_id=w.b,
+        exchange_location='Recorded depot', approving_dispatcher_user_id=w.user_id, is_planned=True, substitution_at=NOW,
+        sequence_number=1, previous_substitution_id=None, request_id=None)
+    db_session.add(legacy)
+    await db_session.flush()
+
+    result = await reads.list_completed_substitutions(db_session, trip_id=w.trip_id, actor=service_dispatcher(w))
+    detail = await reads.get_completed_substitution(db_session, trip_id=w.trip_id, substitution_id=legacy.id, actor=service_dispatcher(w))
+
+    assert [item.substitution_id for item in result] == [legacy.id]
+    assert detail.request_id is None and detail.reason is None and detail.completion is None
+    assert detail.confirmations == [] and detail.required_confirmation_roles is None
+    assert detail.confirmation_policy is None and detail.request_format is None

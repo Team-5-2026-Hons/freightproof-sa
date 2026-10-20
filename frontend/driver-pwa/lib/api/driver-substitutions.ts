@@ -7,10 +7,12 @@
 // independent resource the incoming driver needs even when they have no trip at all.
 
 import { api, ApiError } from './client'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 import { ARTIFACT_UPLOAD_TIMEOUT_MS, artifactFormData, type ArtifactUpload } from './artifacts'
 import type { EvidenceArtifact } from '@shared/lib/types/evidence'
 import type {
   ConfirmSubstitutionRequest,
+  ConfirmSubstitutionObservationRequest,
   DriverParticipationHistoryRead,
   DriverSubstitutionContextRead,
   LateEvidenceRead,
@@ -67,7 +69,9 @@ export async function uploadSubstitutionArtifact(
   role: SubstitutionRole,
   upload: ArtifactUpload & { clientRequestId: string },
 ): Promise<EvidenceArtifact> {
+  const generation = actorGeneration()
   const form = await artifactFormData(upload)
+  assertActorGeneration(generation)
   form.append('client_request_id', upload.clientRequestId)
   form.append('role', role)
   return api.postForm<EvidenceArtifact>(
@@ -85,7 +89,7 @@ export async function uploadSubstitutionArtifact(
 export const confirmDriverSubstitution = (
   tripId: string,
   requestId: string,
-  body: ConfirmSubstitutionRequest,
+  body: ConfirmSubstitutionRequest | ConfirmSubstitutionObservationRequest,
 ): Promise<SubstitutionRequestRead> =>
   api.post<SubstitutionRequestRead>(`${TRIPS_ME}/${tripId}/driver-substitutions/${requestId}/confirmations`, body)
 
@@ -97,7 +101,9 @@ export async function uploadLateEvidenceArtifact(
   custodySequence: number,
   upload: ArtifactUpload & { clientRequestId: string },
 ): Promise<EvidenceArtifact> {
+  const generation = actorGeneration()
   const form = await artifactFormData(upload)
+  assertActorGeneration(generation)
   form.append('client_request_id', upload.clientRequestId)
   form.append('custody_sequence', String(custodySequence))
   return api.postForm<EvidenceArtifact>(`${TRIPS_ME}/${tripId}/late-evidence/artifacts`, form, {

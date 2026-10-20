@@ -3,6 +3,7 @@
  */
 
 import { supabase, getAccessToken } from '@/lib/supabase'
+import { actorGeneration } from '@/lib/session/custody-context'
 import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -176,7 +177,12 @@ async function request<T>(
   // retried" flag, so a retried request can never retry again even if the refreshed
   // token itself comes back 401.
   retryToken?: string,
+  originalGeneration: number = actorGeneration(),
 ): Promise<T> {
+  const checkAccount = (): void => {
+    if (actorGeneration() !== originalGeneration) throw new ApiError(0, 'Account changed; captured work is retained.')
+  }
+  checkAccount()
   const url = `${BASE_URL}${path}`
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
@@ -185,6 +191,7 @@ async function request<T>(
   // path reads the cache that onAuthStateChange updates asynchronously, which isn't
   // guaranteed to have caught up yet and would risk retrying with the same stale token.
   const token = retryToken ?? (await resolveToken())
+  checkAccount()
 
   const headers: Record<string, string> = {
     // FormData sets its own multipart boundary — never set Content-Type ourselves for it.
@@ -222,11 +229,13 @@ async function request<T>(
   // identically. This driver's account is now in use on another handset, so the honest
   // response is to sign this one out rather than leave it half-working.
   if (res.status === 401 && errorMessage === SESSION_SUPERSEDED_MESSAGE) {
+    checkAccount()
     await signOutSupersededDevice()
     throw new ApiError(res.status, SESSION_SUPERSEDED_MESSAGE)
   }
 
   if (res.status === 401 && retryToken === undefined) {
+    checkAccount()
     // Bounded like every other auth call in this file: refreshSession() hits the
     // network and can wedge exactly the way getSession() used to — an unbounded await
     // here would hang the submit the 401 interrupted. On any refresh failure
@@ -245,7 +254,8 @@ async function request<T>(
       console.warn('[api] token refresh after 401 failed — surfacing the original 401:', refreshErr)
     }
     if (freshToken) {
-      return request<T>(path, init, isFormData, opts, freshToken)
+      checkAccount()
+      return request<T>(path, init, isFormData, opts, freshToken, originalGeneration)
     }
   }
 

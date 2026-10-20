@@ -524,7 +524,7 @@ async def _add_parcels(db_session, *, consignment_id: uuid.UUID, barcodes: list[
 
 
 @pytest.mark.asyncio
-async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture):
+async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture, store):
     """Renamed from test_advance_loading_manifest_matches_driver_count_completes:
     the loading-count check moved from manifest-vs-driver-count to
     scanned-out-vs-expected — a full scan-out is still what closes a loading
@@ -573,7 +573,7 @@ async def test_advance_loading_full_scan_out_completes_with_no_exception(db_sess
 
 
 @pytest.mark.asyncio
-async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture):
+async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture, store):
     """Renamed from test_advance_loading_manifest_mismatch_flags_but_does_not_hold:
     the mismatch is now scanned-out-vs-expected (2 of 3 barcodes),
     not manifest-vs-driver-count — same non-blocking precedent either way.
@@ -2421,7 +2421,7 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
 
 @pytest.mark.asyncio
 async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
-    db_session, cross_dock_trip_fixture,
+    db_session, cross_dock_trip_fixture, store,
 ):
     """Reproduces the exact demo shape: A (7 parcels, stop0->stop2), B (5
     parcels, stop0->stop1), C (8 parcels, stop1->stop2), each with real Parcel
@@ -2535,7 +2535,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
 
 @pytest.mark.asyncio
 async def test_loading_count_check_skipped_when_stop_has_no_mapped_consignments(
-    db_session, cross_dock_trip_fixture,
+    db_session, cross_dock_trip_fixture, store,
 ):
     """A stop-scoped baseline of None must SKIP the check, not manufacture a
     mismatch against 0 — the stop-scoped counterpart of

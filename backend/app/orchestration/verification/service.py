@@ -18,7 +18,9 @@ from app.blockchain.hedera import HederaService
 from app.blockchain.subject_visibility import assert_subject_visible
 from app.core.exceptions import HederaServiceError
 from app.db.models.blockchain import BlockchainReceipt
-from app.db.models.enums import SubjectType, VerifyStatus
+from app.db.models.enums import BlockchainReceiptType, SubjectType, VerifyStatus
+from app.db.models.trips import DriverSubstitution
+from app.db.models.driver_substitutions import DriverSubstitutionCorrection, DriverSubstitutionRequest
 from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.orchestration.verification.errors import _EvidenceMissing, _UnsupportedPhasePayloadVersion
 from app.orchestration.verification.evidence_payloads import (
@@ -43,6 +45,9 @@ from app.orchestration.substitutions import canonical as substitution_canonical
 from app.orchestration.verification.substitution_payloads import (
     load_substitution_record,
     rebuild_correction_payload,
+    completed_metadata_findings,
+    receipt_binding_findings, ReceiptBinding,
+    rebuild_substitution_payload,
 )
 from app.orchestration.verification.trip_payloads import _reconstruct_trip_payload
 from app.storage.supabase_storage import (
@@ -213,6 +218,16 @@ async def _rebuild_driver_substitution(
 ) -> _Rebuilt | None:
     """FP-83 C5: a completed handover rebuilt from its live rows, with every capture photo's hash
     taken from the bytes in Storage now, so an edited object fails like an edited row."""
+    row = await db.get(DriverSubstitution, subject_id)
+    if row is None:
+        return None
+    request = await db.get(DriverSubstitutionRequest, row.request_id) if row.request_id else None
+    if (receipt_binding_findings(
+        receipt, ReceiptBinding( receipt_id=row.blockchain_receipt_id, subject_id=row.id,
+        subject_type=SubjectType.DRIVER_SUBSTITUTION.value,
+        receipt_type=BlockchainReceiptType.DRIVER_SUBSTITUTION.value, trip_id=row.trip_id, event_hash=row.event_hash,
+    )) or (request is not None and completed_metadata_findings(row, request))):
+        raise _EvidenceMissing("custody receipt or completed metadata differs")
     try:
         substitution_canonical.validate_substitution_payload(receipt.payload_json)
     except substitution_canonical.UnsupportedPayload as error:
@@ -233,17 +248,34 @@ async def _rebuild_driver_substitution(
     rebuilt = await load_substitution_record(db, subject_id, live_file_hashes=live)
     if rebuilt is None:
         return None
-    return _Rebuilt(substitution_canonical.compute_substitution_payload(record=rebuilt[0]))
+    try:
+        payload = await rebuild_substitution_payload(db, subject_id, live_file_hashes=live, payload_version=receipt.payload_json["payload_version"])
+    except substitution_canonical.UnsupportedPayload as error:
+        raise _EvidenceMissing(str(error)) from error
+    return None if payload is None else _Rebuilt(payload)
 
 
 async def _rebuild_driver_substitution_correction(
     db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
 ) -> _Rebuilt | None:
+    row = await db.get(DriverSubstitutionCorrection, subject_id)
+    parent = await db.get(DriverSubstitution, row.substitution_id) if row else None
+    if row is None or parent is None:
+        return None
+    if receipt_binding_findings(
+        receipt, ReceiptBinding( receipt_id=row.receipt_id, subject_id=row.id,
+        subject_type=SubjectType.DRIVER_SUBSTITUTION_CORRECTION.value,
+        receipt_type=BlockchainReceiptType.DRIVER_SUBSTITUTION_CORRECTED.value, trip_id=parent.trip_id, event_hash=row.event_hash,
+    )):
+        raise _EvidenceMissing("clarification receipt differs")
     try:
         substitution_canonical.validate_correction_payload(receipt.payload_json)
     except substitution_canonical.UnsupportedPayload as error:
         raise _UnsupportedPhasePayloadVersion(str(error)) from error
-    payload = await rebuild_correction_payload(db, subject_id)
+    try:
+        payload = await rebuild_correction_payload(db, subject_id)
+    except substitution_canonical.UnsupportedPayload as error:
+        raise _EvidenceMissing(str(error)) from error
     return None if payload is None else _Rebuilt(payload)
 
 

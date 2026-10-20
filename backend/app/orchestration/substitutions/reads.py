@@ -25,9 +25,10 @@ from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.driver_substitutions import (
     DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionRequest,
-    DriverSubstitutionUpload, LateDriverEvidence, LateDriverEvidenceArtifact,
+    DriverSubstitutionUpload, LateDriverEvidence, LateDriverEvidenceArtifact, DriverSubstitutionCorrection, DriverSubstitutionNotice,
 )
-from app.db.models.enums import ExceptionReviewStatus, PhaseType, TripStatus
+from app.db.models.enums import ExceptionReviewStatus, PhaseType, TripStatus, PhaseStatus
+from app.db.models.people import Driver
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
@@ -36,12 +37,14 @@ from app.orchestration.evidence_anchors.reads import decorate_exception_reads
 from app.orchestration.substitutions.anchors import verify_custody_chain
 from app.orchestration.substitutions.access import completed_links, custody_holders, participant_driver_ids
 from app.orchestration.substitutions.late_evidence import build_late_evidence_read
-from app.orchestration.substitutions.request_read import Viewer, build_request_read
+from app.orchestration.substitutions.request_read import Viewer, build_request_read, required_confirmation_roles
 from app.orchestration.substitutions.service import viewer_for
 from app.schemas.driver_substitutions import (
     CustodyPeriodRead, DriverParticipationHistoryRead, DriverSubstitutionContextRead, LateEvidenceDetailRead,
     LateEvidenceKind, ParticipationActionRef, SealCheck, SubstitutionCompletionMode, SubstitutionConfirmationDetail,
     SubstitutionRequestRead, SubstitutionRole, SubstitutionState,
+    CompletedSubstitutionSummary, CompletedSubstitutionDetail, SubstitutionCorrectionRead, SubstitutionPhaseContext,
+    SubstitutionCompletionRead, SubstitutionCompletionTrigger, IdentityAttestationRead, SubstitutionNoticeRead,
 )
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.people import UserRead
@@ -166,12 +169,19 @@ async def _confirmation_details(
     if driver_id is not None:
         query = query.where(DriverSubstitutionConfirmation.driver_id == driver_id)
     rows = (await db.execute(query.order_by(DriverSubstitutionConfirmation.role.desc()))).scalars().all()
+    completed = (await db.execute(select(DriverSubstitution).where(DriverSubstitution.request_id == request_id))).scalar_one_or_none()
     return [
         SubstitutionConfirmationDetail(
             id=row.id, role=SubstitutionRole(row.role), driver_id=row.driver_id, captured_at=row.captured_at,
             received_at=row.received_at, confirmed_vehicle_ids=[uuid.UUID(v) for v in row.confirmed_vehicle_ids],
             seal_checks=[SealCheck.model_validate(check) for check in row.seal_checks],
             discrepancy_note=row.discrepancy_note,
+            latitude=None if row.latitude is None else float(row.latitude),
+            longitude=None if row.longitude is None else float(row.longitude),
+            accuracy_metres=None if row.accuracy_metres is None else float(row.accuracy_metres),
+            location_observed_at=row.location_observed_at, location_unavailable_reason=row.location_unavailable_reason,
+            action_location_assessment=row.action_location_assessment,
+            location_observation_committed=completed is not None and completed.payload_version == 2,
         )
         for row in rows
     ]
@@ -314,7 +324,101 @@ async def with_dispatcher_custody(db: AsyncSession, detail: TripDetailResponse, 
     requests = await list_trip_requests(db, trip_id=detail.id, actor=actor)
     return detail.model_copy(update={
         "driver_substitutions": requests,
+        "completed_driver_substitutions": await list_completed_substitutions(db, trip_id=detail.id, actor=actor),
         "pending_driver_substitution": next((r for r in requests if r.state is SubstitutionState.PENDING), None),
         "custody_integrity": await verify_custody_chain(db, trip_id=detail.id, organization_id=actor.organization_id),
         "driver_substitutions_enabled": settings.DRIVER_SUBSTITUTIONS_ENABLED,
+    })
+
+
+def _recorded_phase_context(phases: list[PhaseEvent], effective_at: datetime) -> SubstitutionPhaseContext | None:
+    resolved = {PhaseStatus.COMPLETED.value, PhaseStatus.EXCEPTION.value, PhaseStatus.OVERRIDDEN.value}
+    boundaries = [(index, p.completed_at) for index, p in enumerate(phases) if p.status in resolved]
+    if not boundaries or any(moment is None for _, moment in boundaries):
+        return None
+    if [index for index, _ in boundaries] != list(range(len(boundaries))):
+        return None  # A resolved phase after a gap cannot justify a chronological label.
+    moments = [moment for _, moment in boundaries if moment is not None]
+    if any(a > b for a, b in zip(moments, moments[1:])) or effective_at in moments:
+        return None
+    preceding = [index for index, moment in boundaries if moment is not None and moment < effective_at]
+    if not preceding:
+        return None
+    index = preceding[-1] + 1
+    if index >= len(phases):
+        return None
+    phase = phases[index]
+    return SubstitutionPhaseContext(phase_event_id=phase.id, phase_type=PhaseType(phase.phase_type))
+
+
+async def list_completed_substitutions(
+    db: AsyncSession, *, trip_id: uuid.UUID, actor: UserRead,
+) -> list[CompletedSubstitutionSummary]:
+    await _org_trip(db, trip_id=trip_id, organization_id=actor.organization_id)
+    rows = list((await db.execute(select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id)
+        .order_by(DriverSubstitution.sequence_number, DriverSubstitution.id))).scalars())
+    driver_ids = {id_ for row in rows for id_ in (row.original_driver_id, row.substituting_driver_id)}
+    drivers = {d.id: d for d in (await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))).scalars()}
+    requests = {r.id: r for r in (await db.execute(select(DriverSubstitutionRequest)
+        .where(DriverSubstitutionRequest.id.in_([r.request_id for r in rows if r.request_id])))).scalars()}
+    phases = list((await db.execute(select(PhaseEvent).where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number))).scalars())
+    result: list[CompletedSubstitutionSummary] = []
+    for row in rows:
+        request = requests.get(row.request_id) if row.request_id is not None else None
+        outgoing, incoming = drivers[row.original_driver_id], drivers[row.substituting_driver_id]
+        result.append(CompletedSubstitutionSummary.model_validate({
+            'substitution_id': row.id, 'request_id': row.request_id, 'sequence_number': row.sequence_number,
+            'outgoing': {'id': outgoing.id, 'full_name': outgoing.full_name, 'phone_number': outgoing.phone_number},
+            'incoming': {'id': incoming.id, 'full_name': incoming.full_name, 'phone_number': incoming.phone_number},
+            'effective_at': row.substitution_at, 'completion_mode': row.completion_mode,
+            'anchor_status': row.anchor_status if row.payload_version is not None else None, 'receipt_id': row.blockchain_receipt_id,
+            'phase_context': _recorded_phase_context(phases, row.substitution_at),
+            'request_format': request.request_format if request else None,
+            'required_confirmation_roles': list(required_confirmation_roles(request.request_format)) if request else None,
+            'confirmation_policy': ('incoming_acceptance_v2' if request.request_format == 'immediate_v2' else 'two_driver_v1') if request else None,
+        }))
+    return result
+
+
+async def get_completed_substitution(
+    db: AsyncSession, *, trip_id: uuid.UUID, substitution_id: uuid.UUID, actor: UserRead,
+) -> CompletedSubstitutionDetail:
+    await _org_trip(db, trip_id=trip_id, organization_id=actor.organization_id)
+    row = (await db.execute(select(DriverSubstitution).where(DriverSubstitution.id == substitution_id,
+        DriverSubstitution.trip_id == trip_id))).scalar_one_or_none()
+    if row is None:
+        raise ResourceNotFoundError('DriverSubstitution', str(substitution_id))
+    summary = next(s for s in await list_completed_substitutions(db, trip_id=trip_id, actor=actor) if s.substitution_id == row.id)
+    request = await db.get(DriverSubstitutionRequest, row.request_id) if row.request_id else None
+    confirmations = await _confirmation_details(db, request_id=request.id) if request else []
+    photos = list((await db.execute(select(EvidenceArtifact)
+        .join(DriverSubstitutionConfirmationArtifact, DriverSubstitutionConfirmationArtifact.artifact_id == EvidenceArtifact.id)
+        .where(DriverSubstitutionConfirmationArtifact.confirmation_id.in_([c.id for c in confirmations]))
+        .order_by(DriverSubstitutionConfirmationArtifact.position))).scalars())
+    corrections = list((await db.execute(select(DriverSubstitutionCorrection)
+        .where(DriverSubstitutionCorrection.substitution_id == row.id)
+        .order_by(DriverSubstitutionCorrection.created_at, DriverSubstitutionCorrection.id))).scalars())
+    completion = None if row.completed_by_driver_id is None and row.completed_by_user_id is None else SubstitutionCompletionRead(
+        trigger=SubstitutionCompletionTrigger.DRIVER_CONFIRMATION if row.completed_by_driver_id else SubstitutionCompletionTrigger.DISPATCHER_ACTION,
+        completed_by_driver_id=row.completed_by_driver_id, completed_by_user_id=row.completed_by_user_id)
+    identity = None if row.identity_attested_by_user_id is None else IdentityAttestationRead(
+        attested_by_user_id=row.identity_attested_by_user_id, reason=row.identity_attestation_reason, attested_at=row.identity_attested_at)
+    notices = list((await db.execute(select(DriverSubstitutionNotice).join(DriverSubstitutionRequest,
+        DriverSubstitutionRequest.id == DriverSubstitutionNotice.request_id).where(
+        DriverSubstitutionNotice.request_id == request.id, DriverSubstitutionRequest.trip_id == trip_id,
+        DriverSubstitutionNotice.recipient_driver_id == row.original_driver_id,
+    ).order_by(DriverSubstitutionNotice.created_at, DriverSubstitutionNotice.id))).scalars()) if request else []
+    return CompletedSubstitutionDetail.model_validate({
+        **summary.model_dump(), 'reason': request.reason if request else None, 'confirmations': confirmations,
+        'artifacts': await _signed(photos), 'corrections': [SubstitutionCorrectionRead(
+            id=c.id, substitution_id=c.substitution_id, recorded_by_user_id=c.recorded_by_user_id,
+            recorded_at=c.created_at, reason=c.reason, correction_note=c.correction_note, anchor_status=c.anchor_status,
+            receipt_id=c.receipt_id) for c in corrections],
+        'arranged_by_user_id': request.arranged_by_user_id if request else None, 'completion': completion,
+        'identity_attestation': identity, 'declared_exchange_at': row.declared_exchange_at,
+        'missing_confirmation_reason': row.missing_confirmation_reason,
+        'outgoing_notices': [SubstitutionNoticeRead(id=notice.id, request_id=notice.request_id, trip_id=trip_id,
+            kind=notice.kind, created_at=notice.created_at, read_at=notice.read_at) for notice in notices],
+        'custody_integrity': await verify_custody_chain(db, trip_id=trip_id, organization_id=actor.organization_id),
     })

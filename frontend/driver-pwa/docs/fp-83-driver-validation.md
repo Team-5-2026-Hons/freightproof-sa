@@ -1,3 +1,25 @@
+# Current validation — 20 October 2026
+
+This section supersedes the historical T1–T4 status below. Ciaran owns all current changes/migrations and will apply migrations only after review. The immediate v2 flow requires incoming B acceptance; outgoing A is notified and supplies no confirmation/GPS. Legacy v1 remains readable and replayable.
+
+Full results, changed files, migration limits and the next-chat prompt: [driver-transfer verification handoff](../../../docs/reviews/2026-10-20-driver-transfer-release-acceptance.md).
+
+- Stop-hook follow-up: complete backend unit suite **1,902 passed, 4 skipped** on disposable PG14 with dotenv disabled; three contract assertions updated and five existing scan-store unit fixtures wired in. Sandbox DB setup errors reproduced separately; hook unchanged.
+- Final scoped driver run: **157 passed** (15 files).
+- Full driver run: **1,474 passed, 80 failed** (10 failing files); failures remain open, including existing custody/draft/router expectations. Do not count the full suite as passed.
+- Driver typecheck passed; ESLint 0 errors/1 existing warning.
+- Driver production build failed API URL validation in this environment. Capacitor sync/install and physical acceptance were not run.
+- Final scoped backend run: **519 passed** on disposable PG14, including lifecycle/access/audit/receiver-consent race/v2 migration shape. This does not establish PG17 full-chain migration acceptance.
+- Dispatcher full suite **2,953 passed**; subsequent row/timeline keyboard run **127 passed**, including two new row tests. Dispatcher typecheck passed; ESLint 0 errors/2 existing warnings; build failed Google Fonts network access.
+- Actual sample timestamps/reasons, actor generations and stale-profile/send guards have regression tests. Opening the transfer page does not trigger automatic navigation GPS; B's explicit capture still uses the observation adapter.
+- No shared migration or production enablement occurred. **Verify in the new chat before migrating. Current release decision: BLOCK CANDIDATE RELEASE pending remaining safety/full-suite/device evidence.**
+
+Outstanding: complete independent review; full PG17/Redis and migration-chain verification; remaining legacy/mixed-chain/flag-off/concurrency vectors; actual responsive/keyboard detail checks; all native/two-phone, offline/restart, A→B→A, receiver, hold and anchor-outage acceptance. Synthetic/unit checks are not substitutes for physical evidence.
+
+---
+
+## Historical driver implementation record (retained for provenance)
+
 # FP-83 driver app: implementation handoff and validation record
 
 **Owner:** Tim (driver app). **For:** Ciaran (C6 contract check, then C8 combined release verification).
