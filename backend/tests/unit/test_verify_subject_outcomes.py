@@ -134,7 +134,7 @@ async def test_a_phase_event_receipt_of_an_unknown_payload_version_is_an_error_w
     receipt = await _receipt_for(db_session, SubjectType.PHASE_EVENT, subject_id)
 
     with patch(
-        "app.orchestration.verification.service._reconstruct_phase_event_payload",
+        "app.orchestration.verification.service.reconstruct_phase_state",
         new=AsyncMock(side_effect=_UnsupportedPhasePayloadVersion("v99")),
     ):
         outcome = await verify_subject(

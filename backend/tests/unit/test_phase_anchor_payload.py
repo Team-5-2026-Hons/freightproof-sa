@@ -49,6 +49,7 @@ from app.orchestration.phases.advance_in_transit import advance_in_transit
 from app.orchestration.phases.advance_loading import advance_loading
 from app.orchestration.phases.advance_unloading import advance_unloading
 from app.orchestration.phases.payloads import (
+    driver_actor_sha256,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,
@@ -458,9 +459,13 @@ async def test_advance_departure_anchors_with_pickup_receipt_type(
     assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.PICKUP
     assert receipt.data_hash == departure.event_hash
-    assert receipt.payload_json["payload_version"] == 2
-    assert receipt.payload_json["seal_photo_sha256"] == "a" * 64
-    assert receipt.payload_json["waybill_photo_sha256"] == "a" * 64
+    # Driver-performed, so the v2 evidence sits inside the v4 actor envelope.
+    assert receipt.payload_json["payload_version"] == 4
+    assert receipt.payload_json["evidence"]["payload_version"] == 2
+    assert receipt.payload_json["actor_sha256"] == driver_actor_sha256(driver.id)
+    assert receipt.payload_json["custody_sequence"] == departure.custody_sequence
+    assert receipt.payload_json["evidence"]["seal_photo_sha256"] == "a" * 64
+    assert receipt.payload_json["evidence"]["waybill_photo_sha256"] == "a" * 64
 
 
 @pytest.mark.asyncio
@@ -491,9 +496,12 @@ async def test_advance_confirmation_anchors_with_delivery_receipt_type(
     assert receipt.subject_type == SubjectType.PHASE_EVENT
     assert receipt.receipt_type == BlockchainReceiptType.DELIVERY
     assert receipt.data_hash == h5.event_hash
-    assert receipt.payload_json["payload_version"] == 2
-    assert receipt.payload_json["pod_photo_sha256"] == "a" * 64
-    assert receipt.payload_json["pod_signature_sha256"] == "b" * 64
+    assert receipt.payload_json["payload_version"] == 4
+    assert receipt.payload_json["evidence"]["payload_version"] == 2
+    assert receipt.payload_json["actor_sha256"] == driver_actor_sha256(driver.id)
+    assert receipt.payload_json["custody_sequence"] == h5.custody_sequence
+    assert receipt.payload_json["evidence"]["pod_photo_sha256"] == "a" * 64
+    assert receipt.payload_json["evidence"]["pod_signature_sha256"] == "b" * 64
 
 
 @pytest.mark.asyncio
@@ -512,7 +520,7 @@ async def test_advance_departure_v2_anchors_null_for_absent_legacy_waybill(
             BlockchainReceipt.id == phases["departure"].blockchain_receipt_id,
         )
     )).scalar_one()
-    assert receipt.payload_json["waybill_photo_sha256"] is None
+    assert receipt.payload_json["evidence"]["waybill_photo_sha256"] is None
 
 
 @pytest.mark.asyncio
@@ -537,8 +545,9 @@ async def test_advance_departure_keeps_seal_number_source_out_of_the_anchor(
         if event_id == str(departure.id)
     ]
     assert departure.seal_number_source == SealNumberSource.OCR_CONFIRMED.value
-    assert "seal_number_source" not in canonical_payload
-    assert canonical_payload == compute_departure_canonical_payload_v2(
+    assert "seal_number_source" not in canonical_payload["evidence"]
+    assert canonical_payload["payload_version"] == 4
+    assert canonical_payload["evidence"] == compute_departure_canonical_payload_v2(
         phase_event_id=departure.id,
         trip_id=trip.id,
         seal_number="AB-1234",
@@ -578,7 +587,10 @@ async def test_advance_loading_anchors_v3_with_both_linehaul_hashes(
     await db_session.commit()
     await asyncio.gather(*_BACKGROUND_ANCHOR_TASKS)
 
-    loading_payloads =[p for _id, p, _type in captured_anchor_dispatches if p.get("phase_type") == "loading"]
+    loading_payloads = [
+        p["evidence"] for _id, p, _type in captured_anchor_dispatches
+        if p["payload_version"] == 4 and p["evidence"].get("phase_type") == "loading"
+    ]
     assert loading_payloads == [compute_loading_canonical_payload_v3(
         phase_event_id=phases["loading"].id, trip_id=trip.id,
         parcel_count_origin=phases["loading"].parcel_count_origin,
@@ -1763,8 +1775,12 @@ async def test_reconstruct_pending_payload_for_loading_with_pdf_returns_the_v3_p
 
     rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
 
+    # Driver-performed, so the v3 evidence is wrapped in the v4 actor envelope.
+    assert rebuilt["payload_version"] == 4
+    assert rebuilt["actor_sha256"] == driver_actor_sha256(driver.id)
+    assert rebuilt["custody_sequence"] == loading.custody_sequence
     # Distinct photo/PDF hashes, so swapped payload keys would not equal this.
-    assert rebuilt == compute_loading_canonical_payload_v3(
+    assert rebuilt["evidence"] == compute_loading_canonical_payload_v3(
         phase_event_id=loading.id, trip_id=trip.id, parcel_count_origin=loading.parcel_count_origin,
         linehaul_photo_sha256="a" * 64, linehaul_pdf_sha256="b" * 64,
     )
@@ -1789,7 +1805,8 @@ async def test_recovery_restores_a_lost_loading_dispatch_that_carried_a_pdf(
     await db_session.flush()
 
     receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
-    assert receipt.payload_json["linehaul_pdf_sha256"] == "b" * 64
+    assert receipt.payload_json["payload_version"] == 4
+    assert receipt.payload_json["evidence"]["linehaul_pdf_sha256"] == "b" * 64
     assert receipt.data_hash == loading.event_hash == original_hash
     assert loading.anchor_status == AnchorStatus.ANCHORED
 

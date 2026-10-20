@@ -303,6 +303,8 @@ class DriverSubstitution(Base):
             unique=True,
             postgresql_where=text("previous_substitution_id IS NOT NULL"),
         ),
+        # FP-83 C5: the custody anchor recovery sweep's lookup (owed status, oldest attempt first).
+        Index("ix_driver_substitutions_anchor_status_updated", "anchor_status", "updated_at"),
         CheckConstraint("sequence_number > 0", name="ck_driver_substitutions_sequence_positive"),
         # Position 1 is the first handover from the original driver; every later link names
         # the one before it.

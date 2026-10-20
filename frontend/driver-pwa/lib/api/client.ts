@@ -3,6 +3,7 @@
  */
 
 import { supabase, getAccessToken } from '@/lib/supabase'
+import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -18,6 +19,16 @@ const SESSION_TIMEOUT_MS = 8_000
 // error, so an evidence submit never settles and never reaches the backend.
 const REQUEST_TIMEOUT_MS = 12_000
 
+// The coded part of a domain-conflict `detail` object (driver substitution contract v1,
+// "Stable errors"). Kept separate from the message so a caller branches on the stable code,
+// never on wording the backend is free to change.
+export interface ApiErrorDetail {
+  code: SubstitutionErrorCode
+  requestId: string | null
+  currentVersion: number | null
+  evidenceId: string | null
+}
+
 export class ApiError extends Error {
   // status 0 is reserved for client-side failures where no HTTP response was received
   // (request/session timeout). Any positive status is the real HTTP response code.
@@ -25,9 +36,16 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly retryAfterMs?: number,
+    // Absent for legacy string details and 422 field errors — most endpoints still send
+    // those, so code-less errors remain the normal case, not a malformed one.
+    public readonly detail?: ApiErrorDetail,
   ) {
     super(message)
     this.name = 'ApiError'
+  }
+
+  get code(): SubstitutionErrorCode | undefined {
+    return this.detail?.code
   }
 }
 
@@ -57,14 +75,42 @@ export const SESSION_SUPERSEDED_MESSAGE = 'Signed in on another device.'
 // not localStorage: it is a one-off explanation for this launch, not a durable fact.
 export const SIGNED_OUT_REASON_KEY = 'fp.signedOutReason'
 
+interface ParsedError {
+  message: string
+  detail?: ApiErrorDetail
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
 // FastAPI puts the human-readable reason in `detail`, which is a string for a raised
-// HTTPException and an array of field errors for a 422.
-async function readErrorMessage(res: Response): Promise<string> {
+// HTTPException, an array of field errors for a 422, and — for the substitution domain
+// conflicts — a `{code, message, ...}` object. All three must keep parsing: the coded form
+// is new, and every existing endpoint still sends the other two.
+async function readError(res: Response): Promise<ParsedError> {
   const body = await res.json().catch(() => ({ detail: res.statusText }))
   const raw = (body as { detail?: unknown }).detail
-  return Array.isArray(raw)
-    ? (raw[0] as { msg?: string })?.msg ?? res.statusText
-    : (raw as string | undefined) ?? res.statusText
+  if (Array.isArray(raw)) {
+    return { message: (raw[0] as { msg?: string })?.msg ?? res.statusText }
+  }
+  if (raw !== null && typeof raw === 'object') {
+    const coded = raw as Record<string, unknown>
+    const message = nullableString(coded.message) ?? res.statusText
+    if (typeof coded.code !== 'string') return { message }
+    return {
+      message,
+      detail: {
+        // Not narrowed against the known list: a code this build doesn't know yet must
+        // still reach the caller, which then treats it as an unrecognised conflict.
+        code: coded.code as SubstitutionErrorCode,
+        requestId: nullableString(coded.request_id),
+        currentVersion: typeof coded.current_version === 'number' ? coded.current_version : null,
+        evidenceId: nullableString(coded.evidence_id),
+      },
+    }
+  }
+  return { message: (raw as string | undefined) ?? res.statusText }
 }
 
 async function signOutSupersededDevice(): Promise<void> {
@@ -168,7 +214,8 @@ async function request<T>(
   // Read the error body ONCE, before the retry logic, because one specific 401 is
   // decided by its detail rather than its status — and a Response body can only be
   // consumed once. Non-401 errors reuse this same parse when they throw below.
-  const errorMessage = res.ok ? null : await readErrorMessage(res)
+  const parsedError = res.ok ? null : await readError(res)
+  const errorMessage = parsedError?.message ?? null
 
   // A superseded device (app/auth/sessions.py) must NOT be refresh-retried: a refresh
   // returns a token for the same Supabase session, so the retry would be refused
@@ -207,6 +254,7 @@ async function request<T>(
       res.status,
       errorMessage ?? res.statusText,
       retryAfterMilliseconds(res),
+      parsedError?.detail,
     )
   }
 

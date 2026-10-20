@@ -453,7 +453,7 @@ def test_every_realtime_kind_names_a_change_not_a_loudness():
     """
     assert {k.value for k in RealtimeKind} == {
         "trip_created", "phase_completed", "exception_raised", "exception_reviewed", "exception_claimed",
-        "trip_closed", "evidence_uploaded",
+        "trip_closed", "evidence_uploaded", "driver_substitution_changed",
     }
 
 
@@ -781,6 +781,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "app/orchestration/phases/advance_departure.py": 1,
         "app/orchestration/phases/findings.py": 4,
         "app/orchestration/phases/override.py": 2,
+        "app/orchestration/substitutions/seal_comparison.py": 1,
         "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (

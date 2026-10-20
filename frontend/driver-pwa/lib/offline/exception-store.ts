@@ -3,6 +3,7 @@
 // photo bytes (~5MB cap, base64 bloat), and a report with photos must survive a dead
 // battery or a killed tab, so reports and their photo Blobs live here instead.
 import type { RaiseExceptionBody } from '@/lib/api/exceptions'
+import type { RetainedAttention } from './live-write-conflict'
 
 const DB_NAME = 'fp_exception_store'
 const DB_VERSION = 1
@@ -10,7 +11,9 @@ const STORE_NAME = 'reports'
 const KEY_PATH = 'clientReportId'
 const QUOTA_ERROR_NAME = 'QuotaExceededError'
 
-export type ExceptionReportStatus = 'pending' | 'needs-attention'
+// 'quarantined' (FP-83): a report stored before this app recorded who captured it. Kept with
+// its photos, never sent automatically and never attributed to whoever is signed in now.
+export type ExceptionReportStatus = 'pending' | 'needs-attention' | 'quarantined'
 
 // Everything on RaiseExceptionBody except the photo ids, which live on the photos.
 export type ExceptionReportBody = Omit<RaiseExceptionBody, 'supporting_artifact_id' | 'supporting_artifact_ids'>
@@ -38,6 +41,14 @@ export interface ExceptionEnvelope {
   attentionReason: string | null
   /** Which photo the server rejected, when it was a photo. */
   attentionPhotoId: string | null
+  /**
+   * FP-83: the account that captured this report. `undefined` only on envelopes written
+   * before this field existed — the migration quarantines those rather than guessing.
+   * Its custody period travels inside `body.custody_sequence`, stamped at capture.
+   */
+  actorId?: string | null
+  /** FP-83: the coded refusal behind a needs-attention status, when the server gave one. */
+  attention?: RetainedAttention | null
   createdAt: string
   updatedAt: string
 }
@@ -237,22 +248,49 @@ export function markExceptionNeedsAttention(
   clientReportId: string,
   reason: string,
   photoId: string | null = null,
+  attention: RetainedAttention | null = null,
 ): Promise<void> {
   return update(clientReportId, (current) => ({
     ...current,
     status: 'needs-attention',
     attentionReason: reason,
     attentionPhotoId: photoId,
+    attention,
   }))
 }
 
-/** The driver's "Try again". */
+/**
+ * FP-83 migration: envelopes written before the capturing account was recorded. One
+ * read-modify-write transaction, so the envelope is never absent between states, and a rerun
+ * finds nothing left to do. Returns how many were quarantined.
+ */
+export function quarantineUnattributedEnvelopes(): Promise<number> {
+  return transact<number>(
+    'readwrite',
+    (store, done) => {
+      const read = store.getAll()
+      read.onsuccess = () => {
+        let count = 0
+        for (const envelope of read.result as ExceptionEnvelope[]) {
+          if (envelope.actorId !== undefined || envelope.status === 'quarantined') continue
+          store.put({ ...envelope, status: 'quarantined', actorId: null, updatedAt: new Date().toISOString() })
+          count += 1
+        }
+        done(count)
+      }
+    },
+    0,
+  )
+}
+
+/** The driver's "Try again". A quarantined report is never released this way. */
 export function resetExceptionToPending(clientReportId: string): Promise<void> {
-  return update(clientReportId, (current) => ({
+  return update(clientReportId, (current) => (current.status === 'quarantined' ? null : {
     ...current,
     status: 'pending',
     attentionReason: null,
     attentionPhotoId: null,
+    attention: null,
   }))
 }
 

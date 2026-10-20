@@ -57,6 +57,7 @@ from app.db.models.driver_substitutions import (  # noqa: E402,F401
     DriverSubstitutionNotice,
     DriverSubstitutionOperation,
     DriverSubstitutionRequest,
+    DriverSubstitutionUpload,
     LateDriverEvidence,
     LateDriverEvidenceArtifact,
 )

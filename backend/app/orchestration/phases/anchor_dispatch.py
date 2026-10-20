@@ -15,6 +15,7 @@ from app.blockchain.anchor_service import compute_payload_hash
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType
 from app.db.models.phases import PhaseEvent
 from app.orchestration.phases.anchor_execution import receipt_type_for
+from app.orchestration.phases.payloads import compute_phase_actor_envelope_v4
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,15 @@ def _dispatch_anchor(
 
     event_id = event.id
     payload = dict(canonical_payload)
+    if event.performed_by_driver_id is not None and event.custody_sequence is not None:
+        # FP-83 C5: a driver-performed phase also commits to its actor and custody period (v4).
+        # Done here, the one path every phase anchor takes, so no phase can skip it; the hash the
+        # caller stamped is replaced by the envelope's, and that is what recovery and verify rebuild.
+        payload = compute_phase_actor_envelope_v4(
+            phase_event_id=event_id, evidence=payload, driver_id=event.performed_by_driver_id,
+            custody_sequence=event.custody_sequence,
+        )
+        event.event_hash = compute_payload_hash(payload)
     event.anchor_status = AnchorStatus.PENDING
 
     async def _publish() -> bool:

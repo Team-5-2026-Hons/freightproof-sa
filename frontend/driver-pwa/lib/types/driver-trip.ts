@@ -8,6 +8,7 @@
 
 import type { TripId, TripType } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
+import type { DriverParticipation } from '@shared/lib/types/driver-substitution'
 
 export interface DriverTripSummary {
   id: TripId
@@ -30,6 +31,13 @@ export interface DriverTripSummary {
   // Unreviewed CRITICAL rows only (FP-146 follow-on, narrowed in FP-280 when every
   // exception started needs_review) — the driver has no review workflow of their own.
   needs_review_count: number
+  // FP-83 (driver substitution contract v1, "Existing reads"). 'former' is a trip this
+  // driver handed over: history for them even while `status` is still 'active' for the
+  // driver who took it. Optional only until the backend sends them (C2) — absent means no
+  // substitution has happened, which is exactly how such a row must keep grouping.
+  participation?: DriverParticipation
+  last_participation_ended_at?: string | null
+  custody_sequence?: number
   created_at: string
   updated_at: string
 }

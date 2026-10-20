@@ -225,7 +225,8 @@ async def tear_down(sessionmaker, world: SubWorld) -> None:
     from app.db.models.blockchain import BlockchainReceipt
     from app.db.models.driver_substitutions import (
         DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionCorrection,
-        DriverSubstitutionNotice, DriverSubstitutionOperation,
+        DriverSubstitutionNotice, DriverSubstitutionOperation, DriverSubstitutionUpload, LateDriverEvidence,
+        LateDriverEvidenceArtifact,
     )
     from app.db.models.driver_substitutions import DriverSubstitutionRequest as Request
     from app.db.models.evidence import EvidenceArtifact
@@ -243,7 +244,19 @@ async def tear_down(sessionmaker, world: SubWorld) -> None:
         )).scalars())
         if trip_ids:
             request_ids = select(Request.id).where(Request.trip_id.in_(trip_ids))
-            await db.execute(delete(DriverSubstitutionOperation).where(DriverSubstitutionOperation.request_id.in_(request_ids)))
+            # Before the confirmations: a handover finding references its capture (CP4).
+            await db.execute(delete(TripException).where(TripException.trip_id.in_(trip_ids)))
+            late_ids = select(LateDriverEvidence.id).where(LateDriverEvidence.trip_id.in_(trip_ids))
+            # By actor too: an upload's operation names no request or late receipt.
+            await db.execute(delete(DriverSubstitutionOperation).where(
+                DriverSubstitutionOperation.request_id.in_(request_ids)
+                | DriverSubstitutionOperation.late_evidence_id.in_(late_ids)
+                | DriverSubstitutionOperation.actor_driver_id.in_([world.a, world.b, world.c, world.d])
+                | (DriverSubstitutionOperation.actor_user_id == world.user_id)
+            ))
+            await db.execute(delete(LateDriverEvidenceArtifact).where(LateDriverEvidenceArtifact.late_evidence_id.in_(late_ids)))
+            await db.execute(delete(LateDriverEvidence).where(LateDriverEvidence.trip_id.in_(trip_ids)))
+            await db.execute(delete(DriverSubstitutionUpload).where(DriverSubstitutionUpload.trip_id.in_(trip_ids)))
             await db.execute(delete(DriverSubstitutionNotice).where(DriverSubstitutionNotice.request_id.in_(request_ids)))
             await db.execute(delete(DriverSubstitutionConfirmationArtifact).where(
                 DriverSubstitutionConfirmationArtifact.confirmation_id.in_(

@@ -28,6 +28,8 @@ import { useTrip } from '@/lib/hooks/useTrip'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
+import { captureCustody } from '@/lib/session/custody-context'
+import { classifyLiveWriteFailure, isCustodyConflict } from '@/lib/offline/live-write-conflict'
 import type { DriverPosition } from '@/lib/types/location'
 
 export interface LocationState {
@@ -70,6 +72,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const currentTripId = tripIdRef.current
     // No trip open means nothing to attach a position to, and no reason to hold one.
     if (currentTripId === null || IS_DEMO_MODE) return
+    // Taken at the moment the driver acted, before the GPS wait (FP-83).
+    const custody = captureCustody(currentTripId)
 
     void (async () => {
       const position = await capturePosition()
@@ -86,13 +90,20 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         recorded_at: new Date().toISOString(),
       }
       try {
-        await recordLocations(currentTripId, [ping])
+        await recordLocations(currentTripId, [ping], custody.custodySequence)
       } catch (err: unknown) {
         // Offline or a 5xx: the queue replays it later with its device timestamp
         // intact. Anything else (a 4xx — closed trip, reassigned driver) is terminal
         // and dropped, because retrying it can only fail the same way forever.
         if (isQueueableFailure(err)) {
-          enqueueLocation(currentTripId, [ping])
+          enqueueLocation(currentTripId, [ping], custody)
+          return
+        }
+        // FP-83 exception to the drop: a custody conflict means the fix belongs to a period
+        // the driver held, so it is kept for review (late evidence) rather than lost.
+        const failure = classifyLiveWriteFailure(err)
+        if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
+          enqueueLocation(currentTripId, [ping], custody, failure.attention)
           return
         }
         console.error('Could not record the driver location ping', err)

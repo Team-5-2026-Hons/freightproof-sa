@@ -19,6 +19,7 @@ from app.core.geo import haversine_metres
 from app.schemas.audit_pack import (
     AuditPackManifest,
     CoverageGap,
+    DriverSubstitutionRecord,
     ExceptionRecord,
     IncidentSummary,
     Observation,
@@ -440,12 +441,31 @@ def _observe_exceptions(exceptions: Sequence[ExceptionRecord]) -> list[Observati
     return observations
 
 
+def _handover_facts(s: DriverSubstitutionRecord) -> str:
+    """The incoming driver's own identity and how completion happened, for one handover line.
+    Empty on a legacy amendment, which recorded neither (nothing is invented for it)."""
+    if s.sequence_number is None:
+        return ""
+    parts = [f"amendment {s.sequence_number}"]
+    if s.incoming_identity_status is not None:
+        identity = f"incoming driver identity {s.incoming_identity_status}"
+        if s.identity_attested_by_name:
+            identity += f", unavailable verification attested by {s.identity_attested_by_name}"
+        parts.append(identity)
+    if s.completion_mode == "dispatcher_attested":
+        parts.append("completed with a dispatcher attestation")
+    return "; " + "; ".join(parts)
+
+
 def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation]:
     driver = manifest.driver
+    # FP-83: the trip-level check is the ORIGINAL driver's, taken at the start of the journey; it
+    # says nothing about a later driver, whose own observed status is on their handover line.
+    scope = " (original driver, at the start of the trip)" if driver.substitutions else ""
     observations = [Observation(
         code="identity.driver",
         level="info" if driver.trip_idvs_status == "verified" else "attention",
-        text=f"Driver identity check for this trip: {driver.trip_idvs_status}.",
+        text=f"Driver identity check for this trip{scope}: {driver.trip_idvs_status}.",
         evidence_ids=[],
     )]
     observations.extend(
@@ -453,10 +473,21 @@ def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation
             code="identity.substitution", level="attention",
             text=(f"Driver changed from {s.original_driver_name} to {s.substituting_driver_name} "
                   f"at {s.exchange_location}, {format_sast(s.substitution_at)} "
-                  f"({'planned' if s.is_planned else 'unplanned'})."),
+                  f"({'planned' if s.is_planned else 'unplanned'}){_handover_facts(s)}."),
             evidence_ids=[s.substitution_id],
         )
         for s in driver.substitutions
+    )
+    observations.extend(
+        Observation(
+            code="custody.late_evidence", level="attention",
+            text=(f"{e.driver_name} submitted {e.kind} evidence after their custody period "
+                  f"{e.custody_sequence} ended (captured {format_sast(e.captured_at)}, received "
+                  f"{format_sast(e.received_at)}); it was retained for review and did not complete a phase "
+                  f"({'reviewed' if e.status == 'acknowledged' else 'awaiting review'})."),
+            evidence_ids=[e.evidence_id],
+        )
+        for e in manifest.late_evidence
     )
     observations.extend(
         Observation(

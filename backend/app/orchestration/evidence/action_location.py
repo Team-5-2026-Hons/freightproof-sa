@@ -64,7 +64,7 @@ from app.db.models.enums import (
     ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus, TripStatus,
 )
 from app.db.models.phases import PhaseEvent
-from app.db.models.transit import Checkpoint, TripException
+from app.db.models.transit import SUBSTITUTION_SEPARATION_INDEX, Checkpoint, TripException
 from app.db.models.trips import Trip
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
 from app.orchestration.integrity import is_unique_violation, violated_constraint
@@ -83,6 +83,8 @@ logger = logging.getLogger(__name__)
 # unrelated unique violation on this table is never misread as this replay/race.
 _PHASE_SEPARATION_INDEX = "uq_exceptions_phase_separation"
 _CHECKPOINT_SEPARATION_INDEX = "uq_exceptions_checkpoint_separation"
+# FP-83 C3 CP4: a driver-handover capture, the third scope (see TripException.substitution_confirmation_id).
+_SUBSTITUTION_SEPARATION_INDEX = SUBSTITUTION_SEPARATION_INDEX
 
 # Name of the DRIVER_LOCATION_MISMATCH partial unique index (migration
 # tim_driver_location_mismatch). Phase-scoped only — driver_in_precinct is never
@@ -358,15 +360,38 @@ def build_capture_assessment(
 
 async def _find_existing_separation(
     db: AsyncSession, *, phase_event_id: Optional[uuid.UUID], checkpoint_id: Optional[uuid.UUID],
+    substitution_confirmation_id: Optional[uuid.UUID] = None,
 ) -> Optional[uuid.UUID]:
     stmt = select(TripException.id).where(TripException.exception_type == ExceptionType.DRIVER_VEHICLE_SEPARATION)
-    stmt = (
-        stmt.where(TripException.phase_event_id == phase_event_id)
-        if phase_event_id is not None
-        else stmt.where(TripException.checkpoint_id == checkpoint_id)
-    )
+    if phase_event_id is not None:
+        stmt = stmt.where(TripException.phase_event_id == phase_event_id)
+    elif checkpoint_id is not None:
+        stmt = stmt.where(TripException.checkpoint_id == checkpoint_id)
+    else:
+        stmt = stmt.where(TripException.substitution_confirmation_id == substitution_confirmation_id)
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+def _separation_scope(
+    phase_event_id: Optional[uuid.UUID], checkpoint_id: Optional[uuid.UUID],
+    substitution_confirmation_id: Optional[uuid.UUID],
+) -> tuple[str, str]:
+    """(log context, idempotency index) for the one scope a separation finding belongs to.
+
+    ValueError unless exactly one scope is given: a caller contract violation, not a runtime
+    condition to fail open around.
+    """
+    if sum(scope is not None for scope in (phase_event_id, checkpoint_id, substitution_confirmation_id)) != 1:
+        raise ValueError(
+            "record_separation_finding requires exactly one of phase_event_id, checkpoint_id "
+            "or substitution_confirmation_id"
+        )
+    if phase_event_id is not None:
+        return f"phase_event_id={phase_event_id}", _PHASE_SEPARATION_INDEX
+    if checkpoint_id is not None:
+        return f"checkpoint_id={checkpoint_id}", _CHECKPOINT_SEPARATION_INDEX
+    return f"substitution_confirmation_id={substitution_confirmation_id}", _SUBSTITUTION_SEPARATION_INDEX
 
 
 async def record_separation_finding(
@@ -377,6 +402,7 @@ async def record_separation_finding(
     checkpoint_id: Optional[uuid.UUID],
     assessment: ActionLocationAssessment,
     driver_reason: Optional[str] = None,
+    substitution_confirmation_id: Optional[uuid.UUID] = None,
 ) -> None:
     """Raise ExceptionType.DRIVER_VEHICLE_SEPARATION when `assessment` says the
     driver's own phone and the vehicle tracker disagreed beyond policy.
@@ -387,8 +413,8 @@ async def record_separation_finding(
     description, clearly attributed, so a dispatcher reading the finding sees it
     alongside the measured fact rather than having to cross-reference the phase row.
 
-    Exactly one of `phase_event_id`/`checkpoint_id` is the source event this finding
-    is scoped to — enforced with ValueError, a caller contract violation rather than
+    Exactly one of `phase_event_id`/`checkpoint_id`/`substitution_confirmation_id`
+    (FP-83 C3 CP4: a driver-handover capture) is the source event this finding is scoped to — enforced with ValueError, a caller contract violation rather than
     a runtime condition to fail open around. A no-op (returns without writing
     anything) unless `assessment.proximity == "separated"`; 'unverified' is not
     evidence of separation and must never raise a finding just because a quality
@@ -413,21 +439,14 @@ async def record_separation_finding(
     propagates: returning as if a finding were persisted would conceal an evidence
     integrity failure from the caller and leave the timeline's record ambiguous.
     """
-    if (phase_event_id is None) == (checkpoint_id is None):
-        raise ValueError(
-            "record_separation_finding requires exactly one of phase_event_id or checkpoint_id"
-        )
+    context, index_name = _separation_scope(phase_event_id, checkpoint_id, substitution_confirmation_id)
     if assessment.proximity != "separated":
         return
-
-    context = (
-        f"phase_event_id={phase_event_id}" if phase_event_id is not None else f"checkpoint_id={checkpoint_id}"
-    )
-    index_name = _PHASE_SEPARATION_INDEX if phase_event_id is not None else _CHECKPOINT_SEPARATION_INDEX
 
     try:
         existing = await _find_existing_separation(
             db, phase_event_id=phase_event_id, checkpoint_id=checkpoint_id,
+            substitution_confirmation_id=substitution_confirmation_id,
         )
         if existing is not None:
             logger.info(
@@ -449,6 +468,7 @@ async def record_separation_finding(
             trip_id=trip.id,
             phase_event_id=phase_event_id,
             checkpoint_id=checkpoint_id,
+            substitution_confirmation_id=substitution_confirmation_id,
             # Scoped like the GPS_MISMATCH finding (phases.findings): the stop this
             # assessment's phase was anchored to, or None for a checkpoint/trip_
             # creation, which have none.
