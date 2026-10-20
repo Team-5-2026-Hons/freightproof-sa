@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ArrowRightLeft } from 'lucide-react'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { Driver } from '@shared/lib/types/driver'
 import { Chip } from '@/components/ui/Chip'
@@ -8,9 +9,9 @@ import { Button } from '@/components/ui/Button'
 import { BackButton } from '@/components/ui/BackButton'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Ic } from '@/components/ui/Ic'
-import { ForensicControls } from '@/components/blockchain/ForensicControls'
 import { DriverModal } from './DriverModal'
 import { VehicleModal } from './VehicleModal'
+import { TripHelp } from './TripHelp'
 import { RECORD_AFFORDANCE } from '@/components/ui/RecordLink'
 import { precinctLabel, type HeaderFact, type TripHeaderFacts, type TripVehicles, type VehicleRef } from '@/lib/phase/trip-detail'
 import { tripChipMeta } from '@/lib/phase/derive'
@@ -32,9 +33,10 @@ interface Props {
   /** Makes the "N need review" chip a control that lands on the first unreviewed row in the
    *  timeline. Absent before the record loads, when there is no row to land on. */
   onShowFirstUnreviewed?: () => void
+  transferAction?: { label: 'Transfer driver' | 'View transfer'; onClick: () => void } | null
 }
 
-export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false, onShowFirstUnreviewed }: Props): React.JSX.Element {
+export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPanel, compact = false, onShowFirstUnreviewed, transferAction }: Props): React.JSX.Element {
   const [driverOpen, setDriverOpen] = useState(false)
   // One shared modal instance for the horse and however many trailers there are, holding
   // which one is currently open rather than a boolean per vehicle.
@@ -44,7 +46,8 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
 
   return (
     <header className="shrink-0 border-b border-outline-v/30 bg-surf-lowest px-4 py-4 md:px-6">
-      <div className="flex flex-wrap items-start gap-3">
+      {/* `relative`: the help panel opens from this row's right edge (see TripHelp). */}
+      <div className="relative flex flex-wrap items-start gap-3">
         <BackButton onClick={onBack} />
         <div className="min-w-0 flex-1 basis-48">
           <h1 className="break-words text-lg font-extrabold leading-tight text-on-surf">{facts.reference}</h1>
@@ -57,15 +60,16 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
         <div className="flex flex-wrap items-center gap-2">
           <Chip type={status.chipType} label={status.label} />
           {facts.needsReviewCount > 0 && <NeedsReviewChip label={`${facts.needsReviewCount} exception${facts.needsReviewCount === 1 ? '' : 's'} need review`} onShow={onShowFirstUnreviewed} />}
-          <ForensicControls />
+          {compact && transferAction && <TransferAction action={transferAction} />}
+          <TripHelp topic="header" />
         </div>
       </div>
       {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
       <div className={compact ? 'hidden' : 'mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4'}>
-        <SummaryCell label="Driver">
+        <SummaryCell label="Driver" action={!compact && transferAction ? <TransferAction action={transferAction} /> : undefined}>
           {driver
             ? <>
-                <button type="button" onClick={() => setDriverOpen(true)} className={RECORD_AFFORDANCE}>
+                <button type="button" onClick={() => setDriverOpen(true)} className={`${RECORD_AFFORDANCE} max-w-full truncate`} title={facts.driverName}>
                   {facts.driverName}<Ic n="chev" s={12} aria-hidden />
                 </button>
                 {/* Always visible: reaching the driver is the most common reason to open
@@ -110,8 +114,15 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
   )
 }
 
-function SummaryCell({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="min-w-0 border-l-2 border-outline-v/30 pl-3"><p className="text-xs text-on-surf-v">{label}</p>{children}</div>
+function TransferAction({ action }: { action: NonNullable<Props['transferAction']> }): React.JSX.Element {
+  return <button type="button" onClick={action.onClick} aria-label={action.label} title={action.label}
+    className="inline-flex shrink-0 items-center gap-1 rounded text-xs text-sec hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
+    <ArrowRightLeft size={12} aria-hidden /><span className="hidden sm:inline">{action.label}</span>
+  </button>
+}
+
+function SummaryCell({ label, children, action }: { label: string; children: React.ReactNode; action?: React.ReactNode }) {
+  return <div className="min-w-0 border-l-2 border-outline-v/30 pl-3"><div className="flex items-center justify-between gap-1"><p className="text-xs text-on-surf-v">{label}</p>{action}</div>{children}</div>
 }
 
 /** Registrations alone do not say which is the truck and which is towed. */

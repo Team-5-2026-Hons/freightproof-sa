@@ -26,6 +26,8 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
+import { writeDraft } from '@/lib/offline/retained-drafts'
 import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
@@ -208,6 +210,7 @@ function arrivalDraftKey(): string {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  authenticateTestDriver(TRIP_ID)
   __resetPhaseSubmitterForTests()
 })
 
@@ -223,15 +226,15 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     // Deliberately written with gatePhotoArtifactId, a field that lived on
     // UnloadingEvidence before the seal check moved to its own arrival phase. This is
     // raw JSON, not a typed literal, precisely so it can carry a dead key: it stands in
-    // for a draft persisted by the PREVIOUS build and read back by this one — the real
+    // for a draft with known capture provenance and an older evidence shape — the real
     // situation for any driver who was mid-trip when the app updated. Reading it must
     // merge cleanly and ignore the dead key, not throw or wipe the seal already typed.
-    localStorage.setItem(
-      arrivalDraftKey(),
-      JSON.stringify({
+    writeDraft(
+      TRIP_ID, ARRIVAL_PE, { actorId: 'driver-1', custodySequence: 0 },
+      {
         sealNumberAtArrival: 'AB-1234', sealCondition: null, gatePhotoArtifactId: null,
         sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: '2026-07-01T08:00:00Z',
-      }),
+      },
     )
     mockUseParams.mockReturnValue({ type: 'arrival', slug: '2-seal-verify' })
     setTripState(null, true)
@@ -256,11 +259,11 @@ describe('trip-loading gate — drafts survive a mount that begins before the tr
     // written {...emptyPrev, ...patch} to the real key here, erasing the typed seal.
     fireEvent.click(screen.getByText('patch-condition'))
 
-    const stored = JSON.parse(localStorage.getItem(arrivalDraftKey()) ?? '{}') as {
+    const stored = JSON.parse(localStorage.getItem(arrivalDraftKey()) ?? '{}') as { draft: {
       sealNumberAtArrival: string | null; sealCondition: string | null
-    }
-    expect(stored.sealNumberAtArrival).toBe('AB-1234') // previously captured evidence survived
-    expect(stored.sealCondition).toBe('intact') // and the new patch landed alongside it
+    } }
+    expect(stored.draft.sealNumberAtArrival).toBe('AB-1234') // previously captured evidence survived
+    expect(stored.draft.sealCondition).toBe('intact') // and the new patch landed alongside it
   })
 })
 

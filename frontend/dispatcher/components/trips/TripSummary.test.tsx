@@ -2,41 +2,34 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { TripSummary } from './TripSummary'
-import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { tripHeaderFacts } from '@/lib/phase/trip-detail'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { mockPrecincts } from '@shared/lib/mocks/precincts'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
-
-// ForensicControls reaches useAuth, which throws outside an AuthProvider. Mocked the same
-// way Sidebar.test.tsx does, rather than wrapping every render in a real provider tree.
-vi.mock('@/lib/hooks/useAuth', () => ({
-  useAuth: () => ({
-    user: {
-      id: 'user-1', organization_id: 'org-1', email: 'jane@freightproof.test',
-      full_name: 'Jane Dispatcher', is_active: true, role: 'dispatcher',
-    },
-    isLoading: false,
-  }),
-}))
 
 const trip = mockTrips[0]!
 const facts = tripHeaderFacts(trip, null)!
 
 function renderSummary(onPanel = vi.fn()) {
   return render(
-    <ForensicModeProvider>
-      <TripSummary
-        facts={facts}
-        precincts={mockPrecincts}
-        driver={mockDrivers[0]!}
-        returnTo="/trips/trip-1"
-        onBack={vi.fn()}
-        onPanel={onPanel}
-      />
-    </ForensicModeProvider>,
+    <TripSummary
+      facts={facts}
+      precincts={mockPrecincts}
+      driver={mockDrivers[0]!}
+      returnTo="/trips/trip-1"
+      onBack={vi.fn()}
+      onPanel={onPanel}
+    />,
   )
 }
+
+describe('TripSummary header', () => {
+  it('carries no forensic switch; that control lives in Settings', () => {
+    renderSummary()
+
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+  })
+})
 
 describe('TripSummary vehicle and driver previews', () => {
   it('offers only Info, Cargo and Exceptions and navigates with supported panel values', async () => {
@@ -86,9 +79,7 @@ describe('TripSummary: the "need review" chip', () => {
   const owed = { ...facts, needsReviewCount: 3 }
   function renderChip(onShowFirstUnreviewed?: () => void) {
     return render(
-      <ForensicModeProvider>
-        <TripSummary facts={owed} precincts={mockPrecincts} driver={null} returnTo="/trips/trip-1" onBack={vi.fn()} onPanel={vi.fn()} onShowFirstUnreviewed={onShowFirstUnreviewed} />
-      </ForensicModeProvider>,
+      <TripSummary facts={owed} precincts={mockPrecincts} driver={null} returnTo="/trips/trip-1" onBack={vi.fn()} onPanel={vi.fn()} onShowFirstUnreviewed={onShowFirstUnreviewed} />,
     )
   }
 
@@ -107,4 +98,23 @@ describe('TripSummary: the "need review" chip', () => {
     expect(screen.getByText('3 exceptions need review')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /need review\. Show the first/ })).toBeNull()
   })
+})
+
+describe('TripSummary header help', () => {
+  it('offers a help button in the header that explains the header', async () => {
+    renderSummary()
+
+    await userEvent.click(screen.getByRole('button', { name: "About this trip's header" }))
+
+    expect(screen.getByRole('region', { name: "About this trip's header" })).toHaveTextContent('What the header shows')
+  })
+})
+
+it.each([false, true])('transfer_action_reuses_normal_or_compact_header_slot (compact=%s)', async (compact) => {
+  const open = vi.fn()
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()} compact={compact}
+    transferAction={{ label: 'Transfer driver', onClick: open }} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer driver' }))
+  expect(open).toHaveBeenCalledOnce()
+  expect(screen.getByRole('link', { name: mockDrivers[0]!.phone_number })).toHaveAttribute('href', `tel:${mockDrivers[0]!.phone_number}`)
 })

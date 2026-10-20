@@ -43,12 +43,18 @@ from app.api.v1.endpoints.pp import router as pp_router
 from app.api.v1.endpoints.precincts import router as precincts_router
 from app.api.v1.endpoints.stream import router as stream_router
 from app.api.v1.endpoints.trip_admin import router as trip_admin_router
+from app.api.v1.endpoints.driver_substitutions import (
+    dispatcher_router as driver_substitutions_dispatcher_router,
+    driver_router as driver_substitutions_driver_router,
+    late_evidence_router as driver_substitutions_late_evidence_router,
+)
 from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 from app.core.config_validation import enforce_production_config
 from app.core.realtime import register_realtime_hook
 from app.db.session import get_read_only_db
+from app.tasks.driver_substitutions import register_custody_publisher
 from app.tasks.evidence_anchors import register_evidence_publisher
 
 logger = logging.getLogger(__name__)
@@ -95,7 +101,12 @@ app.add_middleware(
 # rejection still gets these headers too.
 app.add_middleware(SecurityHeadersMiddleware)
 
+# FP-83: the driver's /trips/me/... substitution routes go BEFORE the trips router, whose
+# /trips/me/{trip_id} would otherwise consume /trips/me/driver-substitutions as a trip id.
+app.include_router(driver_substitutions_driver_router, prefix="/api/v1")
 app.include_router(trips_router, prefix="/api/v1")
+app.include_router(driver_substitutions_dispatcher_router, prefix="/api/v1")
+app.include_router(driver_substitutions_late_evidence_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(vehicles_router, prefix="/api/v1")
@@ -149,6 +160,8 @@ register_realtime_hook()
 # Lets the request path queue evidence-anchor events on the Celery worker without importing
 # the task layer (see orchestration/evidence_anchors/dispatch.py). Idempotent.
 register_evidence_publisher()
+# The same for FP-83 custody anchors (orchestration/substitutions/anchors.py).
+register_custody_publisher()
 
 
 @app.exception_handler(Exception)

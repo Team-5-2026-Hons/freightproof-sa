@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -21,6 +21,11 @@ import { currentTripPhase, precinctAtPhase, precinctLabel } from '@/lib/phase/tr
 import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR } from './PhaseTimelineItem'
 import { nextTripStop } from './PhaseEvidence'
 import { TimelinePhase } from './TimelinePhase'
+import { Modal } from '@/components/ui/Modal'
+import { positionDriverTransfers } from '@/lib/phase/driver-transfers'
+import { DriverTransferTimelineEvent } from './DriverTransferTimelineEvent'
+import { DriverTransferDetail } from './DriverTransferDetail'
+import { TripHelp } from './TripHelp'
 import { uniqueExceptionsById } from './exception-dedupe'
 import { useExceptionReveal, type RevealRequest } from './useExceptionReveal'
 import { KEEP_EXCEPTION_SELECTION_ATTR } from './useDismissExceptionSelection'
@@ -54,6 +59,12 @@ const CLOCK_TICK_MS = 60_000
 const TOOLBAR_AREAS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls']"
 const TOOLBAR_AREAS_WITH_STATUS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls'_'status_status'] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:[grid-template-areas:'view_status_controls']"
 const NO_OPEN: OpenException = () => undefined
+const TIMELINE_READER_HEIGHT_VAR = '--timeline-reader-height'
+// The help panel hangs from the sticky toolbar, so it stays pinned under it while the scroller's overflow clips whatever
+// runs past the scroller's bottom edge, and scrolling cannot reveal it. Capping it to the reading area below the toolbar
+// makes it scroll inside itself instead. The floor keeps it readable if the area is momentarily tiny. Written out in full, not
+// built from the two variable names: Tailwind only generates a class it can read literally in the source.
+const HELP_MAX_HEIGHT = '[&_[role=region]]:max-h-[max(8rem,calc(var(--timeline-reader-height,70vh)_-_var(--timeline-toolbar-height,0px)_-_0.5rem))]'
 
 /** Chronological, id-tie-broken order shared by every phase's exception rows, so the rail and the
  *  rows can never disagree about which came first. */
@@ -94,6 +105,7 @@ export function TripTimeline({
   trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLElement>(null)
+  const [openTransferId, setOpenTransferId] = useState<string | null>(null)
   const viewControlId = useId()
   const bodyId = `${viewControlId}-body`
   const minimised = view === TIMELINE_VIEWS.minimised
@@ -101,18 +113,23 @@ export function TripTimeline({
   const hasFreshness = lastUpdated !== null || warnings.length > 0
   const toolbarRef = useCallback((element: HTMLDivElement | null): (() => void) | undefined => {
     if (!element) return
+    // The scroller the toolbar sticks in: its height is the reading area the help panel has to fit inside.
+    const scroller = element.closest<HTMLElement>('[data-timeline-scroller]')
     const measure = (): void => {
       element.parentElement?.style.setProperty(TIMELINE_TOOLBAR_HEIGHT_VAR, `${element.getBoundingClientRect().height}px`)
+      if (scroller) element.parentElement?.style.setProperty(TIMELINE_READER_HEIGHT_VAR, `${scroller.clientHeight}px`)
     }
     // Wrapping and browser zoom change the reading space; never subtract a fixed header height.
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
+    if (scroller) observer.observe(scroller)
     window.addEventListener('resize', measure)
     return () => { observer.disconnect(); window.removeEventListener('resize', measure) }
   }, [])
   const active = currentTripPhase(trip)
   const phases = sortedPlan(trip.phases)
+  const transfers = positionDriverTransfers(phases, trip.completed_driver_substitutions ?? [])
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
   const now = useNow(CLOCK_TICK_MS)
   const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
@@ -159,6 +176,7 @@ export function TripTimeline({
         <RefreshStatus warnings={warnings} />
       </div>}
       <div data-toolbar-controls className="flex items-center justify-end gap-2 [grid-area:controls]">
+        <TripHelp topic="timeline" maxHeight={HELP_MAX_HEIGHT} />
         {active && trip.status !== 'created' && <Button variant="secondary" size="sm" onClick={onJump} {...keepSelection}>Jump to current phase ↓</Button>}
         {onToggleExpanded && <Button variant="secondary" size="sm" onClick={onToggleExpanded} {...keepSelection}
           aria-label={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand} title={expanded ? EXPAND_LABELS.collapse : EXPAND_LABELS.expand}>
@@ -176,13 +194,15 @@ export function TripTimeline({
         exceptionCount={activeTransitExceptions.length}
         onShow={onJump}
       />}
+      {transfers.beforeFirst.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
       {phases.map((phase, phaseIndex) => (
+        <Fragment key={phase.phase_event_id}>
         <TimelinePhase
           key={phase.phase_event_id}
           trip={trip}
           phase={phase}
           precincts={precincts}
-          isLast={phaseIndex === phases.length - 1}
+          isLast={phaseIndex === phases.length - 1 && !(transfers.afterPhase.get(phase.phase_event_id)?.length)}
           exceptions={sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)}
           artifacts={artifacts}
           lookup={lookup}
@@ -194,7 +214,13 @@ export function TripTimeline({
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
         />
+        {(transfers.afterPhase.get(phase.phase_event_id) ?? []).map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} sameRecordedTime={phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.effective_at)} />)}
+        </Fragment>
       ))}
+      {transfers.unplaced.length > 0 && <section aria-label="Unplaced historical driver transfers" className="border-t border-outline-v/30 pt-4">
+        <h3 className="text-label font-semibold">Unplaced historical driver transfers</h3><p className="mb-3 text-meta text-on-surf-v">Phase context not recorded</p>
+        {transfers.unplaced.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
+      </section>}
       <div id={TRIP_RECORD_ANCHOR_ID} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }}>
       {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-2 border-t border-outline-v/30 pt-4">
         <h3 className="text-body font-bold text-on-surf">Trip record</h3>
@@ -203,6 +229,9 @@ export function TripTimeline({
       </section>}
       </div>
     </div>
+    {openTransferId && <Modal open onClose={() => setOpenTransferId(null)} title="Driver transfer evidence" size="lg">
+      <DriverTransferDetail tripId={trip.id} substitutionId={openTransferId} onChanged={evidence.onChanged} />
+    </Modal>}
   </section>
 }
 

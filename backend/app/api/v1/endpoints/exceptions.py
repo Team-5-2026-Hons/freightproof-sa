@@ -14,7 +14,9 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
     BatchReviewRejectedError,
     ExceptionAlreadyReviewedError,
     ExceptionClaimedByColleagueError,
@@ -23,7 +25,7 @@ from app.core.exceptions import (
 )
 from app.core.limits import EVIDENCE_WRITE, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
-from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
+from app.db.models.enums import DispatcherRole, ExceptionReviewStatus, ExceptionSeverity
 from app.db.session import get_db
 from app.orchestration.exceptions.creation import raise_exception
 from app.orchestration.exceptions.queries import (
@@ -80,11 +82,12 @@ async def raise_exception_endpoint(
             driver_accuracy_metres=payload.driver_accuracy_metres,
             client_report_id=payload.client_report_id,
             vehicle_type=payload.vehicle_type, trailer_id=payload.trailer_id,
+            custody_sequence=payload.custody_sequence,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 # Declared BEFORE /{exception_id}: FastAPI matches routes in declaration order, or
@@ -163,6 +166,8 @@ async def get_exception_detail_endpoint(
     try:
         return await get_exception_detail(
             db, exception_id=exception_id, organization_id=current_user.organization_id,
+            # Receipts are admin-only everywhere else, so the pointer into one is too.
+            include_hedera_refs=current_user.role == DispatcherRole.ADMIN_DISPATCHER,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

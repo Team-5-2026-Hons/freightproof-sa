@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.blockchain.anchor_service import lookup_receipts
 from app.db.models.audit_packs import AuditPack
 from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.driver_substitutions import DriverSubstitutionCorrection
 from app.db.models.enums import (
     AnchorStatus,
     BlockchainReceiptType,
@@ -33,7 +34,7 @@ from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip, TripStop
+from app.db.models.trips import DriverSubstitution, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -440,6 +441,35 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
         db_session.add(evidence_event)
         await db_session.flush()
 
+        # A legacy substitution (request_id NULL, so no completing actor) is the simplest valid
+        # row; its visibility runs through the trip's operator organisation.
+        incoming_driver = Driver(
+            id=uuid.uuid4(),
+            organization_id=organization.id,
+            full_name="Incoming Driver",
+            # uq_drivers_org_id_number: must differ from the trip driver's in the same organisation.
+            id_number="8001015009088",
+            phone_number="+27821234567",
+            license_number="TEST",
+        )
+        db_session.add(incoming_driver)
+        await db_session.flush()
+        substitution = DriverSubstitution(
+            id=uuid.uuid4(), trip_id=trip.id, original_driver_id=driver.id,
+            substituting_driver_id=incoming_driver.id, exchange_location="Depot",
+            approving_dispatcher_user_id=lookup_seed.user.id, is_planned=True,
+            substitution_at=now, request_id=None, sequence_number=1, previous_substitution_id=None,
+        )
+        db_session.add(substitution)
+        await db_session.flush()
+        correction = DriverSubstitutionCorrection(
+            id=uuid.uuid4(), substitution_id=substitution.id, recorded_by_user_id=lookup_seed.user.id,
+            reason="Clarification", correction_note="Note", payload_version=1, payload_json={},
+            event_hash="0" * 64,
+        )
+        db_session.add(correction)
+        await db_session.flush()
+
         subjects = [
             (SubjectType.TRIP, trip.id, BlockchainReceiptType.JOURNEY_LOCK),
             (SubjectType.VEHICLE, vehicle.id, BlockchainReceiptType.VEHICLE_CREATED),
@@ -462,6 +492,12 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
             (SubjectType.PHASE_EVENT, phase.id, BlockchainReceiptType.PICKUP),
             (SubjectType.AUDIT_PACK, audit_pack.id, BlockchainReceiptType.AUDIT_PACK_ISSUED),
             (SubjectType.EVIDENCE_EVENT, evidence_event.id, BlockchainReceiptType.EXCEPTION_RAISED),
+            (SubjectType.DRIVER_SUBSTITUTION, substitution.id, BlockchainReceiptType.DRIVER_SUBSTITUTION),
+            (
+                SubjectType.DRIVER_SUBSTITUTION_CORRECTION,
+                correction.id,
+                BlockchainReceiptType.DRIVER_SUBSTITUTION_CORRECTED,
+            ),
         ]
         for subject_type, subject_id, receipt_type in subjects:
             receipt = _receipt(

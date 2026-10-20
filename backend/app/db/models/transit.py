@@ -5,7 +5,7 @@ from typing import Any, Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, column, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -19,6 +19,11 @@ from app.db.models.enums import (
     ExceptionSource,
     ExceptionType,
 )
+
+# FP-83 C3 CP4: the partial unique indexes that make a handover capture's findings idempotent.
+# Named here so the recorders can tell their own insert race apart from any other integrity fault.
+SUBSTITUTION_SEPARATION_INDEX = "uq_exceptions_substitution_separation"
+SUBSTITUTION_SEAL_FINDING_INDEX = "uq_exceptions_substitution_seal"
 
 
 class Checkpoint(Base):
@@ -83,6 +88,13 @@ class Checkpoint(Base):
     phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("phase_events.id"), nullable=True
     )
+    # The driver who took this checkpoint and the custody period they held (0 = the trip's
+    # original driver). Lets a retry after a handover be proven to be the same driver's own
+    # report. NULL on older rows; never backfilled from whoever is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_checkpoints_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -161,6 +173,28 @@ class TripException(Base):
                 "exception_type = 'trailer_location_mismatch' AND phase_event_id IS NOT NULL"
             ),
         ),
+        # FP-83 C3 CP4: a driver-handover capture is a third finding scope beside a phase event
+        # and a checkpoint. One separation finding per capture, and one seal finding per vehicle
+        # and type per capture pair (the second confirmation, which runs the comparison).
+        Index(
+            SUBSTITUTION_SEPARATION_INDEX,
+            "substitution_confirmation_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_vehicle_separation' AND substitution_confirmation_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            SUBSTITUTION_SEAL_FINDING_INDEX,
+            "substitution_confirmation_id",
+            "vehicle_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type IN ('seal_mismatch', 'seal_compromised') AND substitution_confirmation_id IS NOT NULL"
+            ),
+        ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database (created by an earlier migration, never modelled here).
         Index("ix_exceptions_severity", "severity"),
@@ -176,6 +210,14 @@ class TripException(Base):
     )
     checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
+    )
+    # FP-83 C3 CP4: the driver-handover capture a system finding was measured on (a capture's
+    # driver/vehicle separation, or a seal discrepancy between the two drivers' captures). A
+    # handover is not a phase, so it never borrows phase_event_id. NULL on every other row.
+    substitution_confirmation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_substitution_confirmations.id", name="fk_exceptions_substitution_confirmation_id"),
+        nullable=True,
     )
     # Scope an exception to one client's cargo / one stop on the route, so a multi-client
     # evidence chain can be cut per client (a FedEx discrepancy must not surface
@@ -268,6 +310,13 @@ class TripException(Base):
         UUID(as_uuid=True), ForeignKey("users.id", name="fk_exceptions_claimed_by_user_id"), nullable=True
     )
     claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The driver who performed this action and the custody period they held at the time
+    # (0 = the trip's original driver). Written by the live action paths from FP-83 C5;
+    # NULL on every older row and never backfilled from whichever driver is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_exceptions_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )

@@ -20,7 +20,7 @@ vi.mock('@/lib/api/auditPacks', async () => {
 const ISSUED: AuditPackIssued = {
   pack: {
     id: 'pack-1', pack_label: 'TRP-0042-AP1', trip_id: 'trip-1', consignment_id: null, purpose: 'insurance_claim',
-    external_reference: null, recipient_name: 'Jane Adjuster', recipient_organization: 'Santam Claims', recipient_email: null,
+    external_reference: null, recipient_name: 'Jane Adjuster', recipient_organization: 'Santam Claims', recipient_email: 'jane@santam.example',
     include_location_trail: true, include_full_driver_id: false, manifest_sha256: 'ab', pdf_sha256: 'cd', pdf_size_bytes: 1,
     anchor_status: 'anchored', hedera_topic_id: null, hedera_sequence_number: null, hedera_tx_id: null,
     hedera_consensus_at: null, issued_at: '2026-09-13T06:00:00Z', expires_at: '2026-10-13T06:00:00Z', revoked_at: null,
@@ -41,6 +41,7 @@ function renderDialog(onIssued = vi.fn()) {
 async function fillRecipient() {
   await userEvent.type(screen.getByLabelText('Recipient name'), 'Jane Adjuster')
   await userEvent.type(screen.getByLabelText('Recipient organisation'), 'Santam Claims')
+  await userEvent.type(screen.getByLabelText('Recipient email'), 'jane@santam.example')
 }
 
 beforeEach(() => {
@@ -65,11 +66,30 @@ describe('IssueAuditPackDialog', () => {
     // Assert
     expect(issueAuditPack).toHaveBeenCalledWith('trip-1', expect.objectContaining({
       recipient_name: 'Jane Adjuster', purpose: 'insurance_claim', include_full_driver_id: false,
-      include_location_trail: true, expires_in_days: 30, recipient_email: null, external_reference: null,
+      include_location_trail: true, expires_in_days: 30, recipient_email: 'jane@santam.example', external_reference: null,
     }))
     expect(await screen.findByTestId('share-url')).toHaveTextContent('https://portal.freightproof.co.za/p/tok')
     expect(screen.getByText(/It is shown only now/)).toBeInTheDocument()
+    expect(screen.getByText(/one-time code is emailed to jane@santam.example/)).toBeInTheDocument()
     expect(onIssued).toHaveBeenCalledOnce()
+  })
+
+  it('keeps Issue disabled until the recipient email looks like an address', async () => {
+    // Arrange
+    renderDialog()
+    await userEvent.type(screen.getByLabelText('Recipient name'), 'Jane Adjuster')
+    await userEvent.type(screen.getByLabelText('Recipient organisation'), 'Santam Claims')
+
+    // Act: the error shows once the field is left, not while it is still being typed
+    await userEvent.type(screen.getByLabelText('Recipient email'), 'jane@santam')
+    await userEvent.tab()
+
+    // Assert
+    expect(screen.getByRole('button', { name: 'Issue pack' })).toBeDisabled()
+    expect(screen.getByText(/Enter a full email address/)).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText('Recipient email'), '.example')
+    expect(screen.getByRole('button', { name: 'Issue pack' })).toBeEnabled()
   })
 
   it('explains a missing admin role', async () => {

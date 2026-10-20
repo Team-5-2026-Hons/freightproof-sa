@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider, TOAST_AUTO_DISMISS_MS } from '@/lib/context/ToastContext'
 import { useToast } from '@/lib/hooks/useToast'
 import { toastForEvent, type ToastRequest } from './ranking'
-import type { EventSeverity, RealtimeEvent, RealtimeKind } from './types'
+import { KIND_CHANGES_TRIP_RECORD, type EventSeverity, type RealtimeEvent, type RealtimeKind } from './types'
 
 afterEach(() => vi.useRealTimers())
 
@@ -34,6 +34,17 @@ describe('toastForEvent', () => {
     // An upload is a live-view refresh, not an alert; it must stay silent at any severity.
     expect(toastForEvent(event('evidence_uploaded'))).toBeNull()
     expect(toastForEvent(event('evidence_uploaded', 'critical'))).toBeNull()
+  })
+
+  it('driver_substitution_changed raises no toast', () => {
+    // A handover is routine record-keeping, not an alert, at any severity.
+    expect(toastForEvent(event('driver_substitution_changed'))).toBeNull()
+    expect(toastForEvent(event('driver_substitution_changed', 'critical'))).toBeNull()
+  })
+
+  it('driver_substitution_changed refreshes the trip record', () => {
+    // The current driver, pending arrangement and custody chain all live on the trip.
+    expect(KIND_CHANGES_TRIP_RECORD['driver_substitution_changed']).toBe(true)
   })
 
   it('does not raise an alert for progress even when it arrives as critical', () => {

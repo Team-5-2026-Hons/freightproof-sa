@@ -305,19 +305,73 @@ describe('Exception detail — trip lifecycle banner', () => {
 })
 
 describe('Exception detail — phase/stop context', () => {
-  it('renders phase and stop context when present', () => {
+  it('shows the phase and stop as its own Phase row in the trip context', () => {
     mockDetail(baseException({ phase_label: 'In Transit', stop_label: 2 }))
     renderPage()
 
-    expect(screen.getByText(/In Transit · Recorded stop 2/)).toBeInTheDocument()
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('In Transit · Recorded stop 2')
   })
 
-  it('degrades cleanly with no literal "null" or dangling separator when phase/stop are absent', () => {
+  it('says plainly that a trip-level record belongs to no phase', () => {
     mockDetail(baseException({ phase_label: null, stop_label: null }))
     renderPage()
 
-    expect(screen.queryByText(/null/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^·/)).not.toBeInTheDocument()
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('Trip-level record, no phase')
+    // Scoped to the context block: the header's own line legitimately starts with the reference.
+    expect(within(context).queryByText(/null/i)).not.toBeInTheDocument()
+    expect(within(context).queryByText(/^·/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the stop and says there is no phase when a record has a stop but no phase', () => {
+    mockDetail(baseException({ phase_label: null, stop_label: 2 }))
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('Trip-level record, no phase · Recorded stop 2')
+  })
+
+  it('does not guess a phase scope when the payload does not say which phase it belongs to', () => {
+    mockDetail(baseException({ phase_label: 'Loading', stop_label: 1 }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&exception=${EXCEPTION_ID}`,
+    )
+  })
+
+  it('opens the trip on this exception\'s phase and record from View trip', () => {
+    mockDetail(baseException({ phase_label: 'Loading', stop_label: 1, phase_event_id: 'phase-1' }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&phase=phase-1&exception=${EXCEPTION_ID}`,
+    )
+  })
+
+  it('opens the trip on its trip-level records when the exception has no phase', () => {
+    mockDetail(baseException({ phase_label: null, stop_label: null, phase_event_id: null }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&phase=trip-level&exception=${EXCEPTION_ID}`,
+    )
+  })
+})
+
+describe('Exception detail — reference', () => {
+  it('shows the short exception reference in the header', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByRole('heading', { level: 1 }).parentElement).toHaveTextContent('EX-11111111')
   })
 })
 
@@ -755,15 +809,27 @@ describe('assessment redesign', () => {
 })
 
 describe('exception detail header and hierarchy', () => {
-  it('shows one h1 with the trip reference, source and raised time under it', () => {
+  it('keeps the header to the title and the exception reference', () => {
     mockDetail(baseException())
     renderPage()
 
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Seal Mismatch')
-    // The sub-line names the trip once, in the header, not again in a card below.
+    const header = screen.getByRole('heading', { level: 1 }).parentElement!
+    expect(header).toHaveTextContent('Seal Mismatch')
+    expect(header).toHaveTextContent('EX-11111111')
+    expect(header).not.toHaveTextContent(/FP-2026-0001|Raised|System/)
+  })
+
+  it('shows the trip, when it was raised and its source in the trip context, where the dispatcher reads', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Trip').nextElementSibling).toHaveTextContent('FP-2026-0001')
+    expect(within(context).getByText('Raised').nextElementSibling).toHaveTextContent(/03 Sep\w* 2026, 12:00 SAST/)
+    expect(within(context).getByText('Source').nextElementSibling).toHaveTextContent('System')
+    // Named once on the page, not again in the header.
     expect(screen.getAllByText(/FP-2026-0001/)).toHaveLength(1)
-    expect(screen.getByText(/System · Raised 03 Sep\w* 2026, 12:00 SAST/)).toBeInTheDocument()
   })
 
   it('puts severity and a neutral review-state chip in the header', () => {
@@ -832,12 +898,14 @@ describe('Exception detail — review-only evidence', () => {
       anchor_events: [
         { event_id: 'e1', receipt_type: 'exception_raised', anchor_status: 'pending', receipt_id: null, occurred_at: '2026-09-03T10:00:00Z' },
         { event_id: 'e2', receipt_type: 'exception_reviewed', anchor_status: 'failed', receipt_id: null, occurred_at: '2026-09-03T11:00:00Z' },
-        { event_id: 'e3', receipt_type: 'trip_cancelled', anchor_status: 'anchored', receipt_id: 'r3', occurred_at: '2026-09-03T12:00:00Z' },
+        { event_id: 'e3', receipt_type: 'trip_cancelled', anchor_status: 'anchored', receipt_id: 'r3', hedera_topic_id: '0.0.4242', hedera_sequence_number: 3, occurred_at: '2026-09-03T12:00:00Z' },
       ],
     }))
     renderPage()
 
     expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
+    // Outside forensic mode the anchored event's HashScan link is hidden too.
+    expect(screen.queryByRole('link', { name: /HashScan/ })).not.toBeInTheDocument()
   })
 })

@@ -1,10 +1,9 @@
 // frontend/driver-pwa/lib/hooks/usePhaseDraft.ts
 'use client'
 
-import { useState, useCallback } from 'react'
-
-const storageKey = (tripId: string, phaseEventId: string): string =>
-  `fp_draft_${tripId}_${phaseEventId}`
+import { useState, useCallback, useRef } from 'react'
+import { captureCustody } from '@/lib/session/custody-context'
+import { draftKey, migrateLegacyDrafts, readDraft, writeDraft } from '@/lib/offline/retained-drafts'
 
 // Renamed from useHandshakeDraft, which keyed its storage on (tripId, handshakeType) —
 // a fixed 1-5 handshake enum where each type occurred at most once per trip. Under the
@@ -15,20 +14,28 @@ const storageKey = (tripId: string, phaseEventId: string): string =>
 // would silently leak into (or get clobbered by) the draft for the second. Keying on
 // phase_event_id — a real per-row UUID, unique even across repeated phase types —
 // is exactly what this rename exists to prevent that collision.
+//
+// FP-83: each stored draft also records who captured it and in which custody period
+// (lib/offline/retained-drafts.ts). A draft from another account, an unknown capturer or an
+// earlier period of this driver is retained for review instead of being loaded here.
 export function usePhaseDraft<T extends object>(
   tripId: string,
   phaseEventId: string,
   initial: T,
 ): [draft: T, updateDraft: (patch: Partial<T>) => void, clearDraft: () => void] {
-  const key = storageKey(tripId, phaseEventId)
+  const key = draftKey(tripId, phaseEventId)
+  // Taken once, when the step opens: every later write of this draft keeps the period it was
+  // started in, never whichever period is current when the driver next types.
+  const stampRef = useRef(captureCustody(tripId))
 
   const [draft, setDraft] = useState<T>(() => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
+      migrateLegacyDrafts()
+      const stored = readDraft(tripId, phaseEventId, stampRef.current)
       // Shallow-merge over `initial` rather than returning the parsed value raw —
       // a draft saved under an older shape of T (e.g. before a field existed) would
       // otherwise silently omit that field despite the return type claiming it exists.
-      return raw ? { ...initial, ...(JSON.parse(raw) as Partial<T>) } : initial
+      return stored !== null ? { ...initial, ...(stored as Partial<T>) } : initial
     } catch {
       return initial
     }
@@ -44,7 +51,7 @@ export function usePhaseDraft<T extends object>(
           // calls onComplete()/navigates in the same tick. If this write moved to a
           // useEffect, that call-then-navigate pattern would silently lose the last patch
           // on fast navigation, since the effect wouldn't have flushed yet.
-          localStorage.setItem(key, JSON.stringify(next))
+          writeDraft(tripId, phaseEventId, stampRef.current, next)
         } catch {
           // Quota exceeded, private browsing, or storage disabled — draft still
           // updates in memory, but won't survive a refresh. Surface this since the
@@ -54,7 +61,7 @@ export function usePhaseDraft<T extends object>(
         return next
       })
     },
-    [key],
+    [key, tripId, phaseEventId],
   )
 
   const clearDraft = useCallback(() => {

@@ -64,6 +64,11 @@ class DriverCheckpointCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     checkpoint_type: CheckpointTypeStr
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
     driver_phone_lat: Optional[float] = Field(default=None, ge=-90, le=90)
     driver_phone_lng: Optional[float] = Field(default=None, ge=-180, le=180)
     horse_gps_lat: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -191,6 +196,11 @@ class DriverExceptionCreateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     exception_type: ExceptionType
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
     # RequiredFreeText, not str: this lands on a TEXT column with no width of its own, so
     # without a ceiling one authenticated driver can write as much as they like. It is
     # also the field most worth cleaning — an exception description is read back as
@@ -378,6 +388,9 @@ class TripExceptionListItem(BaseModel):
     # Trip.current_phase (str) / Trip.current_stop (int) pairing in schemas/trips.py.
     phase_label: Optional[str] = None
     stop_label: Optional[int] = None
+    # The phase event itself, so a client can link to that exact phase: phase_label alone
+    # cannot, a multi-stop trip runs the same phase type more than once.
+    phase_event_id: Optional[UUID] = None
     # A driver exception report's own capture assessment, when one was built. This is
     # projected by exceptions.queries._to_list_item, then inherited by detail below.
     # Validated through ActionLocationAssessment, never served as a raw dict.
@@ -424,6 +437,11 @@ class EvidenceAnchorSummary(BaseModel):
     receipt_type: BlockchainReceiptType
     anchor_status: AnchorStatus
     receipt_id: Optional[UUID] = None
+    # Where the receipt landed on Hedera, so the dispatcher can link to HashScan. Both are
+    # None until the event is anchored. Deliberately no hash: the dispatcher screen shows a
+    # pointer to the public record, not the evidence commitment itself.
+    hedera_topic_id: Optional[str] = None
+    hedera_sequence_number: Optional[int] = None
     occurred_at: datetime
 
 

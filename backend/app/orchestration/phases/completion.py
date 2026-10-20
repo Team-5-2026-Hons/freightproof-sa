@@ -19,10 +19,14 @@ from app.orchestration.phases.findings import (
     _raise_position_disagreement_if_unrecorded, _raise_trailer_decoupling_if_unrecorded,
 )
 from app.orchestration.phases.state import recompute_position
+from app.orchestration.substitutions.termination import cancel_pending_for_terminal_trip
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
 
 logger = logging.getLogger(__name__)
+
+# Why a pending driver handover was ended when its trip closed normally.
+TRIP_CLOSED_REASON = "Trip closed"
 
 
 async def _finish_phase(
@@ -103,6 +107,11 @@ async def _finish_phase(
         )
 
     await recompute_position(db, trip)
+    if TripStatus(trip.status) == TripStatus.CLOSED:
+        # Normal closure ends a pending driver handover the same way a cancellation does. A
+        # handover that completed first is not pending, so it stands and the trip closed
+        # under its current driver (FP-83).
+        await cancel_pending_for_terminal_trip(db, trip=trip, reason=TRIP_CLOSED_REASON)
     await db.flush()
 
     # Notify dispatchers watching this trip. The completion may also have CLOSED the trip

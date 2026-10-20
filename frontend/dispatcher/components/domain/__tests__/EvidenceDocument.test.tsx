@@ -29,3 +29,30 @@ describe('EvidenceDocument Retry', () => {
     expect(screen.getByRole('button', { name: 'Retry Receiver confirmation' })).toHaveClass('text-meta', 'underline')
   })
 })
+
+describe('EvidenceDocument PDF viewer', () => {
+  it('opens a PDF in place, in a frame inside the modal', () => {
+    const pdf = document_({ mime_type: 'application/pdf', signed_url: 'https://example.test/linehaul.pdf' })
+    render(<EvidenceDocument label="Linehaul sheet (PDF)" artifact={pdf} />)
+
+    expect(screen.queryByTitle('Linehaul sheet (PDF)')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'View Linehaul sheet (PDF)' }))
+
+    expect(screen.getByTitle('Linehaul sheet (PDF)')).toHaveAttribute('src', 'https://example.test/linehaul.pdf')
+    expect(screen.getByRole('link', { name: 'Open ↗' })).toHaveAttribute('href', 'https://example.test/linehaul.pdf')
+  })
+
+  it('offers no in-place view for a file that is not a PDF', () => {
+    render(<EvidenceDocument label="Receiver confirmation" artifact={document_({ mime_type: 'application/json', signed_url: 'https://example.test/sig' })} />)
+
+    expect(screen.queryByRole('button', { name: 'View Receiver confirmation' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open ↗' })).toBeInTheDocument()
+  })
+
+  it('offers no in-place view when the PDF link could not be signed', () => {
+    render(<EvidenceDocument label="Linehaul sheet (PDF)" artifact={document_({ mime_type: 'application/pdf' })} />)
+
+    expect(screen.queryByRole('button', { name: 'View Linehaul sheet (PDF)' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Recorded, document unavailable/)).toBeInTheDocument()
+  })
+})

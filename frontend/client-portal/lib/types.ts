@@ -68,8 +68,8 @@ export interface DriverSubstitutionRecord {
   substitution_id: string
   original_driver_name: string
   substituting_driver_name: string
-  exchange_location: string
-  is_planned: boolean
+  exchange_location: string | null
+  is_planned: boolean | null
   substitution_at: string
   anchor_receipt_id: string | null
   tier: EvidenceTier
@@ -378,4 +378,16 @@ export interface LiveVerification {
   seal_status: LiveCheckStatus
   records: LiveRecordCheck[]
   records_added_since_issue: number
+}
+
+// ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+
+export interface EmailCodeSent {
+  /** Masked, e.g. j***@santam.co.za. */
+  email_hint: string
+}
+
+export interface ViewerGrant {
+  grant: string
+  expires_at: string
 }

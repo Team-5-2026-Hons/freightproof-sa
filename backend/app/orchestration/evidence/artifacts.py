@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -11,11 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import EvidenceAttributionError, ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.enums import ArtifactType
 from app.db.models.trips import Trip
+from app.orchestration.substitutions.access import WriteClaim, authorise_driver_write
 from app.orchestration.evidence.attribution import EvidenceAttribution, validate_driver_attribution
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
@@ -46,10 +48,12 @@ async def create_artifact(
     captured_lat: Decimal | None = None,
     captured_lng: Decimal | None = None,
     attribution: EvidenceAttribution | None = None,
+    custody_sequence: int | None = None,
 ) -> EvidenceArtifactRead:
-    """Raises ResourceNotFoundError if the trip (or the attributed phase) doesn't exist on it,
-    PermissionError if captured_by_driver_id isn't the trip's assigned driver (caller maps to
-    403), EvidenceAttributionError if the role is not one this phase takes from a driver.
+    """Raises ResourceNotFoundError if the trip (or the attributed phase) doesn't exist on it or
+    captured_by_driver_id never held it, a CustodyAccessError (mapped to 409 with the contract's
+    code) if they held it earlier or the capture belongs to another custody period, and
+    EvidenceAttributionError if the role is not one this phase takes from a driver.
 
     `mime_type` arrives as the CLIENT'S claim about the file. It is not trusted and not
     stored — resolve_mime_type re-derives the type from the bytes and that is what lands
@@ -61,12 +65,21 @@ async def create_artifact(
     # Before the trip lookup: an unsupported file is rejected without spending a query.
     verified_mime_type = resolve_mime_type(file_bytes, mime_type)
 
-    trip_result = await db.execute(select(Trip).where(Trip.id == trip_id))
-    trip = trip_result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-    if trip.driver_id != captured_by_driver_id:
-        raise PermissionError("You are not the assigned driver on this trip.")
+    async def authorise(*, lock: bool) -> Trip:
+        trip, _ = await authorise_driver_write(
+            db, trip_id=trip_id, driver_id=captured_by_driver_id,
+            claim=WriteClaim(custody_sequence, lambda: _find_own_upload(
+                db, trip_id=trip_id, driver_id=captured_by_driver_id, attribution=attribution,
+                file_hash=hashlib.sha256(file_bytes).hexdigest(),
+            )),
+            lock=lock,
+        )
+        return trip
+
+    # Unlocked first, so a stranger or former driver is refused before any bytes move; locked
+    # again after the upload (below), because the Storage round trip is far too long to hold
+    # the trip lock across and the unlocked answer may be stale by the time it returns.
+    trip = await authorise(lock=False)
     if attribution is not None:
         await validate_driver_attribution(db, trip_id=trip_id, attribution=attribution)
 
@@ -81,7 +94,30 @@ async def create_artifact(
         captured_lat=captured_lat,
         captured_lng=captured_lng,
         attribution=attribution,
+        recheck=lambda: authorise(lock=True),
     )
+
+
+async def _find_own_upload(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, attribution: EvidenceAttribution | None,
+    file_hash: str,
+) -> uuid.UUID | None:
+    """This driver's own earlier upload of the same bytes to the same phase and role - the proof
+    that a post-handover retry is theirs. Only attributed uploads: they are the ones the
+    persist step already de-duplicates, so a match here is answered from the stored row. A
+    plain unattributed photo has no replay semantics, so it is never treated as a retry (that
+    would let a stale capture through under a "replay" label). Matches on the stored capturer,
+    so another driver's identical photo is never acknowledged for the caller."""
+    if attribution is None:
+        return None
+    return (await db.execute(
+        select(EvidenceArtifact.id).where(
+            EvidenceArtifact.trip_id == trip_id, EvidenceArtifact.captured_by_driver_id == driver_id,
+            EvidenceArtifact.file_hash == file_hash,
+            EvidenceArtifact.phase_event_id == attribution.phase_event_id,
+            EvidenceArtifact.evidence_role == attribution.role,
+        ).limit(1)
+    )).scalar_one_or_none()
 
 
 async def _persist_artifact(
@@ -96,8 +132,12 @@ async def _persist_artifact(
     captured_lat: Decimal | None,
     captured_lng: Decimal | None,
     attribution: EvidenceAttribution | None,
+    recheck: Callable[[], Awaitable[object]] | None = None,
 ) -> EvidenceArtifactRead:
     """Upload the bytes and write the row.
+
+    `recheck`, when given, runs after the upload and before the insert: the driver path
+    re-authorises under the trip lock there (see create_artifact).
 
     Assumes the caller has already decided the upload is authorised. That decision
     differs per caller — the assigned driver for create_artifact, a redeemed capability
@@ -113,11 +153,13 @@ async def _persist_artifact(
             db, attribution=attribution, file_hash=hashlib.sha256(file_bytes).hexdigest(),
         )
         if existing is not None:
-            return _duplicate_result(existing, captured_at)
+            return _duplicate_result(existing, captured_at, captured_by_driver_id=captured_by_driver_id)
 
     upload = await upload_evidence_file(
         trip_id=str(trip.id), file_bytes=file_bytes, mime_type=verified_mime_type,
     )
+    if recheck is not None:
+        await recheck()
 
     artifact = EvidenceArtifact(
         id=uuid.uuid4(),
@@ -149,7 +191,7 @@ async def _persist_artifact(
                 "Storage object %s/%s orphaned: lost the deduplication race to artifact %s",
                 upload.s3_bucket, upload.s3_key, winner.id,
             )
-            return _duplicate_result(winner, captured_at)
+            return _duplicate_result(winner, captured_at, captured_by_driver_id=captured_by_driver_id)
 
     await db.refresh(artifact)
     enqueue_event(
@@ -197,9 +239,20 @@ async def _insert_attributed(
     return None
 
 
-def _duplicate_result(existing: EvidenceArtifact, incoming_captured_at: datetime) -> EvidenceArtifactRead:
+def _duplicate_result(
+    existing: EvidenceArtifact, incoming_captured_at: datetime, *, captured_by_driver_id: uuid.UUID | None,
+) -> EvidenceArtifactRead:
     """The stored row, exactly as it was. A differing capture time is logged, never written:
-    the original record is the evidence, and the mismatch points at a client defect."""
+    the original record is the evidence, and the mismatch points at a client defect.
+
+    Only ever the caller's OWN row (FP-83 C4): after a handover the same bytes for the same phase
+    and role may already be the previous driver's capture, and answering with that row would let
+    the new driver cite it as theirs. The index allows one row per bytes, so the upload is refused.
+    """
+    if captured_by_driver_id is not None and existing.captured_by_driver_id != captured_by_driver_id:
+        raise EvidenceAttributionError(
+            "This exact photo is already recorded for this step by another driver; take your own photo."
+        )
     if existing.captured_at != incoming_captured_at:
         logger.warning(
             "Identical upload for artifact %s arrived with captured_at %s; keeping stored %s",

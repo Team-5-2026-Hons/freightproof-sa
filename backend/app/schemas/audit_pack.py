@@ -10,6 +10,7 @@ chain-verified (FP-161 review: "avoid exporting a polished document that implies
 included fact is chain-verified"). Pure module: no DB, no HTTP.
 """
 
+import re
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
@@ -25,7 +26,7 @@ from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 # v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
 # action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
 # still validates and reads as v1; the stored JSON itself is never rewritten.
-AUDIT_PACK_MANIFEST_VERSION = 2
+AUDIT_PACK_MANIFEST_VERSION = 3
 
 # anchored:     its hash is on Hedera (field-level where the anchored payload names it)
 # corroborated: independent sources agreed at capture time, but nothing is anchored
@@ -119,15 +120,87 @@ class VehicleRecord(_Frozen):
     tracker_device_id: str
 
 
+class HandoverDeclarationRecord(_Frozen):
+    """One driver's own capture at a handover (FP-83): what they declared, on their device."""
+
+    role: str
+    driver_name: str
+    captured_at: datetime
+    received_at: datetime
+    location_recorded: bool
+    seal_readings: list[str]
+    photo_sha256: list[str]
+    discrepancy_note: str | None
+    driver_id: UUID | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_metres: float | None = None
+    location_observed_at: datetime | None = None
+    location_unavailable_reason: str | None = None
+    location_observation_committed: bool = False
+
+
+class SubstitutionClarificationRecord(_Frozen):
+    id: UUID
+    recorded_by_user_id: UUID
+    recorded_by_name: str | None
+    recorded_at: datetime
+    reason: str
+    correction_note: str
+    event_hash: str | None
+    anchor_status: str | None
+    receipt_id: UUID | None
+
+
 class DriverSubstitutionRecord(_Frozen):
     substitution_id: UUID
     original_driver_name: str
     substituting_driver_name: str
-    exchange_location: str
-    is_planned: bool
+    exchange_location: str | None
+    is_planned: bool | None
     substitution_at: datetime
     anchor_receipt_id: UUID | None
     tier: EvidenceTier
+    # FP-83 custody facts. Defaulted so manifests issued before them still parse unchanged.
+    # Ordered by sequence_number, the chain's only order; None on genuine legacy rows.
+    sequence_number: int | None = None
+    completion_mode: str | None = None
+    # Distinct actors, never merged: who arranged it, and what triggered completion.
+    arranged_by_name: str | None = None
+    completed_by: Literal["driver", "dispatcher"] | None = None
+    missing_confirmation_reason: str | None = None
+    # The INCOMING driver's own identity as observed at completion; an admin attestation is a
+    # separate fact and never turns PENDING into verified.
+    incoming_identity_status: str | None = None
+    identity_attested_by_name: str | None = None
+    identity_attested_at: datetime | None = None
+    incoming_licence_expiry: str | None = None
+    commitment_sha256: str | None = None
+    declarations: list[HandoverDeclarationRecord] = []
+    request_format: str | None = None
+    confirmation_policy: str | None = None
+    required_confirmation_roles: list[str] | None = None
+    completed_by_driver_id: UUID | None = None
+    completed_by_user_id: UUID | None = None
+    completed_by_name: str | None = None
+    identity_attestation_reason: str | None = None
+    corrections: list[SubstitutionClarificationRecord] = []
+
+
+class LateEvidenceRecord(_Frozen):
+    """Evidence a driver captured in an earlier custody period, retained for review (FP-83).
+    It never completed a phase; `payload_sha256` is a local commitment, not a Hedera receipt."""
+
+    evidence_id: UUID
+    driver_name: str
+    custody_sequence: int
+    kind: str
+    captured_at: datetime
+    received_at: datetime
+    status: str
+    payload_sha256: str
+    photo_sha256: list[str]
+    reviewed_at: datetime | None
 
 
 class DriverRecord(_Frozen):
@@ -397,6 +470,8 @@ class AuditPackManifest(_Frozen):
     incident: IncidentSummary | None = None
     # Defaulted so manifests issued before declarations existed still validate.
     declarations: list[IncidentDeclarationRecord] = []
+    # FP-83: retained late driver evidence; defaulted so earlier manifests still parse.
+    late_evidence: list[LateEvidenceRecord] = []
     observations: list[Observation]
     # Human-readable list of what was withheld, printed on the data-protection page so
     # a reader knows an absence is a redaction, not a missing record.
@@ -451,8 +526,22 @@ RECIPIENT_EMAIL_MAX_LENGTH = 320  # audit_packs.recipient_email (RFC 5321 ceilin
 _RecipientStr = Annotated[
     str, StringConstraints(min_length=1, max_length=RECIPIENT_MAX_LENGTH), AfterValidator(clean_text)
 ]
+# Shape only (one @, a dotted domain, no spaces). Whether the inbox exists is proved by
+# the recipient entering the emailed code, which no syntax check could do.
+_EMAIL_SHAPE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _email_shaped(value: str) -> str:
+    if not _EMAIL_SHAPE.fullmatch(value):
+        raise ValueError("Enter the recipient's email address, e.g. name@insurer.co.za")
+    return value
+
+
 _RecipientEmail = Annotated[
-    str, StringConstraints(min_length=3, max_length=RECIPIENT_EMAIL_MAX_LENGTH), AfterValidator(clean_text)
+    str,
+    StringConstraints(min_length=3, max_length=RECIPIENT_EMAIL_MAX_LENGTH),
+    AfterValidator(clean_text),
+    AfterValidator(_email_shaped),
 ]
 _Reference = Annotated[
     str, StringConstraints(min_length=1, max_length=REFERENCE_MAX_LENGTH), AfterValidator(clean_text)
@@ -464,7 +553,9 @@ class AuditPackCreate(BaseModel):
 
     recipient_name: _RecipientStr
     recipient_organization: _RecipientStr
-    recipient_email: _RecipientEmail | None = None
+    # Required since FP-291: the pack opens only after a code sent here is entered, so a
+    # forwarded link alone is not enough. Packs issued before then may have none.
+    recipient_email: _RecipientEmail
     purpose: AuditPackPurpose
     external_reference: _Reference | None = None
     scope_consignment_id: UUID | None = None
@@ -620,3 +711,28 @@ class IncidentDeclarationCreate(BaseModel):
         if all(getattr(self, name) is None for name in _DECLARED_FACTS):
             raise ValueError("Declare at least one police or notification fact.")
         return self
+
+
+# ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+
+EMAIL_CODE_PATTERN = r"^[0-9]{6}$"
+
+
+class EmailCodeSent(_Frozen):
+    """Where the code went, masked (j***@santam.co.za): the holder of a forwarded link
+    learns which inbox to ask about, not the full address."""
+
+    email_hint: str
+
+
+class EmailCodeEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=EMAIL_CODE_PATTERN)]
+
+
+class ViewerGrant(_Frozen):
+    """Sent back as the X-Audit-Pack-Grant header on every later request for the pack."""
+
+    grant: str
+    expires_at: datetime

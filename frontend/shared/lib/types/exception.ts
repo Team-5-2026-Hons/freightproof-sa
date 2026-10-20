@@ -119,6 +119,10 @@ export interface EvidenceAnchorSummary {
   receipt_type: BlockchainReceiptType
   anchor_status: AnchorStatus
   receipt_id: string | null
+  // Where the receipt landed on Hedera, for a HashScan link. Optional so driver-pwa, which
+  // shares this type, is untouched; null until the event is anchored.
+  hedera_topic_id?: string | null
+  hedera_sequence_number?: number | null
   occurred_at: string
 }
 
@@ -191,6 +195,9 @@ export interface TripExceptionListItem {
   trailer_registrations: string[]
   phase_label: string | null
   stop_label: number | null
+  // The phase event itself, for linking to that exact phase. Optional so existing fixtures compile;
+  // null for a trip-level record.
+  phase_event_id?: string | null
   action_location_assessment?: ActionLocationAssessment | null
   // Soft claim (FP-280): who is working this exception. Names are resolved server-side and
   // only ever appear on dispatcher endpoints, never driver-facing responses.

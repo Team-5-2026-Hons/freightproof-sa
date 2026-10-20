@@ -1,9 +1,12 @@
 import type { ExceptionSeverity } from '@shared/lib/types/exception'
+import { ROWS_PER_PAGE_OPTIONS, type RowsPerPage } from '@/lib/preferences'
 import { DEFAULT_EXCEPTION_SORT, EXCEPTION_SORT_KEYS, type ExceptionSort } from './queue'
 
 export interface ExceptionHistoryNavigationState {
   cursorStack: (string | undefined)[]
   pageIndex: number
+  /** Cursor boundaries and range labels belong to the page size that produced them. */
+  pageSize?: RowsPerPage
 }
 
 export interface ExceptionHistoryNavigation extends ExceptionHistoryNavigationState {
@@ -58,8 +61,9 @@ function parseNavigation(params: URLSearchParams): ExceptionHistoryNavigationSta
   const index = params.get('page') ?? '0'
   // A page beyond the cursors we hold cannot be reached, so it falls back to the first page.
   const reachable = /^\d+$/.test(index) && Number.isSafeInteger(Number(index)) && Number(index) <= cursors.length
+  const pageSize = ROWS_PER_PAGE_OPTIONS.find(size => String(size) === params.get('pageSize'))
 
-  return { cursorStack: [undefined, ...cursors], pageIndex: reachable ? Number(index) : 0 }
+  return { cursorStack: [undefined, ...cursors], pageIndex: reachable ? Number(index) : 0, pageSize }
 }
 
 function parseSort(params: URLSearchParams): ExceptionSort {
@@ -100,6 +104,9 @@ export function serializeExceptionViewState(state: ExceptionListViewState): stri
     if (cursor) params.append('cursor', cursor)
   })
   if (state.navigation.pageIndex > 0) params.set('page', String(state.navigation.pageIndex))
+  if (state.navigation.cursorStack.length > 1 && state.navigation.pageSize !== undefined) {
+    params.set('pageSize', String(state.navigation.pageSize))
+  }
 
   return params.toString()
 }

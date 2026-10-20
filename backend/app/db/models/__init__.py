@@ -43,5 +43,21 @@ from app.db.models.receiver_verification import (  # noqa: E402,F401
     IdvsQuotaLedger,
     ReceiverIdentityVerification,
 )
-from app.db.models.audit_packs import AuditPack, AuditPackAccessEvent, IncidentDeclaration  # noqa: E402,F401
+from app.db.models.audit_packs import (  # noqa: E402,F401
+    AuditPack,
+    AuditPackAccessEvent,
+    AuditPackEmailCode,
+    IncidentDeclaration,
+)
 from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact  # noqa: E402,F401
+from app.db.models.driver_substitutions import (  # noqa: E402,F401
+    DriverSubstitutionConfirmation,
+    DriverSubstitutionConfirmationArtifact,
+    DriverSubstitutionCorrection,
+    DriverSubstitutionNotice,
+    DriverSubstitutionOperation,
+    DriverSubstitutionRequest,
+    DriverSubstitutionUpload,
+    LateDriverEvidence,
+    LateDriverEvidenceArtifact,
+)

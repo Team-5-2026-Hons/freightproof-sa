@@ -61,8 +61,9 @@ from collections.abc import Awaitable, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import PhaseTypeMismatchError
-from app.db.models.enums import PhaseType
+from app.core.exceptions import PhaseSequenceError, PhaseTypeMismatchError
+from app.db.models.enums import PhaseStatus, PhaseType
+from app.db.models.phases import PhaseEvent
 from app.orchestration.phases.advance_activation import advance_activation
 from app.orchestration.phases.advance_arrival import advance_arrival
 from app.orchestration.phases.advance_confirmation import advance_confirmation
@@ -70,7 +71,9 @@ from app.orchestration.phases.advance_departure import advance_departure
 from app.orchestration.phases.advance_in_transit import advance_in_transit
 from app.orchestration.phases.advance_loading import advance_loading
 from app.orchestration.phases.advance_unloading import advance_unloading
-from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_driver
+from app.orchestration.phases.loaders import _find_own_completion, _load_phase_event
+from app.orchestration.phases.state import _is_resolved
+from app.orchestration.substitutions.access import WriteClaim, authorise_driver_write
 from app.schemas.phases import PhaseCompleteRequest
 from app.schemas.trips import TripDetailResponse
 
@@ -95,6 +98,11 @@ _WRAPPER_BY_PHASE_TYPE: dict[PhaseType, _WrapperFn] = {
 }
 
 
+def _phase_label(event: PhaseEvent) -> str:
+    """The wording PhaseSequenceError messages use ("Cannot complete Activation: ...")."""
+    return PhaseType(event.phase_type).value.replace("_", " ").capitalize()
+
+
 async def complete_phase(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
     phase_event_id: uuid.UUID, payload: PhaseCompleteRequest,
@@ -114,11 +122,29 @@ async def complete_phase(
     # plan by sending a deliberately wrong phase_type and reading the error.
     # A non-owner must get the same 404 as for a trip that does not exist.
     #
-    # Locked here as well as in _gate_and_load: the phase row is locked on the next line, and
-    # the trip lock must always come first (see loaders._lock_trip) or this would wait on the
-    # phase row while an override holds the trip and waits on the same row.
-    await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id, lock=True)
+    # Locked here as well as in _gate_and_load: the phase row is locked below, and the trip lock
+    # must always come first (see loaders._lock_trip) or this would wait on the phase row while
+    # an override holds the trip and waits on the same row.
+    #
+    # "Owns" now means "holds the trip at this moment, decided after the lock" (FP-83): a request
+    # queued behind a handover must be refused as the former driver, not written as them.
+    _, custody = await authorise_driver_write(
+        db, trip_id=trip_id, driver_id=driver_id,
+        claim=WriteClaim(payload.custody_sequence, lambda: _find_own_completion(
+            db, trip_id=trip_id, driver_id=driver_id, phase_event_id=phase_event_id,
+            idempotency_key=payload.idempotency_key,
+        )),
+    )
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
+
+    # After a handover the "resolved phase returns the current state" replay would hand any
+    # key from any driver a success (and the current trip). Once custody has moved, only the
+    # driver who recorded the completion, under the same key, may be answered that way.
+    if (
+        custody.sequence > 0 and _is_resolved(PhaseStatus(event.status))
+        and not (event.idempotency_key == payload.idempotency_key and event.performed_by_driver_id == driver_id)
+    ):
+        raise PhaseSequenceError("this phase was already completed by another submission", _phase_label(event))
     actual = PhaseType(event.phase_type)
     if actual != payload.phase_type:
         raise PhaseTypeMismatchError(expected=actual.value, received=payload.phase_type.value)

@@ -12,8 +12,9 @@ function SearchRoute(): JSX.Element {
   const { user } = useAuth()
   const barcode = params.get('barcode') ?? ''
   const waybill = params.get('waybill') ?? ''
-  // A changed query or account withdraws the previous evidence before rendering a new request.
-  return <ParcelSearch key={`${user?.id}:${user?.organization_id}:${barcode}:${waybill}`} initialBarcode={barcode} initialWaybill={waybill} />
+  // Only the account identity remounts the feature: the form must keep its DOM node (and focus) across
+  // queries, while ParcelSearch keys its results by query to withdraw stale evidence.
+  return <ParcelSearch key={`${user?.id}:${user?.organization_id}`} initialBarcode={barcode} initialWaybill={waybill} />
 }
 
 export default function ParcelSearchPage(): JSX.Element {

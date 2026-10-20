@@ -1712,3 +1712,62 @@ describe('TripTimeline: the toolbar keeps its controls together', () => {
     expect(toolbar.className).not.toContain('status_status')
   })
 })
+
+describe('TripTimeline: help', () => {
+  it('puts the timeline help button with the toolbar controls', async () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+
+    const controls = document.querySelector<HTMLElement>('[data-toolbar-controls]')!
+    await userEvent.click(within(controls).getByRole('button', { name: 'How to read the timeline' }))
+
+    expect(screen.getByRole('region', { name: 'How to read the timeline' })).toHaveTextContent('Each numbered card is one phase')
+  })
+
+  it('caps the help panel to the reading area below the toolbar, so the timeline scroller never clips it', async () => {
+    renderTimeline(closedTrip(), { onToggleExpanded: vi.fn() })
+    const controls = document.querySelector<HTMLElement>('[data-toolbar-controls]')!
+    await userEvent.click(within(controls).getByRole('button', { name: 'How to read the timeline' }))
+
+    const anchor = screen.getByRole('region', { name: 'How to read the timeline' }).closest('[data-keep-exception-selection]')!
+
+    expect(anchor.className).toContain('var(--timeline-reader-height')
+    expect(anchor.className).toContain('var(--timeline-toolbar-height')
+  })
+
+  it('publishes the scroller height for that cap, from the scroller the toolbar sticks in', () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(420)
+    try {
+      render(<div data-timeline-scroller><TripTimeline trip={closedTrip()} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} /></div>)
+
+      const section = screen.getByRole('region', { name: 'Trip timeline' })
+
+      expect(section.style.getPropertyValue('--timeline-reader-height')).toBe('420px')
+    } finally { height.mockRestore() }
+  })
+})
+
+it('after_loading_transfer_precedes_departure_and_preserves_expanded_phase_on_refresh', () => {
+  const trip = closedTrip()
+  const start = new Date('2026-10-20T08:00:00Z').getTime()
+  trip.phases = trip.phases.map((phase, index) => ({ ...phase, completed_at: new Date(start + index * 600_000).toISOString() }))
+  const loading = phaseOf(trip, 'loading')
+  const event = {
+    substitution_id: 'completed-transfer', request_id: null, sequence_number: 1,
+    outgoing: { id: 'a', full_name: 'Fixture A', phone_number: '+27000000001' },
+    incoming: { id: 'b', full_name: 'Fixture B', phone_number: '+27000000002' },
+    effective_at: new Date(Date.parse(loading.completed_at!) + 300_000).toISOString(),
+    completion_mode: null, anchor_status: null, receipt_id: null, phase_context: null,
+    request_format: null, required_confirmation_roles: null, confirmation_policy: null,
+  }
+  const rendered = renderTimeline(trip)
+  openCard('Loading')
+  const loadingElement = document.getElementById(`phase-${loading.phase_event_id}`)
+  rendered.rerender(<TripTimeline trip={{ ...trip, completed_driver_substitutions: [event, event] }} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence} />)
+  const transfer = screen.getByRole('button', { name: /Driver transferred.*Fixture A.*Fixture B/ })
+  const departure = document.getElementById(`phase-${phaseOf(trip, 'departure').phase_event_id}`)!
+  expect(loadingElement!.compareDocumentPosition(transfer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(transfer.compareDocumentPosition(departure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(document.getElementById(`phase-${loading.phase_event_id}`)).toBe(loadingElement)
+  expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.getAllByRole('button', { name: /Driver transferred.*Fixture A.*Fixture B/ })).toHaveLength(1)
+})

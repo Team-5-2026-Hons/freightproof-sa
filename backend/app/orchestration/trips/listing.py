@@ -25,6 +25,7 @@ from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.substitutions.access import current_driver_ids
 from app.orchestration.phases.state import RESOLVED_PHASE_STATUSES
 from app.orchestration.trips.detail import _client_names, _pp_manifest
 from app.schemas.people import DriverRead
@@ -39,53 +40,9 @@ from app.schemas.trips import (
 from app.schemas.vehicles import VehicleRead
 
 
-async def list_trips(
-    db: AsyncSession,
-    operator_organization_id: uuid.UUID,
-    status_filter: list[TripStatus] | None = None,
-    pp_manifest_number: int | None = None,
-) -> list[TripListItemResponse]:
-    q = select(Trip).where(Trip.operator_organization_id == operator_organization_id)
-    if status_filter:
-        q = q.where(Trip.status.in_(status_filter))
-    if pp_manifest_number is not None:
-        q = q.where(Trip.pp_manifest_number == pp_manifest_number)
-    q = q.order_by(Trip.created_at.desc())
-
-    trips_result = await db.execute(q)
-    trips = trips_result.scalars().all()
-    if not trips:
-        return []
-
-    trip_ids = [t.id for t in trips]
-
-    # Batch-fetch to avoid N+1 queries on list views.
-    driver_ids = list({t.driver_id for t in trips})
-    drivers_result = await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))
-    drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
-
-    horse_ids = list({t.horse_id for t in trips})
-    horses_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(horse_ids)))
-    horses_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in horses_result.scalars().all()}
-
-    tt_result = await db.execute(
-        select(TripTrailer).where(TripTrailer.trip_id.in_(trip_ids))
-    )
-    trip_trailers = tt_result.scalars().all()
-
-    trailer_vehicle_ids = list({tt.trailer_id for tt in trip_trailers})
-    trailers_result = await db.execute(
-        select(Vehicle).where(Vehicle.id.in_(trailer_vehicle_ids))
-    )
-    trailers_by_id: dict[uuid.UUID, Vehicle] = {
-        v.id: v for v in trailers_result.scalars().all()
-    }
-
-    trailers_by_trip: dict[uuid.UUID, list[Vehicle]] = defaultdict(list)
-    for tt in trip_trailers:
-        if tt.trailer_id in trailers_by_id:
-            trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
-
+async def _attention_by_trip(
+    db: AsyncSession, trip_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, TripAttentionResponse]:
     # NEEDS_REVIEW only, not "!= REVIEWED": REVIEWED rows (including dispatcher-authored
     # notes, which are saved already reviewed) are excluded — only unreviewed rows are
     # awaiting a dispatcher decision, so only they count here (FP-146 follow-on).
@@ -119,6 +76,58 @@ async def list_trips(
         for row in exc_result.all()
     }
 
+    return attention_by_trip
+
+
+async def list_trips(
+    db: AsyncSession,
+    operator_organization_id: uuid.UUID,
+    status_filter: list[TripStatus] | None = None,
+    pp_manifest_number: int | None = None,
+) -> list[TripListItemResponse]:
+    q = select(Trip).where(Trip.operator_organization_id == operator_organization_id)
+    if status_filter:
+        q = q.where(Trip.status.in_(status_filter))
+    if pp_manifest_number is not None:
+        q = q.where(Trip.pp_manifest_number == pp_manifest_number)
+    q = q.order_by(Trip.created_at.desc())
+
+    trips_result = await db.execute(q)
+    trips = trips_result.scalars().all()
+    if not trips:
+        return []
+
+    trip_ids = [t.id for t in trips]
+
+    # Batch-fetch to avoid N+1 queries on list views.
+    current = await current_driver_ids(db, trip_ids=[t.id for t in trips])  # FP-83: who holds each trip now
+    drivers_result = await db.execute(select(Driver).where(Driver.id.in_(set(current.values()))))
+    drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
+
+    horse_ids = list({t.horse_id for t in trips})
+    horses_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(horse_ids)))
+    horses_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in horses_result.scalars().all()}
+
+    tt_result = await db.execute(
+        select(TripTrailer).where(TripTrailer.trip_id.in_(trip_ids))
+    )
+    trip_trailers = tt_result.scalars().all()
+
+    trailer_vehicle_ids = list({tt.trailer_id for tt in trip_trailers})
+    trailers_result = await db.execute(
+        select(Vehicle).where(Vehicle.id.in_(trailer_vehicle_ids))
+    )
+    trailers_by_id: dict[uuid.UUID, Vehicle] = {
+        v.id: v for v in trailers_result.scalars().all()
+    }
+
+    trailers_by_trip: dict[uuid.UUID, list[Vehicle]] = defaultdict(list)
+    for tt in trip_trailers:
+        if tt.trailer_id in trailers_by_id:
+            trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
+
+    attention_by_trip = await _attention_by_trip(db, trip_ids)
+
     # Same batching shape as exc_counts above: one grouped query for the page.
     # `completed` here means "resolved" in the ledger's sense (phases.state): an overridden
     # phase or one that finished with a recorded exception will never be revisited, so both
@@ -151,7 +160,7 @@ async def list_trips(
             pp_manifest=_pp_manifest(t, client_names),
             status=t.status,
             trip_type=TripType(t.trip_type),
-            driver=DriverRead.model_validate(drivers_by_id[t.driver_id]),
+            driver=DriverRead.model_validate(drivers_by_id[current[t.id]]),
             horse=VehicleRead.model_validate(horses_by_id[t.horse_id]),
             trailers=[VehicleRead.model_validate(v) for v in trailers_by_trip.get(t.id, [])],
             origin_precinct_id=t.origin_precinct_id,

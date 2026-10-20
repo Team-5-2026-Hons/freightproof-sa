@@ -8,6 +8,7 @@ import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
 import type { PPManifestRef } from './pp-manifest'
+import type { CustodyIntegrityRead, DriverAccess, SubstitutionRequestRead, CompletedSubstitutionSummary } from './driver-substitution'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -171,6 +172,21 @@ export interface Trip {
   blockchain_receipts: BlockchainReceipt[]
   // Creation-transient (e.g. PP sync degraded-mode warnings). Always [] on GET — never persisted.
   warnings: string[]
+  // FP-83 driver substitution (docs/contracts/driver-substitution-v1.md "Existing reads").
+  // `driver` above becomes the DERIVED CURRENT driver; the original never changes. Optional
+  // ONLY until every Trip fixture (including driver-pwa's, owned by another dev) carries
+  // them — the server will send all of them on dispatcher detail, so ordinary trips use the
+  // defaults in the shared mocks: sequence 0, no amendments, flag off.
+  original_driver?: Driver | null
+  driver_substitutions?: SubstitutionRequestRead[]
+  completed_driver_substitutions?: CompletedSubstitutionSummary[]
+  pending_driver_substitution?: SubstitutionRequestRead | null
+  custody_sequence?: number
+  // Dispatcher reads only.
+  custody_integrity?: CustodyIntegrityRead | null
+  driver_substitutions_enabled?: boolean
+  // Populated on current-driver reads, null on dispatcher reads.
+  driver_access?: DriverAccess | null
   created_at: string
   updated_at: string
 }

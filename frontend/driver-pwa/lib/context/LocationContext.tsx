@@ -23,11 +23,14 @@ import {
 } from 'react'
 import { usePathname } from 'next/navigation'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { useLocation } from '@/lib/hooks/useLocation'
+import { SUBSTITUTION_PATH } from '@/lib/constants/routes'
+import { useLocation, type LocationErrorReason } from '@/lib/hooks/useLocation'
 import { useTrip } from '@/lib/hooks/useTrip'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
+import { captureActorLease, captureCustody, isActorLeaseCurrent } from '@/lib/session/custody-context'
+import { classifyLiveWriteFailure, isCustodyConflict } from '@/lib/offline/live-write-conflict'
 import type { DriverPosition } from '@/lib/types/location'
 
 export interface LocationState {
@@ -37,6 +40,7 @@ export interface LocationState {
    * that as "no position", never as a reason to block evidence from being recorded.
    */
   capturePosition: () => Promise<DriverPosition | null>
+  captureObservation: () => Promise<{ position: DriverPosition | null; unavailableReason: LocationErrorReason | null }>
   /**
    * Record where the driver is right now against the open trip. Fire-and-forget: it
    * never throws and never blocks the interaction that triggered it.
@@ -49,16 +53,20 @@ export const LocationContext = createContext<LocationState | null>(null)
 export function LocationProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { trip } = useTrip()
-  const { capture } = useLocation()
+  const { captureResult } = useLocation()
   const { enqueueLocation } = useOfflineQueue()
 
   const tripId = trip !== null ? String(trip.id) : null
 
-  const capturePosition = useCallback(async (): Promise<DriverPosition | null> => {
-    const coords = await capture()
-    if (coords === null) return null
-    return { lat: coords.latitude, lng: coords.longitude, accuracyM: coords.accuracy }
-  }, [capture])
+  const captureObservation = useCallback(async (): Promise<{ position: DriverPosition | null; unavailableReason: LocationErrorReason | null }> => {
+    const result = await captureResult()
+    const coords = result.coords
+    return {
+      position: coords === null ? null : { lat: coords.latitude, lng: coords.longitude, accuracyM: coords.accuracy, capturedAt: coords.capturedAt },
+      unavailableReason: result.errorReason,
+    }
+  }, [captureResult])
+  const capturePosition = useCallback(async (): Promise<DriverPosition | null> => (await captureObservation()).position, [captureObservation])
 
   // Read through a ref inside recordHere so the callback identity doesn't change on
   // every trip refetch — the navigation effect below depends on it, and a new identity
@@ -70,6 +78,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const currentTripId = tripIdRef.current
     // No trip open means nothing to attach a position to, and no reason to hold one.
     if (currentTripId === null || IS_DEMO_MODE) return
+    // Taken at the moment the driver acted, before the GPS wait (FP-83).
+    const custody = captureCustody(currentTripId)
+    const lease = captureActorLease()
+    if (lease === null) return
 
     void (async () => {
       const position = await capturePosition()
@@ -85,14 +97,26 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         context,
         recorded_at: new Date().toISOString(),
       }
+      // Retain the original actor/period even when A signs back in before GPS returns.
+      if (!isActorLeaseCurrent(lease)) {
+        enqueueLocation(currentTripId, [ping], custody)
+        return
+      }
       try {
-        await recordLocations(currentTripId, [ping])
+        await recordLocations(currentTripId, [ping], custody.custodySequence)
       } catch (err: unknown) {
         // Offline or a 5xx: the queue replays it later with its device timestamp
         // intact. Anything else (a 4xx — closed trip, reassigned driver) is terminal
         // and dropped, because retrying it can only fail the same way forever.
         if (isQueueableFailure(err)) {
-          enqueueLocation(currentTripId, [ping])
+          enqueueLocation(currentTripId, [ping], custody)
+          return
+        }
+        // FP-83 exception to the drop: a custody conflict means the fix belongs to a period
+        // the driver held, so it is kept for review (late evidence) rather than lost.
+        const failure = classifyLiveWriteFailure(err)
+        if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
+          enqueueLocation(currentTripId, [ping], custody, failure.attention)
           return
         }
         console.error('Could not record the driver location ping', err)
@@ -105,13 +129,15 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   // here is anchored to something a dispute can reason about ("they opened the seal
   // step here"), and the app never wakes the GPS while the phone sits in a cradle.
   useEffect(() => {
-    if (tripId === null) return
+    // This page is also the outgoing driver's notification. Only an explicit
+    // takeover submission may capture a location here, through captureObservation.
+    if (tripId === null || pathname === SUBSTITUTION_PATH) return
     recordHere(pathname)
   }, [pathname, tripId, recordHere])
 
   const value = useMemo(
-    () => ({ capturePosition, recordHere }),
-    [capturePosition, recordHere],
+    () => ({ capturePosition, captureObservation, recordHere }),
+    [capturePosition, captureObservation, recordHere],
   )
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>

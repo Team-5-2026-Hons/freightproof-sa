@@ -21,6 +21,27 @@ describe('queue chronology and filters', () => {
   })
 })
 
+describe('searching by exception reference', () => {
+  const ids = ['3f9a21c4-5b6d-4e7f-8a90-b1c2d3e4f506', '7d02bb10-5b6d-4e7f-8a90-b1c2d3e4f506']
+  const items = ids.map(id => row(id, '2026-10-02T10:00:00Z'))
+
+  it('finds the one exception whose reference matches, in any case, with or without the EX- prefix', () => {
+    for (const q of ['EX-3F9A21C4', 'ex-3f9a21c4', '3f9a', '3F9A21C4']) {
+      expect(filterQueue(items, { q }).map(x => x.id), q).toEqual([ids[0]])
+    }
+  })
+
+  it('does not let the EX- prefix make short queries such as "ex" or "x" match every row', () => {
+    expect(filterQueue(items, { q: 'ex' })).toEqual([])
+    expect(filterQueue(items, { q: 'x' })).toEqual([])
+  })
+
+  it('still finds by description and trip reference', () => {
+    expect(filterQueue(items, { q: 'FP-full' })).toHaveLength(2)
+    expect(filterQueue(items, { q: '20%_finding' })).toHaveLength(2)
+  })
+})
+
 describe('optional trip grouping', () => {
   it('keeps trips separate, orders groups and children newest first, dedupes IDs and excludes invalid timestamps from bounds', () => {
     const items = [row('old','2026-10-01T10:00:00Z','critical'), {...row('new','2026-10-02T10:00:00Z'),trip_id:'other'}, row('invalid',''), row('middle','2026-10-01T12:00:00Z'), row('middle','2026-10-01T12:00:00Z')]

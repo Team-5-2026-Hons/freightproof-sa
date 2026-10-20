@@ -1,0 +1,65 @@
+{
+  "provenance": "Canonical builder from cc8f20da, before immediate transfer implementation; fixed UUID integers 1 onward.",
+  "payload": {
+    "payload_version": 1,
+    "event_type": "driver_substitution",
+    "substitution_id": "00000000-0000-0000-0000-000000000001",
+    "trip_id": "00000000-0000-0000-0000-000000000002",
+    "request_id": "00000000-0000-0000-0000-000000000003",
+    "sequence_number": 1,
+    "previous_substitution_id": null,
+    "previous_event_hash": null,
+    "outgoing_driver_id": "00000000-0000-0000-0000-000000000004",
+    "incoming_driver_id": "00000000-0000-0000-0000-000000000005",
+    "arranged_by_user_id": "00000000-0000-0000-0000-000000000006",
+    "is_planned": true,
+    "reason_sha256": "a2574cdbaf3dc9bc7de554aaead68c770a9f66f6233fed4b12c46a8da28196fb",
+    "exchange_sha256": "82c4c7afcb9260f7fd2277bdf87c158b2971bee4e8c7d83f84d3d6fd0a1894b4",
+    "expected_at": "2026-10-19T08:00:00.000000+00:00",
+    "effective_at": "2026-10-19T08:05:00.000000+00:00",
+    "declared_exchange_at": null,
+    "completion_mode": "normal",
+    "completed_by_driver_id": "00000000-0000-0000-0000-000000000007",
+    "completed_by_user_id": null,
+    "missing_confirmation_reason_sha256": null,
+    "identity": {
+      "status": "verified",
+      "last_verified_at": "2026-10-19T08:00:00.000000+00:00",
+      "observed_at": "2026-10-19T08:00:00.000000+00:00",
+      "attested_by_user_id": null,
+      "attestation_reason_sha256": null,
+      "attested_at": null
+    },
+    "licence": {
+      "expiry": "2027-01-01",
+      "observed_at": "2026-10-19T08:00:00.000000+00:00"
+    },
+    "captures": {
+      "outgoing": {
+        "role": "outgoing",
+        "confirmation_id": "00000000-0000-0000-0000-000000000008",
+        "driver_id": "00000000-0000-0000-0000-000000000009",
+        "captured_at": "2026-10-19T08:00:00.000000+00:00",
+        "received_at": "2026-10-19T08:00:00.000000+00:00",
+        "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+        "vehicles_sha256": "d41218f51acaa0612bbd2448d6791f3b93bb1b251acd724605ca68ae0d801634",
+        "seal_checks_sha256": "29a692105d71764cd66eb79d697107188b8d49e7a95d04110d709689b269e56e",
+        "note_sha256": "434be2686aaa63ee8196f89901df52a27bc115b15be34c5661c96bfd6704986e",
+        "photos": []
+      },
+      "incoming": {
+        "role": "incoming",
+        "confirmation_id": "00000000-0000-0000-0000-00000000000b",
+        "driver_id": "00000000-0000-0000-0000-00000000000c",
+        "captured_at": "2026-10-19T08:00:00.000000+00:00",
+        "received_at": "2026-10-19T08:00:00.000000+00:00",
+        "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+        "vehicles_sha256": "fad13bbd8276d3c2f842abe95195b4ba63c902d5319a5295b61a2e1b16887cee",
+        "seal_checks_sha256": "29a692105d71764cd66eb79d697107188b8d49e7a95d04110d709689b269e56e",
+        "note_sha256": "434be2686aaa63ee8196f89901df52a27bc115b15be34c5661c96bfd6704986e",
+        "photos": []
+      }
+    }
+  },
+  "sha256": "49b3761466f91e607a40f01de894dc7064b8ade6416858c10e2ac85cbde8c776"
+}

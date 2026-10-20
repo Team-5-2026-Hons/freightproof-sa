@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useOfflineQueue, __resetOfflineQueueStoreForTests } from '../useOfflineQueue'
 import { ApiError } from '@/lib/api/client'
+import { bindActorLease, invalidateActorLease } from '@/lib/session/custody-context'
 import type { DriverPosition } from '@/lib/types/location'
 import type { ActivationEvidence, LoadingEvidence } from '@/lib/types/evidence-draft'
 import type { CheckpointEvidence } from '@/lib/api/checkpoints'
@@ -64,6 +65,7 @@ beforeEach(() => {
   __resetExceptionSyncForTests()
   __resetOfflineQueueStoreForTests()
   vi.clearAllMocks()
+  bindActorLease('driver-1', invalidateActorLease())
 })
 
 afterEach(() => {
@@ -130,6 +132,8 @@ describe('useOfflineQueue', () => {
     localStorage.setItem('fp_offline_queue', JSON.stringify([{
       kind: 'phase',
       id: 'legacy-phase-entry',
+      actorId: 'driver-1',
+      custodySequence: null,
       tripId: 'trip-1',
       phaseEventId: 'phase-event-1',
       phaseType: 'activation',
@@ -146,7 +150,7 @@ describe('useOfflineQueue', () => {
 
     expect(submitPhase).toHaveBeenCalledWith(
       'trip-1', 'phase-event-1', 'activation', EVIDENCE, 'legacy-phase-entry', POSITION,
-      DRIVER_CAPTURED_AT, null,
+      DRIVER_CAPTURED_AT, null, null,
     )
     expect(result.current.queueLength).toBe(0)
   })
@@ -208,8 +212,8 @@ describe('useOfflineQueue', () => {
     const envelopes = await listExceptionEnvelopes()
     expect(envelopes).toHaveLength(1)
     expect(envelopes[0]).toMatchObject({ tripId: 'trip-1', status: 'pending', photos: [] })
-    // Exception reports no longer touch localStorage at all.
-    expect(localStorage.getItem('fp_offline_queue')).toBeNull()
+    // Custody migration may create an empty queue, but report bytes only live in IndexedDB.
+    expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([])
   })
 
   it('enqueueException_reports_not_persisted_when_store_refuses', async () => {
@@ -313,13 +317,20 @@ describe('useOfflineQueue', () => {
     expect(result.current.queueLength).toBe(1)
   })
 
-  it('flush drops a terminal 4xx failure instead of retrying it forever', async () => {
+  it('flush retains a terminal 4xx failure for review instead of retrying it forever', async () => {
     const { submitPhase } = await import('@/lib/api/phases')
     vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
     const { result } = await renderQueue()
     act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
     await act(() => result.current.flush())
     expect(result.current.queueLength).toBe(0)
+    expect(result.current.attentionCount).toBe(1)
+    expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+      expect.objectContaining({ status: 'needs-attention', evidence: EVIDENCE,
+        attention: expect.objectContaining({ status: 422, reason: 'invalid evidence' }) }),
+    ])
+    await act(() => result.current.flush())
+    expect(submitPhase).toHaveBeenCalledTimes(1)
   })
 
   it('flush retains an entry on a 5xx ApiError so it can be retried later', async () => {
@@ -377,7 +388,7 @@ describe('useOfflineQueue', () => {
     const { result } = await renderQueue()
     act(() => result.current.enqueueCheckpoint('trip-1', CHECKPOINT_EVIDENCE))
     await act(() => result.current.flush())
-    expect(submitCheckpoint).toHaveBeenCalledWith('trip-1', CHECKPOINT_EVIDENCE)
+    expect(submitCheckpoint).toHaveBeenCalledWith('trip-1', { ...CHECKPOINT_EVIDENCE, custodySequence: null })
     expect(result.current.queueLength).toBe(0)
   })
 
@@ -404,6 +415,7 @@ describe('useOfflineQueue', () => {
       // so mount has something to flush.
       localStorage.setItem('fp_offline_queue', JSON.stringify([{
         kind: 'phase', id: 'entry-1', tripId: 'trip-1', phaseEventId: 'phase-event-1',
+        actorId: 'driver-1', custodySequence: null,
         phaseType: 'activation', evidence: EVIDENCE, idempotencyKey: 'entry-1',
         enqueuedAt: '2026-06-12T10:00:00Z',
       }]))
@@ -599,38 +611,50 @@ describe('useOfflineQueue', () => {
     })
   })
 
-  // Fix 3b: terminal drops used to be console.warn-only — invisible to the driver even
-  // though their captured evidence was permanently discarded.
-  describe('drop notifications', () => {
-    it('a non-409 terminal drop increments droppedCount, and dismissDropped clears it', async () => {
+  describe('refused phase retention', () => {
+    it('a terminal refusal remains stored even when the obsolete drop notice is dismissed', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(422, 'invalid evidence'))
       const { result } = await renderQueue()
-      await settle()
-
       act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
       expect(result.current.queueLength).toBe(0)
-      expect(result.current.droppedCount).toBe(1)
-
-      act(() => result.current.dismissDropped())
-
+      expect(result.current.attentionCount).toBe(1)
       expect(result.current.droppedCount).toBe(0)
+      act(() => result.current.dismissDropped())
+      expect(result.current.attentionCount).toBe(1)
+      expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+        expect.objectContaining({ status: 'needs-attention', actorId: 'driver-1', evidence: EVIDENCE }),
+      ])
     })
 
-    it('a 409 drop stays silent — the earlier attempt already succeeded server-side', async () => {
+    it('an uncoded 409 is retained instead of assuming an earlier attempt succeeded', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(409, 'already submitted'))
       const { result } = await renderQueue()
-      await settle()
-
       act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
       await act(() => result.current.flush())
 
-      // Dropped from the queue (correct — the evidence landed on a prior attempt),
-      // but with no driver-facing notification.
       expect(result.current.queueLength).toBe(0)
+      expect(result.current.attentionCount).toBe(1)
+      expect(result.current.droppedCount).toBe(0)
+      expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+        expect.objectContaining({ status: 'needs-attention', evidence: EVIDENCE }),
+      ])
+    })
+
+    it('only a coded duplicate clears the acknowledged capture', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(409, 'Already recorded', undefined, {
+        code: 'EVIDENCE_ALREADY_RECORDED', requestId: null, currentVersion: null, evidenceId: 'receipt-1',
+      }))
+      const { result } = await renderQueue()
+      act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
+      await act(() => result.current.flush())
+
+      expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([])
+      expect(result.current.attentionCount).toBe(0)
       expect(result.current.droppedCount).toBe(0)
     })
   })
@@ -718,10 +742,10 @@ describe('queued loading with a linehaul PDF', () => {
     capturedAt: '2026-06-12T10:05:00Z',
   }
 
-  it('keeps the scan and drops the PDF image when the entry will not fit in storage', () => {
+  it('keeps the scan and drops the PDF image when the entry will not fit in storage', async () => {
+    const { result } = await renderQueue()
     const setItem = vi.spyOn(Storage.prototype, 'setItem')
       .mockImplementationOnce(() => { throw new Error('QuotaExceededError') })
-    const { result } = renderHook(() => useOfflineQueue())
 
     act(() => result.current.enqueuePhase('trip-1', 'phase-event-2', 'loading', LOADING, POSITION, DRIVER_CAPTURED_AT))
 
@@ -759,6 +783,7 @@ function photoInput(label: string) {
 function envelopeFixture(overrides: Partial<ExceptionEnvelope> & { clientReportId: string }): ExceptionEnvelope {
   return {
     tripId: 'trip-1',
+    actorId: 'driver-1',
     body: { exception_type: 'cargo_damage', description: 'Pallet crushed', client_report_id: overrides.clientReportId },
     photos: [],
     status: 'pending',
@@ -954,7 +979,7 @@ describe('legacy localStorage exception entries', () => {
     __resetOfflineQueueStoreForTests()
   }
 
-  it('legacy_localstorage_exception_with_photo_migrates_then_replays', async () => {
+  it('legacy_exception_photos_and_known_artifact_ids_migrate_to_quarantine_without_replay', async () => {
     const { uploadArtifact } = await import('@/lib/api/artifacts')
     const { raiseException } = await import('@/lib/api/exceptions')
     seedLegacy([LEGACY_WITH_PHOTO, LEGACY_ALREADY_UPLOADED])
@@ -962,20 +987,19 @@ describe('legacy localStorage exception entries', () => {
 
     await act(() => result.current.flush())
 
-    // Only the entry still carrying bytes uploads; the one with a known id never does.
-    expect(uploadArtifact).toHaveBeenCalledTimes(1)
-    expect(raiseException).toHaveBeenCalledTimes(2)
-    expect(raiseException).toHaveBeenCalledWith('trip-1', {
-      exception_type: 'cargo_damage', description: 'Crushed', client_report_id: 'legacy-report-1',
-      supporting_artifact_ids: ['artifact-1'], supporting_artifact_id: 'artifact-1',
-    })
-    expect(raiseException).toHaveBeenCalledWith('trip-1', {
-      exception_type: 'mechanical', description: 'Flat', client_report_id: 'legacy-report-2',
-      supporting_artifact_ids: ['already-uploaded'], supporting_artifact_id: 'already-uploaded',
-    })
+    expect(uploadArtifact).not.toHaveBeenCalled()
+    expect(raiseException).not.toHaveBeenCalled()
     expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([])
-    expect(await listExceptionEnvelopes()).toEqual([])
+    const envelopes = await listExceptionEnvelopes()
+    expect(envelopes).toHaveLength(2)
+    expect(envelopes.every((envelope) => envelope.status === 'quarantined' && envelope.actorId === null)).toBe(true)
+    const withBytes = envelopes.find((envelope) => envelope.clientReportId === 'legacy-report-1')!
+    expect(withBytes.photos[0]).toMatchObject({ blob: expect.any(Blob), capturedAt: LEGACY_WITH_PHOTO.photoCapturedAt })
+    expect(withBytes.photos[0].blob?.size).toBe('legacy-bytes'.length)
+    expect(envelopes.find((envelope) => envelope.clientReportId === 'legacy-report-2')?.photos[0])
+      .toMatchObject({ blob: null, uploadedArtifactId: 'already-uploaded' })
     expect(result.current.queueLength).toBe(0)
+    expect(result.current.attentionCount).toBe(2)
   })
 
   it('legacy_entry_removed_from_localstorage_only_after_envelope_written', async () => {
@@ -1061,7 +1085,7 @@ describe('legacy localStorage exception entries', () => {
     expect(result.current.queueLength).toBe(1)
   })
 
-  it('legacy_checkpoint_with_selfie_still_replays', async () => {
+  it('legacy_checkpoint_with_unknown_actor_keeps_its_selfie_in_quarantine', async () => {
     const { submitCheckpoint } = await import('@/lib/api/checkpoints')
     localStorage.setItem('fp_offline_queue', JSON.stringify([{
       kind: 'checkpoint', id: 'cp-entry', tripId: 'trip-1', evidence: CHECKPOINT_EVIDENCE,
@@ -1072,8 +1096,12 @@ describe('legacy localStorage exception entries', () => {
 
     await act(() => result.current.flush())
 
-    expect(submitCheckpoint).toHaveBeenCalledWith('trip-1', CHECKPOINT_EVIDENCE)
+    expect(submitCheckpoint).not.toHaveBeenCalled()
     expect(result.current.queueLength).toBe(0)
+    expect(result.current.attentionCount).toBe(1)
+    expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+      expect.objectContaining({ status: 'quarantined', actorId: null, evidence: CHECKPOINT_EVIDENCE }),
+    ])
   })
 
   it('phase_checkpoint_location_queues_unchanged', async () => {
@@ -1328,4 +1356,29 @@ describe('needs-attention reports', () => {
     expect(result.current.attentionCount).toBe(0)
     expect(raiseException).not.toHaveBeenCalled()
   })
+})
+it('stops_after_account_generation_changes', async () => {
+  const actor = await import('@/lib/session/custody-context')
+  const { submitPhase } = await import('@/lib/api/phases')
+  const actorId = crypto.randomUUID()
+  actor.bindActorLease(actorId, actor.invalidateActorLease())
+  const { result } = await renderQueue()
+  vi.mocked(submitPhase).mockReset()
+  act(() => {
+    result.current.enqueuePhase('trip-1', 'phase-one', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+    result.current.enqueuePhase('trip-1', 'phase-two', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+  })
+  let release!: (value: { ok: true; trip: null; phaseStatus: 'completed' }) => void
+  vi.mocked(submitPhase).mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+  const flushing = result.current.flush()
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  actor.bindActorLease(crypto.randomUUID(), actor.invalidateActorLease())
+  actor.bindActorLease(actorId, actor.invalidateActorLease())
+  release({ ok: true, trip: null, phaseStatus: 'completed' })
+  await flushing
+  expect(submitPhase).toHaveBeenCalledTimes(1)
+  expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+    expect.objectContaining({ phaseEventId: 'phase-two', actorId }),
+  ])
+  actor.invalidateActorLease()
 })

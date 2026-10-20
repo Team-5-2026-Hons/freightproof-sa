@@ -35,7 +35,10 @@ from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration.phases.findings import _raise_scan_shortfall_if_unrecorded
-from app.orchestration.phases.payloads import compute_confirmation_canonical_payload_v2
+from app.orchestration.phases.payloads import (
+    compute_confirmation_canonical_payload_v2,
+    compute_phase_actor_envelope_v4,
+)
 from app.orchestration.phases.override import override_phase
 from app.orchestration.consignments.scans import ingest_scans
 from app.orchestration.phases.plan import PlanStop, build_phase_plan
@@ -521,7 +524,7 @@ async def _add_parcels(db_session, *, consignment_id: uuid.UUID, barcodes: list[
 
 
 @pytest.mark.asyncio
-async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture):
+async def test_advance_loading_full_scan_out_completes_with_no_exception(db_session, trip_fixture, store):
     """Renamed from test_advance_loading_manifest_matches_driver_count_completes:
     the loading-count check moved from manifest-vs-driver-count to
     scanned-out-vs-expected — a full scan-out is still what closes a loading
@@ -570,7 +573,7 @@ async def test_advance_loading_full_scan_out_completes_with_no_exception(db_sess
 
 
 @pytest.mark.asyncio
-async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture):
+async def test_advance_loading_short_scan_out_flags_but_does_not_hold(db_session, trip_fixture, store):
     """Renamed from test_advance_loading_manifest_mismatch_flags_but_does_not_hold:
     the mismatch is now scanned-out-vs-expected (2 of 3 barcodes),
     not manifest-vs-driver-count — same non-blocking precedent either way.
@@ -770,7 +773,9 @@ async def test_advance_departure_happy_path_completes(
     assert len(pickup_dispatches) == 1
     dispatched_event_id, dispatched_payload, dispatched_type = pickup_dispatches[0]
     assert dispatched_event_id == str(phases["departure"].id)
-    assert dispatched_payload["seal_number"] == "AB-1234"
+    # Driver-performed, so the v2 evidence sits inside the v4 actor envelope.
+    assert dispatched_payload["payload_version"] == 4
+    assert dispatched_payload["evidence"]["seal_number"] == "AB-1234"
     assert dispatched_type == BlockchainReceiptType.PICKUP.value
 
 
@@ -2416,7 +2421,7 @@ async def test_cross_dock_plan_walks_to_closed(db_session, cross_dock_trip_fixtu
 
 @pytest.mark.asyncio
 async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
-    db_session, cross_dock_trip_fixture,
+    db_session, cross_dock_trip_fixture, store,
 ):
     """Reproduces the exact demo shape: A (7 parcels, stop0->stop2), B (5
     parcels, stop0->stop1), C (8 parcels, stop1->stop2), each with real Parcel
@@ -2530,7 +2535,7 @@ async def test_cross_dock_loading_counts_only_what_that_stop_picks_up(
 
 @pytest.mark.asyncio
 async def test_loading_count_check_skipped_when_stop_has_no_mapped_consignments(
-    db_session, cross_dock_trip_fixture,
+    db_session, cross_dock_trip_fixture, store,
 ):
     """A stop-scoped baseline of None must SKIP the check, not manufacture a
     mismatch against 0 — the stop-scoped counterpart of
@@ -4102,7 +4107,12 @@ async def test_confirmation_with_no_driver_visual_count_completes_and_stores_nul
     )
     assert expected_payload["driver_visual_count"] is None
     assert "driver_visual_count" in expected_payload  # present, never omitted
-    assert compute_payload_hash(expected_payload) == event.event_hash
+    # Driver-performed, so the anchored hash is of the v4 actor envelope around that payload.
+    expected_envelope = compute_phase_actor_envelope_v4(
+        phase_event_id=event.id, evidence=expected_payload,
+        driver_id=event.performed_by_driver_id, custody_sequence=event.custody_sequence,
+    )
+    assert compute_payload_hash(expected_envelope) == event.event_hash
 
 
 async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch_with_no_visual_count(

@@ -43,6 +43,10 @@ export interface RaiseExceptionBody {
   // Sent only for a trailer breakdown on a trip with two or more trailers, where
   // "Trailer" alone can't say which one: the trailer whose plate the driver picked.
   trailer_id?: string
+  // FP-83: the custody period this report was captured in, stamped at the driver's tap
+  // (lib/session/custody-context.ts) and never re-read at flush time. Omitted when the
+  // server has sent none — accepted only on a trip that has had no substitution.
+  custody_sequence?: number
 }
 
 export const raiseException = (tripId: string, body: RaiseExceptionBody): Promise<TripException> =>

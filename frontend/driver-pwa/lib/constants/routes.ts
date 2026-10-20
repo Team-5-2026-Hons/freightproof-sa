@@ -17,6 +17,12 @@ const TRIP_DETAIL_PATH = '/trips/detail'
 // and the route builder can never drift apart.
 export const TRIP_ID_PARAM = 'id'
 
+// FP-83 handover check. Static path with query-string ids for the same static-export reason
+// as trip detail; both params are read by SubstitutionPageClient.
+export const SUBSTITUTION_PATH = '/trips/substitution'
+export const SUBSTITUTION_TRIP_PARAM = 'trip'
+export const SUBSTITUTION_REQUEST_PARAM = 'request'
+
 // Query param distinguishing a panic alert that reached the backend from one only
 // queued on-device — see ROUTES.panicSubmittedUrl and PanicSubmittedPageClient.
 export const PANIC_QUEUED_PARAM = 'queued'
@@ -56,6 +62,13 @@ export const ROUTES = {
   tripDetailById: (tripId: string) => `${TRIP_DETAIL_PATH}?${TRIP_ID_PARAM}=${tripId}`,
   // The driver's one real active trip, sourced from TripContext.
   activeTripDetail: '/trips/active',
+  // FP-83: this driver's own handover/takeover check for one arrangement.
+  substitution: (tripId: string, requestId: string) => {
+    const params = new URLSearchParams({ [SUBSTITUTION_TRIP_PARAM]: tripId, [SUBSTITUTION_REQUEST_PARAM]: requestId })
+    return `${SUBSTITUTION_PATH}?${params.toString()}`
+  },
+  // FP-83: captures kept on this phone for the driver's decision (refused, quarantined).
+  retainedEvidence: '/evidence',
 
   inTransit:  '/trip/in-transit',
   checkpoint: '/trip/in-transit/checkpoint',

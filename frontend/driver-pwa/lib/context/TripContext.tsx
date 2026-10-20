@@ -12,9 +12,11 @@ import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
+import { isTripHandedOver } from '@/lib/api/driver-substitutions'
 import { raiseException } from '@/lib/api/exceptions'
 import { actionablePhase, contextPhaseEventId } from '@/lib/phase/derive'
 import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
+import { captureCustody, setCustodyContext } from '@/lib/session/custody-context'
 import { AuthContext } from './AuthContext'
 import { ToastContext } from './ToastContext'
 
@@ -132,6 +134,14 @@ export interface TripState {
   isRefreshing: boolean
   /** ISO timestamp of the last successful quiet refresh, or null if none yet. */
   lastRefreshedAt: string | null
+  // The trip the server most recently told this driver they handed over (FP-83
+  // TRIP_HANDED_OVER), so a screen can offer its participation history. Only the WORKING
+  // context is dropped — nothing local is deleted and the trip is not presented as closed.
+  handedOverTripId: string | null
+  // A handover learned some other way (a completion notice, a live write's 409). Drops the
+  // trip as working context and asks the server what this driver is on now.
+  noteTripHandedOver: (tripId: string) => void
+  dismissHandedOver: () => void
 }
 
 export const TripContext = createContext<TripState | null>(null)
@@ -163,6 +173,20 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // driver chose. Returns null during static prerender (no window), which is harmless:
   // the first paint is the spinner either way.
   const [selectedTripId, setSelectedTripId] = useState<string | null>(() => readSelectedTripId())
+  const [handedOverTripId, setHandedOverTripId] = useState<string | null>(null)
+
+  // FP-83: publish who is signed in and which custody period the SERVER says this trip is
+  // in, so every capture can stamp both at the moment it happens. Read from serverTrip, not
+  // the optimistic trip: the period is the server's fact, never something this phone moves.
+  // Set during render, not in an effect, on purpose: child effects run BEFORE this parent's,
+  // and the offline queue's mount-time flush (a child) must already know who is signed in,
+  // or it would hold every queued capture back as "not this driver's" until the next
+  // foreground. The call is an idempotent assignment of values derived from this render.
+  setCustodyContext({
+    actorId: authCtx?.user ? String(authCtx.user.id) : null,
+    tripId: serverTrip !== null ? String(serverTrip.id) : null,
+    custodySequence: serverTrip?.driver_access?.custody_sequence ?? serverTrip?.custody_sequence ?? null,
+  })
 
   const persistSelection = useCallback((tripId: string | null) => {
     if (typeof window !== 'undefined') {
@@ -185,10 +209,16 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         persistSelection(null)
       } catch (err) {
         // 404 means the trip is no longer this driver's (reassigned, or never theirs) —
-        // the selection is genuinely dead, so clear it. Any other failure (offline, 5xx)
-        // is transient and must NOT silently strip a selection mid-journey.
+        // the selection is genuinely dead, so clear it. TRIP_HANDED_OVER is the coded 409 a
+        // known former participant gets: also dead as WORKING context, but remembered so
+        // the driver is pointed at their history rather than left wondering where it went.
+        // Any other failure (offline, 5xx) is transient and must NOT silently strip a
+        // selection mid-journey.
         if (err instanceof ApiError && err.status === 404) persistSelection(null)
-        else throw err
+        else if (isTripHandedOver(err)) {
+          setHandedOverTripId(selectedTripId)
+          persistSelection(null)
+        } else throw err
       }
     }
     return fetchMyActiveTrip()
@@ -293,6 +323,23 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       setIsRefreshing(false)
     }
   }, [authCtx?.user, loadTrip])
+
+  const noteTripHandedOver = useCallback((tripId: string) => {
+    setHandedOverTripId(tripId)
+    // A changed selection re-runs the mount effect's load on its own; only a trip that came
+    // from the server's own pick (no pin) needs an explicit refresh.
+    if (selectedTripId === tripId) {
+      persistSelection(null)
+      setServerTrip(null)
+    } else if (serverTrip !== null && String(serverTrip.id) === tripId) {
+      // Cleared first so the former trip's live actions disappear immediately, rather than
+      // staying tappable for however long the refresh takes to answer.
+      setServerTrip(null)
+      void refreshQuietly()
+    }
+  }, [selectedTripId, serverTrip, persistSelection, refreshQuietly])
+
+  const dismissHandedOver = useCallback(() => setHandedOverTripId(null), [])
 
   // Derived fresh every render from `trip` (never cached) — the whole point is that this
   // must flip false the instant the server's own recomputation says so.
@@ -462,8 +509,14 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // A caller that stamped the custody period at capture (the exception page, before its
+    // GPS wait) passes it in; anything else is captured right here, at the driver's tap.
+    const custodyAtCapture = typeof payload.custodySequence === 'number'
+      ? payload.custodySequence
+      : captureCustody(String(trip.id)).custodySequence
     const created = await raiseException(String(trip.id), {
       exception_type: type, description, supporting_artifact_id: supportingArtifactId,
+      ...(custodyAtCapture !== null ? { custody_sequence: custodyAtCapture } : {}),
       ...(photoIds.length > 0 ? { supporting_artifact_ids: photoIds } : {}),
       client_report_id: clientReportId,
       ...(phaseEventId ? { phase_event_id: String(phaseEventId) } : {}),
@@ -495,6 +548,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
         selectTrip, clearSelectedTrip, adoptTrip,
         syncingPhaseIds, markPhaseSyncing, clearPhaseSyncing,
         refreshQuietly, isRefreshing, lastRefreshedAt,
+        handedOverTripId, noteTripHandedOver, dismissHandedOver,
       }}
     >
       {children}

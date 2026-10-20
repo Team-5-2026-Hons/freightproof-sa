@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { incidentSheetUrl } from '@/lib/api'
 import { formatCoord, formatRand, formatSast, humanise } from '@/lib/format'
 import { mirrorMessageUrl } from '@/lib/verify'
 import { notAnchoredReason } from '@/lib/anchors'
 import type { AuditPackManifest, ExceptionRecord, PublicPackSeal } from '@/lib/types'
 import { Card, Field } from './Card'
+import { DownloadButton } from './DownloadButton'
 import { TIER_ORDER, TierBadge, tierMeaning } from './TierBadge'
 
 export function Observations({ manifest }: { manifest: AuditPackManifest }) {
@@ -48,7 +48,16 @@ export function Incident({ token, manifest, onSelect }: { token: string; manifes
     <Card
       title="Incident summary"
       id="incident"
-      aside={<a href={incidentSheetUrl(token)} className="no-print text-[12px] font-semibold text-sec underline">Download incident fact sheet</a>}
+      aside={
+        <DownloadButton
+          token={token}
+          file="incident-sheet.pdf"
+          filename={`${manifest.trip.trip_reference}-incident-sheet.pdf`}
+          className="text-[12px] font-semibold text-sec underline disabled:opacity-60"
+        >
+          Download incident fact sheet
+        </DownloadButton>
+      }
     >
       <dl>
         <Field label="First critical event">

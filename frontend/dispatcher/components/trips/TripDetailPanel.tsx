@@ -11,12 +11,16 @@ import { CancelTripDialog } from '@/components/domain/CancelTripAction'
 import { IssueAuditPackDialog } from '@/components/domain/IssueAuditPackDialog'
 import { DeclareIncidentDialog } from '@/components/domain/DeclareIncidentDialog'
 import { AuditPacksPanel } from './AuditPacksPanel'
+import { DriverSubstitutionPanel } from './DriverSubstitutionPanel'
+import { LateDriverEvidencePanel } from './LateDriverEvidencePanel'
 import { TripInformation } from './TripInformation'
 import { PrecinctModal } from './PrecinctModal'
 import { DEFAULT_EXCEPTION_RECORD_SORT, EXCEPTION_RECORD_SORT_KEYS, firstExceptionRecordDir, TripExceptionsPanel, type ExceptionDensity, type ExceptionFilter, type ExceptionGrouping } from './TripExceptionsPanel'
 import { useTableSort } from '@/lib/hooks/useTableSort'
 import { TRIP_PANELS, type TripPanel } from './TripSummary'
 import { uniqueExceptionsById } from './exception-dedupe'
+import { TripHelp } from './TripHelp'
+import type { TripHelpTopic } from './trip-help-copy'
 import { LEGACY_AUDIT_PANEL } from '@/lib/trips/panel-query'
 
 export { LEGACY_AUDIT_PANEL }
@@ -24,6 +28,18 @@ export const TRIP_AUDIT_PACKS_SECTION_ID = 'trip-audit-packs'
 const AUDIT_HEADING_ID = `${TRIP_AUDIT_PACKS_SECTION_ID}-heading`
 const PANEL_SCROLLER_SELECTOR = '[role="tabpanel"], dialog'
 const TITLES: Record<TripPanel, string> = { information: 'Trip information', manifest: 'Cargo', exceptions: 'Trip exceptions' }
+const HELP_TOPIC: Record<TripPanel, TripHelpTopic> = { information: 'info', manifest: 'cargo', exceptions: 'exceptions' }
+
+/** Every driver who has held this trip, by id, for labelling their own late evidence. */
+function participantNames(trip: Trip): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const driver of [trip.original_driver, trip.driver]) if (driver) names[driver.id] = driver.full_name
+  for (const request of trip.driver_substitutions ?? []) {
+    names[request.outgoing.id] = request.outgoing.full_name
+    names[request.incoming.id] = request.incoming.full_name
+  }
+  return names
+}
 
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
@@ -108,8 +124,14 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   return <>
     <DetailPanel tabs={tabs} active={panel} onSelect={id => onSelect(id as TripPanel)} title={TITLES[panel]}
       onClose={onClose} overlayOpen={overlayOpen} ariaLabel="Trip detail">
+      {/* A zero-height row with the icon lifted into the panel's own top padding (20px, docked and in the overlay), so the help
+          costs no space and the content starts exactly where it would without it. The 14px glyph sits 5px inside its 24px
+          button, so the button overhangs the padding by that much to put the glyph on the content's right edge. */}
+      <div className="relative h-0"><TripHelp topic={HELP_TOPIC[panel]} className="absolute -top-[22px] -right-[5px]" /></div>
       {panel === TRIP_PANELS.information && <div className="space-y-6">
         <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />
+        <DriverSubstitutionPanel trip={trip} onChanged={onChanged} />
+        <LateDriverEvidencePanel tripId={trip.id} driverNames={participantNames(trip)} />
         <section ref={auditSectionRef} id={TRIP_AUDIT_PACKS_SECTION_ID} aria-labelledby={AUDIT_HEADING_ID} style={{ minHeight: auditMinimumHeight || undefined }} className="border-t border-outline-v/30 pt-6">
           <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference} headingId={AUDIT_HEADING_ID}
             onIssue={() => { rememberAuditTrigger(); setIssueOpen(true) }} onDeclare={() => { rememberAuditTrigger(); setDeclareOpen(true) }} />

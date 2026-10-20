@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VehicleId } from '@shared/lib/types/vehicle'
-import { fmtBreakdownVehicle, fmtClaimedFor, fmtExceptionRaisedParts, fmtExceptionType } from './exception'
+import { exceptionReference, matchesExceptionReference, fmtBreakdownVehicle, fmtClaimedFor, fmtExceptionRaisedParts, fmtExceptionType } from './exception'
 
 describe('fmtExceptionType', () => {
   it('title-cases every word of a snake_case enum', () => {
@@ -98,5 +98,35 @@ describe('fmtClaimedFor', () => {
   it('is null when there is no usable claim time', () => {
     expect(fmtClaimedFor(null, NOW)).toBeNull()
     expect(fmtClaimedFor('garbage', NOW)).toBeNull()
+  })
+})
+
+describe('exceptionReference', () => {
+  it('is EX- plus the first eight hex characters of the id, uppercased', () => {
+    expect(exceptionReference('3f9a21c4-5b6d-4e7f-8a90-b1c2d3e4f506')).toBe('EX-3F9A21C4')
+  })
+
+  it('gives the same reference for the same id and different ones for different ids', () => {
+    const a = '3f9a21c4-5b6d-4e7f-8a90-b1c2d3e4f506'
+    const b = '3f9a21c5-5b6d-4e7f-8a90-b1c2d3e4f506'
+
+    expect(exceptionReference(a)).toBe(exceptionReference(a))
+    expect(exceptionReference(a)).not.toBe(exceptionReference(b))
+  })
+
+  it('does not throw for a short non-UUID id', () => {
+    expect(exceptionReference('abc')).toBe('EX-ABC')
+  })
+})
+
+describe('matchesExceptionReference', () => {
+  const id = '3f9a21c4-5b6d-4e7f-8a90-b1c2d3e4f506'
+
+  it('matches part of the hex, with or without the EX- prefix, in any case', () => {
+    for (const q of ['3f9a', '3F9A21C4', 'EX-3F9A', 'ex-3f9a21c4']) expect(matchesExceptionReference(id, q), q).toBe(true)
+  })
+
+  it('does not match on the prefix alone or on text that is not in the hex', () => {
+    for (const q of ['x', 'ex', 'zz', 'ex-ffff']) expect(matchesExceptionReference(id, q), q).toBe(false)
   })
 })

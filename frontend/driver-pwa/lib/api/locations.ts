@@ -26,9 +26,17 @@ export interface LocationBatchResult {
   recorded: number
 }
 
-/** Append fixes to one trip's trail. Batched so an offline backlog flushes in one call. */
+/**
+ * Append fixes to one trip's trail. Batched so an offline backlog flushes in one call.
+ * `custodySequence` is the period the fixes were TAKEN in (FP-83); a queued batch carries its
+ * own, so it never adopts whatever period is current when signal returns.
+ */
 export const recordLocations = (
   tripId: string,
   pings: LocationPingBody[],
+  custodySequence: number | null = null,
 ): Promise<LocationBatchResult> =>
-  api.post<LocationBatchResult>(`/api/v1/trips/${tripId}/locations`, { pings })
+  api.post<LocationBatchResult>(`/api/v1/trips/${tripId}/locations`, {
+    pings,
+    ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),
+  })

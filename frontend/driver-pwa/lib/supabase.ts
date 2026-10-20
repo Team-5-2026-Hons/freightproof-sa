@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { actorGeneration, observeAuthSession } from '@/lib/session/custody-context'
 
 // Fallback placeholders so this module loads during static export even when Supabase
 // env vars are unset — IS_DEMO_MODE gates the real auth path.
@@ -17,12 +18,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 let cachedAccessToken: string | null = null
 
 supabase.auth.onAuthStateChange((_event, session) => {
+  observeAuthSession(session?.user.id ?? null)
   cachedAccessToken = session?.access_token ?? null
 })
 
 // Seeds the cache once at startup for the hard-reload case, before any auth event fires.
 // `??=` so we never clobber a fresher token an auth event may have already set.
+const startupGeneration = actorGeneration()
 void supabase.auth.getSession().then(({ data: { session } }) => {
+  if (actorGeneration() !== startupGeneration) return
+  observeAuthSession(session?.user.id ?? null)
   cachedAccessToken ??= session?.access_token ?? null
 })
 

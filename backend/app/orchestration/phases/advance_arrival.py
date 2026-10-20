@@ -4,6 +4,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.phases import PhaseEvent
 from app.db.models.enums import EvidenceRole, ExceptionSeverity, ExceptionType, PhaseStatus, SealCondition
 from app.orchestration.evidence import corroboration
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
@@ -16,6 +17,26 @@ from app.orchestration.phases.payloads import compute_arrival_canonical_payload_
 from app.orchestration.phases.seals import _find_departure_for_leg, _normalized_seal
 from app.schemas.phases import ArrivalCompleteRequest
 from app.schemas.trips import TripDetailResponse
+
+
+def _record_arrival_seal(event: PhaseEvent, payload: ArrivalCompleteRequest) -> str | None:
+    # None only when the seal is MISSING (the schema requires a number otherwise).
+    seal_at_arrival = (
+        None if payload.seal_number_at_arrival is None
+        else _normalized_seal(payload.seal_number_at_arrival)
+    )
+    event.seal_number = seal_at_arrival
+    event.seal_condition = payload.seal_condition.value
+    event.seal_photo_artifact_id = payload.seal_photo_artifact_id
+    # Not anchored, as at departure. A missing seal has no number, so nothing to record.
+    event.seal_number_source = (
+        payload.seal_number_source.value
+        if payload.seal_number_source is not None and seal_at_arrival is not None
+        else None
+    )
+    event.status = PhaseStatus.COMPLETED
+
+    return seal_at_arrival
 
 
 async def advance_arrival(
@@ -57,21 +78,7 @@ async def advance_arrival(
         db, trip_id=trip_id, phase_event_id=event.id, cited={EvidenceRole.SEAL_PHOTO: payload.seal_photo_artifact_id},
     )
 
-    # None only when the seal is MISSING (the schema requires a number otherwise).
-    seal_at_arrival = (
-        None if payload.seal_number_at_arrival is None
-        else _normalized_seal(payload.seal_number_at_arrival)
-    )
-    event.seal_number = seal_at_arrival
-    event.seal_condition = payload.seal_condition.value
-    event.seal_photo_artifact_id = payload.seal_photo_artifact_id
-    # Not anchored, as at departure. A missing seal has no number, so nothing to record.
-    event.seal_number_source = (
-        payload.seal_number_source.value
-        if payload.seal_number_source is not None and seal_at_arrival is not None
-        else None
-    )
-    event.status = PhaseStatus.COMPLETED
+    seal_at_arrival = _record_arrival_seal(event, payload)
 
     # "" when the departure row carries no seal at all. Reachable in normal
     # operation, not just from bad data: override_phase resolves a departure

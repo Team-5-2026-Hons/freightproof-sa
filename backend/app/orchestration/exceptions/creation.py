@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import IdempotencyKeyReusedError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, VehicleType
 from app.db.models.phases import PhaseEvent
@@ -27,6 +27,7 @@ from app.orchestration.evidence_anchors.artifacts import (
 from app.orchestration.evidence_anchors.reads import build_exception_read
 from app.orchestration.evidence_anchors.recording import anchor_new_report
 from app.orchestration.integrity import is_unique_violation, violated_constraint
+from app.orchestration.substitutions.access import WriteClaim, authorise_driver_write
 from app.orchestration.phases.queries import current_phase_event
 from app.orchestration.exceptions.review_policy import initial_review_status
 from app.schemas.transit import TripExceptionRead
@@ -240,6 +241,73 @@ async def _find_by_client_report_id(
     return result.scalar_one_or_none()
 
 
+async def _find_own_report(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, client_report_id: uuid.UUID | None,
+) -> uuid.UUID | None:
+    """This driver's own accepted report for the queued entry's id, if any (key AND actor)."""
+    if client_report_id is None:
+        return None
+    return (await db.execute(
+        select(TripException.id).where(
+            TripException.trip_id == trip_id, TripException.client_report_id == client_report_id,
+            TripException.performed_by_driver_id == driver_id,
+        )
+    )).scalar_one_or_none()
+
+
+async def _insert_report_or_load_winner(
+    db: AsyncSession, *, exc: TripException, trip_id: uuid.UUID,
+    client_report_id: uuid.UUID | None,
+) -> TripException | None:
+    """A losing replay returns its existing row without repeating enrichment or anchors."""
+    if client_report_id is None:
+        db.add(exc)
+        await db.flush()
+    else:
+        # The pre-check above closes the common case, but two replays of the same
+        # queued entry (a driver's app retrying while an earlier attempt's response is
+        # still in flight) can both pass it before either has inserted. The partial
+        # unique index on (trip_id, client_report_id) lets exactly one of those two
+        # inserts through; this savepoint is what lets the LOSING request recover
+        # instead of dying with it.
+        #
+        # A bare `except IntegrityError` here would be wrong: Postgres aborts the
+        # whole transaction the moment the flush fails, so the SELECT this branch
+        # needs to run next (to find and return the winner) would itself fail with
+        # "current transaction is aborted" — turning a race this code means to
+        # tolerate into a 500. `db.begin_nested()` opens a SAVEPOINT around just the
+        # insert, so only that savepoint rolls back on conflict and the outer
+        # transaction — and this request's earlier reads, and its caller's eventual
+        # commit — remain perfectly usable.
+        try:
+            async with db.begin_nested():
+                db.add(exc)
+                await db.flush()
+        except IntegrityError as integrity_exc:
+            if (
+                not is_unique_violation(integrity_exc)
+                or violated_constraint(integrity_exc) != _CLIENT_REPORT_ID_INDEX
+            ):
+                raise
+            winner = await _find_by_client_report_id(
+                db, trip_id=trip_id, client_report_id=client_report_id,
+            )
+            if winner is None:
+                # The index fired on this exact (trip_id, client_report_id) pair, so a
+                # row satisfying it must exist — unless the winning transaction rolled
+                # back after committing the index entry but before this SELECT ran,
+                # which the index's own guarantees make impossible. Re-raise rather
+                # than silently return nothing to a caller expecting a created row.
+                raise
+            logger.info(
+                "Exception replay lost the insert race, returning the winner: "
+                "trip=%s client_report_id=%s", trip_id, client_report_id,
+            )
+            return winner
+
+    return None
+
+
 async def raise_exception(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
     exception_type: ExceptionType, description: str, supporting_artifact_id: uuid.UUID | None,
@@ -250,9 +318,11 @@ async def raise_exception(
     driver_accuracy_metres: float | None = None,
     client_report_id: uuid.UUID | None = None,
     vehicle_type: VehicleType | None = None, trailer_id: uuid.UUID | None = None,
+    custody_sequence: int | None = None,
 ) -> TripExceptionRead:
-    """Raises ResourceNotFoundError if the trip doesn't exist, PermissionError if
-    driver_id isn't the trip's assigned driver (caller maps PermissionError to 403).
+    """Raises ResourceNotFoundError if the trip doesn't exist or driver_id never held it, and a
+    CustodyAccessError (mapped to 409 with the contract's code) if they held it earlier or the
+    report belongs to another custody period.
 
     vehicle_type/trailer_id are the driver's "truck or trailer" answer on a
     breakdown; pick_breakdown_vehicle resolves the actual vehicle_id and never
@@ -264,12 +334,12 @@ async def raise_exception(
     on this trip returns the existing row untouched — no second insert, no
     second realtime event. A foreign or malformed value behaves as if none were sent.
     """
-    result = await db.execute(select(Trip).where(Trip.id == trip_id))
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-    if trip.driver_id != driver_id:
-        raise PermissionError("You are not the assigned driver on this trip.")
+    trip, custody = await authorise_driver_write(
+        db, trip_id=trip_id, driver_id=driver_id,
+        claim=WriteClaim(custody_sequence, lambda: _find_own_report(
+            db, trip_id=trip_id, driver_id=driver_id, client_report_id=client_report_id,
+        )),
+    )
 
     # Idempotent replay, checked before the row is even built: a lost response, or a
     # retry the offline queue reuses the same client_report_id for, must return the
@@ -283,6 +353,10 @@ async def raise_exception(
             db, trip_id=trip_id, client_report_id=client_report_id,
         )
         if existing is not None:
+            # Legacy trips keep their replay semantics. Once custody has moved, only the driver
+            # who raised it may be answered with the stored report.
+            if custody.sequence > 0 and existing.performed_by_driver_id != driver_id:
+                raise IdempotencyKeyReusedError()
             return await build_exception_read(db, existing)
 
     # Evidence ownership, checked before anything is written: the FK alone only proves an
@@ -331,52 +405,15 @@ async def raise_exception(
         gps_lat=gps_lat,
         gps_lng=gps_lng,
         vehicle_id=vehicle_id,
+        performed_by_driver_id=driver_id,
+        custody_sequence=custody.sequence,
     )
 
-    if client_report_id is None:
-        db.add(exc)
-        await db.flush()
-    else:
-        # The pre-check above closes the common case, but two replays of the same
-        # queued entry (a driver's app retrying while an earlier attempt's response is
-        # still in flight) can both pass it before either has inserted. The partial
-        # unique index on (trip_id, client_report_id) lets exactly one of those two
-        # inserts through; this savepoint is what lets the LOSING request recover
-        # instead of dying with it.
-        #
-        # A bare `except IntegrityError` here would be wrong: Postgres aborts the
-        # whole transaction the moment the flush fails, so the SELECT this branch
-        # needs to run next (to find and return the winner) would itself fail with
-        # "current transaction is aborted" — turning a race this code means to
-        # tolerate into a 500. `db.begin_nested()` opens a SAVEPOINT around just the
-        # insert, so only that savepoint rolls back on conflict and the outer
-        # transaction — and this request's earlier reads, and its caller's eventual
-        # commit — remain perfectly usable.
-        try:
-            async with db.begin_nested():
-                db.add(exc)
-                await db.flush()
-        except IntegrityError as integrity_exc:
-            if (
-                not is_unique_violation(integrity_exc)
-                or violated_constraint(integrity_exc) != _CLIENT_REPORT_ID_INDEX
-            ):
-                raise
-            winner = await _find_by_client_report_id(
-                db, trip_id=trip_id, client_report_id=client_report_id,
-            )
-            if winner is None:
-                # The index fired on this exact (trip_id, client_report_id) pair, so a
-                # row satisfying it must exist — unless the winning transaction rolled
-                # back after committing the index entry but before this SELECT ran,
-                # which the index's own guarantees make impossible. Re-raise rather
-                # than silently return nothing to a caller expecting a created row.
-                raise
-            logger.info(
-                "Exception replay lost the insert race, returning the winner: "
-                "trip=%s client_report_id=%s", trip_id, client_report_id,
-            )
-            return await build_exception_read(db, winner)
+    winner = await _insert_report_or_load_winner(
+        db, exc=exc, trip_id=trip_id, client_report_id=client_report_id,
+    )
+    if winner is not None:
+        return await build_exception_read(db, winner)
 
     await db.refresh(exc)
 

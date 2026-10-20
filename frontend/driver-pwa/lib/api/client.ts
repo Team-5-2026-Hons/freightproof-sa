@@ -3,6 +3,8 @@
  */
 
 import { supabase, getAccessToken } from '@/lib/supabase'
+import { actorGeneration } from '@/lib/session/custody-context'
+import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -18,6 +20,16 @@ const SESSION_TIMEOUT_MS = 8_000
 // error, so an evidence submit never settles and never reaches the backend.
 const REQUEST_TIMEOUT_MS = 12_000
 
+// The coded part of a domain-conflict `detail` object (driver substitution contract v1,
+// "Stable errors"). Kept separate from the message so a caller branches on the stable code,
+// never on wording the backend is free to change.
+export interface ApiErrorDetail {
+  code: SubstitutionErrorCode
+  requestId: string | null
+  currentVersion: number | null
+  evidenceId: string | null
+}
+
 export class ApiError extends Error {
   // status 0 is reserved for client-side failures where no HTTP response was received
   // (request/session timeout). Any positive status is the real HTTP response code.
@@ -25,9 +37,16 @@ export class ApiError extends Error {
     public readonly status: number,
     message: string,
     public readonly retryAfterMs?: number,
+    // Absent for legacy string details and 422 field errors — most endpoints still send
+    // those, so code-less errors remain the normal case, not a malformed one.
+    public readonly detail?: ApiErrorDetail,
   ) {
     super(message)
     this.name = 'ApiError'
+  }
+
+  get code(): SubstitutionErrorCode | undefined {
+    return this.detail?.code
   }
 }
 
@@ -57,14 +76,42 @@ export const SESSION_SUPERSEDED_MESSAGE = 'Signed in on another device.'
 // not localStorage: it is a one-off explanation for this launch, not a durable fact.
 export const SIGNED_OUT_REASON_KEY = 'fp.signedOutReason'
 
+interface ParsedError {
+  message: string
+  detail?: ApiErrorDetail
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
 // FastAPI puts the human-readable reason in `detail`, which is a string for a raised
-// HTTPException and an array of field errors for a 422.
-async function readErrorMessage(res: Response): Promise<string> {
+// HTTPException, an array of field errors for a 422, and — for the substitution domain
+// conflicts — a `{code, message, ...}` object. All three must keep parsing: the coded form
+// is new, and every existing endpoint still sends the other two.
+async function readError(res: Response): Promise<ParsedError> {
   const body = await res.json().catch(() => ({ detail: res.statusText }))
   const raw = (body as { detail?: unknown }).detail
-  return Array.isArray(raw)
-    ? (raw[0] as { msg?: string })?.msg ?? res.statusText
-    : (raw as string | undefined) ?? res.statusText
+  if (Array.isArray(raw)) {
+    return { message: (raw[0] as { msg?: string })?.msg ?? res.statusText }
+  }
+  if (raw !== null && typeof raw === 'object') {
+    const coded = raw as Record<string, unknown>
+    const message = nullableString(coded.message) ?? res.statusText
+    if (typeof coded.code !== 'string') return { message }
+    return {
+      message,
+      detail: {
+        // Not narrowed against the known list: a code this build doesn't know yet must
+        // still reach the caller, which then treats it as an unrecognised conflict.
+        code: coded.code as SubstitutionErrorCode,
+        requestId: nullableString(coded.request_id),
+        currentVersion: typeof coded.current_version === 'number' ? coded.current_version : null,
+        evidenceId: nullableString(coded.evidence_id),
+      },
+    }
+  }
+  return { message: (raw as string | undefined) ?? res.statusText }
 }
 
 async function signOutSupersededDevice(): Promise<void> {
@@ -130,7 +177,12 @@ async function request<T>(
   // retried" flag, so a retried request can never retry again even if the refreshed
   // token itself comes back 401.
   retryToken?: string,
+  originalGeneration: number = actorGeneration(),
 ): Promise<T> {
+  const checkAccount = (): void => {
+    if (actorGeneration() !== originalGeneration) throw new ApiError(0, 'Account changed; captured work is retained.')
+  }
+  checkAccount()
   const url = `${BASE_URL}${path}`
   const timeoutMs = opts.timeoutMs ?? REQUEST_TIMEOUT_MS
 
@@ -139,6 +191,7 @@ async function request<T>(
   // path reads the cache that onAuthStateChange updates asynchronously, which isn't
   // guaranteed to have caught up yet and would risk retrying with the same stale token.
   const token = retryToken ?? (await resolveToken())
+  checkAccount()
 
   const headers: Record<string, string> = {
     // FormData sets its own multipart boundary — never set Content-Type ourselves for it.
@@ -168,18 +221,21 @@ async function request<T>(
   // Read the error body ONCE, before the retry logic, because one specific 401 is
   // decided by its detail rather than its status — and a Response body can only be
   // consumed once. Non-401 errors reuse this same parse when they throw below.
-  const errorMessage = res.ok ? null : await readErrorMessage(res)
+  const parsedError = res.ok ? null : await readError(res)
+  const errorMessage = parsedError?.message ?? null
 
   // A superseded device (app/auth/sessions.py) must NOT be refresh-retried: a refresh
   // returns a token for the same Supabase session, so the retry would be refused
   // identically. This driver's account is now in use on another handset, so the honest
   // response is to sign this one out rather than leave it half-working.
   if (res.status === 401 && errorMessage === SESSION_SUPERSEDED_MESSAGE) {
+    checkAccount()
     await signOutSupersededDevice()
     throw new ApiError(res.status, SESSION_SUPERSEDED_MESSAGE)
   }
 
   if (res.status === 401 && retryToken === undefined) {
+    checkAccount()
     // Bounded like every other auth call in this file: refreshSession() hits the
     // network and can wedge exactly the way getSession() used to — an unbounded await
     // here would hang the submit the 401 interrupted. On any refresh failure
@@ -198,7 +254,8 @@ async function request<T>(
       console.warn('[api] token refresh after 401 failed — surfacing the original 401:', refreshErr)
     }
     if (freshToken) {
-      return request<T>(path, init, isFormData, opts, freshToken)
+      checkAccount()
+      return request<T>(path, init, isFormData, opts, freshToken, originalGeneration)
     }
   }
 
@@ -207,6 +264,7 @@ async function request<T>(
       res.status,
       errorMessage ?? res.statusText,
       retryAfterMilliseconds(res),
+      parsedError?.detail,
     )
   }
 

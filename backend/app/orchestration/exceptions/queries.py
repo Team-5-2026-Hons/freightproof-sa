@@ -18,12 +18,12 @@ from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, Vehicl
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip, TripStop, TripTrailer
+from app.db.models.trips import DriverSubstitution, Trip, TripStop, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
 from app.orchestration.evidence.artifacts import get_trip_scoped_artifact, sign_artifact_url
 from app.orchestration.evidence_anchors.reads import (
-    load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
+    attach_hedera_refs, load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
 )
 from app.orchestration.exceptions.review_identity import name_of, user_names
 from app.schemas.pagination import CursorPage
@@ -46,13 +46,23 @@ class _TripContext:
     driver_name: str | None = None
     horse_registration: str | None = None
     trailer_registrations: list[str] = field(default_factory=list)
+    # FP-83: every driver who held the trip, by id, and whether it ever changed driver. An
+    # exception row names the driver who raised it; on a shared trip an unattributed row names
+    # no one rather than blaming whoever happened to be the original or current driver.
+    participant_names: dict[uuid.UUID, str] = field(default_factory=dict)
+    is_shared: bool = False
+
+    def driver_for(self, exc: TripException) -> str | None:
+        if exc.performed_by_driver_id is not None and exc.performed_by_driver_id in self.participant_names:
+            return self.participant_names[exc.performed_by_driver_id]
+        return None if self.is_shared else self.driver_name
 
 
 async def _load_trip_contexts(
     db: AsyncSession, trips: Iterable[Trip],
 ) -> dict[uuid.UUID, _TripContext]:
-    """Route/driver/truck/trailer labels for a set of trips, in three queries total:
-    precincts, driver and horse together, then trailers.
+    """Route/driver/truck/trailer labels for a set of trips, in four queries total:
+    precincts, driver and horse together, trailers, then handover participants (FP-83).
 
     Batched per page rather than joined into _exception_read_query: a trip can have many
     trailers, which would multiply exception rows, and the 4-tuple that query returns is
@@ -95,6 +105,15 @@ async def _load_trip_contexts(
     for trip_id, registration in trailer_rows:
         trailers.setdefault(trip_id, []).append(registration)
 
+    participants: dict[uuid.UUID, dict[uuid.UUID, str]] = {}
+    for trip_id, driver_id, name in (await db.execute(
+        select(DriverSubstitution.trip_id, Driver.id, Driver.full_name)
+        .join(Driver, or_(Driver.id == DriverSubstitution.original_driver_id,
+                          Driver.id == DriverSubstitution.substituting_driver_id))
+        .where(DriverSubstitution.trip_id.in_(unique))
+    )).tuples():
+        participants.setdefault(trip_id, {})[driver_id] = name
+
     contexts: dict[uuid.UUID, _TripContext] = {}
     for trip in unique.values():
         driver_name, horse_registration = crew.get(trip.id, (None, None))
@@ -104,6 +123,8 @@ async def _load_trip_contexts(
             driver_name=driver_name,
             horse_registration=horse_registration,
             trailer_registrations=trailers.get(trip.id, []),
+            participant_names=participants.get(trip.id, {}),
+            is_shared=trip.id in participants,
         )
     return contexts
 
@@ -137,11 +158,12 @@ def _to_list_item(
         trip_status=trip.status,
         origin_name=context.origin_name,
         destination_name=context.destination_name,
-        driver_name=context.driver_name,
+        driver_name=context.driver_for(exc),
         horse_registration=context.horse_registration,
         trailer_registrations=context.trailer_registrations,
         phase_label=phase_type,
         stop_label=stop_sequence,
+        phase_event_id=exc.phase_event_id,
         # This is the capture-time verdict stored with the driver report, not a
         # present-day recomputation. Dispatcher list and detail responses share this
         # projection so either surface can explain what evidence was available then.
@@ -316,8 +338,12 @@ async def list_exception_history(
 
 async def get_exception_detail(
     db: AsyncSession, *, exception_id: uuid.UUID, organization_id: uuid.UUID,
+    include_hedera_refs: bool = False,
 ) -> TripExceptionDetail:
     """One exception, any review state, any trip lifecycle — a permalink target.
+
+    `include_hedera_refs` adds each anchored action's Hedera topic id and sequence number; the
+    endpoint passes True for an admin dispatcher only, as receipts are admin-only elsewhere.
 
     Org-scoped by the same Trip join review_exception uses. Raises
     ResourceNotFoundError (-> 404, not 403) for a missing or cross-organisation id — a
@@ -370,6 +396,8 @@ async def get_exception_detail(
     photos = (await load_photos_by_exception(db, [exc]))[exc.id]
     signed = [await sign_artifact_url(a) for a in photos]
     anchor_events = (await load_anchor_events_by_exception(db, [exc.id]))[exc.id]
+    if include_hedera_refs:
+        anchor_events = await attach_hedera_refs(db, anchor_events)
     return TripExceptionDetail(
         **list_item.model_dump(),
         supporting_artifacts=[

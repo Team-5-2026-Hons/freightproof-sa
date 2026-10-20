@@ -10,9 +10,7 @@ import type {
   TripExceptionListItem,
 } from '@shared/lib/types/exception'
 import type { CursorPage } from '@shared/lib/types/pagination'
-
-// Matches the backend's own default (schemas/pagination.py); not dispatcher-adjustable.
-const PAGE_SIZE = 25
+import { readPreferences } from '@/lib/preferences'
 
 const EMPTY: TripExceptionListItem[] = []
 const FIRST_CURSOR_STACK: (string | undefined)[] = [undefined]
@@ -44,9 +42,9 @@ export interface UseExceptionHistoryResult {
   refetch: () => void
 }
 
-function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined): string {
+function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined, pageSize: number): string {
   const params = new URLSearchParams()
-  params.set('limit', String(PAGE_SIZE))
+  params.set('limit', String(pageSize))
   if (cursor) params.set('cursor', cursor)
   if (filters.q) params.set('q', filters.q)
   if (filters.reviewStatus) params.set('review_status', filters.reviewStatus)
@@ -72,6 +70,9 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
+  // Read once per mount. Restored URLs are checked separately below because they can
+  // contain boundaries created before this browser's preference changed.
+  const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
   // cursor that fetches page n + 1, recorded once on first visit.
@@ -80,8 +81,11 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
 
   const [controlledPageReset, setControlledPageReset] = useState(false)
   if (controlledPageReset && navigation?.pageIndex === 0) setControlledPageReset(false)
-  const cursorStack = controlledPageReset ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
-  const pageIndex = controlledPageReset ? 0 : navigation?.pageIndex ?? localPageIndex
+  // Legacy URLs have no size, so their range labels cannot safely be reconstructed either.
+  const pageSizeChanged = !!navigation && navigation.cursorStack.length > 1 && navigation.pageSize !== pageSize
+  const resetNavigation = controlledPageReset || pageSizeChanged
+  const cursorStack = resetNavigation ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
+  const pageIndex = resetNavigation ? 0 : navigation?.pageIndex ?? localPageIndex
 
   // Primitive dependency key, not the filters object, so a fresh object literal every
   // render doesn't trigger a refetch (mirrors useTrips.ts's statusKey pattern).
@@ -105,10 +109,12 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
 
   const controlledFilterRef = useRef(filterKey)
   useEffect(() => {
-    if (controlledFilterRef.current === filterKey) return
+    const filtersChanged = controlledFilterRef.current !== filterKey
     controlledFilterRef.current = filterKey
-    navigation?.onChange({ cursorStack: [undefined], pageIndex: 0 })
-  }, [filterKey, navigation])
+    if (filtersChanged || pageSizeChanged) {
+      navigation?.onChange({ cursorStack: [undefined], pageIndex: 0, pageSize })
+    }
+  }, [filterKey, navigation, pageSizeChanged, pageSize])
 
   // Bumped on every fetch kicked off below; a response is applied only if this counter
   // has not moved on since, i.e. no newer request (a page change or a filter change)
@@ -135,7 +141,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
       hasSuccessfulResultRef.current = false
     }
 
-    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor))
+    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor, pageSize))
       .then((page) => {
         if (requestGenerationRef.current !== generation) return
         setItems(page.items)
@@ -155,7 +161,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
         setIsLoading(false)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, cursor])
+  }, [filterKey, cursor, pageSize])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -169,15 +175,15 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     if (!hasNext || nextCursor === null) return
     const next = cursorStack.slice(0, pageIndex + 1)
     next[pageIndex + 1] = nextCursor
-    if (navigation) navigation.onChange({ cursorStack: next, pageIndex: pageIndex + 1 })
+    if (navigation) navigation.onChange({ cursorStack: next, pageIndex: pageIndex + 1, pageSize })
     else { setCursorStack(next); setPageIndex(pageIndex + 1) }
-  }, [hasNext, nextCursor, pageIndex, cursorStack, navigation])
+  }, [hasNext, nextCursor, pageIndex, cursorStack, navigation, pageSize])
 
   const goToPreviousPage = useCallback(() => {
     if (!hasPrevious) return
-    if (navigation) navigation.onChange({ cursorStack, pageIndex: pageIndex - 1 })
+    if (navigation) navigation.onChange({ cursorStack, pageIndex: pageIndex - 1, pageSize })
     else setPageIndex(i => i - 1)
-  }, [hasPrevious, navigation, cursorStack, pageIndex])
+  }, [hasPrevious, navigation, cursorStack, pageIndex, pageSize])
 
   const refetch = useCallback(() => runFetch(true), [runFetch])
 
@@ -188,7 +194,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation
     isStale,
     totalItems,
     page: pageIndex + 1,
-    pageSize: PAGE_SIZE,
+    pageSize,
     hasPrevious,
     hasNext,
     goToNextPage,

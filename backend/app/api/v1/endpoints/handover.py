@@ -16,18 +16,23 @@ The public half is the only unauthenticated write-capable surface in this API. R
 import base64
 import json
 import logging
-from typing import Optional
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Annotated, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from fastapi import status as http_status
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.handover_responses import _verification_state
 from app.auth.dependencies import get_current_driver
 from app.core.client_ip import resolve_client_ip
 from app.core.config import settings
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
     HandoverAlreadyConfirmedError,
     HandoverLinkInvalidError,
     ResourceNotFoundError,
@@ -35,12 +40,10 @@ from app.core.exceptions import (
 from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import (
-    ReceiverVerificationStatus,
     ReceiverVerificationTier,
     ReceiverVerificationUnverifiedReason,
 )
 from app.db.models.handover import HandoverCapabilityToken
-from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.session import get_db
 from app.orchestration.handover.capability import build_scan_url, session_secret_matches
 from app.orchestration.handover.receiver_verification import (
@@ -49,11 +52,11 @@ from app.orchestration.handover.receiver_verification import (
     webhook_timestamp_is_fresh,
 )
 from app.orchestration.handover.service import (
-    ConfirmationTarget,
     ReceiverSubmission,
     begin_verification,
     ensure_handover_open,
     load_confirmation_target,
+    load_confirmation_target_for_write,
     load_handover_progress,
     load_live_token,
     load_scan_page,
@@ -65,6 +68,7 @@ from app.orchestration.handover.service import (
     submit_consent,
 )
 from app.schemas.handover import (
+    IssueTokenQuery,
     HandoverConfirmRequest,
     HandoverConfirmResponse,
     HandoverConsentRequest,
@@ -103,33 +107,19 @@ _DIDIT_SIGNATURE_HEADER = "x-signature"
 _DIDIT_TIMESTAMP_HEADER = "x-timestamp"
 
 
-def _verification_state(v: ReceiverIdentityVerification) -> HandoverVerificationState:
-    # Coerced through the enum constructor, not `.value` directly: these columns are
-    # mapped_column(String(20)), and a freshly-loaded row hands back a bare str with no
-    # .value. EnumClass(x) accepts either a member or its raw string, so this covers both.
-    return HandoverVerificationState(
-        status=ReceiverVerificationStatus(v.status).value,
-        tier=ReceiverVerificationTier(v.tier).value,
-        unverified_reason=(
-            ReceiverVerificationUnverifiedReason(v.unverified_reason).value
-            if v.unverified_reason else None
-        ),
-        identity_match=v.identity_match,
-    )
-
-
-async def _load_confirmation_event(
-    db: AsyncSession, *, trip_id: UUID, phase_event_id: UUID, driver_id: UUID,
-) -> ConfirmationTarget:
-    """Resolve a confirmation phase event the given driver actually owns, or 404."""
+@contextmanager
+def _confirmation_errors() -> Iterator[None]:
+    """A confirmation lookup's failures as HTTP: 404 for a missing event or a trip the driver
+    never held (one answer, so existence is not disclosed), the coded 409 for a driver who held
+    it earlier."""
     try:
-        return await load_confirmation_target(
-            db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=driver_id,
-        )
+        yield
     except ResourceNotFoundError:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND, detail=_CONFIRMATION_NOT_FOUND,
         ) from None
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.post(
@@ -142,14 +132,18 @@ async def _load_confirmation_event(
 async def issue_handover_token_endpoint(
     trip_id: UUID,
     phase_event_id: UUID,
-    force: bool = False,
+    query: Annotated[IssueTokenQuery, Query()],
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> HandoverTokenResponse:
-    """Mint the next code. `force=true` is the driver's "show a new code" escape hatch."""
-    target = await _load_confirmation_event(
-        db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
-    )
+    """Mint the next code. `force=true` is the driver's "show a new code" escape hatch.
+
+    A former driver cannot mint a new receiver link: only whoever holds the trip now can."""
+    with _confirmation_errors():
+        target = await load_confirmation_target_for_write(
+            db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
+            custody_sequence=query.custody_sequence,
+        )
 
     try:
         await ensure_handover_open(db, target=target)
@@ -160,7 +154,7 @@ async def issue_handover_token_endpoint(
         ) from None
 
     try:
-        rotation = await rotate_next_token(db, target=target, force=force)
+        rotation = await rotate_next_token(db, target=target, force=query.force)
         await db.commit()
     except SQLAlchemyError:
         await db.rollback()
@@ -186,9 +180,10 @@ async def handover_status_endpoint(
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> HandoverStatusResponse:
-    target = await _load_confirmation_event(
-        db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
-    )
+    with _confirmation_errors():
+        target = await load_confirmation_target(
+            db, trip_id=trip_id, phase_event_id=phase_event_id, driver_id=current_driver.id,
+        )
     progress = await load_handover_progress(db, target=target)
 
     if progress.confirmation is not None:

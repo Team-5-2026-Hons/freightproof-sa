@@ -22,7 +22,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
     ConsignmentAlreadyAssignedError,
     CrewUnavailableError,
     HederaServiceError,
@@ -43,6 +45,7 @@ from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
+from app.orchestration.substitutions.reads import with_dispatcher_custody
 from app.orchestration.trips.detail import get_trip_detail
 from app.orchestration.trips.listing import list_trip_history, list_trips
 from app.orchestration.trips.availability import CrewFilter, TimeWindow, busy_crew_in_window
@@ -359,6 +362,8 @@ async def get_my_trip_detail_endpoint(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.get(
@@ -382,6 +387,8 @@ async def get_my_trip_route_endpoint(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.get(
@@ -408,4 +415,4 @@ async def get_trip_detail_endpoint(
         ) from exc
     if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
         detail = detail.model_copy(update={"blockchain_receipts": []})
-    return detail
+    return await with_dispatcher_custody(db, detail, actor=current_user)

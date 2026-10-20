@@ -7,14 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ResourceNotFoundError
-from app.db.models.trips import Trip
+from app.core.exceptions import IdempotencyKeyReusedError, ResourceNotFoundError
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.trips import Trip
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint
 from app.orchestration.evidence import action_location as action_location_service
 from app.orchestration.evidence.corroboration import record_checkpoint_corroboration
 from app.orchestration.integrity import is_unique_violation, violated_constraint
+from app.orchestration.substitutions.access import WriteClaim, authorise_driver_write
 from app.schemas.action_location import DriverLocationCapture
 from app.schemas.transit import CheckpointRead, DriverCheckpointCreateBody
 
@@ -31,6 +32,24 @@ async def _find_by_client_report_id(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _find_own_checkpoint(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: DriverCheckpointCreateBody,
+) -> uuid.UUID | None:
+    """This driver's own accepted checkpoint for the payload's client_report_id, if any.
+
+    Needs both the key and the stamped actor: a report id alone could be someone else's.
+    Checkpoints recorded before actors were stamped never match.
+    """
+    if payload.client_report_id is None:
+        return None
+    return (await db.execute(
+        select(Checkpoint.id).where(
+            Checkpoint.trip_id == trip_id, Checkpoint.client_report_id == payload.client_report_id,
+            Checkpoint.performed_by_driver_id == driver_id,
+        )
+    )).scalar_one_or_none()
 
 
 async def _validate_trip_artifact(
@@ -120,15 +139,37 @@ async def _corroborate_and_assess(
         )
 
 
+async def _load_checkpoint_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, phase_event_id: uuid.UUID | None,
+) -> PhaseEvent | None:
+    phase_event: PhaseEvent | None = None
+    if phase_event_id is not None:
+        phase_result = await db.execute(
+            select(PhaseEvent).where(
+                PhaseEvent.id == phase_event_id,
+                PhaseEvent.trip_id == trip_id,
+            )
+        )
+        phase_event = phase_result.scalar_one_or_none()
+        if phase_event is None:
+            raise ResourceNotFoundError("PhaseEvent", str(phase_event_id))
+
+    return phase_event
+
+
 async def log_checkpoint(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, payload: DriverCheckpointCreateBody,
 ) -> CheckpointRead:
-    result = await db.execute(select(Trip).where(Trip.id == trip_id))
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-    if trip.driver_id != driver_id:
-        raise PermissionError("You are not the assigned driver on this trip.")
+    # Who holds the trip is decided after its lock (FP-83). A retry of THIS driver's own accepted
+    # checkpoint is recognised first, so a stale sequence or a handover in between acknowledges
+    # it instead of refusing or re-recording it.
+    trip, custody = await authorise_driver_write(
+        db, trip_id=trip_id, driver_id=driver_id,
+        claim=WriteClaim(
+            payload.custody_sequence,
+            lambda: _find_own_checkpoint(db, trip_id=trip_id, driver_id=driver_id, payload=payload),
+        ),
+    )
 
     # A replay is the original evidence exactly as first recorded, including its phase
     # attribution. Do this before reading mutable trip state or tracker telemetry.
@@ -137,19 +178,15 @@ async def log_checkpoint(
             db, trip_id=trip_id, client_report_id=payload.client_report_id,
         )
         if existing is not None:
+            # Legacy trips keep their replay semantics. Once custody has moved, only the driver
+            # who recorded it may be told "already recorded" as their own success.
+            if custody.sequence > 0 and existing.performed_by_driver_id != driver_id:
+                raise IdempotencyKeyReusedError()
             return CheckpointRead.model_validate(existing)
 
-    phase_event: PhaseEvent | None = None
-    if payload.phase_event_id is not None:
-        phase_result = await db.execute(
-            select(PhaseEvent).where(
-                PhaseEvent.id == payload.phase_event_id,
-                PhaseEvent.trip_id == trip_id,
-            )
-        )
-        phase_event = phase_result.scalar_one_or_none()
-        if phase_event is None:
-            raise ResourceNotFoundError("PhaseEvent", str(payload.phase_event_id))
+    phase_event = await _load_checkpoint_phase(
+        db, trip_id=trip_id, phase_event_id=payload.phase_event_id,
+    )
 
     await _validate_trip_artifact(
         db, trip_id=trip_id, artifact_id=payload.selfie_artifact_id,
@@ -186,6 +223,8 @@ async def log_checkpoint(
         is_deviation=payload.is_deviation,
         client_report_id=payload.client_report_id,
         phase_event_id=phase_event.id if phase_event is not None else None,
+        performed_by_driver_id=driver_id,
+        custody_sequence=custody.sequence,
     )
     if payload.client_report_id is None:
         db.add(checkpoint)

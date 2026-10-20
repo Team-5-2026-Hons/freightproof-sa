@@ -7,7 +7,7 @@ restored and main reloaded again on teardown so other test modules are unaffecte
 
 import importlib
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import AsyncGenerator
 
 import pytest
@@ -853,3 +853,42 @@ async def test_pp_manifest_trigger_unknown_manifest_is_404(
     )
 
     assert resp.status_code == 404
+
+
+# ── FP-83: after a driver handover ────────────────────────────────────────────
+
+
+async def test_dev_trigger_uses_current_driver_after_transfer(dev_client, db_session, seeded, store):
+    """After A -> B the panel labels B and raises as B in B's custody period, never as the
+    original driver (whom the service would now refuse); the trip's original driver is untouched."""
+    from app.db.models.trips import DriverSubstitution
+
+    trip = seeded["trip"]
+    original_driver_id = trip.driver_id
+    b = Driver(
+        id=uuid.uuid4(), organization_id=seeded["org"].id, full_name="Takeover Driver",
+        id_number="8001015009088", phone_number="+27821234568", license_number="DRV-2",
+    )
+    db_session.add(b)
+    await db_session.flush()
+    db_session.add(DriverSubstitution(
+        id=uuid.uuid4(), trip_id=trip.id, original_driver_id=original_driver_id, substituting_driver_id=b.id,
+        exchange_location="Depot", approving_dispatcher_user_id=seeded["user"].id, is_planned=True,
+        substitution_at=datetime.now(UTC), sequence_number=1,
+    ))
+    await db_session.flush()
+
+    listed = await dev_client.get("/api/v1/dev/trips", headers=auth_header(_token(seeded)))
+    raised = await dev_client.post(
+        "/api/v1/dev/exceptions",
+        json={"trip_id": str(trip.id), "exception_type": "cargo_damage", "description": "Torn wrap."},
+        headers=auth_header(_token(seeded)),
+    )
+
+    row = next(t for t in listed.json() if t["trip_id"] == str(trip.id))
+    assert row["driver_full_name"] == "Takeover Driver"
+    assert raised.status_code == 200, raised.text
+    exception = (await db_session.execute(select(TripException).where(TripException.trip_id == trip.id))).scalar_one()
+    assert (exception.performed_by_driver_id, exception.custody_sequence) == (b.id, 1)
+    await db_session.refresh(trip)
+    assert trip.driver_id == original_driver_id

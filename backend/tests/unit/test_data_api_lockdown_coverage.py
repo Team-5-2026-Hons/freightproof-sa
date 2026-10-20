@@ -28,6 +28,12 @@ _RLS_FROM_OWN_MIGRATION = frozenset({
     "audit_pack_access_events", "audit_packs", "incident_declarations",  # tim_add_audit_packs
     "evidence_anchor_events", "exception_artifacts",  # ciaran_evidence_anchors
     "cost_profiles",  # tom_add_cost_profiles
+    "audit_pack_email_codes",  # tim_add_audit_pack_email_codes
+    "driver_substitution_requests", "driver_substitution_confirmations",  # ciaran_driver_substitutions
+    "driver_substitution_confirmation_artifacts", "driver_substitution_notices",
+    "late_driver_evidence", "late_driver_evidence_artifacts",
+    "driver_substitution_corrections", "driver_substitution_operations",
+    "driver_substitution_uploads",  # tim_dsub_uploads
 })
 # Alembic's own bookkeeping table: not a model, but just as exposed.
 _NON_MODEL_TABLES = frozenset({"alembic_version"})

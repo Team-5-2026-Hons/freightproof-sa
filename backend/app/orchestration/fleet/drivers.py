@@ -8,7 +8,7 @@ import hashlib
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,7 +24,7 @@ from app.db.models.enums import (
 )
 from app.db.models.events import DriverEvent
 from app.db.models.people import UQ_DRIVERS_ORG_ID_NUMBER, Driver
-from app.db.models.trips import Trip
+from app.db.models.trips import DriverSubstitution, Trip
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.events import DriverEventRead
 from app.schemas.people import DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody
@@ -248,7 +248,11 @@ async def get_driver_detail(
     trips = (
         await db.execute(
             select(Trip).where(
-                Trip.driver_id == driver_id,
+                # FP-83: every trip the driver took part in, original assignment or a handover.
+                or_(Trip.driver_id == driver_id, Trip.id.in_(select(DriverSubstitution.trip_id).where(or_(
+                    DriverSubstitution.original_driver_id == driver_id,
+                    DriverSubstitution.substituting_driver_id == driver_id,
+                )))),
                 Trip.operator_organization_id == organization_id,
             ).order_by(Trip.created_at.desc())
         )

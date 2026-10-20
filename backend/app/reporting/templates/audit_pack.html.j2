@@ -179,14 +179,36 @@
     <tr><th>Licence number</th><td>{{ m.driver.license_number }}</td></tr>
     <tr><th>Licence expiry</th><td>{{ m.driver.license_expiry or 'not recorded' }}{% if m.driver.license_valid_on_trip_date is true %} <span class="ok">valid on trip date</span>{% elif m.driver.license_valid_on_trip_date is false %} <span class="flag">expired on trip date</span>{% endif %}</td></tr>
     <tr><th>Professional driving permit (PrDP)</th><td class="muted">Not recorded by FreightProof</td></tr>
-    <tr><th>Identity check for this trip</th><td>{{ m.driver.trip_idvs_status|humanise }}{% if m.driver.trip_idvs_checked_at %}, {{ m.driver.trip_idvs_checked_at|sast }}{% endif %}</td></tr>
+    <tr><th>Identity check for this trip{% if m.driver.substitutions %} (original driver, at the start){% endif %}</th><td>{{ m.driver.trip_idvs_status|humanise }}{% if m.driver.trip_idvs_checked_at %}, {{ m.driver.trip_idvs_checked_at|sast }}{% endif %}</td></tr>
   </table>
   {% if m.driver.substitutions %}
   <h3>Driver substitutions</h3>
   <table>
-    <tr><th>When</th><th>From</th><th>To</th><th>Where</th><th>Planned</th><th>Tier</th></tr>
+    <tr><th>#</th><th>When</th><th>From</th><th>To</th><th>Where</th><th>Planned</th><th>Tier</th></tr>
     {% for s in m.driver.substitutions %}
-    <tr><td>{{ s.substitution_at|sast }}</td><td>{{ s.original_driver_name }}</td><td>{{ s.substituting_driver_name }}</td><td>{{ s.exchange_location }}</td><td>{{ 'Yes' if s.is_planned else 'No' }}</td><td>{{ tier(s.tier) }}</td></tr>
+    <tr><td>{{ s.sequence_number if s.sequence_number is not none else '—' }}</td><td>{{ s.substitution_at|sast }}</td><td>{{ s.original_driver_name }}</td><td>{{ s.substituting_driver_name }}</td><td>{{ s.exchange_location if s.exchange_location is not none else 'No planned exchange point' }}</td><td>{{ ('Yes' if s.is_planned else 'No') if s.is_planned is not none else 'Not supplied' }}</td><td>{{ tier(s.tier) }}</td></tr>
+    {% if s.sequence_number is not none %}
+    <tr><td></td><td colspan="6" class="muted">
+      Arranged by {{ s.arranged_by_name or 'unknown' }}; completed by {{ s.completed_by_name or 'unknown' }} ({{ s.completed_by or 'actor not recorded' }}){% if s.completed_by_driver_id %} · driver {{ s.completed_by_driver_id }}{% endif %}{% if s.completed_by_user_id %} · dispatcher {{ s.completed_by_user_id }}{% endif %}{% if s.completion_mode %} ({{ s.completion_mode|humanise }}){% endif %}.
+      Incoming driver identity at completion: {{ (s.incoming_identity_status or 'not recorded')|humanise }}{% if s.identity_attested_by_name %}; unavailable verification attested by {{ s.identity_attested_by_name }}{% if s.identity_attested_at %}, {{ s.identity_attested_at|sast }}{% endif %}{% endif %}.
+      {% if s.confirmation_policy == 'incoming_acceptance_v2' %}<br>Dispatcher authorised; incoming driver acceptance required. Outgoing driver: Not requested — notification only.{% endif %}
+      {% if s.identity_attestation_reason %}<br>Identity attestation reason: {{ s.identity_attestation_reason }}{% endif %}
+      {% if s.missing_confirmation_reason %}Missing driver confirmation: {{ s.missing_confirmation_reason }}.{% endif %}
+      {% for d in s.declarations %}<br>{{ d.role|humanise }} declaration by {{ d.driver_name }}, captured {{ d.captured_at|sast }} (received {{ d.received_at|sast }}){% if not d.location_recorded %}, position unavailable ({{ d.location_unavailable_reason or 'reason not recorded' }}){% else %}, phone {{ d.latitude }}, {{ d.longitude }} (accuracy {{ d.accuracy_metres }} m){% endif %}; observed {{ d.location_observed_at|sast if d.location_observed_at else 'time not recorded' }}; observation metadata {{ 'covered by custody commitment' if d.location_observation_committed else 'not covered by legacy custody commitment' }}: {{ d.seal_readings|join('; ') or 'no seal readings' }}{% if d.photo_sha256 %}; {{ d.photo_sha256|length }} photo(s){% endif %}{% if d.discrepancy_note %}; note: {{ d.discrepancy_note }}{% endif %}{% endfor %}
+      {% for c in s.corrections %}<br>Clarification {{ c.recorded_at|sast }} by {{ c.recorded_by_name or 'unknown' }} ({{ c.recorded_by_user_id }}): {{ c.reason }} — {{ c.correction_note }}. Hash <code>{{ c.event_hash or 'not recorded' }}</code>; anchor {{ c.anchor_status or 'not recorded' }}{% if c.receipt_id %}; receipt {{ c.receipt_id }}{% endif %}.{% endfor %}
+      {% if s.commitment_sha256 %}<br>Commitment: <code>{{ s.commitment_sha256 }}</code>{% endif %}
+    </td></tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% if m.late_evidence %}
+  <h3>Late driver evidence</h3>
+  <p class="muted">Captured in an earlier custody period and retained for review. It completed no phase; its hash is a local commitment, not a Hedera receipt.</p>
+  <table>
+    <tr><th>Driver</th><th>Period</th><th>Kind</th><th>Captured</th><th>Received</th><th>Status</th></tr>
+    {% for e in m.late_evidence %}
+    <tr><td>{{ e.driver_name }}</td><td>{{ e.custody_sequence }}</td><td>{{ e.kind|humanise }}</td><td>{{ e.captured_at|sast }}</td><td>{{ e.received_at|sast }}</td><td>{{ e.status|humanise }}</td></tr>
     {% endfor %}
   </table>
   {% endif %}

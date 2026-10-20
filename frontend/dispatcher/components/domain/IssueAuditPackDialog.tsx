@@ -27,8 +27,12 @@ interface Props {
   onIssued: () => void
 }
 
+// Same shape check as the backend's: one @, a dotted domain, no spaces. Whether the inbox
+// is real is proved later, when the recipient enters the code sent there.
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
 const EMPTY: AuditPackCreate = {
-  recipient_name: '', recipient_organization: '', recipient_email: null, purpose: 'insurance_claim',
+  recipient_name: '', recipient_organization: '', recipient_email: '', purpose: 'insurance_claim',
   external_reference: null, scope_consignment_id: null, include_location_trail: true,
   include_full_driver_id: false, expires_in_days: 30,
 }
@@ -49,7 +53,8 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
   const [copied, setCopied] = useState(false)
 
   if (!open) return null
-  const ready = form.recipient_name.trim() !== '' && form.recipient_organization.trim() !== ''
+  const emailValid = EMAIL_SHAPE.test(form.recipient_email.trim())
+  const ready = form.recipient_name.trim() !== '' && form.recipient_organization.trim() !== '' && emailValid
 
   function update<K extends keyof AuditPackCreate>(key: K, value: AuditPackCreate[K]) {
     setForm(current => ({ ...current, [key]: value }))
@@ -69,7 +74,7 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
     try {
       const result = await issueAuditPack(tripId, {
         ...form,
-        recipient_email: form.recipient_email?.trim() || null,
+        recipient_email: form.recipient_email.trim(),
         external_reference: form.external_reference?.trim() || null,
       })
       setIssued(result)
@@ -99,6 +104,10 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
           Send this link to {issued.pack.recipient_name}. It is shown only now — FreightProof keeps just its fingerprint —
           and it expires on {new Date(issued.pack.expires_at).toLocaleDateString('en-ZA')}. You can revoke it at any time.
         </p>
+        <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">
+          The link alone does not open the pack: on first opening, a one-time code is emailed to{' '}
+          {issued.pack.recipient_email}, so a forwarded link is no use to anyone else.
+        </p>
         <div className="mb-3 break-all rounded-md bg-surf-low px-3 py-2 font-mono text-[12px]" data-testid="share-url">{issued.share_url}</div>
         <p className="mb-4 text-[12px] text-on-surf-v">
           {issued.pack.anchor_status === 'anchored'
@@ -122,7 +131,14 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
       <div className="flex flex-col gap-3">
         <Input label="Recipient name" value={form.recipient_name} onChange={e => update('recipient_name', e.target.value)} />
         <Input label="Recipient organisation" value={form.recipient_organization} onChange={e => update('recipient_organization', e.target.value)} />
-        <Input label="Recipient email (optional)" type="email" value={form.recipient_email ?? ''} onChange={e => update('recipient_email', e.target.value)} />
+        <Input
+          label="Recipient email"
+          type="email"
+          value={form.recipient_email}
+          onChange={e => update('recipient_email', e.target.value)}
+          helperText="They are emailed a one-time code here before the pack opens."
+          error={form.recipient_email.trim() !== '' && !emailValid ? 'Enter a full email address, e.g. name@insurer.co.za' : undefined}
+        />
         <Select label="Purpose" value={form.purpose} onChange={e => update('purpose', e.target.value as AuditPackPurpose)}>
           {AUDIT_PACK_PURPOSES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
         </Select>

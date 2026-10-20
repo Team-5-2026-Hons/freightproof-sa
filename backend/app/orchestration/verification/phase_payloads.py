@@ -17,6 +17,7 @@ from app.db.models.phases import PhaseEvent
 from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2,
     PHASE_PAYLOAD_VERSION_V3,
+    PHASE_PAYLOAD_VERSION_V4,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,
@@ -27,6 +28,7 @@ from app.orchestration.phases.payloads import (
     compute_loading_canonical_payload_v2,
     compute_loading_canonical_payload_v3,
     compute_override_canonical_payload_v2,
+    compute_phase_actor_envelope_v4,
     compute_unloading_canonical_payload_v2,
 )
 from app.orchestration.verification.errors import _UnsupportedPhasePayloadVersion
@@ -124,6 +126,107 @@ async def _load_artifacts_for_roles(
     )
 
 
+async def _reconstruct_loading_payload(
+    db: AsyncSession, *, event: PhaseEvent, version: int,
+) -> _PhasePayloadState:
+    roles: list[tuple[str, uuid.UUID]] = []
+    if event.linehaul_photo_artifact_id is not None:
+        roles.append(("linehaul_photo_sha256", event.linehaul_photo_artifact_id))
+    if version == PHASE_PAYLOAD_VERSION_V3 and event.linehaul_pdf_artifact_id is not None:
+        roles.append(("linehaul_pdf_sha256", event.linehaul_pdf_artifact_id))
+    loading_artifacts = (
+        await _load_artifacts_for_roles(db, event=event, roles=tuple(roles)) if roles else ()
+    )
+    hashes = {item.payload_key: item.artifact.file_hash for item in loading_artifacts}
+    if version == PHASE_PAYLOAD_VERSION_V3:
+        return _PhasePayloadState(
+            payload=compute_loading_canonical_payload_v3(
+                phase_event_id=event.id, trip_id=event.trip_id,
+                parcel_count_origin=event.parcel_count_origin,
+                linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
+                linehaul_pdf_sha256=hashes.get("linehaul_pdf_sha256"),
+            ),
+            artifacts=loading_artifacts,
+        )
+    return _PhasePayloadState(
+        payload=compute_loading_canonical_payload_v2(
+            phase_event_id=event.id, trip_id=event.trip_id,
+            parcel_count_origin=event.parcel_count_origin,
+            linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
+        ),
+        artifacts=loading_artifacts,
+    )
+
+
+async def _reconstruct_departure_payload(
+    db: AsyncSession, *, event: PhaseEvent, version: int,
+) -> _PhasePayloadState:
+    # seal_number is a nullable column (not yet completed), but a receipt
+    # only ever exists once departure anchored it. If it's still None here,
+    # report missing committed state rather than claiming no receipt exists.
+    if event.seal_number is None:
+        raise _PhaseEvidenceMissing("anchored departure fields are missing")
+    if version == _LEGACY_PHASE_PAYLOAD_VERSION:
+        return _PhasePayloadState(payload=compute_departure_canonical_payload_v1(
+            phase_event_id=event.id, trip_id=event.trip_id, seal_number=event.seal_number,
+        ))
+    if event.seal_photo_artifact_id is None:
+        raise _PhaseEvidenceMissing("departure seal evidence is missing")
+    role_ids = [("seal_photo_sha256", event.seal_photo_artifact_id)]
+    if event.waybill_photo_artifact_id is not None:
+        role_ids.append(("waybill_photo_sha256", event.waybill_photo_artifact_id))
+    artifacts = await _load_artifacts_for_roles(db, event=event, roles=tuple(role_ids))
+    hashes = {item.payload_key: item.artifact.file_hash for item in artifacts}
+    return _PhasePayloadState(
+        payload=compute_departure_canonical_payload_v2(
+            phase_event_id=event.id,
+            trip_id=event.trip_id,
+            seal_number=event.seal_number,
+            seal_photo_sha256=hashes["seal_photo_sha256"],
+            waybill_photo_sha256=hashes.get("waybill_photo_sha256"),
+        ),
+        artifacts=artifacts,
+    )
+
+
+def _reconstruct_legacy_handshake(
+    event: PhaseEvent, anchored_payload: dict[str, Any],
+) -> _PhasePayloadState | None:
+    legacy_handshake = _legacy_handshake_contract(anchored_payload)
+    if legacy_handshake == "loading":
+        if (
+            event.phase_type != PhaseType.LOADING
+            or event.seal_number is None
+            or event.driver_visual_count is None
+        ):
+            raise _PhaseEvidenceMissing("anchored legacy loading fields are missing")
+        return _PhasePayloadState(payload={
+            "handshake_event_id": str(event.id),
+            "trip_id": str(event.trip_id),
+            "handshake_type": "loading",
+            "seal_number": event.seal_number,
+            "driver_visual_count": event.driver_visual_count,
+        })
+    if legacy_handshake == "unloading":
+        # Rows created before the phase migration retained `unloading`; rows
+        # created during the transition used the new `confirmation` value but
+        # still anchored the old handshake-shaped payload.
+        if (
+            event.phase_type not in (PhaseType.UNLOADING, PhaseType.CONFIRMATION)
+            or event.parcel_count_destination is None
+            or event.driver_visual_count is None
+        ):
+            raise _PhaseEvidenceMissing("anchored legacy unloading fields are missing")
+        return _PhasePayloadState(payload={
+            "handshake_event_id": str(event.id),
+            "trip_id": str(event.trip_id),
+            "handshake_type": "unloading",
+            "pp_scan_in_count": event.parcel_count_destination,
+            "driver_visual_count": event.driver_visual_count,
+        })
+    return None
+
+
 async def _reconstruct_phase_event_payload(
     db: AsyncSession, event_id: uuid.UUID, *, anchored_payload: Any,
 ) -> _PhasePayloadState:
@@ -157,38 +260,9 @@ async def _reconstruct_phase_event_payload(
         # so a v3-labelled receipt on an overridden row is unsupported, not a hash mismatch.
         raise _UnsupportedPhasePayloadVersion("payload version 3 exists only for loading")
     if version == _LEGACY_PHASE_PAYLOAD_VERSION:
-        legacy_handshake = _legacy_handshake_contract(anchored_payload)
-        if legacy_handshake == "loading":
-            if (
-                event.phase_type != PhaseType.LOADING
-                or event.seal_number is None
-                or event.driver_visual_count is None
-            ):
-                raise _PhaseEvidenceMissing("anchored legacy loading fields are missing")
-            return _PhasePayloadState(payload={
-                "handshake_event_id": str(event.id),
-                "trip_id": str(event.trip_id),
-                "handshake_type": "loading",
-                "seal_number": event.seal_number,
-                "driver_visual_count": event.driver_visual_count,
-            })
-        if legacy_handshake == "unloading":
-            # Rows created before the phase migration retained `unloading`; rows
-            # created during the transition used the new `confirmation` value but
-            # still anchored the old handshake-shaped payload.
-            if (
-                event.phase_type not in (PhaseType.UNLOADING, PhaseType.CONFIRMATION)
-                or event.parcel_count_destination is None
-                or event.driver_visual_count is None
-            ):
-                raise _PhaseEvidenceMissing("anchored legacy unloading fields are missing")
-            return _PhasePayloadState(payload={
-                "handshake_event_id": str(event.id),
-                "trip_id": str(event.trip_id),
-                "handshake_type": "unloading",
-                "pp_scan_in_count": event.parcel_count_destination,
-                "driver_visual_count": event.driver_visual_count,
-            })
+        legacy = _reconstruct_legacy_handshake(event, anchored_payload)
+        if legacy is not None:
+            return legacy
     if event.status == PhaseStatus.OVERRIDDEN:
         # Checked before any phase-type branch: an overridden row anchored the override
         # record (PHASE_OVERRIDE), never its phase's own payload. v2 only, because
@@ -215,33 +289,7 @@ async def _reconstruct_phase_event_payload(
         }[PhaseType(event.phase_type)]
         return _PhasePayloadState(payload=builder(phase_event_id=event.id, trip_id=event.trip_id))
     if event.phase_type == PhaseType.LOADING:
-        roles: list[tuple[str, uuid.UUID]] = []
-        if event.linehaul_photo_artifact_id is not None:
-            roles.append(("linehaul_photo_sha256", event.linehaul_photo_artifact_id))
-        if version == PHASE_PAYLOAD_VERSION_V3 and event.linehaul_pdf_artifact_id is not None:
-            roles.append(("linehaul_pdf_sha256", event.linehaul_pdf_artifact_id))
-        loading_artifacts = (
-            await _load_artifacts_for_roles(db, event=event, roles=tuple(roles)) if roles else ()
-        )
-        hashes = {item.payload_key: item.artifact.file_hash for item in loading_artifacts}
-        if version == PHASE_PAYLOAD_VERSION_V3:
-            return _PhasePayloadState(
-                payload=compute_loading_canonical_payload_v3(
-                    phase_event_id=event.id, trip_id=event.trip_id,
-                    parcel_count_origin=event.parcel_count_origin,
-                    linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
-                    linehaul_pdf_sha256=hashes.get("linehaul_pdf_sha256"),
-                ),
-                artifacts=loading_artifacts,
-            )
-        return _PhasePayloadState(
-            payload=compute_loading_canonical_payload_v2(
-                phase_event_id=event.id, trip_id=event.trip_id,
-                parcel_count_origin=event.parcel_count_origin,
-                linehaul_photo_sha256=hashes.get("linehaul_photo_sha256"),
-            ),
-            artifacts=loading_artifacts,
-        )
+        return await _reconstruct_loading_payload(db, event=event, version=version)
     if event.phase_type == PhaseType.ARRIVAL:
         if event.seal_condition is None or event.seal_photo_artifact_id is None:
             raise _PhaseEvidenceMissing("anchored arrival seal evidence is missing")
@@ -258,32 +306,7 @@ async def _reconstruct_phase_event_payload(
             artifacts=arrival_artifacts,
         )
     if event.phase_type == PhaseType.DEPARTURE:
-        # seal_number is a nullable column (not yet completed), but a receipt
-        # only ever exists once departure anchored it. If it's still None here,
-        # report missing committed state rather than claiming no receipt exists.
-        if event.seal_number is None:
-            raise _PhaseEvidenceMissing("anchored departure fields are missing")
-        if version == _LEGACY_PHASE_PAYLOAD_VERSION:
-            return _PhasePayloadState(payload=compute_departure_canonical_payload_v1(
-                phase_event_id=event.id, trip_id=event.trip_id, seal_number=event.seal_number,
-            ))
-        if event.seal_photo_artifact_id is None:
-            raise _PhaseEvidenceMissing("departure seal evidence is missing")
-        role_ids = [("seal_photo_sha256", event.seal_photo_artifact_id)]
-        if event.waybill_photo_artifact_id is not None:
-            role_ids.append(("waybill_photo_sha256", event.waybill_photo_artifact_id))
-        artifacts = await _load_artifacts_for_roles(db, event=event, roles=tuple(role_ids))
-        hashes = {item.payload_key: item.artifact.file_hash for item in artifacts}
-        return _PhasePayloadState(
-            payload=compute_departure_canonical_payload_v2(
-                phase_event_id=event.id,
-                trip_id=event.trip_id,
-                seal_number=event.seal_number,
-                seal_photo_sha256=hashes["seal_photo_sha256"],
-                waybill_photo_sha256=hashes.get("waybill_photo_sha256"),
-            ),
-            artifacts=artifacts,
-        )
+        return await _reconstruct_departure_payload(db, event=event, version=version)
     if event.phase_type == PhaseType.CONFIRMATION:
         if event.parcel_count_destination is None:
             raise _PhaseEvidenceMissing("anchored confirmation fields are missing")
@@ -319,6 +342,12 @@ async def _reconstruct_phase_event_payload(
 
 
 async def _payload_with_live_artifact_hashes(state: _PhasePayloadState) -> dict[str, Any]:
+    if state.payload.get("payload_version") == PHASE_PAYLOAD_VERSION_V4:
+        # The artifact keys live in the embedded evidence payload, not on the envelope.
+        inner = await _payload_with_live_artifact_hashes(
+            _PhasePayloadState(payload=state.payload["evidence"], artifacts=state.artifacts),
+        )
+        return {**state.payload, "evidence": inner}
     payload = dict(state.payload)
     live_hashes = await asyncio.gather(*(
         hash_stored_evidence_file(
@@ -330,6 +359,47 @@ async def _payload_with_live_artifact_hashes(state: _PhasePayloadState) -> dict[
     for commitment, live_hash in zip(state.artifacts, live_hashes, strict=True):
         payload[commitment.payload_key] = live_hash
     return payload
+
+
+def _is_actor_envelope(anchored_payload: Any) -> bool:
+    return isinstance(anchored_payload, dict) and anchored_payload.get("payload_version") == PHASE_PAYLOAD_VERSION_V4
+
+
+async def reconstruct_phase_state(
+    db: AsyncSession, event_id: uuid.UUID, *, anchored_payload: Any,
+) -> _PhasePayloadState:
+    """Rebuild any phase receipt's payload, v1-v4 (FP-83 C5).
+
+    v4 is an envelope: its embedded evidence payload is rebuilt by exactly the v1/v2/v3 rules in
+    _reconstruct_phase_event_payload, and the actor commitment and custody sequence are rebuilt
+    from the row's live performed_by_driver_id / custody_sequence, so an edited actor fails.
+    """
+    if not _is_actor_envelope(anchored_payload):
+        return await _reconstruct_phase_event_payload(db, event_id, anchored_payload=anchored_payload)
+    inner_contract = anchored_payload.get("evidence")
+    if _is_actor_envelope(inner_contract):
+        raise _UnsupportedPhasePayloadVersion("a v4 envelope cannot wrap another envelope")
+    inner = await _reconstruct_phase_event_payload(db, event_id, anchored_payload=inner_contract)
+    return _with_actor(await _event(db, event_id), inner)
+
+
+async def _event(db: AsyncSession, event_id: uuid.UUID) -> PhaseEvent:
+    event = (await db.execute(select(PhaseEvent).where(PhaseEvent.id == event_id))).scalar_one_or_none()
+    if event is None:
+        raise _PhaseEvidenceMissing("anchored phase event is missing")
+    return event
+
+
+def _with_actor(event: PhaseEvent, inner: _PhasePayloadState) -> _PhasePayloadState:
+    if event.performed_by_driver_id is None or event.custody_sequence is None:
+        raise _PhaseEvidenceMissing("the anchored phase's performing driver is no longer recorded")
+    return _PhasePayloadState(
+        payload=compute_phase_actor_envelope_v4(
+            phase_event_id=event.id, evidence=inner.payload, driver_id=event.performed_by_driver_id,
+            custody_sequence=event.custody_sequence,
+        ),
+        artifacts=inner.artifacts,
+    )
 
 
 async def reconstruct_pending_phase_payload(
@@ -353,4 +423,9 @@ async def reconstruct_pending_phase_payload(
             continue
         if _hash_payload(state.payload) == event.event_hash:
             return state.payload
+        # FP-83 C5: a driver-performed phase was queued as a v4 envelope around this contract.
+        if event.performed_by_driver_id is not None and event.custody_sequence is not None:
+            wrapped = _with_actor(event, state).payload
+            if _hash_payload(wrapped) == event.event_hash:
+                return wrapped
     return None

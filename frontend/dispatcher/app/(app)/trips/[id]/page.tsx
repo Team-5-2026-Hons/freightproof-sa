@@ -7,6 +7,7 @@ import { BackButton } from '@/components/ui/BackButton'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
+import { DriverTransferController, transferActionFor } from '@/components/trips/DriverTransferController'
 import { TripSummary, TRIP_PANELS, type TripPanel } from '@/components/trips/TripSummary'
 import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
 import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView, type TimelineWarning } from '@/components/trips/TripTimeline'
@@ -112,7 +113,9 @@ function TripDetail({ tripId }: { tripId: string }) {
   // A phase link is an evidence view, not a review queue. It must retain every record
   // for that phase when browser history restores an older narrow-filter URL. A selected
   // exception is the same: it may be reviewed already, and "needs review" would hide it.
-  const filter: ExceptionFilter = selectedPhaseId || selectedExceptionId || search.get('exceptions') === 'all' ? 'all' : 'needs_review'
+  const filterParam = search.get('exceptions')
+  const filter: ExceptionFilter = selectedPhaseId || selectedExceptionId || filterParam === 'all' ? 'all'
+    : filterParam === 'reviewed' ? 'reviewed' : 'needs_review'
   useDismissExceptionSelection(selectedExceptionId, () => {
     // Keep the evidence view and its scope; deselection should not add a history entry.
     const suffix = buildTripPanelQuery(search.toString(), { panel, filter, exceptionId: null })
@@ -246,7 +249,10 @@ function TripDetail({ tripId }: { tripId: string }) {
         runs top to bottom beside it. */}
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        {facts && <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} onShowFirstUnreviewed={showFirstUnreviewed} />}
+        {facts && <DriverTransferController trip={trip} onChanged={refetchSilent}>{openTransfer =>
+          <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} onShowFirstUnreviewed={showFirstUnreviewed}
+            transferAction={transferActionFor(trip, openTransfer)} />
+        }</DriverTransferController>}
         <div ref={timelineRef} data-timeline-scroller className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
             view={timelineView} onViewChange={changeTimelineView}

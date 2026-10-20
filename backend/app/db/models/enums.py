@@ -225,6 +225,9 @@ class BlockchainReceiptType(str, enum.Enum):
     EXCEPTION_RAISED    = "exception_raised"
     EXCEPTION_REVIEWED  = "exception_reviewed"
     TRIP_CANCELLED      = "trip_cancelled"
+    # FP-83 C5: a clarification appended to a completed driver substitution. Also the event_type
+    # inside its payload. The substitution itself uses DRIVER_SUBSTITUTION above.
+    DRIVER_SUBSTITUTION_CORRECTED = "driver_substitution_corrected"
 
 
 class SubjectType(str, enum.Enum):
@@ -238,6 +241,9 @@ class SubjectType(str, enum.Enum):
     AUDIT_PACK      = "audit_pack"
     # An EvidenceAnchorEvent id (one raise / review / cancel), never the exception or trip id.
     EVIDENCE_EVENT  = "evidence_event"
+    # FP-83 C5: a completed DriverSubstitution id, and a DriverSubstitutionCorrection id.
+    DRIVER_SUBSTITUTION = "driver_substitution"
+    DRIVER_SUBSTITUTION_CORRECTION = "driver_substitution_correction"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -306,7 +312,8 @@ class ReceiverVerificationTier(str, enum.Enum):
     """How much evidence the check actually produced.
 
     SELFIE_ONLY is presence evidence, not identity evidence: a live face with no document
-    to match against proves a human confirmed, never who they were.
+    to match against proves a human confirmed, never who they were. No longer assigned:
+    the receiver selfie was removed (FP-316). Kept so existing rows still load.
     """
 
     DOCUMENT_AND_FACE = "document_and_face"
@@ -409,6 +416,11 @@ class AuditPackAccessEventType(str, enum.Enum):
     VERIFY_RUN      = "verify_run"
     DENIED_EXPIRED  = "denied_expired"
     DENIED_REVOKED  = "denied_revoked"
+    # FP-291: a link alone no longer opens a pack issued to an email address.
+    CODE_SENT          = "code_sent"
+    CODE_VERIFIED      = "code_verified"
+    DENIED_BAD_CODE    = "denied_bad_code"
+    DENIED_UNVERIFIED  = "denied_unverified"
 
 
 def enum_text(value: enum.Enum | str) -> str:

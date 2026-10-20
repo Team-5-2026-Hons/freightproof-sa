@@ -13,6 +13,7 @@ from app.core.exceptions import PhaseTooEarlyError, TripActivationBlockedError
 from app.db.models.enums import TripStatus
 from app.db.models.trips import Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.substitutions.access import get_current_custody
 from app.orchestration.trips.availability import (
     LIVE_STATUSES, CrewFilter, OccupyingTrip, lock_crew, occupying_trips,
 )
@@ -93,26 +94,40 @@ async def _reject_if_not_due(db: AsyncSession, trip: Trip) -> None:
         )
 
 
+async def lock_trip_crew(db: AsyncSession, trip: Trip) -> tuple[uuid.UUID, tuple[uuid.UUID, ...]]:
+    """Lock the driver now holding the trip and its vehicles; returns (driver_id, trailer_ids).
+
+    Trip lock first (the caller holds it), then the driver, then vehicles in id order: the
+    feature-wide lock order, so activation and a handover on the same driver queue instead of
+    deadlocking. The driver is the CURRENT one: Trip.driver_id is only the original.
+    """
+    driver_id = (await get_current_custody(db, trip=trip)).driver_id
+    trailer_ids = tuple((await db.execute(
+        select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip.id)
+    )).scalars().all())
+    await lock_crew(db, driver_id=driver_id, vehicle_ids=[trip.horse_id, *trailer_ids])
+    return driver_id, trailer_ids
+
+
 async def _claim_crew_for_activation(db: AsyncSession, trip: Trip) -> None:
     """Refuse to start a trip while its driver, horse or a trailer is in use elsewhere (FP-139).
 
     Locks the crew first (after the trip lock _gate_and_load already holds: trip, then crew,
     the order every path uses), so two drivers starting two trips on one horse at the same
-    instant are serialised and the second sees the first one ACTIVE.
+    instant are serialised and the second sees the first one ACTIVE. "The driver" is whoever
+    holds each trip now, so a trip a driver took over counts against them and one they handed
+    away no longer does.
     """
-    trailer_ids = tuple((await db.execute(
-        select(TripTrailer.trailer_id).where(TripTrailer.trip_id == trip.id)
-    )).scalars().all())
-    await lock_crew(db, driver_id=trip.driver_id, vehicle_ids=[trip.horse_id, *trailer_ids])
+    driver_id, trailer_ids = await lock_trip_crew(db, trip)
     crew = CrewFilter(
-        driver_id=trip.driver_id, horse_id=trip.horse_id, trailer_ids=trailer_ids, exclude_trip_id=trip.id,
+        driver_id=driver_id, horse_id=trip.horse_id, trailer_ids=trailer_ids, exclude_trip_id=trip.id,
     )
     others = await occupying_trips(db, organization_id=trip.operator_organization_id, crew=crew)
     await _reject_if_another_trip_underway(db, trip, crew, others)
     # Start-in-order is about one driver's day (spec D10): a horse shared with another driver
     # must not let that driver's unstarted trip block this one.
     await _reject_if_an_earlier_trip_is_due(
-        db, trip, [other.trip for other in others if other.trip.driver_id == trip.driver_id],
+        db, trip, [other.trip for other in others if other.current_driver_id == driver_id],
     )
 
 
@@ -129,7 +144,7 @@ async def _reject_if_another_trip_underway(
     """
     live = [other for other in others if other.trip.status in LIVE_STATUSES]
     for other in live:
-        if other.trip.driver_id == trip.driver_id:
+        if other.current_driver_id == crew.driver_id:
             raise TripActivationBlockedError(other.trip.trip_reference, "another trip is already underway")
     for other in live:
         if other.trip.horse_id == trip.horse_id:
