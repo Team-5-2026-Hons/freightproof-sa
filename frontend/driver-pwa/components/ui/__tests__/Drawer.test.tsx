@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { Drawer } from '../Drawer'
 
 // The panel keeps children mounted and slides off-canvas via CSS transform, so the
@@ -103,7 +103,13 @@ class PointerEventPolyfill extends MouseEvent {
 describe('Drawer as a bottom sheet (audit H9)', () => {
   const SHEET_HEIGHT_PX = 400
 
+  let nowSpy: ReturnType<typeof vi.spyOn>
+
   beforeEach(() => {
+    // Pin the clock: the sheet derives release velocity from performance.now() between
+    // pointer events, so on a loaded machine a slow gap between the synthetic events read
+    // as a flick and the short-drag case dismissed. A frozen clock means "no flick".
+    nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000)
     // @ts-expect-error — installing a polyfill onto the jsdom window
     window.PointerEvent = PointerEventPolyfill
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: SHEET_HEIGHT_PX })
@@ -122,6 +128,10 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }))
+  })
+
+  afterEach(() => {
+    nowSpy.mockRestore()
   })
 
   function dragHandle(): HTMLElement {
