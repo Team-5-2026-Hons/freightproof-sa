@@ -29,6 +29,7 @@ from app.crypto.hashing import (
     PPManifestKey, StopCommitment, compute_journey_lock_hash, compute_trip_canonical_payload_v2,
 )
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
+from app.db.cleanup import rollback_after_error
 from app.db.models.enums import (
     AnchorStatus, BlockchainReceiptType, IdvsStatus, PhaseStatus, SubjectType, TripStatus,
     TripType, VehicleType,
@@ -222,7 +223,8 @@ async def _manifest_conflict(
     if cargo is None or not is_unique_violation(exc) or violated_constraint(exc) != PP_MANIFEST_INDEX:
         return None
     # Rolled back here rather than relying on get_db(), as the other failure paths do.
-    await db.rollback()
+    if not await rollback_after_error(db):
+        raise exc
     winner = await find_live_trip_for_manifest(db, operator_organization_id=operator_org_id, key=cargo.key)
     logger.warning("Lost PP manifest race for %s (org %s)", cargo.key, operator_org_id)
     return PPManifestAlreadyOnTripError(
@@ -241,19 +243,19 @@ async def _sync_cargo_entry(
         return await sync
     except SQLAlchemyError:
         # DB faults are not PP faults — re-raise unchanged so the endpoint's
-        # SQLAlchemyError handler keeps its 500 semantics instead of a misleading 422.
-        await db.rollback()
+        # handler keeps its DB-specific semantics instead of a misleading 422.
+        await rollback_after_error(db)
         raise
     except ConsignmentAlreadyAssignedError:
         # Nor is this a PP fault: the waybill is real and the conflict is ours, so it
         # must not be relabelled as a PP sync failure. Re-raised for the endpoint's 409.
-        await db.rollback()
+        await rollback_after_error(db)
         raise
     except Exception as exc:
         # Explicit rollback keeps the guarantee independent of the session implementation
         # (test overrides don't replicate get_db's rollback-on-exception).
         logger.error("Consignment sync failed for pp_ref=%s: %s", pp_reference, exc)
-        await db.rollback()
+        await rollback_after_error(db)
         raise PPSyncError(pp_reference, str(exc)) from exc
 
 

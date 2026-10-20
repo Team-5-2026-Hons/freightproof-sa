@@ -23,6 +23,7 @@ from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import PhaseSequenceError, ResourceNotFoundError, TripStateError
 from app.core.limits import FLEET_MUTATION
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.session import get_db
 from app.orchestration.phases.override import override_phase
 from app.orchestration.trips.administration import cancel_trip
@@ -60,6 +61,8 @@ async def cancel_trip_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TripStateError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error cancelling trip_id=%s", trip_id)
         raise HTTPException(
@@ -94,6 +97,8 @@ async def override_phase_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (TripStateError, PhaseSequenceError) as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error overriding phase_event_id=%s", phase_event_id)
         raise HTTPException(

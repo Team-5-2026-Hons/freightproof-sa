@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.exceptions import IdempotencyKeyReusedError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, VehicleType
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripTrailer
@@ -55,12 +56,13 @@ async def _driver_report_assessment(
 ) -> None:
     """Attach one optional capture-time comparison to an already-flushed driver report.
 
-    NEVER raises. The report row is the evidence and is already in the session; this
+    The report row is the evidence and is already in the session; this
     is enrichment, bounded to one tracker read of at most
-    _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS, and ANY failure — Pulsit, the vehicle
-    lookup, assessment validation — is logged and leaves `action_location_assessment`
+    _DRIVER_REPORT_TRACKER_TIMEOUT_SECONDS, and optional failures — Pulsit, the vehicle
+    lookup, assessment validation — are logged and leave `action_location_assessment`
     NULL ("not assessed"). A panic report must never be rolled back because the
-    comparison bolted onto it could not be built.
+    comparison bolted onto it could not be built. DB outages still propagate because
+    the transaction cannot persist the report either.
     """
     try:
         device_result = await db.execute(
@@ -97,6 +99,8 @@ async def _driver_report_assessment(
         )
         exc.action_location_assessment = assessment.model_dump(mode="json")
         await db.flush()
+    except DatabaseUnavailableError:
+        raise
     except Exception:
         logger.exception(
             "Driver-report location assessment failed for trip=%s exception=%s — report "
