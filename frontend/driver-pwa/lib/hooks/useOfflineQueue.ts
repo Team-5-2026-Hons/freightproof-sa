@@ -6,13 +6,14 @@ import { raiseException, type RaiseExceptionBody } from '@/lib/api/exceptions'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
-import { ApiError } from '@/lib/api/client'
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
+import { captureActorLease, isActorLeaseCurrent, captureCustody, currentActorId, onCustodyActorChange, type CustodyStamp } from '@/lib/session/custody-context'
 import {
   ExceptionStoreError,
   getExceptionEnvelope,
   listExceptionEnvelopes,
+  quarantineUnattributedEnvelopes,
   removeExceptionEnvelope,
   resetExceptionToPending,
   saveExceptionEnvelope,
@@ -22,58 +23,23 @@ import {
 } from '@/lib/offline/exception-store'
 import type { ExceptionSendOutcome } from '@/lib/offline/exception-sync'
 import {
-  DEFAULT_RATE_LIMIT_RETRY_MS, dataUrlToBlob, sendExceptionReport, tryReportLock, waitReportLock,
+  dataUrlToBlob, sendExceptionReport, tryReportLock, waitReportLock,
 } from '@/lib/offline/exception-sync'
-import { migrateLegacyExceptionEntries, type LegacyExceptionEntry } from '@/lib/offline/legacy-exception-migration'
-
-// Addresses one specific PhaseEvent row via phaseEventId — phaseType alone is ambiguous
-// on a cross-dock plan (unloading can occur more than once).
-interface PhaseQueueEntry {
-  kind: 'phase'
-  id: string
-  tripId: string
-  phaseEventId: string
-  phaseType: PhaseType
-  evidence: PhaseEvidence
-  // Wire idempotency_key — generated once at enqueue (same value as `id`) and never
-  // regenerated on retry, so every replay sends the exact key the first attempt sent.
-  idempotencyKey: string
-  // Captured silently at swipe time and stored with the entry, not re-taken at replay —
-  // a late ping would falsely claim the driver was wherever signal returned.
-  position: DriverPosition | null
-  // Stamped at swipe time and stored with the entry — a replay hours later must report
-  // the original instant, not the flush-time clock, or the backend's skew check misfires.
-  driverCapturedAt: string
-  // Acknowledgement is evidence of the warning the driver saw at the original
-  // attempt. It must travel with the queued capture, never be requested on replay.
-  acknowledgement: LocationWarningAcknowledgement | null
-  enqueuedAt: string
-}
-
-// No separate upload-then-complete sequence: submitCheckpoint already does both.
-interface CheckpointQueueEntry {
-  kind: 'checkpoint'
-  id: string
-  tripId: string
-  evidence: CheckpointEvidence
-  enqueuedAt: string
-}
-
-// Queued as a batch — several fixes from a dead zone, replayed in one call once signal
-// returns. No idempotency key needed: a duplicated ping is just a duplicate trail row.
-interface LocationQueueEntry {
-  kind: 'location'
-  id: string
-  tripId: string
-  pings: LocationPingBody[]
-  enqueuedAt: string
-}
-
-// Exceptions no longer queue here: they live in IndexedDB (lib/offline/exception-store.ts)
-// because their photos are Blobs. The legacy shape stays in the union only so entries
-// written by the previous build are still read, migrated, and — if migration cannot run —
-// left untouched rather than dropped.
-type QueueEntry = PhaseQueueEntry | LegacyExceptionEntry | CheckpointQueueEntry | LocationQueueEntry
+import { migrateLegacyExceptionEntries } from '@/lib/offline/legacy-exception-migration'
+import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
+import {
+  entryStatus,
+  isLegacyException,
+  isSendableEntry,
+  loadQueue,
+  migrateQueueForCustody,
+  saveQueue,
+  updateQueue,
+  type CheckpointQueueEntry,
+  type LocationQueueEntry,
+  type PhaseQueueEntry,
+  type SendableQueueEntry,
+} from '@/lib/offline/queue-storage'
 
 /** A photo captured for an exception that could not be uploaded before it was queued. */
 export interface QueuedExceptionPhoto {
@@ -107,43 +73,28 @@ export type ExceptionSubmitOutcome =
   | { kind: 'not-saved'; photoCount: number }
   | { kind: 'rejected'; reason: string; photoIndex: number | null }
 
-const QUEUE_KEY = 'fp_offline_queue'
-
-function loadQueue(): QueueEntry[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(QUEUE_KEY) : null
-    return raw ? (JSON.parse(raw) as QueueEntry[]) : []
-  } catch {
-    // Corrupted or unreadable queue treated as having nothing pending.
-    return []
-  }
+// FP-83: may this queued capture be sent by whoever is signed in now? Only its own capturer,
+// and only while it is still pending. An entry with no recorded capturer is never sendable:
+// replaying A's evidence with B's token would file it as B's.
+function isSendableNow(entry: SendableQueueEntry, actorId: string | null): boolean {
+  return entryStatus(entry) === 'pending' && entry.actorId != null && entry.actorId === actorId
 }
 
-// Returns whether the write landed, so callers relying on it (a queued exception) can
-// tell "saved for later" from "gone on refresh".
-function saveQueue(entries: QueueEntry[]): boolean {
-  try {
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(entries))
-    return true
-  } catch {
-    // Quota exceeded or storage disabled — still updates in memory, won't survive reload.
-    console.warn(`useOfflineQueue: failed to persist queue for key "${QUEUE_KEY}"`)
-    return false
-  }
-}
-
-async function sendEntry(entry: Exclude<QueueEntry, LegacyExceptionEntry>): Promise<void> {
+async function sendEntry(entry: SendableQueueEntry): Promise<void> {
+  // The custody period stored at capture, never the one current at flush time.
+  const custodySequence = entry.custodySequence ?? null
   if (entry.kind === 'phase') {
     // Same key on every attempt — a replay against an already-resolved phase
     // short-circuits server-side to a 200 instead of duplicating evidence.
     await submitPhase(
       entry.tripId, entry.phaseEventId, entry.phaseType, entry.evidence,
       entry.idempotencyKey, entry.position ?? null, entry.driverCapturedAt, entry.acknowledgement ?? null,
+      custodySequence,
     )
   } else if (entry.kind === 'checkpoint') {
-    await submitCheckpoint(entry.tripId, entry.evidence)
+    await submitCheckpoint(entry.tripId, { ...entry.evidence, custodySequence })
   } else {
-    await recordLocations(entry.tripId, entry.pings)
+    await recordLocations(entry.tripId, entry.pings, custodySequence)
   }
 }
 
@@ -156,10 +107,6 @@ function reportRequestBody(envelope: ExceptionEnvelope, artifactIds: string[]): 
       ? { supporting_artifact_ids: artifactIds, supporting_artifact_id: artifactIds[0] }
       : {}),
   }
-}
-
-function isLegacyException(entry: QueueEntry): entry is LegacyExceptionEntry {
-  return entry.kind === 'exception'
 }
 
 // This queue is read by more than one mounted hook instance (OfflineBanner + the active
@@ -189,15 +136,19 @@ function scheduleRateLimitRetry(delayMs: number): void {
 }
 
 interface QueueStoreState {
-  // Everything waiting to sync: localStorage entries (including exceptions not yet
-  // migrated) plus pending exception reports in IndexedDB.
+  // Everything this driver has waiting to sync: their pending localStorage entries
+  // (including exceptions not yet migrated) plus their pending exception reports.
   length: number
-  // Terminally-dropped entries (excluding 409s) not yet acknowledged by the driver.
-  // Tracked in memory only — no durable localStorage record to recompute from.
+  // Kept for the banner's API. Since FP-83 nothing is dropped any more — a refused entry
+  // is retained for review instead — so this stays 0 unless a future path needs it.
   droppedCount: number
-  // Exception reports the server refused. They are kept, never auto-deleted, and are NOT
-  // part of `length` because they will not retry by themselves.
+  // Captures waiting on the driver: refused by the server (kept, never auto-deleted) or
+  // quarantined because nobody recorded who captured them. NOT part of `length` because
+  // they will not retry by themselves. Reviewed on the retained-evidence screen.
   attentionCount: number
+  // FP-83: captures that belong to another driver account that used this phone. Counted
+  // so the driver knows they exist, never listed in detail and never sent with this login.
+  heldForOtherAccounts: number
 }
 
 type StoreListener = () => void
@@ -208,14 +159,39 @@ const storeListeners = new Set<StoreListener>()
 // (refreshExceptionCounts); everything else in the state is computed synchronously.
 let pendingEnvelopeCount = 0
 let attentionEnvelopeCount = 0
+let otherAccountEnvelopeCount = 0
 // Bumped by the test reset so a refresh that started before it cannot write stale counts
 // into the next test's state.
 let storeEpoch = 0
 
-let storeState: QueueStoreState = { length: loadQueue().length, droppedCount: 0, attentionCount: 0 }
+interface LocalQueueCounts {
+  pending: number
+  attention: number
+  otherAccounts: number
+}
+
+// Splits the localStorage queue by who may act on each entry. Legacy exception entries are
+// counted as pending exactly as before: their own migration decides what they become.
+function localQueueCounts(): LocalQueueCounts {
+  const actorId = currentActorId()
+  const counts: LocalQueueCounts = { pending: 0, attention: 0, otherAccounts: 0 }
+  for (const entry of loadQueue()) {
+    const status = entryStatus(entry)
+    if (status === 'quarantined') counts.attention += 1
+    else if (isLegacyException(entry)) counts.pending += 1
+    else if (isSendableEntry(entry) && entry.actorId !== actorId) counts.otherAccounts += 1
+    else if (status === 'needs-attention') counts.attention += 1
+    else counts.pending += 1
+  }
+  return counts
+}
+
+const EMPTY_STORE_STATE: QueueStoreState = { length: 0, droppedCount: 0, attentionCount: 0, heldForOtherAccounts: 0 }
+
+let storeState: QueueStoreState = EMPTY_STORE_STATE
 
 // Frozen so useSyncExternalStore's SSR hydration snapshot stays referentially stable.
-const SERVER_STORE_SNAPSHOT: QueueStoreState = { length: 0, droppedCount: 0, attentionCount: 0 }
+const SERVER_STORE_SNAPSHOT: QueueStoreState = EMPTY_STORE_STATE
 
 function publishStoreState(patch: Partial<QueueStoreState>): void {
   storeState = { ...storeState, ...patch }
@@ -225,9 +201,11 @@ function publishStoreState(patch: Partial<QueueStoreState>): void {
 // Re-derives every count from where it actually lives, so no caller has to remember to
 // add the IndexedDB share to a localStorage length.
 function publishCounts(patch: Partial<QueueStoreState> = {}): void {
+  const local = localQueueCounts()
   publishStoreState({
-    length: loadQueue().length + pendingEnvelopeCount,
-    attentionCount: attentionEnvelopeCount,
+    length: local.pending + pendingEnvelopeCount,
+    attentionCount: local.attention + attentionEnvelopeCount,
+    heldForOtherAccounts: local.otherAccounts + otherAccountEnvelopeCount,
     ...patch,
   })
 }
@@ -239,8 +217,19 @@ async function refreshExceptionCounts(): Promise<void> {
   try {
     const envelopes = await listExceptionEnvelopes()
     if (epoch !== storeEpoch) return
-    attentionEnvelopeCount = envelopes.filter((e) => e.status === 'needs-attention').length
-    pendingEnvelopeCount = envelopes.length - attentionEnvelopeCount
+    const actorId = currentActorId()
+    let pending = 0
+    let attention = 0
+    let otherAccounts = 0
+    for (const envelope of envelopes) {
+      if (envelope.status === 'quarantined') attention += 1
+      else if (envelope.actorId != null && envelope.actorId !== actorId) otherAccounts += 1
+      else if (envelope.status === 'needs-attention') attention += 1
+      else pending += 1
+    }
+    pendingEnvelopeCount = pending
+    attentionEnvelopeCount = attention
+    otherAccountEnvelopeCount = otherAccounts
   } catch (err) {
     if (epoch !== storeEpoch) return
     if (!(err instanceof ExceptionStoreError) || err.failure !== 'unavailable') {
@@ -263,14 +252,28 @@ function getServerStoreSnapshot(): QueueStoreState {
   return SERVER_STORE_SNAPSHOT
 }
 
+/**
+ * Re-reads every count. For callers that change retained items outside the flush (the review
+ * screen, the late-evidence sender) so every mounted banner sees the change.
+ */
+export function refreshOfflineQueueCounts(): Promise<void> {
+  return refreshExceptionCounts()
+}
+
 // Clears the driver-visible "items could not be synced" notice.
 function dismissDropped(): void {
   publishStoreState({ droppedCount: 0 })
 }
 
-// Counts at module load, so a banner mounted on a fresh launch knows about reports left
-// from the last session without waiting for the first flush.
-if (typeof window !== 'undefined') void refreshExceptionCounts()
+// Migrates and counts at module load, so a banner mounted on a fresh launch knows about
+// reports left from the last session without waiting for the first flush.
+if (typeof window !== 'undefined') {
+  migrateQueueForCustody()
+  void refreshExceptionCounts()
+  // A different (or newly known) signed-in driver changes which captures may send and how
+  // they are counted, so flush and recount the moment it changes.
+  onCustodyActorChange(() => { void flushQueue() })
+}
 
 /**
  * Test-only reset for the module-scope store — `localStorage.clear()` alone can't reset
@@ -282,11 +285,26 @@ export function __resetOfflineQueueStoreForTests(): void {
   storeEpoch += 1
   pendingEnvelopeCount = 0
   attentionEnvelopeCount = 0
-  storeState = { length: loadQueue().length, droppedCount: 0, attentionCount: 0 }
+  otherAccountEnvelopeCount = 0
+  storeState = { ...EMPTY_STORE_STATE, length: loadQueue().length }
 }
 
 // Moves exception reports queued by the previous build out of localStorage. Anything that
 // cannot be moved (store unavailable or full) is left exactly where it was.
+// FP-83: every stored capture must say who took it. Version-1 queue entries and envelopes
+// that do not are quarantined — kept with their bytes, never sent, never reassigned. Both
+// steps are idempotent, so this runs before every flush at almost no cost.
+async function migrateForCustody(): Promise<void> {
+  migrateQueueForCustody()
+  try {
+    await quarantineUnattributedEnvelopes()
+  } catch (err) {
+    if (!(err instanceof ExceptionStoreError) || err.failure !== 'unavailable') {
+      console.warn('useOfflineQueue: could not quarantine unattributed exception reports', err)
+    }
+  }
+}
+
 async function migrateLegacyExceptions(): Promise<void> {
   const { failed } = await migrateLegacyExceptionEntries({
     readLegacy: () => loadQueue().filter(isLegacyException),
@@ -302,6 +320,7 @@ async function migrateLegacyExceptions(): Promise<void> {
 // Sends each pending report independently: one that fails — transiently or terminally —
 // never holds up the ones behind it.
 async function flushExceptionEnvelopes(): Promise<void> {
+  const lease = captureActorLease()
   let envelopes: ExceptionEnvelope[]
   try {
     envelopes = await listExceptionEnvelopes()
@@ -311,8 +330,12 @@ async function flushExceptionEnvelopes(): Promise<void> {
     }
     return
   }
+  const actorId = currentActorId()
   for (const listed of envelopes) {
+    if (lease === null || !isActorLeaseCurrent(lease)) break
     if (listed.status !== 'pending') continue
+    // Only the capturing account sends its own reports (see isSendableNow).
+    if (listed.actorId == null || listed.actorId !== actorId) continue
     // Lock FIRST, then re-read: the list is a snapshot that can be a long upload old, and a
     // page submit may be saving a newer draft of this report. Under the lock what we read is
     // what we send and, on acknowledgement, what we delete.
@@ -344,96 +367,120 @@ async function flushExceptionEnvelopes(): Promise<void> {
 
 async function flushQueue(): Promise<void> {
   if (flushingGlobal) return
+  const lease = captureActorLease()
   flushingGlobal = true
   try {
+    await migrateForCustody()
     await migrateLegacyExceptions()
+    if (lease === null || !isActorLeaseCurrent(lease)) return
     await flushExceptionEnvelopes()
 
     const queue = loadQueue()
-    // IDs this pass finished with — sent, or dropped as unrecoverable. Anything not in
-    // this set (transient failures) stays queued for the next flush.
+    const actorId = currentActorId()
+    // IDs this pass finished with: sent, or proven already recorded. Nothing else is ever
+    // removed — a refusal is retained (below), a transient failure stays queued.
     const disposedIds = new Set<string>()
-    let newlyDropped = 0
+    // Entries the server refused this pass, with why. Kept in place, marked for review.
+    const retained = new Map<string, RetainedAttention>()
 
     // Trips whose phase queue stalled this pass. The backend enforces ledger ordering
-    // (an earlier PENDING phase 409s the next), so a transient failure on one phase
-    // entry must block later phase entries for the same trip from sending out of order.
-    // The stall is deliberately unbounded: on an evidence platform, stuck-but-intact
-    // evidence is safer than evidence sent out of order and silently 409-dropped.
+    // (an earlier PENDING phase 409s the next), so a failure on one phase entry must block
+    // later phase entries for the same trip from sending out of order. The stall is
+    // deliberately unbounded: on an evidence platform, stuck-but-intact evidence is safer
+    // than evidence sent out of order.
     const stalledTripIds = new Set<string>()
 
     for (const entry of queue) {
+      if (!isActorLeaseCurrent(lease)) break
       // A legacy exception that could not be migrated waits for the store; it is never
-      // sent from here and never dropped.
-      if (isLegacyException(entry)) continue
+      // sent from here and never dropped. Unreadable and quarantined entries never send.
+      if (!isSendableEntry(entry) || !isSendableNow(entry, actorId)) continue
       if (entry.kind === 'phase' && stalledTripIds.has(entry.tripId)) continue
 
       try {
         await sendEntry(entry)
         disposedIds.add(entry.id)
       } catch (err) {
-        // A terminal 4xx never succeeds on retry — drop it. A 429 is temporary and stays
-        // queued until Retry-After elapses. status === 0 (no HTTP response at all) is a
-        // transient network failure, not a server rejection, and must stay queued.
-        const isRateLimited = err instanceof ApiError && err.status === 429
-        if (isRateLimited) {
-          scheduleRateLimitRetry(err.retryAfterMs ?? DEFAULT_RATE_LIMIT_RETRY_MS)
-        }
-        const isTerminal4xx = (
-          err instanceof ApiError
-          && err.status >= 400
-          && err.status < 500
-          && !isRateLimited
-        )
-        if (isTerminal4xx) {
+        const failure = classifyLiveWriteFailure(err)
+        if (failure.kind === 'duplicate') {
+          // EVIDENCE_ALREADY_RECORDED for THIS entry's own key: the server holds it, so this
+          // one entry — and only it — is cleared.
           disposedIds.add(entry.id)
-          // A 409 means an earlier attempt already landed — drop silently. Any other
-          // terminal 4xx means evidence is genuinely lost and the driver needs to know.
-          if (err.status !== 409) newlyDropped += 1
-          console.warn(`useOfflineQueue: dropping terminal failure (${err.status}) for queued entry "${entry.id}"`, err.message)
           continue
         }
-        // Transient failure: leave it queued. If this was a phase entry, mark its trip
-        // stalled so later entries for the same trip aren't sent out of order this pass.
+        if (failure.kind === 'retain') {
+          // Every other refusal, 409 included, is kept with its reason. Before FP-83 a 409
+          // was read as "an earlier attempt landed" and silently dropped; now it can mean the
+          // trip was handed over, which would have deleted the driver's evidence.
+          retained.set(entry.id, failure.attention)
+          console.warn(`useOfflineQueue: retained refused entry "${entry.id}" (${failure.attention.status} ${failure.attention.code ?? 'uncoded'})`)
+        } else if (failure.retryAfterMs !== null) {
+          scheduleRateLimitRetry(failure.retryAfterMs)
+        }
         if (entry.kind === 'phase') stalledTripIds.add(entry.tripId)
       }
     }
 
     // Re-read localStorage rather than trusting the pre-flush snapshot: sends above can
     // take up to ~30s, and another mounted instance may have enqueued meanwhile.
-    // Filtering the current stored queue preserves those late arrivals.
-    if (disposedIds.size > 0) {
-      saveQueue(loadQueue().filter((entry) => !disposedIds.has(entry.id)))
+    // Changing the current stored queue preserves those late arrivals.
+    if (disposedIds.size > 0 || retained.size > 0) {
+      updateQueue((entries) => entries
+        .filter((entry) => !disposedIds.has(entry.id))
+        .map((entry) => {
+          const attention = retained.get(entry.id)
+          return attention !== undefined && isSendableEntry(entry)
+            ? { ...entry, status: 'needs-attention' as const, attention }
+            : entry
+        }))
     }
     await refreshExceptionCounts()
-    publishCounts({ droppedCount: storeState.droppedCount + newlyDropped })
     if (storeState.length === 0) clearRateLimitRetry()
   } finally {
     flushingGlobal = false
   }
 }
 
-// The driver's "Try again": every report the server refused goes back to pending and the
-// queue flushes. The same clientReportId is kept, so nothing is duplicated server-side.
+// The driver's "Try again": every capture of theirs the server refused goes back to pending
+// and the queue flushes. The same keys are kept, so nothing is duplicated server-side.
+// Custody conflicts are NOT retried live — the trip has moved on from this capture's period,
+// so a live resend can only be refused again; those go through late evidence instead.
 async function retryAttention(): Promise<void> {
+  const actorId = currentActorId()
   try {
     const envelopes = await listExceptionEnvelopes()
     for (const envelope of envelopes) {
-      if (envelope.status === 'needs-attention') await resetExceptionToPending(envelope.clientReportId)
+      if (envelope.status !== 'needs-attention' || envelope.actorId !== actorId) continue
+      if (envelope.attention && isCustodyConflict(envelope.attention)) continue
+      await resetExceptionToPending(envelope.clientReportId)
     }
   } catch (err) {
     console.warn('useOfflineQueue: could not reset reports for retry', err)
   }
+  updateQueue((entries) => entries.map((entry) => (
+    isSendableEntry(entry)
+      && entry.status === 'needs-attention'
+      && entry.actorId === actorId
+      && !(entry.attention && isCustodyConflict(entry.attention))
+      ? { ...entry, status: 'pending' as const, attention: null }
+      : entry
+  )))
   await refreshExceptionCounts()
   await flushQueue()
 }
 
-// The driver's explicit "Dismiss" — the only way a refused report is ever deleted.
+// The driver's explicit, two-tap "Dismiss" in the banner — the only bulk way a refused report
+// is ever deleted. Limited to this driver's own refused reports: a quarantined report or one
+// another account captured is never deleted from here (the review screen handles those one
+// at a time, with its own warning).
 async function dismissAttention(): Promise<void> {
+  const actorId = currentActorId()
   try {
     const envelopes = await listExceptionEnvelopes()
     for (const envelope of envelopes) {
-      if (envelope.status === 'needs-attention') await removeExceptionEnvelope(envelope.clientReportId)
+      if (envelope.status === 'needs-attention' && envelope.actorId === actorId) {
+        await removeExceptionEnvelope(envelope.clientReportId)
+      }
     }
   } catch (err) {
     console.warn('useOfflineQueue: could not dismiss reports', err)
@@ -441,8 +488,15 @@ async function dismissAttention(): Promise<void> {
   await refreshExceptionCounts()
 }
 
+// FP-83: the capture-time stamp for a queued item. A caller that already took one at the
+// driver's action passes it; otherwise it is taken now, at enqueue.
+function stampFor(tripId: string, custody: CustodyStamp | undefined): Pick<SendableQueueEntry, 'actorId' | 'custodySequence' | 'status'> {
+  const stamp = custody ?? captureCustody(tripId)
+  return { actorId: stamp.actorId, custodySequence: stamp.custodySequence, status: 'pending' }
+}
+
 export function useOfflineQueue() {
-  const { length: queueLength, droppedCount, attentionCount } = useSyncExternalStore(
+  const { length: queueLength, droppedCount, attentionCount, heldForOtherAccounts } = useSyncExternalStore(
     subscribeToStore,
     getStoreSnapshot,
     getServerStoreSnapshot,
@@ -453,7 +507,11 @@ export function useOfflineQueue() {
       tripId: string, phaseEventId: string, phaseType: PhaseType, evidence: PhaseEvidence,
       position: DriverPosition | null, driverCapturedAt: string,
       acknowledgement: LocationWarningAcknowledgement | null = null,
-    ) => {
+      custody?: CustodyStamp,
+      // FP-83: set when the server already refused this capture on a custody conflict, so it
+      // is stored for review rather than queued to send.
+      attention: RetainedAttention | null = null,
+    ): boolean => {
       // Generated once, reused as both the queue id and the wire idempotency_key, so a
       // resend of this entry is indistinguishable server-side from the original attempt.
       const id = crypto.randomUUID()
@@ -461,19 +519,23 @@ export function useOfflineQueue() {
         kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
         position, driverCapturedAt, acknowledgement: acknowledgement ?? null,
         enqueuedAt: new Date().toISOString(),
+        ...stampFor(tripId, custody),
+        ...(attention !== null ? { status: 'needs-attention' as const, attention } : {}),
       }
       if (saveQueue([...loadQueue(), entry])) {
         publishCounts()
-        return
+        return true
       }
 
       // Write refused — almost always the ~5MB localStorage quota. A loading's linehaul PDF
       // wraps the same JPEG as the scan, so it roughly doubles the entry; the scan is the
       // evidence, so retry without the PDF image. Any id its early upload produced stays.
+      let persisted = false
       if ('linehaulPdfDataUrl' in evidence && evidence.linehaulPdfDataUrl) {
-        saveQueue([...loadQueue(), { ...entry, evidence: { ...evidence, linehaulPdfDataUrl: null } }])
+        persisted = saveQueue([...loadQueue(), { ...entry, evidence: { ...evidence, linehaulPdfDataUrl: null } }])
       }
       publishCounts()
+      return persisted
     },
     [],
   )
@@ -483,6 +545,7 @@ export function useOfflineQueue() {
       // Generated once, reused as the wire client_report_id on every resend of this report.
       const clientReportId = body.client_report_id ?? crypto.randomUUID()
       const now = new Date().toISOString()
+      const stamp = captureCustody(tripId)
       // Photo ids live on the photo records, never in the body: the sender fills them in
       // as each upload lands.
       const {
@@ -508,11 +571,19 @@ export function useOfflineQueue() {
           await saveExceptionEnvelope({
             clientReportId,
             tripId,
-            body: { ...reportBody, client_report_id: clientReportId },
+            body: {
+              ...reportBody,
+              client_report_id: clientReportId,
+              // The caller's own capture-time stamp wins; otherwise it is taken now.
+              ...(reportBody.custody_sequence === undefined && stamp.custodySequence !== null
+                ? { custody_sequence: stamp.custodySequence }
+                : {}),
+            },
             photos: records,
             status: 'pending',
             attentionReason: null,
             attentionPhotoId: null,
+            actorId: stamp.actorId,
             createdAt: now,
             updatedAt: now,
           })
@@ -536,6 +607,7 @@ export function useOfflineQueue() {
       post: (artifactIds: string[]) => Promise<unknown>,
       onProgress?: (uploaded: number, total: number) => void,
     ): Promise<ExceptionSubmitOutcome> => {
+      const lease = captureActorLease()
       const now = new Date().toISOString()
       const photos: ExceptionPhotoRecord[] = []
       for (const [index, photo] of draft.photos.entries()) {
@@ -553,14 +625,18 @@ export function useOfflineQueue() {
           return { kind: 'rejected', reason: UNREADABLE_PHOTO_REASON, photoIndex: index }
         }
       }
+      const stamp = captureCustody(draft.tripId)
       let envelope: ExceptionEnvelope = {
         clientReportId: draft.clientReportId,
         tripId: draft.tripId,
-        body: draft.body,
+        body: draft.body.custody_sequence === undefined && stamp.custodySequence !== null
+          ? { ...draft.body, custody_sequence: stamp.custodySequence }
+          : draft.body,
         photos,
         status: 'pending',
         attentionReason: null,
         attentionPhotoId: null,
+        actorId: stamp.actorId,
         createdAt: now,
         updatedAt: now,
       }
@@ -585,7 +661,11 @@ export function useOfflineQueue() {
           durable = false
           console.warn('useOfflineQueue: exception report could not be stored; sending without a saved copy', err)
         }
-        outcome = await sendExceptionReport(envelope, { durable, lockHeld: true, post, onProgress })
+        // Saving may wait behind an earlier send and IndexedDB. Do not reacquire a
+        // returned A account as though this interrupted submission were a new action.
+        outcome = lease !== null && isActorLeaseCurrent(lease)
+          ? await sendExceptionReport(envelope, { durable, lockHeld: true, post, onProgress })
+          : { kind: 'not-yours' }
       } finally {
         release()
       }
@@ -603,16 +683,25 @@ export function useOfflineQueue() {
           return durable ? { kind: 'saved-for-later' } : { kind: 'not-saved', photoCount: draft.photos.length }
         case 'busy':
           return durable ? { kind: 'saved-for-later' } : { kind: 'not-saved', photoCount: draft.photos.length }
+        case 'not-yours':
+          // Unreachable for a fresh draft (it was stamped with the signed-in actor above);
+          // reported as saved because the stored copy is kept for its own account.
+          return durable ? { kind: 'saved-for-later' } : { kind: 'not-saved', photoCount: draft.photos.length }
       }
     },
     [],
   )
 
   const enqueueCheckpoint = useCallback(
-    (tripId: string, evidence: CheckpointEvidence) => {
+    (tripId: string, evidence: CheckpointEvidence, attention: RetainedAttention | null = null) => {
       const entry: CheckpointQueueEntry = {
         kind: 'checkpoint', id: crypto.randomUUID(), tripId, evidence,
         enqueuedAt: new Date().toISOString(),
+        // The evidence's own stamp (taken when the driver tapped) wins over enqueue time.
+        ...stampFor(tripId, evidence.custodySequence !== undefined
+          ? { actorId: currentActorId(), custodySequence: evidence.custodySequence }
+          : undefined),
+        ...(attention !== null ? { status: 'needs-attention' as const, attention } : {}),
       }
       saveQueue([...loadQueue(), entry])
       publishCounts()
@@ -621,10 +710,12 @@ export function useOfflineQueue() {
   )
 
   const enqueueLocation = useCallback(
-    (tripId: string, pings: LocationPingBody[]) => {
+    (tripId: string, pings: LocationPingBody[], custody?: CustodyStamp, attention: RetainedAttention | null = null) => {
       const entry: LocationQueueEntry = {
         kind: 'location', id: crypto.randomUUID(), tripId, pings,
         enqueuedAt: new Date().toISOString(),
+        ...stampFor(tripId, custody),
+        ...(attention !== null ? { status: 'needs-attention' as const, attention } : {}),
       }
       saveQueue([...loadQueue(), entry])
       publishCounts()
@@ -653,7 +744,7 @@ export function useOfflineQueue() {
   }, [flush])
 
   return {
-    queueLength, droppedCount, dismissDropped, attentionCount, retryAttention, dismissAttention,
+    queueLength, droppedCount, dismissDropped, attentionCount, heldForOtherAccounts, retryAttention, dismissAttention,
     enqueuePhase, enqueueException, submitExceptionReport, enqueueCheckpoint, enqueueLocation, flush,
   }
 }

@@ -33,6 +33,7 @@ _RLS_FROM_OWN_MIGRATION = frozenset({
     "driver_substitution_confirmation_artifacts", "driver_substitution_notices",
     "late_driver_evidence", "late_driver_evidence_artifacts",
     "driver_substitution_corrections", "driver_substitution_operations",
+    "driver_substitution_uploads",  # tim_dsub_uploads
 })
 # Alembic's own bookkeeping table: not a model, but just as exposed.
 _NON_MODEL_TABLES = frozenset({"alembic_version"})

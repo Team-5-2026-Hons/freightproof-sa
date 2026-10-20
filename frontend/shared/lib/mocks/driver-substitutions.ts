@@ -42,7 +42,7 @@ import type {
   SubstitutionErrorCode,
   SubstitutionErrorResponse,
   SubstitutionNoticeRead,
-  SubstitutionRequestRead,
+  SubstitutionRequestRead, SubstitutionRole,
   VehicleRef,
 } from '../types/driver-substitution'
 import { SUBSTITUTION_ERROR_STATUS } from '../types/driver-substitution'
@@ -659,6 +659,10 @@ export const substitutionRequestBodyFixtures = {
 export const substitutionFixturePack = {
   noSubstitution,
   outgoingPending,
+  immediatePending: { ...outgoingPending, exchange: null, expected_at: null, is_planned: null,
+    request_format: 'immediate_v2' as const, confirmation_policy: 'incoming_acceptance_v2' as const,
+    required_confirmation_roles: ['incoming'] as SubstitutionRole[], reservation_start_at: T.arranged,
+    missing_confirmations: ['incoming'] as SubstitutionRole[], permitted_actions: [] },
   incomingPendingNoActiveTrip: { active_trip: null, pending: [incomingPending] },
   oneConfirmation,
   normalCompleted,

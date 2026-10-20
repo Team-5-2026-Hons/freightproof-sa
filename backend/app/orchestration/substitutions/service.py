@@ -35,25 +35,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import (
     IdempotencyKeyReusedError, IdentityAttestationForbiddenError, IdentityNotVerifiedError, IncomingDriverInactiveError,
     IncomingDriverUnavailableError, LicenceInvalidError, ResourceNotFoundError, SubstitutionError,
-    SubstitutionInvalidError, SubstitutionNotPendingError, SubstitutionVersionChangedError, TripStateError,
+    SubstitutionInvalidError, SubstitutionNotPendingError, SubstitutionsDisabledError, SubstitutionVersionChangedError,
+    TripStateError,
 )
 from app.db.models.driver_substitutions import (
     DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionCorrection,
     DriverSubstitutionOperation, DriverSubstitutionRequest,
 )
-from app.db.models.enums import AnchorStatus, DispatcherRole, IdvsStatus, TripStatus, TripType
-from app.db.models.evidence import EvidenceArtifact
+from app.db.models.enums import AnchorStatus, DispatcherRole, IdvsStatus, TripStatus
 from app.db.models.people import Driver
 from app.db.models.trips import DriverSubstitution, Trip
+from app.blockchain.anchor_service import compute_payload_hash
+from app.core.config import settings
+from app.orchestration.substitutions import anchors, canonical, capture_assessment
 from app.orchestration.substitutions.access import get_current_custody, lock_trip, lock_trip_statement
-from app.orchestration.substitutions.eligibility import first_completion_blocker, require_arrangeable
+from app.orchestration.substitutions.eligibility import ArrangementTiming, first_completion_blocker, require_arrangeable
 from app.orchestration.substitutions.notices import notify_parties
+from app.orchestration.substitutions.seal_comparison import record_seal_findings, record_incoming_seal_findings
+from app.orchestration.substitutions.capture_validation import validate_capture as _validate_capture
 from app.orchestration.substitutions.termination import cancel_request
-from app.orchestration.substitutions.request_read import Viewer, build_request_read, trip_vehicle_ids
+from app.orchestration.substitutions.request_read import Viewer, build_request_read, trip_vehicle_ids, required_confirmation_roles
 from app.orchestration.trips.availability import LIVE_STATUSES, lock_crew_set
 from app.schemas.driver_substitutions import (
-    ArrangeSubstitutionRequest, CancelSubstitutionRequest, CompleteSubstitutionRequest, ConfirmSubstitutionRequest,
-    CorrectSubstitutionRequest, ReplaceSubstitutionRequest, SubstitutionCompletionBlocker,
+    ArrangeSubstitutionRequest, ArrangeImmediateSubstitutionRequest, ReplaceImmediateSubstitutionRequest, ConfirmSubstitutionObservationRequest, IMMEDIATE_V2, CancelSubstitutionRequest, CompleteSubstitutionRequest, ConfirmSubstitutionRequest,
+    CorrectSubstitutionRequest, ReplaceSubstitutionRequest, SealCheck, SubstitutionCompletionBlocker,
     SubstitutionCompletionMode, SubstitutionNoticeKind, SubstitutionCorrectionRead, SubstitutionRequestRead, SubstitutionRole, SubstitutionState,
 )
 from app.schemas.people import DriverRead, UserRead
@@ -132,11 +137,12 @@ async def find_replay(db: AsyncSession, key: OperationKey, *, result_type: type[
 
 def record_operation(
     db: AsyncSession, key: OperationKey, *, request_id: uuid.UUID | None, result: BaseModel,
+    late_evidence_id: uuid.UUID | None = None,
 ) -> None:
     db.add(DriverSubstitutionOperation(
         actor_user_id=key.actor_user_id, actor_driver_id=key.actor_driver_id, action=key.action,
         client_request_id=key.client_request_id, body_digest=key.digest, request_id=request_id,
-        result_json=result.model_dump(mode="json"),
+        late_evidence_id=late_evidence_id, result_json=result.model_dump(mode="json"),
     ))
 
 
@@ -173,6 +179,14 @@ def require_pending_at(request: DriverSubstitutionRequest, expected_version: int
         raise SubstitutionVersionChangedError(request_id=request.id, current_version=request.version)
 
 
+def require_new_arrangements_enabled() -> None:
+    """The DRIVER_SUBSTITUTIONS_ENABLED gate. Only new arrangements and replacements: called after
+    the exact-replay check, so an already accepted arrangement still returns its result, and never
+    on confirm/complete/cancel/correct, which must keep working while the flag is off."""
+    if not settings.DRIVER_SUBSTITUTIONS_ENABLED:
+        raise SubstitutionsDisabledError()
+
+
 def require_live(trip: Trip, *, action: str) -> None:
     if TripStatus(trip.status) not in LIVE_STATUSES:
         raise TripStateError(current_status=TripStatus(trip.status).value, attempted_action=action)
@@ -195,7 +209,7 @@ def viewer_for(actor: UserRead) -> Viewer:
 
 async def _checked_incoming(
     db: AsyncSession, *, trip: Trip, outgoing_driver_id: uuid.UUID,
-    fields: ArrangeSubstitutionRequest | ReplaceSubstitutionRequest, now: datetime,
+    fields: ArrangeSubstitutionRequest | ReplaceSubstitutionRequest | ArrangeImmediateSubstitutionRequest | ReplaceImmediateSubstitutionRequest, now: datetime,
 ) -> Driver:
     """The incoming driver, after the tenant, difference, crew-lock and eligibility checks.
 
@@ -212,19 +226,28 @@ async def _checked_incoming(
 
     await lock_crew_set(db, driver_ids=[outgoing_driver_id, incoming.id], vehicle_ids=await trip_vehicle_ids(db, trip))
     await db.refresh(incoming)
-    await require_arrangeable(db, trip=trip, incoming=incoming, expected_at=fields.expected_at, now=now)
+    await require_arrangeable(
+        db, trip=trip, incoming=incoming, timing=ArrangementTiming(expected_at=fields.expected_at if isinstance(fields, (ArrangeSubstitutionRequest, ReplaceSubstitutionRequest)) else None, now=now,
+        request_format=IMMEDIATE_V2 if isinstance(fields, ArrangeImmediateSubstitutionRequest) else "planned_v1",
+        reservation_start_at=now if isinstance(fields, ArrangeImmediateSubstitutionRequest) else None),
+    )
     return incoming
 
 
 def _new_request(
-    *, trip: Trip, outgoing_driver_id: uuid.UUID, incoming: Driver, actor: UserRead,
-    fields: ArrangeSubstitutionRequest | ReplaceSubstitutionRequest,
+    *, trip: Trip, outgoing_driver_id: uuid.UUID, actor: UserRead,
+    fields: ArrangeSubstitutionRequest | ReplaceSubstitutionRequest | ArrangeImmediateSubstitutionRequest | ReplaceImmediateSubstitutionRequest, now: datetime,
 ) -> DriverSubstitutionRequest:
+    immediate = isinstance(fields, ArrangeImmediateSubstitutionRequest)
+    legacy = fields if isinstance(fields, (ArrangeSubstitutionRequest, ReplaceSubstitutionRequest)) else None
     return DriverSubstitutionRequest(
-        id=uuid.uuid4(), trip_id=trip.id, outgoing_driver_id=outgoing_driver_id, incoming_driver_id=incoming.id,
-        exchange_label=fields.exchange.label, exchange_latitude=Decimal(str(fields.exchange.latitude)),
-        exchange_longitude=Decimal(str(fields.exchange.longitude)), exchange_instructions=fields.exchange.instructions,
-        expected_at=fields.expected_at, reason=fields.reason, is_planned=fields.is_planned,
+        id=uuid.uuid4(), trip_id=trip.id, outgoing_driver_id=outgoing_driver_id, incoming_driver_id=fields.incoming_driver_id,
+        request_format=IMMEDIATE_V2 if immediate else "planned_v1", reservation_start_at=now if immediate else None,
+        exchange_label=legacy.exchange.label if legacy else None,
+        exchange_latitude=Decimal(str(legacy.exchange.latitude)) if legacy else None,
+        exchange_longitude=Decimal(str(legacy.exchange.longitude)) if legacy else None,
+        exchange_instructions=legacy.exchange.instructions if legacy else None,
+        expected_at=legacy.expected_at if legacy else None, reason=fields.reason, is_planned=legacy.is_planned if legacy else None,
         arranged_by_user_id=actor.id, version=1, state=SubstitutionState.PENDING.value,
     )
 
@@ -233,7 +256,7 @@ def _new_request(
 
 
 async def arrange_substitution(
-    db: AsyncSession, *, trip_id: uuid.UUID, actor: UserRead, payload: ArrangeSubstitutionRequest,
+    db: AsyncSession, *, trip_id: uuid.UUID, actor: UserRead, payload: ArrangeSubstitutionRequest | ArrangeImmediateSubstitutionRequest,
 ) -> SubstitutionRequestRead:
     """A dispatcher of the trip's organisation arranges for another driver to take it over.
 
@@ -250,13 +273,14 @@ async def arrange_substitution(
     if replay is not None:
         return replay
 
+    require_new_arrangements_enabled()
     require_live(trip, action="arrange a driver handover")
     outgoing_driver_id = (await get_current_custody(db, trip=trip)).driver_id
     await _refuse_if_pending(db, trip)
     now = utcnow()
-    incoming = await _checked_incoming(db, trip=trip, outgoing_driver_id=outgoing_driver_id, fields=payload, now=now)
+    await _checked_incoming(db, trip=trip, outgoing_driver_id=outgoing_driver_id, fields=payload, now=now)
 
-    request = _new_request(trip=trip, outgoing_driver_id=outgoing_driver_id, incoming=incoming, actor=actor, fields=payload)
+    request = _new_request(trip=trip, outgoing_driver_id=outgoing_driver_id, actor=actor, fields=payload, now=now)
     db.add(request)
     await db.flush()
     await notify_parties(db, request=request, kind=SubstitutionNoticeKind.ARRANGED)
@@ -294,7 +318,7 @@ async def cancel_substitution(
 
 
 async def replace_substitution(
-    db: AsyncSession, *, trip_id: uuid.UUID, request_id: uuid.UUID, actor: UserRead, payload: ReplaceSubstitutionRequest,
+    db: AsyncSession, *, trip_id: uuid.UUID, request_id: uuid.UUID, actor: UserRead, payload: ReplaceSubstitutionRequest | ReplaceImmediateSubstitutionRequest,
 ) -> SubstitutionRequestRead:
     """Cancel the pending request and create a fresh one in the same transaction.
 
@@ -311,17 +335,18 @@ async def replace_substitution(
     if replay is not None:
         return replay
 
+    require_new_arrangements_enabled()
     old = await _load_request(db, trip_id=trip_id, request_id=request_id)
     require_pending_at(old, payload.expected_version)
     require_live(trip, action="replace a driver handover")
     now = utcnow()
     # Checked before anything is changed, so an ineligible replacement leaves the old one pending.
-    incoming = await _checked_incoming(db, trip=trip, outgoing_driver_id=old.outgoing_driver_id, fields=payload, now=now)
+    await _checked_incoming(db, trip=trip, outgoing_driver_id=old.outgoing_driver_id, fields=payload, now=now)
 
     cancel_request(old, reason=payload.replacement_reason, now=now)
     # The old row must stop being pending before the new one exists: one pending per trip.
     await db.flush()
-    new = _new_request(trip=trip, outgoing_driver_id=old.outgoing_driver_id, incoming=incoming, actor=actor, fields=payload)
+    new = _new_request(trip=trip, outgoing_driver_id=old.outgoing_driver_id, actor=actor, fields=payload, now=now)
     db.add(new)
     await db.flush()
     old.replacement_request_id = new.id
@@ -338,7 +363,7 @@ async def replace_substitution(
 # ── confirm / complete ───────────────────────────────────────────────────────
 
 
-async def _lock_crew_and_request(db: AsyncSession, *, trip: Trip, request_id: uuid.UUID) -> DriverSubstitutionRequest:
+async def lock_crew_and_request(db: AsyncSession, *, trip: Trip, request_id: uuid.UUID) -> DriverSubstitutionRequest:
     """Take the crew locks then the request lock, after the caller's trip lock.
 
     The driver ids are read without a lock first (they never change on a request), because the
@@ -364,46 +389,6 @@ async def _require_outgoing_still_holds(db: AsyncSession, *, trip: Trip, request
     if custody.driver_id != request.outgoing_driver_id:
         raise SubstitutionNotPendingError(request_id=request.id, current_version=request.version)
     return custody.sequence
-
-
-async def _validate_capture(
-    db: AsyncSession, *, trip: Trip, driver_id: uuid.UUID, payload: ConfirmSubstitutionRequest,
-) -> None:
-    """Refuse a capture that does not describe this trip's vehicles, seals and the caller's photos.
-
-    Contract rules: both drivers cover the complete assigned horse/trailer set; one seal check
-    per applicable vehicle (each trailer, or the horse when there are none); "not applicable" is
-    an empty-leg answer only; every cited photo is the confirming driver's own, on this trip,
-    and not already backing another capture. Ownership of the upload itself is C4's.
-    """
-    assigned = await trip_vehicle_ids(db, trip)
-    if set(payload.confirmed_vehicle_ids) != set(assigned):
-        raise SubstitutionInvalidError("The capture must cover exactly the trip's horse and trailers.")
-    trailers = assigned[1:]
-    applicable = set(trailers) if trailers else {trip.horse_id}
-    if {check.vehicle_id for check in payload.seal_checks} != applicable:
-        raise SubstitutionInvalidError("Each trailer (or the horse, when there is no trailer) needs one seal check.")
-    if trip.trip_type != TripType.EMPTY_LEG.value and any(
-        check.condition.value == "not_applicable" for check in payload.seal_checks
-    ):
-        raise SubstitutionInvalidError("A loaded trip's seals must be read; 'not applicable' is for an empty leg.")
-
-    photo_ids = [photo for check in payload.seal_checks for photo in check.photo_artifact_ids]
-    if len(set(photo_ids)) != len(photo_ids):
-        raise SubstitutionInvalidError("A photo can back only one seal check.")
-    if photo_ids:
-        owned = set((await db.execute(
-            select(EvidenceArtifact.id).where(
-                EvidenceArtifact.id.in_(photo_ids), EvidenceArtifact.trip_id == trip.id,
-                EvidenceArtifact.captured_by_driver_id == driver_id,
-            )
-        )).scalars())
-        reused = (await db.execute(
-            select(DriverSubstitutionConfirmationArtifact.artifact_id)
-            .where(DriverSubstitutionConfirmationArtifact.artifact_id.in_(photo_ids)).limit(1)
-        )).first()
-        if owned != set(photo_ids) or reused is not None:
-            raise SubstitutionInvalidError("A cited photo is not yours, is not on this trip, or backs another capture.")
 
 
 @dataclass(frozen=True)
@@ -453,12 +438,15 @@ async def _complete(
     request.state = SubstitutionState.COMPLETED.value
     request.terminal_at = facts.now
     await db.flush()
+    # C5: the commitment is frozen with the completion, atomically; its anchor is queued for
+    # after the outer commit. Anchoring never conditions the transfer itself.
+    await anchors.freeze_substitution(db, row)
     await notify_parties(db, request=request, kind=SubstitutionNoticeKind.COMPLETED)
     return row
 
 
 async def confirm_substitution(
-    db: AsyncSession, *, trip_id: uuid.UUID, request_id: uuid.UUID, actor: DriverRead, payload: ConfirmSubstitutionRequest,
+    db: AsyncSession, *, trip_id: uuid.UUID, request_id: uuid.UUID, actor: DriverRead, payload: ConfirmSubstitutionRequest | ConfirmSubstitutionObservationRequest,
 ) -> SubstitutionRequestRead:
     """One of the two drivers records their capture; the last valid one completes the handover.
 
@@ -467,6 +455,9 @@ async def confirm_substitution(
     completion is blocked (account, licence, availability, identity) the response is the PENDING
     request with `completion_blocked_by`, and ownership stays with the outgoing driver until a
     later eligible completion.
+
+    Each capture also gets its own location assessment, and the second one compares both drivers'
+    seal readings (CP4). Those findings are evidence only: they never block or alter completion.
     """
     named = (await db.execute(
         select(DriverSubstitutionRequest.outgoing_driver_id, DriverSubstitutionRequest.incoming_driver_id)
@@ -475,8 +466,11 @@ async def confirm_substitution(
     if named is None or actor.id not in (named.outgoing_driver_id, named.incoming_driver_id):
         raise ResourceNotFoundError("DriverSubstitutionRequest", str(request_id))
 
+    # Telemetry before any lock (capture_assessment's module docstring). An exact replay pays for
+    # one wasted read rather than the lookup moving ahead of the lock that makes it safe.
+    horse_fix = await capture_assessment.read_horse_fix(db, trip_id=trip_id)
     trip = await lock_trip(db, trip_id=trip_id)
-    request = await _lock_crew_and_request(db, trip=trip, request_id=request_id)
+    request = await lock_crew_and_request(db, trip=trip, request_id=request_id)
     key = OperationKey(
         action=ACTION_CONFIRM, client_request_id=payload.client_request_id, actor_driver_id=actor.id,
         digest=body_digest(trip_id, request_id, body=payload),
@@ -489,19 +483,24 @@ async def confirm_substitution(
     require_live(trip, action="confirm a driver handover")
     await _require_outgoing_still_holds(db, trip=trip, request=request)
     role = SubstitutionRole.OUTGOING if actor.id == request.outgoing_driver_id else SubstitutionRole.INCOMING
+    required = required_confirmation_roles(request.request_format)
     saved_roles = set((await db.execute(
         select(DriverSubstitutionConfirmation.role).where(DriverSubstitutionConfirmation.request_id == request.id)
     )).scalars())
+    if role not in required:
+        raise SubstitutionInvalidError("Outgoing driver is notified only; no confirmation is requested.")
     if role.value in saved_roles:
         # One immutable capture per role: the client's copy is behind, so it refetches.
         raise SubstitutionVersionChangedError(request_id=request.id, current_version=request.version)
-    await _validate_capture(db, trip=trip, driver_id=actor.id, payload=payload)
+    await _validate_capture(db, trip=trip, request=request, role=role, payload=payload)
 
     now = utcnow()
     confirmation = DriverSubstitutionConfirmation(
         id=uuid.uuid4(), request_id=request.id, role=role.value, driver_id=actor.id, captured_at=payload.captured_at,
         received_at=now, latitude=_decimal(payload.latitude), longitude=_decimal(payload.longitude),
         accuracy_metres=_decimal(payload.accuracy_metres),
+        location_observed_at=payload.location_observed_at if isinstance(payload, ConfirmSubstitutionObservationRequest) else None,
+        location_unavailable_reason=payload.location_unavailable_reason if isinstance(payload, ConfirmSubstitutionObservationRequest) else None,
         confirmed_vehicle_ids=[str(vehicle_id) for vehicle_id in payload.confirmed_vehicle_ids],
         seal_checks=[check.model_dump(mode="json") for check in payload.seal_checks],
         discrepancy_note=payload.discrepancy_note,
@@ -517,10 +516,14 @@ async def confirm_substitution(
             position += 1
     request.version += 1
     await db.flush()
+    await capture_assessment.record_capture_assessment(
+        db, trip=trip, confirmation=confirmation, horse_fix=horse_fix, evaluated_at=now,
+    )
 
-    if len(saved_roles) + 1 == len(SubstitutionRole):
-        incoming = await db.get(Driver, request.incoming_driver_id)
-        await db.refresh(incoming)
+    ready = {r.value for r in required}.issubset(saved_roles | {role.value})
+    await _record_confirmation_seals(db, trip, request, confirmation, ready)
+    if ready:
+        incoming = await _fresh_incoming(db, request)
         blocker = await first_completion_blocker(db, trip=trip, incoming=incoming, now=now, identity_attested=False)
         if blocker is None:
             await _complete(db, trip=trip, request=request, facts=CompletionFacts(
@@ -531,6 +534,46 @@ async def confirm_substitution(
     record_operation(db, key, request_id=request.id, result=result)
     await db.flush()
     return result
+
+
+async def _fresh_incoming(db: AsyncSession, request: DriverSubstitutionRequest) -> Driver:
+    """The incoming driver as stored now (refreshed: eligibility is judged on current facts).
+    The FK guarantees the row exists, so a miss is corruption and surfaces as not found."""
+    incoming = await db.get(Driver, request.incoming_driver_id)
+    if incoming is None:
+        raise ResourceNotFoundError("Driver", str(request.incoming_driver_id))
+    await db.refresh(incoming)
+    return incoming
+
+
+async def _record_confirmation_seals(
+    db: AsyncSession, trip: Trip, request: DriverSubstitutionRequest,
+    confirmation: DriverSubstitutionConfirmation, ready: bool,
+) -> None:
+    if request.request_format == IMMEDIATE_V2:
+        await record_incoming_seal_findings(db, trip=trip, confirmation_id=confirmation.id,
+            incoming=[SealCheck.model_validate(check) for check in confirmation.seal_checks])
+    elif ready:
+        await _compare_seals(db, trip=trip, request=request, second=confirmation)
+
+
+async def _compare_seals(
+    db: AsyncSession, *, trip: Trip, request: DriverSubstitutionRequest, second: DriverSubstitutionConfirmation,
+) -> None:
+    """Record any seal discrepancy between the pair, scoped to the capture that completed it.
+
+    Runs before the completion check, so a blocked completion still records its findings.
+    """
+    captures = {
+        row.role: [SealCheck.model_validate(check) for check in row.seal_checks]
+        for row in (await db.execute(
+            select(DriverSubstitutionConfirmation).where(DriverSubstitutionConfirmation.request_id == request.id)
+        )).scalars()
+    }
+    await record_seal_findings(
+        db, trip=trip, confirmation_id=second.id,
+        outgoing=captures[SubstitutionRole.OUTGOING.value], incoming=captures[SubstitutionRole.INCOMING.value],
+    )
 
 
 def _decimal(value: float | None) -> Decimal | None:
@@ -548,7 +591,7 @@ async def complete_attested_substitution(
     overridden; an ordinary dispatcher's missing-capture reason bypasses nothing else.
     """
     trip = await lock_org_trip(db, trip_id=trip_id, organization_id=actor.organization_id)
-    request = await _lock_crew_and_request(db, trip=trip, request_id=request_id)
+    request = await lock_crew_and_request(db, trip=trip, request_id=request_id)
     key = OperationKey(
         action=ACTION_COMPLETE, client_request_id=payload.client_request_id, actor_user_id=actor.id,
         digest=body_digest(trip_id, request_id, body=payload),
@@ -560,13 +603,15 @@ async def complete_attested_substitution(
     require_pending_at(request, payload.expected_version)
     require_live(trip, action="complete a driver handover")
     await _require_outgoing_still_holds(db, trip=trip, request=request)
-    incoming = await db.get(Driver, request.incoming_driver_id)
-    await db.refresh(incoming)
+    incoming = await _fresh_incoming(db, request)
 
+    required = required_confirmation_roles(request.request_format)
     saved_roles = set((await db.execute(
         select(DriverSubstitutionConfirmation.role).where(DriverSubstitutionConfirmation.request_id == request.id)
     )).scalars())
-    missing = len(saved_roles) < len(SubstitutionRole)
+    missing = not {r.value for r in required}.issubset(saved_roles)
+    if request.request_format == IMMEDIATE_V2 and missing:
+        raise SubstitutionInvalidError("Incoming driver must accept this transfer first")
     if missing and payload.missing_confirmation_reason is None:
         raise SubstitutionInvalidError("A reason is required to complete without both drivers' confirmations.")
     if not missing and payload.missing_confirmation_reason is not None:
@@ -603,29 +648,19 @@ async def complete_attested_substitution(
 
 # ── correction ───────────────────────────────────────────────────────────────
 
-# Version of the correction commitment frozen below. C5's canonical module owns the anchored
-# payload; this is the local commitment written with the row, so it must stay stable.
-CORRECTION_PAYLOAD_VERSION = 1
-CORRECTION_EVENT_TYPE = "driver_substitution_corrected"
-
-
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
-
-
 def _correction_commitment(
     *, correction_id: uuid.UUID, substitution: DriverSubstitution, actor_id: uuid.UUID, recorded_at: datetime,
     payload: CorrectSubstitutionRequest,
 ) -> tuple[dict[str, object], str]:
-    """The frozen payload and its hash. Opaque ids and hashes only: the reason and note are
-    free text that may name people, and personal data never reaches the commitment."""
-    frozen: dict[str, object] = {
-        "payload_version": CORRECTION_PAYLOAD_VERSION, "event_type": CORRECTION_EVENT_TYPE,
-        "correction_id": str(correction_id), "substitution_id": str(substitution.id), "trip_id": str(substitution.trip_id),
-        "recorded_by_user_id": str(actor_id), "recorded_at": recorded_at.isoformat(),
-        "reason_sha256": _sha256(payload.reason), "note_sha256": _sha256(payload.correction_note),
-    }
-    return frozen, _sha256(json.dumps(frozen, sort_keys=True, separators=(",", ":")))
+    """The frozen payload and its hash, built by the canonical module that verification rebuilds
+    with (C5 adopted the C3 v1 commitment unchanged). Opaque ids and hashes only: the reason and
+    note are free text that may name people, and personal data never reaches the commitment."""
+    frozen = canonical.compute_correction_payload(record=canonical.CorrectionRecord(
+        correction_id=correction_id, substitution_id=substitution.id, trip_id=substitution.trip_id,
+        recorded_by_user_id=actor_id, recorded_at=recorded_at, reason=payload.reason,
+        correction_note=payload.correction_note,
+    ))
+    return frozen, compute_payload_hash(frozen)
 
 
 async def correct_completed_substitution(
@@ -659,10 +694,11 @@ async def correct_completed_substitution(
     )
     db.add(DriverSubstitutionCorrection(
         id=correction_id, substitution_id=substitution.id, recorded_by_user_id=actor.id, reason=payload.reason,
-        correction_note=payload.correction_note, payload_version=CORRECTION_PAYLOAD_VERSION, payload_json=frozen,
+        correction_note=payload.correction_note, payload_version=canonical.CORRECTION_PAYLOAD_VERSION, payload_json=frozen,
         event_hash=event_hash, anchor_status=AnchorStatus.PENDING.value, created_at=recorded_at,
     ))
     await db.flush()
+    anchors.dispatch_custody_anchor(db, kind=anchors.CustodyAnchorKind.CORRECTION, record_id=correction_id)
 
     result = SubstitutionCorrectionRead(
         id=correction_id, substitution_id=substitution.id, recorded_by_user_id=actor.id, recorded_at=recorded_at,

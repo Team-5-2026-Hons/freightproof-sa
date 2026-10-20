@@ -303,6 +303,8 @@ class DriverSubstitution(Base):
             unique=True,
             postgresql_where=text("previous_substitution_id IS NOT NULL"),
         ),
+        # FP-83 C5: the custody anchor recovery sweep's lookup (owed status, oldest attempt first).
+        Index("ix_driver_substitutions_anchor_status_updated", "anchor_status", "updated_at"),
         CheckConstraint("sequence_number > 0", name="ck_driver_substitutions_sequence_positive"),
         # Position 1 is the first handover from the original driver; every later link names
         # the one before it.
@@ -333,13 +335,13 @@ class DriverSubstitution(Base):
     )
     # The human label of the exchange point; the request freezes its coordinates and
     # instructions. Free-text: exchange points are not necessarily Precinct rows.
-    exchange_location: Mapped[str] = mapped_column(String(255), nullable=False)
+    exchange_location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # On new rows: the dispatcher who ARRANGED the handover, never a driver or whichever
     # dispatcher later completed it. Legacy rows keep their recorded approval meaning.
     approving_dispatcher_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
-    is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_planned: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # The server-effective transfer time (not the claimed exchange time, see below).
     substitution_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # NULL for every new substitution; set only on genuine legacy links.

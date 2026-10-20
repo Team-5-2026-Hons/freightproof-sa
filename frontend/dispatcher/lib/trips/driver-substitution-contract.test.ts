@@ -33,6 +33,7 @@ const BLOCKERS: readonly SubstitutionCompletionBlocker[] = [
 const REQUIRED_STATES = [
   'noSubstitution',
   'outgoingPending',
+  'immediatePending',
   'incomingPendingNoActiveTrip',
   'oneConfirmation',
   'normalCompleted',

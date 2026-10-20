@@ -134,3 +134,20 @@ describe('uploadArtifact filename', () => {
     expect(file.name).toBe(`${PARAMS.artifactType}.jpg`)
   })
 })
+
+it('stops_after_account_generation_changes_during_photo_conversion', async () => {
+  const actor = await import('@/lib/session/custody-context')
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  mockPostForm.mockClear()
+  let release!: (value: Blob) => void
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: () => new Promise<Blob>((resolve) => { release = resolve }) }))
+  const result = uploadArtifact(PARAMS).catch((error: unknown) => error)
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  actor.bindActorLease('driver-b', actor.invalidateActorLease())
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  release(new Blob(['original bytes']))
+  await result
+  expect(mockPostForm).not.toHaveBeenCalled()
+  vi.unstubAllGlobals()
+  actor.invalidateActorLease()
+})

@@ -82,6 +82,54 @@ describe('categorizeTrips', () => {
   })
 })
 
+// FP-83: a trip this driver handed over is history for them, even while the trip is still
+// 'active' for the driver who took it. Rows without `participation` (every pre-FP-83 row and
+// every full Trip) must keep grouping by status alone.
+describe('categorizeTrips with driver participation', () => {
+  interface Row { id: string; status: Trip['status']; participation?: 'current' | 'former' }
+
+  it('test_former_participation_on_an_active_trip_goes_to_past', () => {
+    const rows: Row[] = [{ id: 'handed-over', status: 'active', participation: 'former' }]
+
+    const { active, past } = categorizeTrips(rows)
+
+    expect(active).toEqual([])
+    expect(past.map((r) => r.id)).toEqual(['handed-over'])
+  })
+
+  it('test_former_participation_on_a_held_trip_goes_to_past', () => {
+    const rows: Row[] = [{ id: 'held', status: 'exception_hold', participation: 'former' }]
+
+    expect(categorizeTrips(rows).past.map((r) => r.id)).toEqual(['held'])
+  })
+
+  it('test_current_participation_keeps_active_and_upcoming_grouping', () => {
+    const rows: Row[] = [
+      { id: 'underway', status: 'active', participation: 'current' },
+      { id: 'not-started', status: 'created', participation: 'current' },
+      { id: 'finished', status: 'closed', participation: 'current' },
+    ]
+
+    const { active, upcoming, past } = categorizeTrips(rows)
+
+    expect(active.map((r) => r.id)).toEqual(['underway'])
+    expect(upcoming.map((r) => r.id)).toEqual(['not-started'])
+    expect(past.map((r) => r.id)).toEqual(['finished'])
+  })
+
+  it('test_rows_without_participation_group_by_status_unchanged', () => {
+    const rows: Row[] = [
+      { id: 'underway', status: 'active' },
+      { id: 'not-started', status: 'created' },
+    ]
+
+    const { active, upcoming } = categorizeTrips(rows)
+
+    expect(active.map((r) => r.id)).toEqual(['underway'])
+    expect(upcoming.map((r) => r.id)).toEqual(['not-started'])
+  })
+})
+
 describe('sortByDeparture', () => {
   // The reported bug, exactly: a trip leaving on the 6th listed above one leaving on the 5th.
   const aug5 = makeTrip({ id: 'aug-5' as TripId, planned_departure_at: '2026-08-05T08:00:00Z' })

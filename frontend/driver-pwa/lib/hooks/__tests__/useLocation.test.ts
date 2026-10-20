@@ -52,6 +52,7 @@ describe('useLocation', () => {
   it('browser path: capture() calls navigator.geolocation.getCurrentPosition with high accuracy and a 10s timeout', async () => {
     const getCurrentPosition = vi.fn((success: PositionCallback) => {
       success({
+        timestamp: Date.now(),
         coords: { latitude: -25.75, longitude: 28.19, accuracy: 12 },
       } as GeolocationPosition)
     })
@@ -215,4 +216,40 @@ describe('useLocation', () => {
     await waitFor(() => expect(result.current.status).toBe('error'))
     expect(result.current.errorReason).toBe(reason)
   })
+})
+
+it('sample_timestamp_survives_delayed_callback', async () => {
+  const { Capacitor } = await import('@capacitor/core')
+  vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false)
+  const sampledAt = Date.now() - 60_000
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+    getCurrentPosition: (success: PositionCallback) => success({ timestamp: sampledAt, coords: { latitude: -30, longitude: 25, accuracy: 8 } } as GeolocationPosition),
+  } })
+  const { result } = renderHook(() => useLocation())
+  let observed: Awaited<ReturnType<typeof result.current.capture>> = null
+  await act(async () => { observed = await result.current.capture() })
+  expect(observed).toMatchObject({ capturedAt: new Date(sampledAt).toISOString() })
+})
+
+it('invalid_device_timestamp_is_unavailable_unknown', async () => {
+  const { Capacitor } = await import('@capacitor/core')
+  const { Geolocation } = await import('@capacitor/geolocation')
+  vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true)
+  vi.mocked(Geolocation.getCurrentPosition).mockResolvedValue({ timestamp: NaN, coords: { latitude: -30, longitude: 25, accuracy: 8 } } as Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>)
+  const { result } = renderHook(() => useLocation())
+  let observation: unknown
+  await act(async () => { observation = await result.current.captureResult() })
+  expect(observation).toEqual({ coords: null, errorReason: 'unknown' })
+})
+
+it('an_invalid_timestamp_from_a_later_browser_callback_settles_as_unavailable', async () => {
+  const { Capacitor } = await import('@capacitor/core')
+  vi.mocked(Capacitor.isNativePlatform).mockReturnValue(false)
+  let deliver!: PositionCallback
+  stubBrowserGeolocation({ getCurrentPosition: (success: PositionCallback) => { deliver = success } } as Geolocation)
+  const { result } = renderHook(() => useLocation())
+  let pending!: ReturnType<typeof result.current.captureResult>
+  act(() => { pending = result.current.captureResult() })
+  expect(() => deliver({ timestamp: NaN, coords: { latitude: -30, longitude: 25, accuracy: 8 } } as GeolocationPosition)).not.toThrow()
+  await act(async () => { expect(await pending).toEqual({ coords: null, errorReason: 'unknown' }) })
 })

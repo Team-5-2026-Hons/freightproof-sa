@@ -21,6 +21,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.endpoints.analytics_chat import router as chat_router
 from app.api.v1.endpoints.cost_profile import router as cost_profile_router
 from app.api.v1.endpoints.fleet_analytics import router as fleet_router
 from app.auth.dependencies import get_current_dispatcher
@@ -158,3 +159,5 @@ async def list_facility_analytics_endpoint(
 router.include_router(fleet_router)
 # The Cost tab's rates (/analytics/cost-profile), mounted the same way (FP-294).
 router.include_router(cost_profile_router)
+# The Ask about these figures panel (/analytics/chat), mounted the same way (FP-295).
+router.include_router(chat_router)

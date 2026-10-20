@@ -52,6 +52,7 @@ async def test_assessment_records_the_outline_and_no_radius(
 
     assert response.status_code == 200
     assessment = (await _load_event(db_session, trip, PhaseType.ACTIVATION)).action_location_assessment
+    assert assessment is not None
     assert assessment["policy_version"] == ACTION_LOCATION_POLICY_VERSION
     assert assessment["precinct_geofence_polygon"] == _BOX
     assert assessment["precinct_radius_metres"] is None
@@ -73,6 +74,7 @@ async def test_phone_outside_the_outline_but_inside_the_old_radius_is_outside(
 
     assert response.status_code == 200
     assessment = (await _load_event(db_session, trip, PhaseType.ACTIVATION)).action_location_assessment
+    assert assessment is not None
     assert assessment["driver_in_precinct"] is False
     assert assessment["truck_in_precinct"] is True
     findings = (await db_session.execute(

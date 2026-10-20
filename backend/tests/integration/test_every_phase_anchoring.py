@@ -47,6 +47,7 @@ from app.orchestration.phases.anchor_execution import (
     receipt_type_for,
 )
 from app.orchestration.phases.anchor_recovery import recover_phase_anchor
+from app.orchestration.phases.payloads import driver_actor_sha256
 from app.orchestration.verification.phase_payloads import reconstruct_pending_phase_payload
 from app.orchestration.verification.service import verify_subject
 
@@ -202,12 +203,17 @@ async def test_every_phase_of_a_completed_trip_ends_anchored_with_matching_recei
     loading_event = next(p for p in phases if PhaseType(p.phase_type) == PhaseType.LOADING)
     loading_payload = await reconstruct_pending_phase_payload(db_session, loading_event)
     assert loading_payload is not None
-    assert loading_payload["payload_version"] == 3
-    assert "linehaul_pdf_sha256" in loading_payload
+    # Driver-performed, so the v3 loading evidence sits inside the v4 actor envelope.
+    assert loading_payload["payload_version"] == 4
+    assert loading_payload["evidence"]["payload_version"] == 3
+    assert "linehaul_pdf_sha256" in loading_payload["evidence"]
+    assert loading_payload["actor_sha256"] == driver_actor_sha256(driver.id)
+    assert loading_payload["custody_sequence"] == loading_event.custody_sequence
     for event in non_creation:
         if PhaseType(event.phase_type) != PhaseType.LOADING:
             payload = await reconstruct_pending_phase_payload(db_session, event)
-            assert payload is not None and payload.get("payload_version") != 3
+            assert payload is not None and payload["payload_version"] == 4
+            assert payload["evidence"].get("payload_version") != 3
 
 
 async def test_arrival_seal_mismatch_still_anchors_and_reconstructs(
@@ -380,7 +386,8 @@ async def test_recover_phase_anchor_recovers_a_loading_row_with_a_linehaul_photo
     assert loading.anchor_status == AnchorStatus.ANCHORED
     receipt = await db_session.get(BlockchainReceipt, loading.blockchain_receipt_id)
     assert receipt.receipt_type == BlockchainReceiptType.LOADING
-    assert receipt.payload_json["linehaul_photo_sha256"] is not None
+    assert receipt.payload_json["payload_version"] == 4
+    assert receipt.payload_json["evidence"]["linehaul_photo_sha256"] is not None
 
 
 async def test_loading_with_linehaul_scan_and_pdf_anchors_the_pdf_hash_and_rebuilds_to_event_hash(
@@ -410,9 +417,12 @@ async def test_loading_with_linehaul_scan_and_pdf_anchors_the_pdf_hash_and_rebui
     photo = await db_session.get(EvidenceArtifact, uuid.UUID(photo_id))
     rebuilt = await reconstruct_pending_phase_payload(db_session, loading)
     assert rebuilt is not None
-    assert rebuilt["payload_version"] == 3
-    assert rebuilt["linehaul_pdf_sha256"] == pdf.file_hash
-    assert rebuilt["linehaul_photo_sha256"] == photo.file_hash
+    assert rebuilt["payload_version"] == 4
+    assert rebuilt["actor_sha256"] == driver_actor_sha256(driver.id)
+    assert rebuilt["custody_sequence"] == loading.custody_sequence
+    assert rebuilt["evidence"]["payload_version"] == 3
+    assert rebuilt["evidence"]["linehaul_pdf_sha256"] == pdf.file_hash
+    assert rebuilt["evidence"]["linehaul_photo_sha256"] == photo.file_hash
     assert compute_payload_hash(rebuilt) == loading.event_hash
 
 

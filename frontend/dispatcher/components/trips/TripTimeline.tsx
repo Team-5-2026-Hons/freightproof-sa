@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -21,6 +21,10 @@ import { currentTripPhase, precinctAtPhase, precinctLabel } from '@/lib/phase/tr
 import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR } from './PhaseTimelineItem'
 import { nextTripStop } from './PhaseEvidence'
 import { TimelinePhase } from './TimelinePhase'
+import { Modal } from '@/components/ui/Modal'
+import { positionDriverTransfers } from '@/lib/phase/driver-transfers'
+import { DriverTransferTimelineEvent } from './DriverTransferTimelineEvent'
+import { DriverTransferDetail } from './DriverTransferDetail'
 import { TripHelp } from './TripHelp'
 import { uniqueExceptionsById } from './exception-dedupe'
 import { useExceptionReveal, type RevealRequest } from './useExceptionReveal'
@@ -101,6 +105,7 @@ export function TripTimeline({
   trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLElement>(null)
+  const [openTransferId, setOpenTransferId] = useState<string | null>(null)
   const viewControlId = useId()
   const bodyId = `${viewControlId}-body`
   const minimised = view === TIMELINE_VIEWS.minimised
@@ -124,6 +129,7 @@ export function TripTimeline({
   }, [])
   const active = currentTripPhase(trip)
   const phases = sortedPlan(trip.phases)
+  const transfers = positionDriverTransfers(phases, trip.completed_driver_substitutions ?? [])
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
   const now = useNow(CLOCK_TICK_MS)
   const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
@@ -188,13 +194,15 @@ export function TripTimeline({
         exceptionCount={activeTransitExceptions.length}
         onShow={onJump}
       />}
+      {transfers.beforeFirst.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
       {phases.map((phase, phaseIndex) => (
+        <Fragment key={phase.phase_event_id}>
         <TimelinePhase
           key={phase.phase_event_id}
           trip={trip}
           phase={phase}
           precincts={precincts}
-          isLast={phaseIndex === phases.length - 1}
+          isLast={phaseIndex === phases.length - 1 && !(transfers.afterPhase.get(phase.phase_event_id)?.length)}
           exceptions={sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)}
           artifacts={artifacts}
           lookup={lookup}
@@ -206,7 +214,13 @@ export function TripTimeline({
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
         />
+        {(transfers.afterPhase.get(phase.phase_event_id) ?? []).map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} sameRecordedTime={phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.effective_at)} />)}
+        </Fragment>
       ))}
+      {transfers.unplaced.length > 0 && <section aria-label="Unplaced historical driver transfers" className="border-t border-outline-v/30 pt-4">
+        <h3 className="text-label font-semibold">Unplaced historical driver transfers</h3><p className="mb-3 text-meta text-on-surf-v">Phase context not recorded</p>
+        {transfers.unplaced.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
+      </section>}
       <div id={TRIP_RECORD_ANCHOR_ID} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }}>
       {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-2 border-t border-outline-v/30 pt-4">
         <h3 className="text-body font-bold text-on-surf">Trip record</h3>
@@ -215,6 +229,9 @@ export function TripTimeline({
       </section>}
       </div>
     </div>
+    {openTransferId && <Modal open onClose={() => setOpenTransferId(null)} title="Driver transfer evidence" size="lg">
+      <DriverTransferDetail tripId={trip.id} substitutionId={openTransferId} onChanged={evidence.onChanged} />
+    </Modal>}
   </section>
 }
 

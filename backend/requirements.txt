@@ -26,6 +26,9 @@ python-multipart==0.0.9
 # HTTP client
 httpx==0.27.0
 
+# Analytics chat model (FP-295). 1.x runs on its own httpx2, separate from httpx above.
+anthropic>=1.15,<2
+
 # Storage
 supabase>=2.9.0,<3.0.0
 hedera-sdk-py>=2.50.0,<2.51.0

@@ -62,10 +62,10 @@ def _record(manifest: AuditPackManifest, exception: TripException):
     return next(e for e in manifest.exceptions if e.exception_id == exception.id)
 
 
-async def test_manifest_is_version_2(db_session, audit_trip):
+async def test_new_manifest_is_version_3(db_session, audit_trip):
     manifest = await _build(db_session, audit_trip)
 
-    assert manifest.manifest_version == 2
+    assert manifest.manifest_version == 3
 
 
 async def test_two_photo_critical_exception_is_anchored_with_every_photo_tied_to_its_receipt(

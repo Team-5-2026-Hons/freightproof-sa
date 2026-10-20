@@ -227,7 +227,7 @@ async def test_driver_raised_exceptions_carry_their_own_severity(
     assert _severities(db_session) == [expected]
 
 
-async def test_a_hijacking_is_never_quieter_than_a_count_check(db_session):
+async def test_a_hijacking_is_never_quieter_than_a_count_check(db_session, store):
     """The inversion stated as the comparison that exposed it. Two exceptions, one
     session, and the driver's panic must not rank below the warehouse's arithmetic."""
     trip, driver, phases = await _seed_trip(db_session, suffix="panic-vs-count")
@@ -453,7 +453,8 @@ def test_every_realtime_kind_names_a_change_not_a_loudness():
     """
     assert {k.value for k in RealtimeKind} == {
         "trip_created", "phase_completed", "exception_raised", "exception_reviewed", "exception_claimed",
-        "trip_closed", "evidence_uploaded",
+        "trip_closed", "evidence_uploaded", "driver_substitution_changed",
+        "late_driver_evidence_changed",
     }
 
 
@@ -781,6 +782,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "app/orchestration/phases/advance_departure.py": 1,
         "app/orchestration/phases/findings.py": 4,
         "app/orchestration/phases/override.py": 2,
+        "app/orchestration/substitutions/seal_comparison.py": 1,
         "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (

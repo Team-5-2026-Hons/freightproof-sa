@@ -107,14 +107,13 @@ beforeEach(() => {
 })
 
 describe('CostTab', () => {
-  it('asks once for the tab period and says which figures are estimates', async () => {
+  it('asks once for the tab period', async () => {
     mockedGet.mockResolvedValue(makeCost())
 
     renderTab()
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(PATH))
     expect(mockedGet).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('Estimates use your cost rates below. Cargo values come from Parcel Perfect waybills.')).toBeInTheDocument()
   })
 
   it('labels each headline figure as an estimate or from waybills', async () => {

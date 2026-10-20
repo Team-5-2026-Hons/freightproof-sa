@@ -15,6 +15,7 @@
 import { useCallback, useRef, useEffect } from 'react'
 import { uploadArtifact, type ArtifactType } from '@/lib/api/artifacts'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
+import { captureCustody } from '@/lib/session/custody-context'
 import type { EvidenceRole } from '@shared/lib/types/evidence'
 
 export interface ArtifactUploadState {
@@ -62,6 +63,8 @@ export function useArtifactUpload(tripId: string, phaseEventId: string): Artifac
       try {
         const artifact = await uploadArtifact({
           tripId, artifactType, dataUrl, capturedAt, attribution: { phaseEventId, role },
+          // Upload starts at capture, so this is the capture's own custody period (FP-83).
+          custodySequence: captureCustody(tripId).custodySequence,
         })
         const isSuperseded = latestRequest.current[role] !== requestNumber
         return mounted.current && !isSuperseded ? artifact.id : null

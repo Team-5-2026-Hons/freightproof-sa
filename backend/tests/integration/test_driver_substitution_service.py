@@ -10,9 +10,10 @@ SAST instants rather than "now-ish".
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import cast
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import Table, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -22,7 +23,7 @@ from app.core.exceptions import (
 )
 from app.db.models.driver_substitutions import (
     DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionNotice,
-    DriverSubstitutionRequest,
+    DriverSubstitutionRequest, DriverSubstitutionUpload,
 )
 from app.db.models.enums import ArtifactType, DispatcherRole, IdvsStatus, TripStatus, TripType
 from app.db.models.evidence import EvidenceArtifact
@@ -83,11 +84,18 @@ def arrangement(w: SubWorld, *, incoming: uuid.UUID | None = None, expected_at: 
     )
 
 
+async def get_row[T](db: AsyncSession, model: type[T], pk: uuid.UUID) -> T:
+    """`db.get` that fails loudly on a missing row, so tests can use the row without Optional narrowing."""
+    row = await db.get(model, pk)
+    assert row is not None, f"{model.__name__} {pk} not found"
+    return row
+
+
 async def world_with_licences(db: AsyncSession, **kwargs) -> SubWorld:
     """A live trip under A, with valid licences on B and C so only the case under test fails."""
     w = await build_world(db, departure=NOW, arrival=NOW + 8 * HOUR, **kwargs)
     for driver_id in (w.a, w.b, w.c):
-        (await db.get(Driver, driver_id)).license_expiry = VALID_LICENCE
+        (await get_row(db, Driver, driver_id)).license_expiry = VALID_LICENCE
     await db.flush()
     return w
 
@@ -109,7 +117,7 @@ async def notice_kinds(db: AsyncSession, request_id: uuid.UUID) -> dict[uuid.UUI
 
 async def trip_fingerprint(db: AsyncSession, w: SubWorld) -> tuple:
     """What a handover must never touch: trip id, original driver, and the phase sequence."""
-    trip = await db.get(Trip, w.trip_id)
+    trip = await get_row(db, Trip, w.trip_id)
     await db.refresh(trip)
     phases = (await db.execute(
         select(PhaseEvent.sequence_number, PhaseEvent.phase_type, PhaseEvent.status)
@@ -135,7 +143,7 @@ async def test_arrange_creates_one_pending_request_and_notifies_both_drivers(db_
     assert read.missing_confirmations == [SubstitutionRole.OUTGOING, SubstitutionRole.INCOMING]
     assert read.confirmations == [] and read.completion_blocked_by is None
     assert SubstitutionAction.CANCEL in read.permitted_actions
-    stored = await db_session.get(DriverSubstitutionRequest, read.id)
+    stored = await get_row(db_session, DriverSubstitutionRequest, read.id)
     assert stored.arranged_by_user_id == w.user_id and stored.version == 1
     assert await notice_kinds(db_session, read.id) == {
         w.a: [SubstitutionNoticeKind.ARRANGED.value], w.b: [SubstitutionNoticeKind.ARRANGED.value],
@@ -245,7 +253,7 @@ async def test_arrange_is_allowed_on_a_trip_held_for_an_exception(db_session: As
     read = await arrange_substitution(db_session, trip_id=w.trip_id, actor=dispatcher(w), payload=arrangement(w))
 
     assert read.state is SubstitutionState.PENDING
-    assert (await db_session.get(Trip, w.trip_id)).status == TripStatus.EXCEPTION_HOLD
+    assert (await get_row(db_session, Trip, w.trip_id)).status == TripStatus.EXCEPTION_HOLD
 
 
 async def test_a_second_arrangement_is_refused_while_one_is_pending(db_session: AsyncSession):
@@ -275,7 +283,7 @@ async def test_arrange_checks_the_licence_against_the_expected_sast_date(
     db_session: AsyncSession, expiry: date | None, expected_at: datetime, valid: bool,
 ):
     w = await world_with_licences(db_session)
-    (await db_session.get(Driver, w.b)).license_expiry = expiry
+    (await get_row(db_session, Driver, w.b)).license_expiry = expiry
     await db_session.flush()
 
     attempt = arrange_substitution(
@@ -291,7 +299,7 @@ async def test_arrange_checks_the_licence_against_the_expected_sast_date(
 
 async def test_arrange_refuses_an_inactive_incoming_driver(db_session: AsyncSession):
     w = await world_with_licences(db_session)
-    (await db_session.get(Driver, w.b)).is_active = False
+    (await get_row(db_session, Driver, w.b)).is_active = False
     await db_session.flush()
 
     with pytest.raises(IncomingDriverInactiveError):
@@ -301,7 +309,7 @@ async def test_arrange_refuses_an_inactive_incoming_driver(db_session: AsyncSess
 async def test_arrange_reports_inactive_before_licence(db_session: AsyncSession):
     """Fixed precedence: inactive, licence, availability."""
     w = await world_with_licences(db_session)
-    driver = await db_session.get(Driver, w.b)
+    driver = await get_row(db_session, Driver, w.b)
     driver.is_active, driver.license_expiry = False, None
     await db_session.flush()
 
@@ -353,7 +361,7 @@ async def test_cancel_ends_the_request_releases_the_reservation_and_notifies_bot
     assert await busy_crew_in_window(db_session, organization_id=w.org_id, window=window, now=NOW, crew=crew) == []
     kinds = await notice_kinds(db_session, pending.id)
     assert sorted(kinds[w.a]) == ["arranged", "cancelled"] and sorted(kinds[w.b]) == ["arranged", "cancelled"]
-    stored = await db_session.get(DriverSubstitutionRequest, pending.id)
+    stored = await get_row(db_session, DriverSubstitutionRequest, pending.id)
     assert stored.terminal_reason == "No longer needed" and stored.terminal_at == NOW
     assert await trip_fingerprint(db_session, w) == before
 
@@ -368,7 +376,7 @@ async def test_cancel_with_a_stale_version_is_refused_and_changes_nothing(db_ses
         )
 
     assert refused.value.current_version == 1
-    assert (await db_session.get(DriverSubstitutionRequest, pending.id)).state == "pending"
+    assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "pending"
 
 
 async def test_cancel_replay_returns_the_original_result_even_though_the_version_moved(db_session: AsyncSession):
@@ -404,7 +412,7 @@ async def test_another_organisation_cannot_cancel(db_session: AsyncSession):
             actor=dispatcher(w, organization_id=w.other_org_id), payload=cancel_body(),
         )
 
-    assert (await db_session.get(DriverSubstitutionRequest, pending.id)).state == "pending"
+    assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "pending"
 
 
 # ── replace ──────────────────────────────────────────────────────────────────
@@ -431,7 +439,7 @@ async def test_replace_cancels_the_old_request_and_creates_a_fresh_one(db_sessio
     assert cancelled.state is SubstitutionState.CANCELLED and cancelled.id == old.id
     new_id = cancelled.replacement_request_id
     assert new_id is not None and new_id != old.id
-    new = await db_session.get(DriverSubstitutionRequest, new_id)
+    new = await get_row(db_session, DriverSubstitutionRequest, new_id)
     assert (new.state, new.version, new.incoming_driver_id) == ("pending", 1, w.c)
     assert new.reason == "Driver C is closer"
     assert await count(db_session, DriverSubstitutionRequest, DriverSubstitutionRequest.state == "pending") == 1
@@ -469,7 +477,7 @@ async def test_replace_replay_resolves_to_the_same_new_request(db_session: Async
 async def test_replace_with_an_ineligible_driver_leaves_the_old_request_pending(db_session: AsyncSession):
     w = await world_with_licences(db_session)
     old = await arrange_substitution(db_session, trip_id=w.trip_id, actor=dispatcher(w), payload=arrangement(w))
-    (await db_session.get(Driver, w.c)).license_expiry = None
+    (await get_row(db_session, Driver, w.c)).license_expiry = None
     await db_session.flush()
 
     with pytest.raises(LicenceInvalidError):
@@ -477,7 +485,7 @@ async def test_replace_with_an_ineligible_driver_leaves_the_old_request_pending(
             db_session, trip_id=w.trip_id, request_id=old.id, actor=dispatcher(w), payload=replace_body(w),
         )
 
-    stored = await db_session.get(DriverSubstitutionRequest, old.id)
+    stored = await get_row(db_session, DriverSubstitutionRequest, old.id)
     assert stored.state == "pending" and stored.replacement_request_id is None
     assert await count(db_session, DriverSubstitutionRequest) == 1
 
@@ -500,13 +508,13 @@ CAPTURED_AT = NOW - timedelta(minutes=10)
 
 
 async def driver_actor(db: AsyncSession, driver_id: uuid.UUID) -> DriverRead:
-    driver = await db.get(Driver, driver_id)
+    driver = await get_row(db, Driver, driver_id)
     await db.refresh(driver)
     return DriverRead.model_validate(driver)
 
 
 async def set_identity(db: AsyncSession, driver_id: uuid.UUID, status: IdvsStatus) -> None:
-    (await db.get(Driver, driver_id)).idvs_status = status.value
+    (await get_row(db, Driver, driver_id)).idvs_status = status
     await db.flush()
 
 
@@ -571,9 +579,10 @@ async def test_first_confirmation_saves_the_capture_and_leaves_the_request_pendi
     assert [(c.role, c.driver_id) for c in read.confirmations] == [(SubstitutionRole.OUTGOING, w.a)]
     saved = (await db_session.execute(select(DriverSubstitutionConfirmation))).scalar_one()
     assert saved.captured_at == CAPTURED_AT and saved.received_at == NOW
+    assert saved.latitude is not None
     assert (saved.discrepancy_note, float(saved.latitude)) == ("Left a spare strap", -32.35)
     assert await chain(db_session, w.trip_id) == []
-    assert (await get_current_custody(db_session, trip=await db_session.get(Trip, w.trip_id))).driver_id == w.a
+    assert (await get_current_custody(db_session, trip=await get_row(db_session, Trip, w.trip_id))).driver_id == w.a
     assert await trip_fingerprint(db_session, w) == before
 
 
@@ -597,6 +606,7 @@ async def test_the_final_confirmation_completes_the_handover_and_moves_custody(d
 
     assert read.state is SubstitutionState.COMPLETED and read.version == 3
     assert read.completion_mode is SubstitutionCompletionMode.NORMAL
+    assert read.completion is not None
     assert read.completion.trigger is SubstitutionCompletionTrigger.DRIVER_CONFIRMATION
     assert (read.completion.completed_by_driver_id, read.completion.completed_by_user_id) == (w.b, None)
     assert read.completion_blocked_by is None and read.permitted_actions == []
@@ -609,9 +619,9 @@ async def test_the_final_confirmation_completes_the_handover_and_moves_custody(d
     assert (row.completed_by_driver_id, row.completed_by_user_id, row.completion_mode) == (w.b, None, "normal")
     assert (row.incoming_identity_status, row.identity_attested_by_user_id) == ("verified", None)
     assert (row.incoming_licence_expiry, row.eligibility_observed_at) == (VALID_LICENCE, NOW)
-    custody = await get_current_custody(db_session, trip=await db_session.get(Trip, w.trip_id))
+    custody = await get_current_custody(db_session, trip=await get_row(db_session, Trip, w.trip_id))
     assert (custody.driver_id, custody.sequence, custody.substitution_id) == (w.b, 1, row.id)
-    assert (await db_session.get(Trip, w.trip_id)).driver_id == w.a
+    assert (await get_row(db_session, Trip, w.trip_id)).driver_id == w.a
     assert await trip_fingerprint(db_session, w) == before
     assert sorted((await notice_kinds(db_session, pending.id))[w.a]) == ["arranged", "completed"]
 
@@ -699,13 +709,20 @@ async def test_a_capture_must_cover_exactly_the_trips_vehicles(db_session: Async
     assert await count(db_session, DriverSubstitutionConfirmation) == 0
 
 
-async def _photo(db: AsyncSession, w: SubWorld, *, driver_id: uuid.UUID) -> uuid.UUID:
+async def _photo(db: AsyncSession, w: SubWorld, *, driver_id: uuid.UUID, request_id: uuid.UUID) -> uuid.UUID:
+    """A photo the driver uploaded through the handover route for their side of `request_id`
+    (A is outgoing, anyone else incoming, as `armed` arranges), seeded straight to the tables."""
     artifact = EvidenceArtifact(
         id=uuid.uuid4(), trip_id=w.trip_id, artifact_type=ArtifactType.PHOTO.value, s3_key=f"k/{uuid.uuid4()}",
         s3_bucket="b", file_hash=uuid.uuid4().hex + uuid.uuid4().hex, mime_type="image/jpeg",
         captured_by_driver_id=driver_id, captured_at=CAPTURED_AT,
     )
     db.add(artifact)
+    await db.flush()
+    db.add(DriverSubstitutionUpload(
+        artifact_id=artifact.id, trip_id=w.trip_id, driver_id=driver_id, purpose="handover", request_id=request_id,
+        role=(SubstitutionRole.OUTGOING if driver_id == w.a else SubstitutionRole.INCOMING).value,
+    ))
     await db.flush()
     return artifact.id
 
@@ -718,10 +735,10 @@ def _seal(w: SubWorld, photo: uuid.UUID) -> list[SealCheck]:
 
 async def test_a_loaded_trip_needs_a_real_seal_and_only_the_drivers_own_photo(db_session: AsyncSession):
     w, pending = await armed(db_session)
-    (await db_session.get(Trip, w.trip_id)).trip_type = TripType.LOADED.value
+    (await get_row(db_session, Trip, w.trip_id)).trip_type = TripType.LOADED.value
     await db_session.flush()
-    others_photo = await _photo(db_session, w, driver_id=w.b)
-    own_photo = await _photo(db_session, w, driver_id=w.a)
+    others_photo = await _photo(db_session, w, driver_id=w.b, request_id=pending.id)
+    own_photo = await _photo(db_session, w, driver_id=w.a, request_id=pending.id)
 
     with pytest.raises(SubstitutionInvalidError):  # an empty-leg answer on a loaded trip
         await confirm(db_session, w, pending, w.a)
@@ -737,8 +754,8 @@ async def test_a_loaded_trip_needs_a_real_seal_and_only_the_drivers_own_photo(db
 
 async def test_a_photo_cannot_support_two_captures(db_session: AsyncSession):
     w, pending = await armed(db_session)
-    (await db_session.get(Trip, w.trip_id)).trip_type = TripType.LOADED.value
-    photo = await _photo(db_session, w, driver_id=w.a)
+    (await get_row(db_session, Trip, w.trip_id)).trip_type = TripType.LOADED.value
+    photo = await _photo(db_session, w, driver_id=w.a, request_id=pending.id)
     await confirm(db_session, w, pending, w.a, seal_checks=_seal(w, photo))
 
     with pytest.raises(SubstitutionInvalidError):
@@ -754,7 +771,7 @@ async def test_pending_identity_saves_both_captures_but_blocks_completion(db_ses
     assert read.completion_blocked_by is SubstitutionCompletionBlocker.IDENTITY_NOT_VERIFIED
     assert read.identity.status is IdvsStatus.PENDING
     assert await chain(db_session, w.trip_id) == []
-    assert (await get_current_custody(db_session, trip=await db_session.get(Trip, w.trip_id))).driver_id == w.a
+    assert (await get_current_custody(db_session, trip=await get_row(db_session, Trip, w.trip_id))).driver_id == w.a
 
 
 BLOCKERS = [
@@ -766,7 +783,7 @@ BLOCKERS = [
 
 
 async def _apply_blocker(db: AsyncSession, w: SubWorld, name: str) -> None:
-    driver = await db.get(Driver, w.b)
+    driver = await get_row(db, Driver, w.b)
     if name == "inactive":
         driver.is_active = False
     elif name == "licence":
@@ -774,7 +791,7 @@ async def _apply_blocker(db: AsyncSession, w: SubWorld, name: str) -> None:
     elif name == "busy":
         await add_trip(db, w, driver_id=w.b, status=TripStatus.ACTIVE, departure=NOW, arrival=None)
     else:
-        driver.idvs_status = IdvsStatus.PENDING.value
+        driver.idvs_status = IdvsStatus.PENDING
     await db.flush()
 
 
@@ -809,7 +826,7 @@ async def test_blockers_are_reported_in_the_contracts_fixed_order(db_session: As
     assert blocked.completion_blocked_by is SubstitutionCompletionBlocker.INCOMING_DRIVER_INACTIVE
     expected = [b for _, _, b in BLOCKERS]
     seen = []
-    driver = await db_session.get(Driver, w.b)
+    driver = await get_row(db_session, Driver, w.b)
     for name, _, _ in BLOCKERS:
         seen.append((await _read_blocker(db_session, w, pending.id)))
         if name == "inactive":
@@ -818,7 +835,7 @@ async def test_blockers_are_reported_in_the_contracts_fixed_order(db_session: As
             driver.license_expiry = VALID_LICENCE
         elif name == "busy":
             await db_session.execute(
-                Trip.__table__.update().where(Trip.driver_id == w.b).values(status=TripStatus.CANCELLED.value))
+                update(cast(Table, Trip.__table__)).where(Trip.driver_id == w.b).values(status=TripStatus.CANCELLED.value))
         await db_session.flush()
     assert seen == expected
 
@@ -826,14 +843,14 @@ async def test_blockers_are_reported_in_the_contracts_fixed_order(db_session: As
 async def _read_blocker(db: AsyncSession, w: SubWorld, request_id: uuid.UUID) -> SubstitutionCompletionBlocker | None:
     from app.orchestration.substitutions.request_read import Viewer, build_request_read
 
-    request = await db.get(DriverSubstitutionRequest, request_id)
+    request = await get_row(db, DriverSubstitutionRequest, request_id)
     return (await build_request_read(db, request, viewer=Viewer(is_dispatcher=True), now=NOW)).completion_blocked_by
 
 
 async def test_a_missing_capture_override_never_bypasses_the_other_checks(db_session: AsyncSession):
     w, pending = await armed(db_session)
     first = await confirm(db_session, w, pending, w.a)
-    (await db_session.get(Driver, w.b)).license_expiry = None
+    (await get_row(db_session, Driver, w.b)).license_expiry = None
     await db_session.flush()
 
     with pytest.raises(LicenceInvalidError):
@@ -848,7 +865,7 @@ async def test_a_missing_capture_override_never_bypasses_the_other_checks(db_ses
 async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: AsyncSession, clock: Clock):
     """Arranged while valid; the verdict is taken against the actual completion instant in SAST."""
     w, pending = await armed(db_session)
-    (await db_session.get(Driver, w.b)).license_expiry = LICENCE_DAY
+    (await get_row(db_session, Driver, w.b)).license_expiry = LICENCE_DAY
     await db_session.flush()
     first = await confirm(db_session, w, pending, w.a)
 
@@ -858,7 +875,7 @@ async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: 
     assert blocked.completion_blocked_by is SubstitutionCompletionBlocker.LICENCE_INVALID
     assert len(blocked.confirmations) == 2 and await chain(db_session, w.trip_id) == []
 
-    (await db_session.get(Driver, w.b)).license_expiry = None
+    (await get_row(db_session, Driver, w.b)).license_expiry = None
     await db_session.flush()
     with pytest.raises(LicenceInvalidError):  # no expiry on file is never valid
         await complete_attested_substitution(
@@ -867,12 +884,13 @@ async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: 
 
     # Fixing the record does not itself transfer custody; a fresh intentional /complete does,
     # on the saved captures, without any re-upload.
-    (await db_session.get(Driver, w.b)).license_expiry = date(2026, 12, 31)
+    (await get_row(db_session, Driver, w.b)).license_expiry = date(2026, 12, 31)
     await db_session.flush()
     done = await complete_attested_substitution(
         db_session, trip_id=w.trip_id, request_id=pending.id, actor=dispatcher(w), payload=completion(blocked.version),
     )
     assert done.state is SubstitutionState.COMPLETED and done.completion_mode is SubstitutionCompletionMode.NORMAL
+    assert done.completion is not None
     assert done.completion.trigger is SubstitutionCompletionTrigger.DISPATCHER_ACTION
     assert done.completion.completed_by_user_id == w.user_id and done.completion.completed_by_driver_id is None
     assert await count(db_session, DriverSubstitutionConfirmation) == 2
@@ -880,7 +898,7 @@ async def test_licence_eligibility_uses_actual_sast_completion_date(db_session: 
 
 async def test_licence_expiring_today_is_valid_until_sast_midnight(db_session: AsyncSession, clock: Clock):
     w, pending = await armed(db_session)
-    (await db_session.get(Driver, w.b)).license_expiry = LICENCE_DAY
+    (await get_row(db_session, Driver, w.b)).license_expiry = LICENCE_DAY
     await db_session.flush()
     first = await confirm(db_session, w, pending, w.a)
 
@@ -895,12 +913,12 @@ async def test_licence_expiring_today_is_valid_until_sast_midnight(db_session: A
 async def test_exact_retry_of_a_blocked_confirmation_is_not_a_new_eligibility_check(db_session: AsyncSession):
     w, pending = await armed(db_session)
     first = await confirm(db_session, w, pending, w.a)
-    (await db_session.get(Driver, w.b)).is_active = False
+    (await get_row(db_session, Driver, w.b)).is_active = False
     await db_session.flush()
     body = capture(w, first.version)
     actor = await driver_actor(db_session, w.b)
     blocked = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=actor, payload=body)
-    (await db_session.get(Driver, w.b)).is_active = True  # the blocker is resolved...
+    (await get_row(db_session, Driver, w.b)).is_active = True  # the blocker is resolved...
     await db_session.flush()
 
     replay = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=actor, payload=body)
@@ -920,8 +938,8 @@ async def test_failed_identity_cannot_be_admin_attested(db_session: AsyncSession
         )
 
     assert await chain(db_session, w.trip_id) == []
-    assert (await db_session.get(Driver, w.b)).idvs_status == IdvsStatus.FAILED.value
-    assert (await db_session.get(DriverSubstitutionRequest, pending.id)).state == "pending"
+    assert (await get_row(db_session, Driver, w.b)).idvs_status == IdvsStatus.FAILED.value
+    assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "pending"
 
 
 async def test_dispatcher_missing_capture_does_not_override_pending_identity(db_session: AsyncSession):
@@ -955,7 +973,7 @@ async def test_dispatcher_missing_capture_does_not_override_pending_identity(db_
     assert (row.identity_attestation_reason, row.identity_attested_at) == ("Checked by phone", NOW)
     assert (row.missing_confirmation_reason, row.declared_exchange_at) == ("B has no signal", NOW - timedelta(minutes=20))
     assert row.substitution_at == NOW and row.completed_by_user_id == admin.id
-    assert (await db_session.get(Driver, w.b)).idvs_status == IdvsStatus.PENDING.value
+    assert (await get_row(db_session, Driver, w.b)).idvs_status == IdvsStatus.PENDING.value
 
 
 async def test_an_ordinary_dispatcher_may_attest_missing_captures_for_a_verified_driver(db_session: AsyncSession):
@@ -1025,7 +1043,7 @@ async def test_another_organisation_cannot_complete(db_session: AsyncSession):
 async def test_the_account_going_inactive_after_arrangement_blocks_completion_but_keeps_captures(db_session: AsyncSession):
     w, pending = await armed(db_session)
     first = await confirm(db_session, w, pending, w.b)
-    (await db_session.get(Driver, w.b)).is_active = False
+    (await get_row(db_session, Driver, w.b)).is_active = False
     await db_session.flush()
 
     blocked = await confirm(db_session, w, first, w.a)
@@ -1033,7 +1051,7 @@ async def test_the_account_going_inactive_after_arrangement_blocks_completion_bu
     assert blocked.state is SubstitutionState.PENDING
     assert blocked.completion_blocked_by is SubstitutionCompletionBlocker.INCOMING_DRIVER_INACTIVE
     assert {c.driver_id for c in blocked.confirmations} == {w.a, w.b}
-    assert (await get_current_custody(db_session, trip=await db_session.get(Trip, w.trip_id))).driver_id == w.a
+    assert (await get_current_custody(db_session, trip=await get_row(db_session, Trip, w.trip_id))).driver_id == w.a
 
 
 async def test_returning_driver_has_a_new_custody_sequence(db_session: AsyncSession):
@@ -1053,13 +1071,13 @@ async def test_returning_driver_has_a_new_custody_sequence(db_session: AsyncSess
         assert done.state is SubstitutionState.COMPLETED
 
     links = await chain(db_session, w.trip_id)
-    custody = await get_current_custody(db_session, trip=await db_session.get(Trip, w.trip_id))
+    custody = await get_current_custody(db_session, trip=await get_row(db_session, Trip, w.trip_id))
     assert [link.sequence_number for link in links] == [1, 2, 3]
     assert [link.previous_substitution_id for link in links] == [None, links[0].id, links[1].id]
     assert custody.driver_id == w.a
     assert custody.sequence == 3
     assert custody.substitution_id == links[2].id
-    assert (await db_session.get(Trip, w.trip_id)).driver_id == w.a
+    assert (await get_row(db_session, Trip, w.trip_id)).driver_id == w.a
     assert await trip_fingerprint(db_session, w) == before
 
 
@@ -1108,19 +1126,19 @@ async def test_terminal_trip_cancels_pending_request_atomically(db_session: Asyn
                 db_session, trip_id=w.trip_id, operator_organization_id=w.org_id, user_id=w.user_id, note="Cargo pulled",
             )
             raise RuntimeError("fail after cancel_trip returned")
-    assert (await db_session.get(DriverSubstitutionRequest, pending.id)).state == "pending"
+    assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "pending"
     assert await _reserved(db_session, w)
     assert sorted((await notice_kinds(db_session, pending.id))[w.b]) == ["arranged"]
 
     await cancel_trip(db_session, trip_id=w.trip_id, operator_organization_id=w.org_id, user_id=w.user_id, note="Cargo pulled")
 
-    request = await db_session.get(DriverSubstitutionRequest, pending.id)
+    request = await get_row(db_session, DriverSubstitutionRequest, pending.id)
     await db_session.refresh(request)
     assert (request.state, request.version, request.terminal_reason) == ("cancelled", 2, "Trip cancelled")
     assert not await _reserved(db_session, w)
     kinds = await notice_kinds(db_session, pending.id)
     assert sorted(kinds[w.a]) == ["arranged", "cancelled"] and sorted(kinds[w.b]) == ["arranged", "cancelled"]
-    assert (await db_session.get(Trip, w.trip_id)).status == TripStatus.CANCELLED
+    assert (await get_row(db_session, Trip, w.trip_id)).status == TripStatus.CANCELLED
 
 
 async def test_normal_closure_cancels_the_pending_request_too(db_session: AsyncSession):
@@ -1130,16 +1148,16 @@ async def test_normal_closure_cancels_the_pending_request_too(db_session: AsyncS
 
     w, pending = await armed(db_session)
     await db_session.execute(
-        PhaseEvent.__table__.update().where(PhaseEvent.trip_id == w.trip_id).values(status=PhaseStatus.COMPLETED.value)
+        update(cast(Table, PhaseEvent.__table__)).where(PhaseEvent.trip_id == w.trip_id).values(status=PhaseStatus.COMPLETED.value)
     )
-    trip = await db_session.get(Trip, w.trip_id)
-    event = await db_session.get(PhaseEvent, w.confirmation_id)
+    trip = await get_row(db_session, Trip, w.trip_id)
+    event = await get_row(db_session, PhaseEvent, w.confirmation_id)
     await db_session.refresh(event)
 
     await _finish_phase(db_session, trip=trip, event=event, idempotency_key=str(uuid.uuid4()))
 
     assert TripStatus(trip.status) is TripStatus.CLOSED
-    request = await db_session.get(DriverSubstitutionRequest, pending.id)
+    request = await get_row(db_session, DriverSubstitutionRequest, pending.id)
     await db_session.refresh(request)
     assert (request.state, request.terminal_reason) == ("cancelled", "Trip closed")
     assert not await _reserved(db_session, w)
@@ -1155,17 +1173,17 @@ async def test_a_trip_ending_after_the_handover_completed_keeps_the_transfer(db_
 
     await cancel_trip(db_session, trip_id=w.trip_id, operator_organization_id=w.org_id, user_id=w.user_id, note="Cargo pulled")
 
-    trip = await db_session.get(Trip, w.trip_id)
+    trip = await get_row(db_session, Trip, w.trip_id)
     assert (await get_current_custody(db_session, trip=trip)).driver_id == w.b
     assert len(await chain(db_session, w.trip_id)) == 1
-    assert (await db_session.get(DriverSubstitutionRequest, pending.id)).state == "completed"
+    assert (await get_row(db_session, DriverSubstitutionRequest, pending.id)).state == "completed"
     kinds = await notice_kinds(db_session, pending.id)
     assert sorted(kinds[w.a]) == ["arranged", "completed"] and sorted(kinds[w.b]) == ["arranged", "completed"]
 
 
 async def test_terminal_cancellation_with_nothing_pending_is_a_no_op(db_session: AsyncSession):
     w = await world_with_licences(db_session)
-    trip = await db_session.get(Trip, w.trip_id)
+    trip = await get_row(db_session, Trip, w.trip_id)
 
     await cancel_pending_for_terminal_trip(db_session, trip=trip, reason="Trip closed")
 
@@ -1189,7 +1207,7 @@ async def completed_transfer(db: AsyncSession) -> tuple[SubWorld, DriverSubstitu
 async def test_a_correction_is_an_immutable_clarification_that_changes_no_custody(db_session: AsyncSession):
     w, row = await completed_transfer(db_session)
     before_row = (row.original_driver_id, row.substituting_driver_id, row.substitution_at, row.sequence_number)
-    trip = await db_session.get(Trip, w.trip_id)
+    trip = await get_row(db_session, Trip, w.trip_id)
     before = await get_current_custody(db_session, trip=trip)
 
     read = await correct_completed_substitution(
@@ -1202,7 +1220,7 @@ async def test_a_correction_is_an_immutable_clarification_that_changes_no_custod
     assert (read.substitution_id, read.recorded_by_user_id) == (row.id, w.user_id)
     assert (read.reason, read.correction_note) == ("Wrong gate recorded", "Exchange was at the second gate")
     assert (read.anchor_status, read.receipt_id, read.recorded_at) == (AnchorStatus.PENDING, None, NOW)
-    stored = await db_session.get(DriverSubstitutionCorrection, read.id)
+    stored = await get_row(db_session, DriverSubstitutionCorrection, read.id)
     assert (stored.payload_version, len(stored.event_hash), stored.anchor_status) == (1, 64, "pending")
     assert "second gate" not in str(stored.payload_json) and "Wrong gate" not in str(stored.payload_json)
     await db_session.refresh(row)
@@ -1244,3 +1262,19 @@ async def test_another_organisations_substitution_cannot_be_corrected(db_session
             db_session, trip_id=w.trip_id, substitution_id=uuid.uuid4(), actor=dispatcher(w), payload=correction())
 
     assert await count(db_session, DriverSubstitutionCorrection) == 0
+
+async def test_completed_transfer_preserves_exception_hold(db_session: AsyncSession):
+    w, pending = await armed(db_session)
+    trip = await get_row(db_session, Trip, w.trip_id)
+    trip.status = TripStatus.EXCEPTION_HOLD
+    await db_session.flush()
+    before = await trip_fingerprint(db_session, w)
+    phase_before = (trip.current_phase, trip.current_stop)
+
+    result = await both_confirmed(db_session, w, pending)
+
+    assert result.state is SubstitutionState.COMPLETED
+    await db_session.refresh(trip)
+    assert trip.status == TripStatus.EXCEPTION_HOLD
+    assert (trip.current_phase, trip.current_stop) == phase_before
+    assert await trip_fingerprint(db_session, w) == before

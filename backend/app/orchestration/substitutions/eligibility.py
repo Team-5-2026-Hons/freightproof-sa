@@ -15,6 +15,7 @@ override. These rules are substitution-specific and do not change baseline trip 
 
 import uuid
 from datetime import date, datetime
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,18 +68,33 @@ def _takeover_window(trip: Trip, *, now: datetime) -> TimeWindow:
     return TimeWindow(now, planned_end if planned_end is not None and planned_end > now else None)
 
 
+@dataclass(frozen=True)
+class ArrangementTiming:
+    expected_at: datetime | None
+    now: datetime
+    request_format: str = "planned_v1"
+    reservation_start_at: datetime | None = None
+
+
 async def require_arrangeable(
-    db: AsyncSession, *, trip: Trip, incoming: Driver, expected_at: datetime, now: datetime,
+    db: AsyncSession, *, trip: Trip, incoming: Driver, timing: ArrangementTiming,
 ) -> None:
     """Raise the contract's refusal when `incoming` cannot be arranged for `expected_at`.
 
     Same precedence as completion: inactive, licence, then availability.
     """
+    expected_at, now = timing.expected_at, timing.now
+    request_format, reservation_start_at = timing.request_format, timing.reservation_start_at
+    if request_format != "immediate_v2" and expected_at is None:
+        raise ValueError("Legacy arrangement requires its expected exchange time")
     if not incoming.is_active:
         raise IncomingDriverInactiveError()
-    if not licence_valid_on(incoming.license_expiry, expected_at):
+    if not licence_valid_on(incoming.license_expiry, expected_at if expected_at is not None else now):
         raise LicenceInvalidError()
-    start, end = reservation_window(expected_at=expected_at, planned_end=trip.planned_arrival_at, now=now)
+    start, end = reservation_window(
+        expected_at=expected_at, planned_end=trip.planned_arrival_at, now=now,
+        request_format=request_format, reservation_start_at=reservation_start_at,
+    )
     if await _is_busy(db, trip=trip, driver_id=incoming.id, window=TimeWindow(start, end), now=now):
         raise IncomingDriverUnavailableError()
 

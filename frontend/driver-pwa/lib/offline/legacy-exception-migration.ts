@@ -48,9 +48,12 @@ export function legacyEntryToEnvelope(entry: LegacyExceptionEntry): ExceptionEnv
     tripId: entry.tripId,
     body,
     photos,
-    status: 'pending',
+    // FP-83: a pre-substitution localStorage entry never recorded who captured it, so it is
+    // quarantined, not queued under whoever happens to be signed in when it migrates.
+    status: 'quarantined',
     attentionReason: null,
     attentionPhotoId: null,
+    actorId: null,
     createdAt: entry.enqueuedAt,
     updatedAt: entry.enqueuedAt,
   }

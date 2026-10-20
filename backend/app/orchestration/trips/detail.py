@@ -24,6 +24,7 @@ from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.evidence_anchors.reads import decorate_exception_reads
 from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.orchestration.consignments.scans import scanned_counts_for_trip
+from app.orchestration.substitutions.access import get_current_custody
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.pp_manifest import PPManifestRef
@@ -115,8 +116,12 @@ async def get_trip_detail(
         raise ResourceNotFoundError("Trip", str(trip_id))
 
     client_names = await _client_names(db, [trip])
-    driver_result = await db.execute(select(Driver).where(Driver.id == trip.driver_id))
-    driver = driver_result.scalar_one()
+    # FP-83: `driver` is whoever holds the trip now; Trip.driver_id stays the journey lock's original.
+    custody = await get_current_custody(db, trip=trip)
+    drivers = {d.id: d for d in (await db.execute(
+        select(Driver).where(Driver.id.in_({trip.driver_id, custody.driver_id}))
+    )).scalars()}
+    driver = drivers[custody.driver_id]
 
     horse_result = await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))
     horse = horse_result.scalar_one()
@@ -201,6 +206,8 @@ async def get_trip_detail(
         journey_lock_hash=trip.journey_lock_hash,
         idvs_check_status=trip.idvs_check_status,
         driver=DriverRead.model_validate(driver),
+        original_driver=DriverRead.model_validate(drivers[trip.driver_id]),
+        custody_sequence=custody.sequence,
         horse=VehicleRead.model_validate(horse),
         trailers=[VehicleRead.model_validate(v) for v in trailers],
         origin_precinct_id=trip.origin_precinct_id,

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SubjectNotVisibleError
 from app.db.models.audit_packs import AuditPack
+from app.db.models.driver_substitutions import DriverSubstitutionCorrection
 from app.db.models.enums import SubjectType
 from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
@@ -20,7 +21,7 @@ from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip
+from app.db.models.trips import DriverSubstitution, Trip
 from app.db.models.vehicles import Vehicle
 
 
@@ -142,6 +143,29 @@ def _evidence_event_visible(
     )
 
 
+def _driver_substitution_visible(
+    subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
+) -> Select[tuple[uuid.UUID]]:
+    # A custody amendment belongs to its trip's operator, like the trip's own journey lock.
+    return (
+        select(DriverSubstitution.id)
+        .join(Trip, Trip.id == DriverSubstitution.trip_id)
+        .where(DriverSubstitution.id == subject_id, Trip.operator_organization_id == organization_id)
+    )
+
+
+def _driver_substitution_correction_visible(
+    subject_id: uuid.UUID | SQLColumnExpression[uuid.UUID], organization_id: uuid.UUID,
+) -> Select[tuple[uuid.UUID]]:
+    # correction -> substitution -> trip -> operator organisation.
+    return (
+        select(DriverSubstitutionCorrection.id)
+        .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)
+        .join(Trip, Trip.id == DriverSubstitution.trip_id)
+        .where(DriverSubstitutionCorrection.id == subject_id, Trip.operator_organization_id == organization_id)
+    )
+
+
 # One tenant rule per subject type. This is the blockchain half of the subject policy; the
 # orchestration half (how a subject is rebuilt for verification) is the registry in
 # orchestration/verification/service.py. They are two registries and not one object because
@@ -156,6 +180,8 @@ SUBJECT_VISIBILITY_QUERIES: Mapping[SubjectType, _VisibilityQuery] = MappingProx
     SubjectType.PRECINCT_EVENT: _precinct_event_visible,
     SubjectType.AUDIT_PACK: _audit_pack_visible,
     SubjectType.EVIDENCE_EVENT: _evidence_event_visible,
+    SubjectType.DRIVER_SUBSTITUTION: _driver_substitution_visible,
+    SubjectType.DRIVER_SUBSTITUTION_CORRECTION: _driver_substitution_correction_visible,
 })
 
 # Subject types that have no tenant rule and so are never visible to anyone. Empty today: it

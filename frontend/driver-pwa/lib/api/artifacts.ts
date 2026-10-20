@@ -1,5 +1,6 @@
 // frontend/driver-pwa/lib/api/artifacts.ts
 import { api, ApiError } from './client'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 import type { EvidenceRole } from '@shared/lib/types/evidence'
 
 export interface UploadedArtifact {
@@ -28,6 +29,20 @@ interface UploadArtifactParams {
   // Omitted by callers that have no phase slot (checkpoint and exception photos) and by
   // older app builds; the backend stores those unattributed, exactly as before.
   attribution?: ArtifactAttribution
+  // FP-83: the custody period the photo was CAPTURED in (never the period at upload time).
+  // Omitted when unknown — the server accepts that only before any substitution.
+  custodySequence?: number | null
+}
+
+// The fields every driver upload route shares: the ordinary /artifacts route and the two
+// FP-83 routes (handover check, late evidence) take "existing artifact multipart fields"
+// plus their own extras, so all three build from this one shape.
+export interface ArtifactUpload {
+  artifactType: ArtifactType
+  dataUrl: string
+  capturedAt: string
+  capturedLat?: number | null
+  capturedLng?: number | null
 }
 
 // Captured photos live in evidence drafts as base64 data URLs (see lib/types/evidence-draft.ts);
@@ -57,8 +72,12 @@ function fileExtension(blob: Blob): string {
   return blob.type === 'application/pdf' ? 'pdf' : 'jpg'
 }
 
-export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
-  const blob = await dataUrlToBlob(params.dataUrl)
+// Converts the capture and enforces the size cap before any network call, then returns the
+// shared multipart fields. Callers append their route-specific extras.
+export async function artifactFormData(upload: ArtifactUpload): Promise<FormData> {
+  const generation = actorGeneration()
+  const blob = await dataUrlToBlob(upload.dataUrl)
+  assertActorGeneration(generation)
 
   // Synthetic 413 (never emitted by the fetch wrapper itself) keeps this failure
   // TERMINAL: offline-queue classification (isQueueableFailure) only retries status 0
@@ -69,16 +88,26 @@ export async function uploadArtifact(params: UploadArtifactParams): Promise<Uplo
   }
 
   const form = new FormData()
+  form.append('artifact_type', upload.artifactType)
+  form.append('captured_at', upload.capturedAt)
+  if (upload.capturedLat != null) form.append('captured_lat', String(upload.capturedLat))
+  if (upload.capturedLng != null) form.append('captured_lng', String(upload.capturedLng))
+  form.append('file', blob, `${upload.artifactType}.${fileExtension(blob)}`)
+  return form
+}
+
+export async function uploadArtifact(params: UploadArtifactParams): Promise<UploadedArtifact> {
+  const generation = actorGeneration()
+  const form = await artifactFormData(params)
+  assertActorGeneration(generation)
   form.append('trip_id', params.tripId)
-  form.append('artifact_type', params.artifactType)
-  form.append('captured_at', params.capturedAt)
-  if (params.capturedLat != null) form.append('captured_lat', String(params.capturedLat))
-  if (params.capturedLng != null) form.append('captured_lng', String(params.capturedLng))
   if (params.attribution !== undefined) {
     form.append('phase_event_id', params.attribution.phaseEventId)
     form.append('evidence_role', params.attribution.role)
   }
-  form.append('file', blob, `${params.artifactType}.${fileExtension(blob)}`)
+  if (params.custodySequence != null) form.append('custody_sequence', String(params.custodySequence))
 
   return api.postForm<UploadedArtifact>('/api/v1/artifacts', form, { timeoutMs: ARTIFACT_UPLOAD_TIMEOUT_MS })
 }
+
+export { ARTIFACT_UPLOAD_TIMEOUT_MS }

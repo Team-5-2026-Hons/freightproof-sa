@@ -11,6 +11,8 @@ import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import type { TripId } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
 import { ROUTES } from '@/lib/constants/routes'
+import type { SubstitutionRequestRead } from '@shared/lib/types/driver-substitution'
+import { substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
 import TripsPage from '../page'
 
 // Real-data mode: demo mode short-circuits to fixtures and would prove nothing here.
@@ -33,6 +35,17 @@ const mockFetchMyTrips = vi.fn()
 vi.mock('@/lib/api/trips', () => ({
   fetchMyTrips: () => mockFetchMyTrips(),
 }))
+
+// FP-83: pending handovers come from their own resource, not /trips/me. Empty by default
+// so every pre-existing case below renders exactly as before.
+let mockPendingHandovers: SubstitutionRequestRead[] = []
+vi.mock('@/lib/hooks/useDriverSubstitutions', () => ({
+  useDriverSubstitutions: () => ({
+    pending: mockPendingHandovers, notices: [], isLoading: false, loadError: null, lastRefreshedAt: null,
+    refresh: vi.fn(), markNoticeRead: vi.fn(),
+  }),
+}))
+vi.mock('@capacitor/core', () => ({ Capacitor: { getPlatform: () => 'web' } }))
 
 function makeTrip(overrides: Partial<DriverTripSummary> & { status: CoarseTripStatus }): DriverTripSummary {
   return {
@@ -68,6 +81,7 @@ function section(name: string): HTMLElement {
 describe('trips page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockPendingHandovers = []
   })
 
   it('test_shows_the_active_trip_up_front_and_both_assignments_as_upcoming', async () => {
@@ -169,5 +183,27 @@ describe('trips page', () => {
 
     expect(await screen.findByText('Durban Depot → Cape Town Depot')).toBeInTheDocument()
     expect(mockFetchMyTrips).toHaveBeenCalledTimes(2)
+  })
+
+  it('test_pending_incoming_handover_is_not_reported_as_no_trips', async () => {
+    const fixture = substitutionFixturePack.incomingPendingNoActiveTrip.pending[0]
+    // Named as this harness's signed-in driver, so the card is for them.
+    mockPendingHandovers = [{ ...fixture, incoming: { ...fixture.incoming, id: 'driver-real-uuid' } }]
+    mockFetchMyTrips.mockResolvedValue([])
+
+    render(<TripsPage />)
+
+    expect(await screen.findByText('Collect this trip')).toBeInTheDocument()
+    expect(screen.queryByText('No trips yet')).not.toBeInTheDocument()
+  })
+
+  it('test_former_participation_is_listed_under_past_not_current', async () => {
+    const handedOver = makeTrip({ status: 'active', trip_reference: 'FP-HANDED-OVER', participation: 'former' })
+    mockFetchMyTrips.mockResolvedValue([handedOver])
+
+    render(<TripsPage />)
+
+    expect(await screen.findByText('Handed over')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Current trip/ })).not.toBeInTheDocument()
   })
 })

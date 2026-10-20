@@ -12,7 +12,6 @@ saved: it answers "what is stopping this from completing right now?" without cha
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,9 +27,18 @@ from app.schemas.driver_substitutions import (
     ConfirmationSummary, DriverContact, ExchangePoint, IdentitySnapshot, SubstitutionAction,
     SubstitutionCompletionMode, SubstitutionCompletionRead, SubstitutionCompletionTrigger,
     SubstitutionRequestRead, SubstitutionRole, SubstitutionState, VehicleRef,
+    PLANNED_V1, IMMEDIATE_V2,
 )
 
 _ROLE_ORDER = (SubstitutionRole.OUTGOING, SubstitutionRole.INCOMING)
+
+
+def required_confirmation_roles(request_format: str) -> tuple[SubstitutionRole, ...]:
+    if request_format == PLANNED_V1:
+        return _ROLE_ORDER
+    if request_format == IMMEDIATE_V2:
+        return (SubstitutionRole.INCOMING,)
+    raise ValueError("Unknown driver transfer request format")
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,7 @@ class Viewer:
 
 def permitted_actions(
     *, state: SubstitutionState, viewer: Viewer, confirmed: set[SubstitutionRole], identity: IdvsStatus,
+    required_roles: tuple[SubstitutionRole, ...] = _ROLE_ORDER,
 ) -> list[SubstitutionAction]:
     if state is not SubstitutionState.PENDING:
         return []
@@ -53,7 +62,7 @@ def permitted_actions(
         actions += [SubstitutionAction.CANCEL, SubstitutionAction.REPLACE, SubstitutionAction.COMPLETE_ATTESTED]
         if viewer.is_admin and identity is IdvsStatus.PENDING:
             actions.append(SubstitutionAction.ATTEST_IDENTITY)
-    elif viewer.driver_role is not None and viewer.driver_role not in confirmed:
+    elif viewer.driver_role in required_roles and viewer.driver_role not in confirmed:
         actions.append(SubstitutionAction.CONFIRM_OUTGOING if viewer.driver_role is SubstitutionRole.OUTGOING
                        else SubstitutionAction.CONFIRM_INCOMING)
     return actions
@@ -71,8 +80,9 @@ def _contact(driver: Driver) -> DriverContact:
     return DriverContact(id=driver.id, full_name=driver.full_name, phone_number=driver.phone_number)
 
 
-def _number(value: Decimal | float) -> float:
-    return float(value)
+def _legacy_exchange(request: DriverSubstitutionRequest) -> ExchangePoint:
+    return ExchangePoint.model_validate({"label": request.exchange_label, "latitude": request.exchange_latitude,
+        "longitude": request.exchange_longitude, "instructions": request.exchange_instructions})
 
 
 async def build_request_read(
@@ -113,12 +123,15 @@ async def build_request_read(
         for role in _ROLE_ORDER if role in saved
     ]
     state = SubstitutionState(request.state)
+    required = required_confirmation_roles(request.request_format)
 
     completed = (await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.request_id == request.id)
     )).scalar_one_or_none() if state is SubstitutionState.COMPLETED else None
     if completed is not None:
         # Frozen at completion; never re-read from the driver, whose status may have moved since.
+        if completed.incoming_identity_observed_at is None:
+            raise ValueError("Completed request has no recorded identity observation")
         identity = IdentitySnapshot(
             driver_id=incoming.id, status=IdvsStatus(completed.incoming_identity_status),
             last_verified_at=completed.incoming_identity_last_verified_at,
@@ -131,7 +144,7 @@ async def build_request_read(
         )
 
     blocked = None
-    if state is SubstitutionState.PENDING and len(saved) == len(_ROLE_ORDER):
+    if state is SubstitutionState.PENDING and set(required).issubset(saved):
         blocked = await first_completion_blocker(db, trip=trip, incoming=incoming, now=now, identity_attested=False)
 
     completion = None
@@ -146,19 +159,19 @@ async def build_request_read(
     return SubstitutionRequestRead(
         id=request.id, trip_id=request.trip_id, trip_reference=trip.trip_reference, version=request.version,
         state=state, outgoing=_contact(outgoing), incoming=_contact(incoming), vehicles=vehicles,
-        exchange=ExchangePoint(
-            label=request.exchange_label, latitude=_number(request.exchange_latitude),
-            longitude=_number(request.exchange_longitude), instructions=request.exchange_instructions,
-        ),
+        exchange=_legacy_exchange(request) if request.request_format == PLANNED_V1 else None,
         expected_at=request.expected_at, is_planned=request.is_planned, reason=request.reason,
+        request_format="planned_v1" if request.request_format == PLANNED_V1 else "immediate_v2",
+        confirmation_policy="two_driver_v1" if request.request_format == PLANNED_V1 else "incoming_acceptance_v2",
+        required_confirmation_roles=list(required), reservation_start_at=request.reservation_start_at,
         created_at=request.created_at, confirmations=confirmations, identity=identity,
-        missing_confirmations=[role for role in _ROLE_ORDER if role not in saved],
+        missing_confirmations=[role for role in required if role not in saved],
         completed_substitution_id=completed.id if completed else None,
         effective_at=completed.substitution_at if completed else None,
         completion_mode=SubstitutionCompletionMode(completed.completion_mode) if completed else None,
         completion_blocked_by=blocked, replacement_request_id=request.replacement_request_id,
         completion=completion,
         permitted_actions=permitted_actions(
-            state=state, viewer=viewer, confirmed=set(saved), identity=identity.status,
+            state=state, viewer=viewer, confirmed=set(saved), identity=identity.status, required_roles=required,
         ),
     )

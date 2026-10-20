@@ -74,6 +74,12 @@ from app.main import app  # noqa: E402
 # from every other test in the suite.
 settings.RATE_LIMIT_ENABLED = False
 
+# FP-83: new driver-handover arrangements default OFF in every real environment
+# (DRIVER_SUBSTITUTIONS_ENABLED), but the lifecycle tests arrange handovers throughout, so the
+# suite runs with them on. The disabled mode is asserted explicitly where it matters
+# (test_driver_substitution_endpoints.py), by switching it back off.
+settings.DRIVER_SUBSTITUTIONS_ENABLED = True
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
@@ -94,9 +100,17 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
     # a failed publish would fall back to a local anchor against DATABASE_URL.
     monkeypatch.setattr(anchor_event_task, "delay", Mock(return_value=None))
     register_evidence_publisher()  # app.main does this at startup; service-level tests never import it
+    # FP-83 custody anchors: same rule, a completed test handover never reaches the dev broker.
+    from app.orchestration.substitutions.anchors import _BACKGROUND_CUSTODY_TASKS
+    from app.tasks.driver_substitutions import anchor_record_task, register_custody_publisher
+
+    monkeypatch.setattr(anchor_record_task, "delay", Mock(return_value=None))
+    register_custody_publisher()
     yield
-    while _BACKGROUND_ANCHOR_TASKS or _BACKGROUND_EVIDENCE_TASKS:
-        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS), *tuple(_BACKGROUND_EVIDENCE_TASKS))
+    while _BACKGROUND_ANCHOR_TASKS or _BACKGROUND_EVIDENCE_TASKS or _BACKGROUND_CUSTODY_TASKS:
+        await asyncio.gather(
+            *tuple(_BACKGROUND_ANCHOR_TASKS), *tuple(_BACKGROUND_EVIDENCE_TASKS), *tuple(_BACKGROUND_CUSTODY_TASKS),
+        )
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.

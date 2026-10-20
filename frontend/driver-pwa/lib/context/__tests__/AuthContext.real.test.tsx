@@ -62,6 +62,8 @@ describe('AuthContext (real Supabase mode)', () => {
 
   it('signIn verifies the OTP and loads the driver profile', async () => {
     mockVerifyOtp.mockResolvedValue({ error: null })
+    mockGetSession.mockResolvedValueOnce({ data: { session: null } })
+      .mockResolvedValue({ data: { session: { user: { id: 'auth-driver-1' } } } })
     mockApiGet.mockResolvedValue({ id: 'driver-1', full_name: 'Test Driver' })
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 

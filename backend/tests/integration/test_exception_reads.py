@@ -820,8 +820,9 @@ async def test_history_rows_carry_context_and_empty_trailers_when_none_attached(
     assert row["trailer_registrations"] == []
 
 
-async def test_trip_contexts_are_loaded_in_three_queries(db_session, test_engine):
-    """Precincts, driver and horse together, trailers: three SELECTs however many trips there are."""
+async def test_trip_contexts_are_loaded_in_four_queries(db_session, test_engine):
+    """Precincts, driver and horse together, trailers, handover participants (FP-83): four
+    SELECTs however many trips there are."""
     seed = await _seed_org(db_session, tag="ctxq")
     trips = [await _make_trip(db_session, seed, tag=f"ctxq{i}") for i in range(3)]
     await _attach_trailer(db_session, seed, trips[0], registration="TRL-Q")
@@ -836,7 +837,7 @@ async def test_trip_contexts_are_loaded_in_three_queries(db_session, test_engine
     finally:
         sa_event.remove(test_engine.sync_engine, "before_cursor_execute", record)
 
-    assert len(statements) == 3
+    assert len(statements) == 4
     assert contexts[trips[0].id].driver_name == seed["driver"].full_name
     assert contexts[trips[0].id].horse_registration == seed["horse"].registration
     assert contexts[trips[0].id].trailer_registrations == ["TRL-Q"]

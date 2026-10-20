@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     # A trip's stops cannot change after creation, so this only bounds Redis memory.
     TRIP_ROUTE_CACHE_TTL_SECONDS: int = 86400
 
+    # Analytics chat (FP-295). Off unless both the switch is on and the chosen provider's key
+    # is set, so a teammate's machine never spends money by accident. AI_CHAT_PROVIDER is
+    # "gemini" or "anthropic"; AI_CHAT_MODEL must be that provider's and priced in
+    # app/integrations/ai_chat/pricing.py, or the chat stays off rather than spend blind.
+    AI_CHAT_ENABLED: bool = False
+    AI_CHAT_PROVIDER: str = "gemini"
+    AI_CHAT_MODEL: str = "gemini-3.8-flash"
+    GEMINI_API_KEY: str = ""
+    GEMINI_API_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    ANTHROPIC_API_KEY: str = ""
+    # Across every organisation, per SAST calendar month; the chat refuses new questions once
+    # reached. Keep the Anthropic console's spend limit at or a little above this.
+    AI_CHAT_MONTHLY_BUDGET_USD: float = 20.0
+
     GPS_TOLERANCE_METRES: int = 50
 
     # Driver-vs-truck proximity check:
