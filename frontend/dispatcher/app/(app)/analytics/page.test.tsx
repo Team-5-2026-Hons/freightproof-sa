@@ -5,6 +5,7 @@ import AnalyticsPage from './page'
 import { api } from '@/lib/api/client'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { addDays, todaySast } from '@/lib/format/period'
+import type { ChatAnswer, ChatStatus } from '@shared/lib/types/analytics-chat'
 import type { FleetCost } from '@shared/lib/types/cost-analytics'
 import type {
   FleetActivity,
@@ -33,7 +34,10 @@ vi.mock('@/lib/hooks/useToast', () => ({
 }))
 
 vi.mock('@/lib/api/client', () => ({
-  api: { get: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn() },
+  ApiError: class ApiError extends Error {
+    constructor(public readonly status: number, message: string) { super(message) }
+  },
 }))
 
 const replace = vi.fn()
@@ -45,7 +49,11 @@ vi.mock('next/navigation', () => ({
 }))
 
 const mockedGet = vi.mocked(api.get)
+const mockedPost = vi.mocked(api.post)
 const TILES_PATH = '/api/v1/analytics/fleet/tiles'
+const CHAT_STATUS_PATH = '/api/v1/analytics/chat/status'
+// Off unless a test switches it on, so the chat button is absent by default.
+let chatStatus: ChatStatus = { enabled: false, spend: null }
 const NO_BANDS = { expired: 0, within_30_days: 0, within_90_days: 0, within_180_days: 0, no_date: 0 }
 
 function makeTiles(overrides: Partial<FleetTiles> = {}): FleetTiles {
@@ -128,6 +136,7 @@ function serve(tiles: FleetTiles): void {
     '/activity': emptyActivity, '/patterns': emptyPatterns, '/on-time': emptyOnTime, '/problems': emptyProblems, '/review': emptyReview, '/evidence': emptyEvidence, '/routes': emptyRoutes, '/incidents': emptyIncidents, '/cost': emptyCost,
   }
   mockedGet.mockImplementation((path: string) => {
+    if (path === CHAT_STATUS_PATH) return Promise.resolve(chatStatus) as never
     const match = Object.keys(empty).find((endpoint) => path.includes(`${endpoint}?`))
     return Promise.resolve(match === undefined ? tiles : empty[match]()) as never
   })
@@ -149,6 +158,8 @@ beforeEach(() => {
   replace.mockReset()
   searchParams = new URLSearchParams()
   mockedGet.mockReset()
+  mockedPost.mockReset()
+  chatStatus = { enabled: false, spend: null }
   serve(makeTiles())
 })
 
@@ -192,7 +203,7 @@ describe('Analytics page', () => {
     await screen.findByText('Live trips')
 
     await waitFor(() => expect(requestedEndpoints()).toEqual([
-      '/api/v1/analytics/fleet/activity', '/api/v1/analytics/fleet/patterns', TILES_PATH,
+      CHAT_STATUS_PATH, '/api/v1/analytics/fleet/activity', '/api/v1/analytics/fleet/patterns', TILES_PATH,
     ]))
   })
 
@@ -203,7 +214,7 @@ describe('Analytics page', () => {
     await screen.findByText('Live trips')
 
     await waitFor(() => expect(requestedEndpoints()).toEqual([
-      '/api/v1/analytics/fleet/incidents', '/api/v1/analytics/fleet/routes', TILES_PATH,
+      CHAT_STATUS_PATH, '/api/v1/analytics/fleet/incidents', '/api/v1/analytics/fleet/routes', TILES_PATH,
     ]))
     expect(mockedGet.mock.calls.map(([path]) => path).filter((path) => path.includes('grain='))).toEqual([])
   })
@@ -215,7 +226,7 @@ describe('Analytics page', () => {
 
     expect(await screen.findByRole('heading', { name: 'Cost at a glance' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Cost' })).toHaveAttribute('aria-selected', 'true')
-    await waitFor(() => expect(requestedEndpoints()).toEqual(['/api/v1/analytics/fleet/cost', TILES_PATH]))
+    await waitFor(() => expect(requestedEndpoints()).toEqual([CHAT_STATUS_PATH, '/api/v1/analytics/fleet/cost', TILES_PATH]))
     expect(mockedGet.mock.calls.some(([path]) => path.startsWith('/api/v1/analytics/fleet/cost?') && path.includes('grain=week'))).toBe(true)
     expect(screen.getByRole('radiogroup', { name: 'View by' })).toBeInTheDocument()
   })
@@ -340,5 +351,72 @@ describe('Analytics page', () => {
     await waitFor(() => expect(screen.getByRole('radio', { name: 'Month' })).toHaveAttribute('aria-checked', 'true'))
     expect(screen.getByRole('radio', { name: 'Week' })).toHaveAttribute('aria-disabled', 'true')
     expect(screen.getByRole('status')).toHaveTextContent('Showing by month: too many weeks for this period.')
+  })
+
+  describe('Ask about these figures', () => {
+    const ON = { enabled: true, spend: { spent_usd: 0.42, budget_usd: 20, available: true } }
+
+    it('shows no chat button while the chat is switched off', async () => {
+      renderPage()
+      await screen.findByText('Live trips')
+
+      await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(CHAT_STATUS_PATH))
+      expect(screen.queryByRole('button', { name: 'Ask about these figures' })).not.toBeInTheDocument()
+    })
+
+    it('opens the panel beside the tabs, which keep working, and closes it again', async () => {
+      chatStatus = ON
+      renderPage()
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+
+      const panel = screen.getByRole('complementary', { name: 'Ask about these figures' })
+      expect(within(panel).getByText('AI spend this month: $0.42 of $20.00')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('tab', { name: 'On time' }))
+      expect(replace).toHaveBeenCalledWith('/analytics?tab=on-time', { scroll: false })
+      fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
+      expect(screen.queryByRole('complementary', { name: 'Ask about these figures' })).not.toBeInTheDocument()
+    })
+
+    it('re-reads the spend when the panel opens, so it never shows the page-load figure', async () => {
+      chatStatus = ON
+      renderPage()
+      const button = await screen.findByRole('button', { name: 'Ask about these figures' })
+      // Spent elsewhere since the page loaded (e.g. in a panel that has since been closed).
+      chatStatus = { ...ON, spend: { ...ON.spend, spent_usd: 0.55 } }
+
+      fireEvent.click(button)
+
+      const panel = screen.getByRole('complementary', { name: 'Ask about these figures' })
+      expect(await within(panel).findByText('AI spend this month: $0.55 of $20.00')).toBeInTheDocument()
+    })
+
+    it('opens a Based on line\'s tab with the answer\'s exact dates', async () => {
+      chatStatus = ON
+      const answer: ChatAnswer = {
+        answer: 'On-time arrivals fell from 81% to 74%.',
+        kind: 'answer',
+        basis: [{
+          tool: 'on_time', tab: 'on-time', label: 'On time', start: '2025-11-01', end: todaySast(),
+          grain: 'month', closed_trip_count: 412,
+        }],
+        spend: ON.spend,
+      }
+      mockedPost.mockResolvedValue(answer)
+      // Like the real router: replacing the address changes what useSearchParams reads next render.
+      replace.mockImplementation((href: string) => { searchParams = new URLSearchParams(href.split('?')[1]) })
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+      fireEvent.click(screen.getByRole('button', { name: 'How did delays change over the past year?' }))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Open On time with these dates' }))
+
+      expect(replace).toHaveBeenCalledWith('/analytics?tab=on-time', { scroll: false })
+      expect(await screen.findByRole('tab', { name: 'On time' })).toHaveAttribute('aria-selected', 'true')
+      await waitFor(() => expect(mockedGet.mock.calls.some(([path]) =>
+        path.startsWith('/api/v1/analytics/fleet/on-time?')
+        && path.includes('start=2025-11-01') && path.includes('grain=month'),
+      )).toBe(true))
+    })
   })
 })

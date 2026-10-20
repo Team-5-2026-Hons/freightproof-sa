@@ -1,8 +1,10 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
+import { AnalyticsChatPanel } from '@/components/analytics/chat/AnalyticsChatPanel'
+import { CHAT_COPY } from '@/components/analytics/chat/chatCopy'
 import { FleetTiles } from '@/components/analytics/fleet/FleetTiles'
 import { ControlRow, type TabControls } from '@/components/analytics/fleet/controls/ControlRow'
 import { COST_COPY } from '@/components/analytics/fleet/costCopy'
@@ -22,6 +24,7 @@ import { OnTimeTab } from '@/components/analytics/fleet/tabs/OnTimeTab'
 import { ProblemsTab } from '@/components/analytics/fleet/tabs/ProblemsTab'
 import { ReviewDeskTab } from '@/components/analytics/fleet/tabs/ReviewDeskTab'
 import { RoutesTab } from '@/components/analytics/fleet/tabs/RoutesTab'
+import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { TopBar } from '@/components/ui/TopBar'
@@ -32,7 +35,9 @@ import {
   todaySast,
   type PeriodSelection,
 } from '@/lib/format/period'
+import { useChatStatus } from '@/lib/hooks/useAnalyticsChat'
 import { useFleetTiles } from '@/lib/hooks/useFleetAnalytics'
+import type { Basis } from '@shared/lib/types/analytics-chat'
 
 // Fleet-wide patterns and trends. Per-entity numbers live on each
 // vehicle, driver and precinct detail page, so this page answers "how is the whole
@@ -51,6 +56,8 @@ type TabId = (typeof TABS)[number]['id']
 
 const DEFAULT_TAB: TabId = 'activity'
 const PANEL_ID = 'fleet-analytics-panel'
+const CHAT_BUTTON_ID = 'analytics-chat-open'
+const CHAT_PANEL_ID = 'analytics-chat-panel'
 
 // Routes & sites shows distributions over the whole period, never a time axis.
 const TABS_WITHOUT_GRAIN: readonly TabId[] = ['routes']
@@ -123,6 +130,8 @@ function FleetAnalytics() {
   const active: TabId = isTabId(requested) ? requested : DEFAULT_TAB
 
   const tiles = useFleetTiles()
+  const chatStatus = useChatStatus()
+  const [chatOpen, setChatOpen] = useState(false)
   const [controls, setControls] = useState<Record<TabId, TabControls>>(() => initialControls(active, search))
   const [patternPeriod, setPatternPeriod] = useState<PeriodSelection>(DEFAULT_PATTERN_PERIOD)
   // Seeded from the address once, so /analytics?tab=routes&map=today opens on Today and Back
@@ -146,52 +155,103 @@ function FleetAnalytics() {
     router.replace(`${pathname}?${TAB_PARAM}=${id}`, { scroll: false })
   }
 
+  const closeChat = useCallback(() => {
+    setChatOpen(false)
+    // Back to the button that opened it, so keyboard users don't lose their place.
+    // By id because the shared Button takes no ref; it stays on screen while the panel is open.
+    document.getElementById(CHAT_BUTTON_ID)?.focus()
+  }, [])
+
+  /** A chat answer's "Based on" line: show its tab with the answer's exact dates, so the
+   *  figure can be checked on the chart beside the panel (FP-295). Set in state rather than
+   *  by link, because the page reads the period from the address only when it first loads. */
+  function openBasis(basis: Basis): void {
+    const tab = basis.tab
+    if (tab === null || !isTabId(tab) || basis.start === null || basis.end === null) return
+    const { start, end } = basis
+    setControls((current) => ({
+      ...current,
+      [tab]: { grain: basis.grain ?? current[tab].grain, period: { preset: 'custom', start, end } },
+    }))
+    selectTab(tab)
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Analytics" />
+      <TopBar title="Analytics">
+        {chatStatus.enabled && (
+          <Button
+            id={CHAT_BUTTON_ID}
+            variant="secondary"
+            size="sm"
+            aria-expanded={chatOpen}
+            aria-controls={chatOpen ? CHAT_PANEL_ID : undefined}
+            onClick={() => {
+              // Re-read this month's spend: the page's own read is from when it loaded, so a panel
+              // opened later would otherwise show an old figure until its first answer arrives.
+              chatStatus.refetch()
+              setChatOpen(true)
+            }}
+          >
+            {CHAT_COPY.open}
+          </Button>
+        )}
+      </TopBar>
 
-      <div className="flex-1 min-h-0 overflow-auto">
-        <div className="flex flex-col gap-4 px-6 py-4">
-          <FleetTiles data={tiles.data} isLoading={tiles.isLoading} error={tiles.error} onRetry={tiles.refetch} />
+      {/* The chat panel sits beside the scrolling page, not over it, so charts stay visible. */}
+      <div className="flex flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-auto">
+          <div className="flex flex-col gap-4 px-6 py-4">
+            <FleetTiles data={tiles.data} isLoading={tiles.isLoading} error={tiles.error} onRetry={tiles.refetch} />
 
-          <Tabs tabs={TABS} active={active} onChange={selectTab} panelId={PANEL_ID} ariaLabel="Analytics sections" />
+            <Tabs tabs={TABS} active={active} onChange={selectTab} panelId={PANEL_ID} ariaLabel="Analytics sections" />
 
-          <div id={PANEL_ID} role="tabpanel" aria-labelledby={`tab-${active}`} tabIndex={0} className="flex flex-col gap-4 focus-visible:outline-none">
-            <ControlRow
-              controls={activeControls}
-              query={query}
-              onChange={(next) => setControls((current) => ({ ...current, [active]: next }))}
-              showGrain={!TABS_WITHOUT_GRAIN.includes(active)}
-              today={today}
-              allTimeStart={allTimeStart}
-              notes={notesFor(active)}
-            />
-            {/* Only the open tab is mounted, so only its requests run. */}
-            {active === 'activity' && (
-              <ActivityTab
+            <div id={PANEL_ID} role="tabpanel" aria-labelledby={`tab-${active}`} tabIndex={0} className="flex flex-col gap-4 focus-visible:outline-none">
+              <ControlRow
+                controls={activeControls}
                 query={query}
+                onChange={(next) => setControls((current) => ({ ...current, [active]: next }))}
+                showGrain={!TABS_WITHOUT_GRAIN.includes(active)}
+                today={today}
                 allTimeStart={allTimeStart}
-                today={today}
-                patternPeriod={patternPeriod}
-                onPatternPeriodChange={setPatternPeriod}
+                notes={notesFor(active)}
               />
-            )}
-            {active === 'on-time' && <OnTimeTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'problems' && <ProblemsTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'review' && <ReviewDeskTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'evidence' && <EvidenceTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'cost' && <CostTab query={query} allTimeStart={allTimeStart} today={today} />}
-            {active === 'routes' && (
-              <RoutesTab
-                query={query}
-                returnTo={analyticsReturnHref(active, activeControls, mapWindow)}
-                today={today}
-                mapWindow={mapWindow}
-                onMapWindowChange={setMapWindow}
-              />
-            )}
+              {/* Only the open tab is mounted, so only its requests run. */}
+              {active === 'activity' && (
+                <ActivityTab
+                  query={query}
+                  allTimeStart={allTimeStart}
+                  today={today}
+                  patternPeriod={patternPeriod}
+                  onPatternPeriodChange={setPatternPeriod}
+                />
+              )}
+              {active === 'on-time' && <OnTimeTab query={query} allTimeStart={allTimeStart} today={today} />}
+              {active === 'problems' && <ProblemsTab query={query} allTimeStart={allTimeStart} today={today} />}
+              {active === 'review' && <ReviewDeskTab query={query} allTimeStart={allTimeStart} today={today} />}
+              {active === 'evidence' && <EvidenceTab query={query} allTimeStart={allTimeStart} today={today} />}
+              {active === 'cost' && <CostTab query={query} allTimeStart={allTimeStart} today={today} />}
+              {active === 'routes' && (
+                <RoutesTab
+                  query={query}
+                  returnTo={analyticsReturnHref(active, activeControls, mapWindow)}
+                  today={today}
+                  mapWindow={mapWindow}
+                  onMapWindowChange={setMapWindow}
+                />
+              )}
+            </div>
           </div>
         </div>
+        {chatOpen && (
+          <AnalyticsChatPanel
+            id={CHAT_PANEL_ID}
+            onClose={closeChat}
+            statusSpend={chatStatus.spend}
+            onRecheckStatus={chatStatus.refetch}
+            onOpenBasis={openBasis}
+          />
+        )}
       </div>
     </div>
   )
