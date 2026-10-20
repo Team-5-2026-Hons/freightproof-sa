@@ -125,16 +125,17 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
       className="rounded-[22px] bg-fill px-4 pb-4 pt-4"
     >
       <p className="text-footnote font-semibold uppercase tracking-wide text-surface-on-variant">
-        {role === 'incoming' ? 'Collect this trip' : 'Hand over this trip'}
+        {role === 'incoming' ? 'Collect this trip' : request.request_format === 'immediate_v2' ? 'Transfer notification' : 'Hand over this trip'}
       </p>
       <p className="text-title-2 text-surface-on">{request.trip_reference}</p>
 
       <StatusBanner tone={statusTone(request)} title={substitutionStatusLine(request, role)} className="mt-3 bg-surface">
-        {blocker !== null && isPending ? `Your check is saved. ${blockerMessage(blocker)}` : undefined}
+        {blocker !== null && isPending ? `${request.request_format === 'immediate_v2' && role === 'outgoing' ? "Incoming acceptance is saved." : "Your check is saved."} ${blockerMessage(blocker)}` : undefined}
       </StatusBanner>
 
+      {request.request_format === 'immediate_v2' && role === 'outgoing' && <p className="mt-2 text-subhead">Not requested — notification only. You do not need to confirm or record a location.</p>}
       <dl className="mt-2 divide-y divide-hairline">
-        <Fact label="Exchange point">
+        {request.exchange && <Fact label="Exchange point">
           <span className="block">{request.exchange.label}</span>
           {request.exchange.instructions !== '' && (
             <span className="block text-subhead text-surface-on-variant">{request.exchange.instructions}</span>
@@ -146,8 +147,8 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
             <MapPin aria-hidden className="size-4" strokeWidth={2} />
             Directions
           </a>
-        </Fact>
-        <Fact label="Expected">{formatDateTime(request.expected_at)}</Fact>
+        </Fact>}
+        {request.expected_at && <Fact label="Expected">{formatDateTime(request.expected_at)}</Fact>}
         <Fact label={role === 'incoming' ? 'Handing over' : 'Taking over'}>
           <span className="block">{counterpart.full_name}</span>
           <a

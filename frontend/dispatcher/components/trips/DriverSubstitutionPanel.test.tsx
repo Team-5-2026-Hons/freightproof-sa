@@ -8,7 +8,7 @@ import type { Trip } from '@shared/lib/types/trip'
 import { ApiError } from '@/lib/api/client'
 import { cancelSubstitution, completeSubstitution, correctSubstitution } from '@/lib/api/driverSubstitutions'
 import { useDrivers } from '@/lib/hooks/useDrivers'
-import { DriverSubstitutionPanel } from './DriverSubstitutionPanel'
+import { DriverSubstitutionPanel, PendingHandover } from './DriverSubstitutionPanel'
 
 // The API client builds a Supabase client at import time — mocked like the other panel tests.
 vi.mock('@/lib/supabase/client', () => ({
@@ -41,7 +41,7 @@ function pendingRequest(overrides: Partial<SubstitutionRequestRead> = {}): Subst
 
 function renderPanel(trip: Trip) {
   const onChanged = vi.fn()
-  render(<DriverSubstitutionPanel trip={trip} onChanged={onChanged} />)
+  render(<><DriverSubstitutionPanel trip={trip} onChanged={onChanged} />{trip.pending_driver_substitution && <PendingHandover tripId={trip.id} request={trip.pending_driver_substitution} onChanged={onChanged} onReplace={vi.fn()} canReplace={trip.driver_substitutions_enabled === true} />}</>)
   return { onChanged }
 }
 
@@ -77,17 +77,17 @@ describe('DriverSubstitutionPanel — drivers and arrange button', () => {
     expect(screen.queryByText('Original driver')).not.toBeInTheDocument()
   })
 
-  it('offers "Arrange handover" when enabled, live and nothing pending', () => {
+  it('keeps initiation in the header when enabled and live', () => {
     renderPanel(tripWith())
 
-    expect(screen.getByRole('button', { name: 'Arrange handover' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Arrange handover' })).not.toBeInTheDocument()
     expect(screen.queryByText(/New handovers are switched off/)).not.toBeInTheDocument()
   })
 
-  it('offers "Arrange handover" on a trip in exception hold', () => {
+  it('keeps initiation in the header during exception hold', () => {
     renderPanel(tripWith({ status: 'exception_hold' }))
 
-    expect(screen.getByRole('button', { name: 'Arrange handover' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Arrange handover' })).not.toBeInTheDocument()
   })
 
   it('hides "Arrange handover" when the trip is not live', () => {
@@ -109,13 +109,7 @@ describe('DriverSubstitutionPanel — drivers and arrange button', () => {
     expect(screen.queryByRole('button', { name: 'Arrange handover' })).not.toBeInTheDocument()
   })
 
-  it('opens the arrange dialog from the button', async () => {
-    renderPanel(tripWith())
 
-    await userEvent.click(screen.getByRole('button', { name: 'Arrange handover' }))
-
-    expect(await screen.findByRole('dialog')).toBeInTheDocument()
-  })
 })
 
 describe('DriverSubstitutionPanel — pending arrangement', () => {

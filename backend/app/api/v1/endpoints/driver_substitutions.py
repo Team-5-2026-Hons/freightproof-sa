@@ -18,6 +18,7 @@ every decision lives in orchestration/substitutions.
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import Enum
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
@@ -45,20 +46,22 @@ from app.orchestration.substitutions.artifacts import (
 from app.orchestration.substitutions.late_evidence import acknowledge_late_evidence, retain_late_evidence
 from app.orchestration.substitutions.notices import list_notices, mark_notice_read
 from app.orchestration.substitutions.service import (
-    arrange_substitution, cancel_substitution, complete_attested_substitution, confirm_substitution,
-    correct_completed_substitution, replace_substitution,
+    cancel_substitution, complete_attested_substitution, confirm_substitution,
+    correct_completed_substitution,
 )
+from app.orchestration.substitutions.client_operations import arrange_immediate_or_replay as arrange_substitution, replace_immediate_or_replay as replace_substitution
 from app.schemas.driver_substitutions import (
-    AcknowledgeLateEvidenceRequest, ArrangeSubstitutionRequest, CancelSubstitutionRequest,
+    AcknowledgeLateEvidenceRequest, ArrangeSubstitutionRequest, ArrangeImmediateSubstitutionRequest, ReplaceImmediateSubstitutionRequest, ConfirmSubstitutionObservationRequest, CancelSubstitutionRequest,
     CompleteSubstitutionRequest, ConfirmSubstitutionRequest, CorrectSubstitutionRequest,
     DriverParticipationHistoryRead, DriverSubstitutionContextRead, LateEvidenceDetailRead, LateEvidenceRead,
     LateEvidenceRequest, ReplaceSubstitutionRequest, SubstitutionCorrectionRead, SubstitutionErrorResponse,
     SubstitutionNoticeRead, SubstitutionRequestRead, SubstitutionRole,
+    CompletedSubstitutionDetail,
 )
 from app.schemas.evidence import EvidenceArtifactRead
 from app.schemas.people import DriverRead, UserRead
 
-_TAGS = ["driver-substitutions"]
+_TAGS: list[str | Enum] = ["driver-substitutions"]
 # Documented on every mutation: the coded conflict body the contract defines.
 _CONFLICTS: dict[int | str, dict[str, object]] = {
     409: {"model": SubstitutionErrorResponse}, 503: {"model": SubstitutionErrorResponse},
@@ -135,7 +138,7 @@ dispatcher_router = APIRouter(prefix="/trips/{trip_id}/driver-substitutions", ta
     dependencies=[Depends(rate_limit(FLEET_MUTATION))],
 )
 async def arrange_substitution_endpoint(
-    trip_id: UUID, payload: ArrangeSubstitutionRequest,
+    trip_id: UUID, payload: ArrangeSubstitutionRequest | ArrangeImmediateSubstitutionRequest,
     db: AsyncSession = Depends(get_db), current_user: UserRead = Depends(get_current_dispatcher),
 ) -> SubstitutionRequestRead:
     with _domain_errors():
@@ -159,6 +162,15 @@ async def get_substitution_endpoint(
         return await reads.get_trip_request(db, trip_id=trip_id, request_id=request_id, actor=current_user)
 
 
+@dispatcher_router.get("/completed/{substitution_id}", response_model=CompletedSubstitutionDetail)
+async def completed_substitution_endpoint(
+    trip_id: UUID, substitution_id: UUID,
+    db: AsyncSession = Depends(get_db), current_user: UserRead = Depends(get_current_dispatcher),
+) -> CompletedSubstitutionDetail:
+    with _domain_errors():
+        return await reads.get_completed_substitution(db, trip_id=trip_id, substitution_id=substitution_id, actor=current_user)
+
+
 @dispatcher_router.post(
     "/{request_id}/cancel", response_model=SubstitutionRequestRead, responses=_CONFLICTS,
     dependencies=[Depends(rate_limit(FLEET_MUTATION))],
@@ -176,7 +188,7 @@ async def cancel_substitution_endpoint(
     dependencies=[Depends(rate_limit(FLEET_MUTATION))],
 )
 async def replace_substitution_endpoint(
-    trip_id: UUID, request_id: UUID, payload: ReplaceSubstitutionRequest,
+    trip_id: UUID, request_id: UUID, payload: ReplaceSubstitutionRequest | ReplaceImmediateSubstitutionRequest,
     db: AsyncSession = Depends(get_db), current_user: UserRead = Depends(get_current_dispatcher),
 ) -> SubstitutionRequestRead:
     with _domain_errors():
@@ -300,7 +312,7 @@ async def upload_handover_artifact_endpoint(
     responses=_CONFLICTS, dependencies=[Depends(rate_limit(EVIDENCE_WRITE))],
 )
 async def confirm_substitution_endpoint(
-    trip_id: UUID, request_id: UUID, payload: ConfirmSubstitutionRequest,
+    trip_id: UUID, request_id: UUID, payload: ConfirmSubstitutionRequest | ConfirmSubstitutionObservationRequest,
     db: AsyncSession = Depends(get_db), current_driver: DriverRead = Depends(get_current_driver),
 ) -> SubstitutionRequestRead:
     """200 whenever the capture was saved, including a pending request with completion_blocked_by."""

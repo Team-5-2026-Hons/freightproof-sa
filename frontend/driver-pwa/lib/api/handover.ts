@@ -56,10 +56,12 @@ export function issueHandoverToken(
   // cannot issue a link; the server refuses a stale period rather than retargeting it.
   custodySequence: number | null = null,
 ): Promise<HandoverTokenResponse> {
-  const query = force ? '?force=true' : ''
+  const params = new URLSearchParams()
+  if (force) params.set('force', 'true')
+  if (custodySequence !== null) params.set('custody_sequence', String(custodySequence))
+  const query = params.size > 0 ? `?${params.toString()}` : ''
   return api.post<HandoverTokenResponse>(
     `/api/v1/trips/${tripId}/phases/${phaseEventId}/handover/tokens${query}`,
-    custodySequence !== null ? { custody_sequence: custodySequence } : undefined,
   )
 }
 

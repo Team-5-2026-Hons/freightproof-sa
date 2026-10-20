@@ -102,3 +102,37 @@ async def test_a_trip_without_handovers_keeps_its_original_identity_wording(db_s
 
     assert manifest.driver.substitutions == [] and manifest.late_evidence == []
     assert "Driver identity check for this trip: verified." in [o.text for o in derive_observations(manifest)]
+
+async def test_pack_names_actual_completer_and_each_clarification(db_session: AsyncSession):
+    from app.db.models.people import User
+    from app.orchestration.substitutions.service import correct_completed_substitution
+    from app.schemas.driver_substitutions import CorrectSubstitutionRequest
+    from app.schemas.people import UserRead
+    w = await world_with_licences(db_session)
+    await set_identity(db_session, w.b, IdvsStatus.PENDING)
+    pending = await arrange_substitution(db_session, trip_id=w.trip_id, actor=dispatcher(w), payload=arrangement(w))
+    first = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=await driver_actor(db_session, w.a), payload=capture(w, 1))
+    blocked = await confirm_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=await driver_actor(db_session, w.b), payload=capture(w, first.version))
+    completer = User(id=uuid.uuid4(), organization_id=w.org_id, email=f'{uuid.uuid4()}@example.com', full_name='Fixture Completing Dispatcher')
+    db_session.add(completer)
+    await db_session.flush()
+    await db_session.refresh(completer)
+    author = UserRead.model_validate(completer)
+    author.role = dispatcher(w, admin=True).role
+    read = await complete_attested_substitution(db_session, trip_id=w.trip_id, request_id=pending.id, actor=author,
+        payload=CompleteSubstitutionRequest(client_request_id=uuid.uuid4(), expected_version=blocked.version, identity_unavailable_reason='Identity service unavailable'))
+    row = await db_session.get(DriverSubstitution, read.completed_substitution_id)
+    assert row is not None
+    for note in ('Gate 2', 'Spare strap retained'):
+        await correct_completed_substitution(db_session, trip_id=w.trip_id, substitution_id=row.id, actor=author,
+            payload=CorrectSubstitutionRequest(client_request_id=uuid.uuid4(), reason='Clarify record', correction_note=note))
+
+    manifest = await manifest_for(db_session, w)
+    [record] = manifest.driver.substitutions
+
+    assert manifest.manifest_version == 3
+    assert record.completed_by_user_id == completer.id
+    assert record.completed_by_name == 'Fixture Completing Dispatcher'
+    assert record.arranged_by_name == 'D'
+    assert {c.correction_note for c in record.corrections} == {'Gate 2', 'Spare strap retained'}
+    assert all(c.recorded_by_user_id == completer.id and c.event_hash for c in record.corrections)

@@ -1,0 +1,104 @@
+HEAD: 1440 passed, 87 failed. Reviewed source: 1487 passed, 79 failed.
+Failed names absent from HEAD:
+needs-attention reports counts reports that need attention without counting them as waiting to sync
+submitExceptionReport submitExceptionReport_rejected_without_photo_index_when_the_report_itself_is_refused
+submitExceptionReport submitExceptionReport_resumes_after_not_saved_without_reupload
+
+All current failures:
+/privatefrontend/driver-pwa/lib/offline/legacy-exception-migration.test.ts
+legacy exception migration test_legacy_entry_with_photo_dataurl_becomes_envelope
+legacy exception migration test_legacy_entry_with_uploaded_artifact_id_and_no_bytes_keeps_id_and_never_reuploads
+
+/privatefrontend/driver-pwa/components/layout/__tests__/OfflineBanner.test.tsx
+OfflineBanner renders nothing while online with an empty queue
+OfflineBanner shows the offline status message while offline
+OfflineBanner appears when the browser fires an offline event
+OfflineBanner disappears when connectivity comes back and nothing is queued
+OfflineBanner pending-sync indicator shows a singular "item waiting to sync" message while online with one queued entry
+OfflineBanner pending-sync indicator shows a plural "items waiting to sync" message for more than one queued entry
+OfflineBanner pending-sync indicator hides the pending-sync indicator once the queue empties
+OfflineBanner dropped-entry notice shows a dismissible notice after a non-409 terminal drop, and dismissing clears it
+OfflineBanner dropped-entry notice stays silent on a 409 drop — that means an earlier attempt already succeeded
+OfflineBanner dropped-entry notice uses plural phrasing for more than one dropped entry
+OfflineBanner background phase submissions shows a recording indicator while a handed-off submission is in flight, and hides it once it settles
+OfflineBanner background phase submissions counts concurrent submissions rather than claiming there is only one
+OfflineBanner background phase submissions raises a persistent, dismissible notice when a submission fails terminally
+OfflineBanner background phase submissions stays silent when the failure was queued for retry instead — that evidence is not lost
+OfflineBanner needs-attention notice shows an alert row with Try again and Dismiss as real 44pt buttons
+OfflineBanner needs-attention notice uses plural phrasing for more than one report
+OfflineBanner needs-attention notice Try again resets the reports and sends them
+OfflineBanner needs-attention notice Dismiss asks for confirmation; Keep backs out without deleting
+OfflineBanner needs-attention notice Dismiss removes the reports only after the confirm tap, without sending them
+OfflineBanner needs-attention notice shows no attention row when nothing needs attention
+
+/privatefrontend/driver-pwa/lib/hooks/__tests__/useArtifactUpload.test.ts
+useArtifactUpload attribution is forwarded
+
+/privatefrontend/driver-pwa/lib/hooks/__tests__/useOfflineQueue.test.ts
+useOfflineQueue flush calls submitPhase for each entry and clears the queue
+useOfflineQueue replays a legacy phase envelope that has no acknowledgement field
+useOfflineQueue sends the same idempotency_key on a retry as on the first attempt
+useOfflineQueue offline replay of an already-completed phase is a plain, one-time dequeue — not a fresh completion, not a drop
+useOfflineQueue enqueueException_persists_envelope_in_indexeddb_and_counts_it
+useOfflineQueue panic_body_with_no_photos_still_enqueues_and_flushes_via_raiseException
+useOfflineQueue keeps a breakdown's vehicle answer through the queue unchanged
+useOfflineQueue resends the same client_report_id on a retry after a lost response
+useOfflineQueue flush drops a terminal 4xx failure instead of retrying it forever
+useOfflineQueue keeps a rate-limited report and retries it after Retry-After elapses
+useOfflineQueue flush calls submitCheckpoint for a queued checkpoint and clears the queue
+useOfflineQueue flush triggers beyond the "online" event flushes once on mount
+useOfflineQueue flush triggers beyond the "online" event flushes when the document becomes visible again
+useOfflineQueue flush triggers beyond the "online" event flush preserves an entry enqueued while a send was in flight
+useOfflineQueue flush triggers beyond the "online" event guards against overlapping flush runs — a second concurrent call is a no-op while one is in flight
+useOfflineQueue cross-instance coordination a second hook instance cannot start a flush while another instance is mid-flush
+useOfflineQueue drop notifications a non-409 terminal drop increments droppedCount, and dismissDropped clears it
+useOfflineQueue drop notifications a 409 drop stays silent — the earlier attempt already succeeded server-side
+useOfflineQueue per-trip phase ordering guard does not send a later phase entry for a trip whose earlier phase entry just failed transiently
+useOfflineQueue per-trip phase ordering guard still flushes a different trip after one trip stalls
+useOfflineQueue per-trip phase ordering guard still flushes an exception entry for the same trip after its phase entry stalls
+queued loading with a linehaul PDF keeps the scan and drops the PDF image when the entry will not fit in storage
+queued exception photos flush_sends_complete_ordered_id_list_and_supporting_artifact_id_equals_first
+queued exception photos flush_transient_failure_keeps_envelope_and_next_report_still_flows
+queued exception photos flush_terminal_rejection_marks_needs_attention_and_other_reports_continue
+queued exception photos flush_409_is_never_dropped
+queued exception photos never sends a reduced photo set when the server terminally rejects one photo
+queued exception photos keeps both report and photo when the upload is rate limited
+queued exception photos does not re-upload the photo on a retry after the exception POST fails transiently post-upload
+legacy localStorage exception entries legacy_localstorage_exception_with_photo_migrates_then_replays
+legacy localStorage exception entries legacy_checkpoint_with_selfie_still_replays
+submitExceptionReport submitExceptionReport_acknowledged_when_post_succeeds
+submitExceptionReport submitExceptionReport_rejected_names_the_photo_the_server_refused
+submitExceptionReport submitExceptionReport_rejected_without_photo_index_when_the_report_itself_is_refused
+submitExceptionReport durable_resubmit_after_photo3_rejected_does_not_reupload_photos_1_and_2
+submitExceptionReport overlapping_submission_waits_so_the_older_ack_cannot_delete_the_newer_draft
+submitExceptionReport submitExceptionReport_resumes_after_not_saved_without_reupload
+flush uses fresh envelopes skips a report that was removed while an earlier report was sending
+needs-attention reports counts reports that need attention without counting them as waiting to sync
+needs-attention reports retryAttention resets and flushes
+needs-attention reports dismissAttention removes
+
+/privatefrontend/driver-pwa/lib/hooks/__tests__/usePhaseDraft.test.ts
+usePhaseDraft persists draft to localStorage keyed by phase_event_id
+usePhaseDraft falls back to initial value for keys missing from a stale stored draft
+usePhaseDraft drafts for two different arrival phase_event_ids in one trip do not collide
+
+/privatefrontend/driver-pwa/lib/hooks/__tests__/useRotatingHandover.test.tsx
+useRotatingHandover forceNewCode asks the server to override the pause
+
+/privatefrontend/driver-pwa/lib/submission/__tests__/phase-submitter.test.ts
+startPhaseSubmission — success paths sends the captured position with the evidence and reports the addressed phase back
+startPhaseSubmission — failure paths falls back to the localStorage queue on a network failure, position included
+position budget submits without a position when the capture yields nothing and no recent fix is held
+position budget falls back to the fix a previous submission just took rather than sending none
+position budget does not wait forever on a hung capture — the submission goes out once the budget expires
+
+/privatefrontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/__tests__/PhaseStepPageClient.test.tsx
+final step — hands the submission off and returns the driver Home submits in the background with the captured position, then reconciles with adoptTrip
+final step — hands the submission off and returns the driver Home clears the draft only once the server confirms, never at hand-off
+final step — hands the submission off and returns the driver Home replaces capture and preview on retry, then sends a reasoned reliable-warning acknowledgement
+offline-queued submit queues the evidence, keeps the draft and the optimistic advance, and leaves the driver on Home
+terminal failure rolls the optimistic advance back, raises an error notice, and keeps the draft intact
+
+/privatefrontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/__tests__/PhaseStepPageClient.tripgate.test.tsx
+trip-loading gate — drafts survive a mount that begins before the trip loads (Fix 1) loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it
+

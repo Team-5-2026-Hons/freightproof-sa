@@ -77,7 +77,8 @@ async def record_capture_assessment(
         assessment = action_location.build_capture_assessment(
             driver_lat=None if confirmation.latitude is None else float(confirmation.latitude),
             driver_lng=None if confirmation.longitude is None else float(confirmation.longitude),
-            driver_captured_at=confirmation.captured_at,
+            # Older captures have no sample time; their declaration remains a legacy proxy.
+            driver_captured_at=confirmation.location_observed_at or confirmation.captured_at,
             driver_accuracy_metres=None if confirmation.accuracy_metres is None else float(confirmation.accuracy_metres),
             horse_fix=horse_fix, evaluated_at=evaluated_at,
         )

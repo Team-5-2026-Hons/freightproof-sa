@@ -20,7 +20,7 @@ import { useSyncExternalStore } from 'react'
 import { submitPhase } from '@/lib/api/phases'
 import { ApiError } from '@/lib/api/client'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
-import { captureCustody, type CustodyStamp } from '@/lib/session/custody-context'
+import { actorGeneration, captureCustody, type CustodyStamp } from '@/lib/session/custody-context'
 import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
@@ -48,18 +48,20 @@ const POSITION_FALLBACK_MAX_AGE_MS = 60_000
 interface TimestampedFix {
   position: DriverPosition
   capturedAtMs: number
+  generation: number
 }
 
 // The most recent fix any submission managed to take. Module scope for the same reason
 // everything else here is: it has to survive the screen that captured it.
 let lastKnownFix: TimestampedFix | null = null
 
-function rememberFix(position: DriverPosition): void {
-  lastKnownFix = { position, capturedAtMs: Date.now() }
+function rememberFix(position: DriverPosition, generation: number): void {
+  if (actorGeneration() !== generation) return
+  lastKnownFix = { position, capturedAtMs: Date.now(), generation }
 }
 
-function recentFix(): DriverPosition | null {
-  if (lastKnownFix === null) return null
+function recentFix(generation: number): DriverPosition | null {
+  if (lastKnownFix === null || lastKnownFix.generation !== generation || actorGeneration() !== generation) return null
   return Date.now() - lastKnownFix.capturedAtMs <= POSITION_FALLBACK_MAX_AGE_MS
     ? lastKnownFix.position
     : null
@@ -67,7 +69,7 @@ function recentFix(): DriverPosition | null {
 
 // Resolves null rather than rejecting or hanging: a failed fix is normal (a warehouse
 // roof, a denied permission) and must never be the reason evidence goes unrecorded.
-async function resolvePosition(pending: Promise<DriverPosition | null>): Promise<DriverPosition | null> {
+async function resolvePosition(pending: Promise<DriverPosition | null>, generation: number): Promise<DriverPosition | null> {
   const captured = await new Promise<DriverPosition | null>((resolve) => {
     const timer = setTimeout(() => resolve(null), POSITION_CAPTURE_BUDGET_MS)
     void pending.then(
@@ -83,13 +85,13 @@ async function resolvePosition(pending: Promise<DriverPosition | null>): Promise
   })
 
   if (captured !== null) {
-    rememberFix(captured)
+    rememberFix(captured, generation)
     return captured
   }
   // A capture that lands AFTER the budget still tells the next submission where the
   // driver is, so the cache is fed even when this submission could not wait for it.
-  void pending.then((late) => { if (late !== null) rememberFix(late) }, () => {})
-  return recentFix()
+  void pending.then((late) => { if (late !== null) rememberFix(late, generation) }, () => {})
+  return recentFix(generation)
 }
 
 // ─── Outcomes ──────────────────────────────────────────────────────────────────
@@ -264,10 +266,16 @@ function addressedPhaseOf(trip: Trip | null, phaseEventId: string): PhaseDescrip
 const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry from the trip screen.'
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
 
-async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubmissionOutcome> {
+async function runSubmission(request: PhaseSubmissionRequest, generation: number): Promise<PhaseSubmissionOutcome> {
   const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt, acknowledgement = null } = request
   const custody = request.custody ?? captureCustody(tripId)
-  const position = await resolvePosition(request.position)
+  const position = await resolvePosition(request.position, generation)
+  const retainAfterAccountChange = (): PhaseSubmissionOutcome => ({
+    kind: 'retained', message: 'Account changed; captured work is retained.', handedOver: false,
+    persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody),
+  })
+  // The GPS promise belongs to the account that swiped, including an A→B→A return.
+  if (actorGeneration() !== generation) return retainAfterAccountChange()
 
   try {
     const result = await submitPhase(
@@ -279,6 +287,7 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
     }
     return { kind: 'recorded', trip: result.trip, addressedPhase: addressedPhaseOf(result.trip, phaseEventId) }
   } catch (err) {
+    if (actorGeneration() !== generation) return retainAfterAccountChange()
     // FP-83 coded answers come first: they are decided by their code, not by "409 means
     // maybe a duplicate". Uncoded 409s keep the existing refetch-and-read-the-plan check.
     if (err instanceof ApiError && err.code !== undefined) {
@@ -397,7 +406,7 @@ export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
     failures: state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId),
   })
 
-  void runSubmission(guardedRequest).then(
+  void runSubmission(guardedRequest, actorGeneration()).then(
     (outcome) => settle(guardedRequest, outcome),
     (err: unknown) => {
       // runSubmission catches everything it expects; reaching here means a defect in

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { LateEvidenceDetailRead } from '@shared/lib/types/driver-substitution'
 import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
@@ -8,6 +8,8 @@ import { TextArea } from '@/components/ui/TextArea'
 import { ApiError } from '@/lib/api/client'
 import { acknowledgeLateEvidence, listLateEvidence, newClientRequestId, substitutionErrorCode } from '@/lib/api/driverSubstitutions'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
+import { LateEvidenceDetail } from './LateEvidenceDetail'
 
 const EMPTY: LateEvidenceDetailRead[] = []
 
@@ -29,6 +31,16 @@ interface Props {
 export function LateDriverEvidencePanel({ tripId, driverNames }: Props) {
   const fetchLate = useCallback(() => listLateEvidence(tripId), [tripId])
   const { data: items, isLoading, error, refetch } = useAsyncData<LateEvidenceDetailRead[]>(fetchLate, EMPTY)
+  useLiveResource('trip', tripId, refetch, { kinds: ['late_driver_evidence_changed'] })
+  useEffect(() => {
+    const onVisible = (): void => { if (document.visibilityState === 'visible') refetch() }
+    window.addEventListener('focus', refetch)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', refetch)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refetch])
 
   if (isLoading || (items.length === 0 && !error)) return null
   return (
@@ -77,6 +89,7 @@ function LateItem({ tripId, item, driverName, onChanged }: { tripId: string; ite
       </div>
       <p className="text-[12px] text-on-surf-v">Captured {when(item.captured_at)} · received {when(item.received_at)} · {item.artifacts.length} photo(s)</p>
       <p className="truncate font-mono text-[11px] text-on-surf-v" title={item.payload_sha256}>{item.payload_sha256}</p>
+      <LateEvidenceDetail item={item} onRetry={onChanged} />
       {acknowledged && item.review_note && <p className="mt-1">Review note: {item.review_note}</p>}
       {!acknowledged && !open && <Button size="sm" variant="secondary" onClick={() => { setKey(newClientRequestId()); setOpen(true) }}>Acknowledge</Button>}
       {open && (

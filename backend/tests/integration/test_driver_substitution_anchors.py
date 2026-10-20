@@ -72,6 +72,7 @@ async def test_completion_freezes_a_pending_commitment_and_queues_nothing_before
     _, row = await completed(db_session)
 
     assert (row.payload_version, row.anchor_status, row.blockchain_receipt_id) == (1, AnchorStatus.PENDING.value, None)
+    assert row.payload_json is not None
     assert row.event_hash == compute_payload_hash(row.payload_json)
     assert row.payload_json["sequence_number"] == 1 and row.payload_json["previous_event_hash"] is None
     assert set(row.payload_json["captures"]) == {"outgoing", "incoming"}
@@ -112,6 +113,7 @@ async def test_a_hedera_outage_leaves_failed_debt_without_reversing_custody(db_s
 
 async def test_edited_source_rows_are_refused_and_never_rebaselined(db_session: AsyncSession, hedera: FakeHedera):
     _, row = await completed(db_session)
+    assert row.request_id is not None
     request = await get_row(db_session, DriverSubstitutionRequest, row.request_id)
     frozen = row.event_hash
     request.reason = "A different story"
@@ -120,6 +122,38 @@ async def test_edited_source_rows_are_refused_and_never_rebaselined(db_session: 
     assert not await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
 
     assert (row.anchor_status, row.event_hash, hedera.submitted) == (AnchorStatus.FAILED.value, frozen, [])
+
+
+async def test_unknown_frozen_version_is_failed_integrity_and_anchor_debt(db_session: AsyncSession, hedera: FakeHedera):
+    trip_id, row = await completed(db_session)
+    trip = await get_row(db_session, Trip, trip_id)
+    frozen = row.event_hash
+    row.payload_version = 99
+    await db_session.flush()
+
+    result = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=trip.operator_organization_id)
+    assert result.status is CustodyIntegrityStatus.FAILED
+    assert not await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
+    assert (row.anchor_status, row.event_hash, hedera.submitted) == (AnchorStatus.FAILED.value, frozen, [])
+
+
+async def test_unknown_correction_version_is_failed_and_never_anchored(db_session: AsyncSession, hedera: FakeHedera):
+    trip_id, row = await completed(db_session)
+    trip = await get_row(db_session, Trip, trip_id)
+    read = await correct_completed_substitution(
+        db_session, trip_id=trip_id, substitution_id=row.id, actor=org_dispatcher(trip),
+        payload=CorrectSubstitutionRequest(client_request_id=uuid.uuid4(), reason='Clarify', correction_note='Gate 3'),
+    )
+    correction = await get_row(db_session, DriverSubstitutionCorrection, read.id)
+    original_hash = correction.event_hash
+    correction.payload_version = 99
+    await db_session.flush()
+
+    integrity = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=trip.operator_organization_id)
+
+    assert integrity.status is CustodyIntegrityStatus.FAILED
+    assert not await anchor_custody_record(db_session, kind=CustodyAnchorKind.CORRECTION, record_id=read.id)
+    assert correction.event_hash == original_hash and hedera.submitted == []
 
 
 def org_dispatcher(trip: Trip) -> UserRead:
@@ -159,10 +193,10 @@ async def test_an_anchored_handover_verifies_and_an_edited_row_does_not(
     _, row = await completed(db_session)
     await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
 
-    ok = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]
+    ok = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]  # protocol-compatible fake
     row.completion_mode = "dispatcher_attested"
     await db_session.flush()
-    edited = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]
+    edited = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]  # protocol-compatible fake
 
     assert ok.status is VerifyStatus.VERIFIED
     assert edited.status is VerifyStatus.DB_MISMATCH
@@ -244,3 +278,73 @@ async def test_a_photo_whose_stored_bytes_changed_fails_verification(
     assert await verify() is VerifyStatus.DB_MISMATCH
     state["down"] = True
     assert await verify() is VerifyStatus.ERROR
+
+async def test_rewritten_local_hash_still_fails_old_receipt(db_session: AsyncSession, hedera: FakeHedera):
+    from app.orchestration.verification.substitution_payloads import rebuild_substitution_payload
+    trip_id, row = await completed(db_session)
+    await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
+    row.missing_confirmation_reason = 'Rewritten locally'
+    await db_session.flush()
+    row.payload_json = await rebuild_substitution_payload(db_session, row.id)
+    assert row.payload_json is not None
+    row.event_hash = compute_payload_hash(row.payload_json)
+    await db_session.flush()
+    org_id = (await get_row(db_session, Trip, trip_id)).operator_organization_id
+
+    result = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=org_id)
+    receipt = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]  # protocol-compatible fake
+
+    assert result.status is CustodyIntegrityStatus.FAILED
+    assert receipt.status is VerifyStatus.DB_MISMATCH
+
+
+@pytest.mark.parametrize('field,value', [('subject_id', None), ('subject_type', 'trip'), ('receipt_type', 'trip_created'), ('trip_id', None), ('data_hash', 'f' * 64), ('payload_json', {'edited': True})])
+async def test_receipt_scope_kind_trip_and_hash_are_checked(db_session: AsyncSession, hedera: FakeHedera, field, value):
+    trip_id, row = await completed(db_session)
+    await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
+    assert row.blockchain_receipt_id is not None
+    receipt = await get_row(db_session, BlockchainReceipt, row.blockchain_receipt_id)
+    setattr(receipt, field, uuid.uuid4() if field == 'subject_id' else value)
+    await db_session.flush()
+    org_id = (await get_row(db_session, Trip, trip_id)).operator_organization_id
+
+    result = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=org_id)
+
+    assert result.status is CustodyIntegrityStatus.FAILED
+
+
+@pytest.mark.parametrize('field,value', [('exchange_location', 'Changed label'), ('is_planned', False), ('approving_dispatcher_user_id', None)])
+async def test_completed_metadata_mirror_tampering_fails(db_session: AsyncSession, hedera: FakeHedera, field, value):
+    trip_id, row = await completed(db_session)
+    await anchor_custody_record(db_session, kind=CustodyAnchorKind.SUBSTITUTION, record_id=row.id)
+    if field == 'approving_dispatcher_user_id':
+        from app.db.models.people import User
+        other = User(id=uuid.uuid4(), organization_id=(await get_row(db_session, Trip, trip_id)).operator_organization_id, email=f'{uuid.uuid4()}@example.com', full_name='Other arranger')
+        db_session.add(other)
+        await db_session.flush()
+        value = other.id
+    setattr(row, field, value)
+    await db_session.flush()
+    org_id = (await get_row(db_session, Trip, trip_id)).operator_organization_id
+
+    result = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=org_id)
+    verified = await verify_subject(db_session, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id, hedera_service=hedera)  # type: ignore[arg-type]  # protocol-compatible fake
+
+    assert result.status is CustodyIntegrityStatus.FAILED
+    assert verified.status is VerifyStatus.DB_MISMATCH
+
+
+async def test_correction_tampering_is_in_chain_integrity(db_session: AsyncSession, hedera: FakeHedera):
+    trip_id, row = await completed(db_session)
+    trip = await get_row(db_session, Trip, trip_id)
+    read = await correct_completed_substitution(db_session, trip_id=trip_id, substitution_id=row.id,
+        actor=UserRead(id=trip.created_by_user_id, organization_id=trip.operator_organization_id, email='fixture@example.com', full_name='Fixture', role=DispatcherRole.DISPATCHER, created_at=NOW, updated_at=NOW),
+        payload=CorrectSubstitutionRequest(client_request_id=uuid.uuid4(), reason='Clarify', correction_note='Gate 2'))
+    await anchor_custody_record(db_session, kind=CustodyAnchorKind.CORRECTION, record_id=read.id)
+    correction = await get_row(db_session, DriverSubstitutionCorrection, read.id)
+    correction.correction_note = 'Changed after anchoring'
+    await db_session.flush()
+
+    result = await verify_custody_chain(db_session, trip_id=trip_id, organization_id=trip.operator_organization_id)
+
+    assert result.status is CustodyIntegrityStatus.FAILED

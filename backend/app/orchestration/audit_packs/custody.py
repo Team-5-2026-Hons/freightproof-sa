@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.driver_substitutions import (
     DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionRequest,
+    DriverSubstitutionCorrection,
     LateDriverEvidence, LateDriverEvidenceArtifact,
 )
 from app.db.models.evidence import EvidenceArtifact
@@ -26,7 +27,9 @@ from app.db.models.people import Driver, User
 from app.db.models.trips import DriverSubstitution
 from app.schemas.audit_pack import (
     DriverSubstitutionRecord, EvidenceTier, HandoverDeclarationRecord, LateEvidenceRecord,
+    SubstitutionClarificationRecord,
 )
+from app.orchestration.substitutions.request_read import required_confirmation_roles
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,7 @@ class CustodyFacts:
     late: list[LateDriverEvidence] = field(default_factory=list)
     late_photo_hashes: dict[uuid.UUID, list[str]] = field(default_factory=dict)
     users: dict[uuid.UUID, User] = field(default_factory=dict)
+    corrections: dict[uuid.UUID, list[DriverSubstitutionCorrection]] = field(default_factory=dict)
 
 
 def _grouped(rows: Sequence[tuple[uuid.UUID, str]]) -> dict[uuid.UUID, list[str]]:
@@ -86,13 +90,20 @@ async def load_custody_facts(
     user_ids = {r.arranged_by_user_id for r in requests.values()} | {
         s.identity_attested_by_user_id for s in substitutions if s.identity_attested_by_user_id is not None
     }
+    user_ids.update(s.completed_by_user_id for s in substitutions if s.completed_by_user_id is not None)
+    corrections: dict[uuid.UUID, list[DriverSubstitutionCorrection]] = {}
+    for correction in (await db.execute(select(DriverSubstitutionCorrection)
+        .where(DriverSubstitutionCorrection.substitution_id.in_([s.id for s in substitutions]))
+        .order_by(DriverSubstitutionCorrection.created_at, DriverSubstitutionCorrection.id))).scalars():
+        corrections.setdefault(correction.substitution_id, []).append(correction)
+        user_ids.add(correction.recorded_by_user_id)
     users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars()} if user_ids else {}
     return CustodyFacts(
         requests=requests, confirmations=confirmations,
         photo_hashes=await _capture_photo_hashes(db, [c.id for rows in confirmations.values() for c in rows]),
         late=late,
         late_photo_hashes=await _late_photo_hashes(db, [e.id for e in late]),
-        users=users,
+        users=users, corrections=corrections,
     )
 
 
@@ -103,6 +114,7 @@ def _seal_reading(check: dict[str, object]) -> str:
 
 def _declarations(
     facts: CustodyFacts, request_id: uuid.UUID | None, drivers: dict[uuid.UUID, Driver],
+    *, observation_committed: bool = False,
 ) -> list[HandoverDeclarationRecord]:
     if request_id is None:
         return []
@@ -112,6 +124,11 @@ def _declarations(
             captured_at=row.captured_at, received_at=row.received_at, location_recorded=row.latitude is not None,
             seal_readings=[_seal_reading(check) for check in row.seal_checks],
             photo_sha256=facts.photo_hashes.get(row.id, []), discrepancy_note=row.discrepancy_note,
+            driver_id=row.driver_id, latitude=None if row.latitude is None else float(row.latitude),
+            longitude=None if row.longitude is None else float(row.longitude),
+            accuracy_metres=None if row.accuracy_metres is None else float(row.accuracy_metres),
+            location_observed_at=row.location_observed_at, location_unavailable_reason=row.location_unavailable_reason,
+            location_observation_committed=observation_committed,
         )
         for row in facts.confirmations.get(request_id, [])
     ]
@@ -143,7 +160,18 @@ def substitution_records(
             identity_attested_by_name=_name(facts.users, s.identity_attested_by_user_id),
             identity_attested_at=s.identity_attested_at,
             incoming_licence_expiry=s.incoming_licence_expiry.isoformat() if s.incoming_licence_expiry else None,
-            commitment_sha256=s.event_hash, declarations=_declarations(facts, s.request_id, drivers),
+            commitment_sha256=s.event_hash, declarations=_declarations(facts, s.request_id, drivers, observation_committed=s.payload_version == 2),
+            request_format=request.request_format if request else None,
+            confirmation_policy=("incoming_acceptance_v2" if request.request_format == "immediate_v2" else "two_driver_v1") if request else None,
+            required_confirmation_roles=[role.value for role in required_confirmation_roles(request.request_format)] if request else None,
+            completed_by_driver_id=s.completed_by_driver_id, completed_by_user_id=s.completed_by_user_id,
+            completed_by_name=drivers[s.completed_by_driver_id].full_name if s.completed_by_driver_id in drivers else _name(facts.users, s.completed_by_user_id),
+            identity_attestation_reason=s.identity_attestation_reason,
+            corrections=[SubstitutionClarificationRecord(
+                id=c.id, recorded_by_user_id=c.recorded_by_user_id, recorded_by_name=_name(facts.users, c.recorded_by_user_id),
+                recorded_at=c.created_at, reason=c.reason, correction_note=c.correction_note,
+                event_hash=c.event_hash, anchor_status=c.anchor_status, receipt_id=c.receipt_id,
+            ) for c in facts.corrections.get(s.id, [])],
         ))
     return records
 

@@ -4,10 +4,12 @@
 // promises that replacement makes: it records without being asked, it only does so while
 // a trip is open, and a failure — of the fix or of the network — never surfaces to the
 // driver or costs them the fix.
-import { render, screen, waitFor } from '@testing-library/react'
+import { createElement, useContext } from 'react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { LocationProvider } from '../LocationContext'
+import { LocationContext, LocationProvider } from '../LocationContext'
 import { useLocationTrail } from '@/lib/hooks/useLocationTrail'
+import { bindActorLease, invalidateActorLease } from '@/lib/session/custody-context'
 
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
@@ -18,7 +20,7 @@ let tripState: { trip: { id: string } | null } = { trip: { id: 'trip-1' } }
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => tripState }))
 
 const mockCapture = vi.fn()
-vi.mock('@/lib/hooks/useLocation', () => ({ useLocation: () => ({ capture: mockCapture }) }))
+vi.mock('@/lib/hooks/useLocation', () => ({ useLocation: () => ({ captureResult: async () => { const coords = await mockCapture(); return { coords, errorReason: coords === null ? 'permission_denied' : null } } }) }))
 
 const mockEnqueueLocation = vi.fn()
 vi.mock('@/lib/hooks/useOfflineQueue', () => ({
@@ -30,7 +32,7 @@ vi.mock('@/lib/api/locations', () => ({
   recordLocations: (...args: unknown[]) => mockRecordLocations(...args),
 }))
 
-const FIX = { latitude: -26.0942, longitude: 28.1342, accuracy: 8.5 }
+const FIX = { latitude: -26.0942, longitude: 28.1342, accuracy: 8.5, capturedAt: '2026-10-20T12:00:00Z' }
 
 function Consumer() {
   const { capturePosition } = useLocationTrail()
@@ -45,10 +47,25 @@ function renderTrail() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  bindActorLease('driver-a', invalidateActorLease())
   pathname = '/trips'
   tripState = { trip: { id: 'trip-1' } }
   mockCapture.mockResolvedValue(FIX)
   mockRecordLocations.mockResolvedValue({ recorded: 1 })
+})
+
+it.each([false, true])('retains_a_navigation_fix_without_sending_after_account_change_return=%s', async (returnToA) => {
+  let deliver!: (value: typeof FIX) => void
+  mockCapture.mockImplementationOnce(() => new Promise<typeof FIX>(resolve => { deliver = resolve }))
+  renderTrail()
+  await waitFor(() => expect(mockCapture).toHaveBeenCalledOnce())
+  bindActorLease('driver-b', invalidateActorLease())
+  if (returnToA) bindActorLease('driver-a', invalidateActorLease())
+  await act(async () => { deliver(FIX) })
+
+  expect(mockRecordLocations).not.toHaveBeenCalled()
+  expect(mockEnqueueLocation).toHaveBeenCalledWith('trip-1', [expect.objectContaining({ lat: FIX.latitude })],
+    expect.objectContaining({ actorId: 'driver-a', custodySequence: null }))
 })
 
 describe('LocationProvider', () => {
@@ -59,7 +76,7 @@ describe('LocationProvider', () => {
       expect.objectContaining({
         lat: FIX.latitude, lng: FIX.longitude, accuracy_m: FIX.accuracy, context: '/trips',
       }),
-    ]))
+    ], null))
   })
 
   it('records nothing at all when no trip is open', async () => {
@@ -80,7 +97,7 @@ describe('LocationProvider', () => {
 
     await waitFor(() => expect(mockEnqueueLocation).toHaveBeenCalledWith('trip-1', [
       expect.objectContaining({ lat: FIX.latitude, recorded_at: expect.any(String) }),
-    ]))
+    ], expect.objectContaining({ custodySequence: null })))
   })
 
   it('does not record when the phone cannot produce a fix', async () => {
@@ -116,4 +133,22 @@ describe('LocationProvider', () => {
 
     await waitFor(() => expect(mockCapture).toHaveBeenCalled())
   })
+})
+
+
+it('opening_the_transfer_page_does_not_capture_background_gps_for_the_outgoing_driver', () => {
+  pathname = '/trips/substitution'
+  renderTrail()
+  expect(mockCapture).not.toHaveBeenCalled()
+})
+
+it('adapter_preserves_sample_time_and_returns_current_error_reason', async () => {
+  tripState = { trip: null }
+  mockCapture.mockResolvedValueOnce(FIX).mockResolvedValueOnce(null)
+  const { result } = renderHook(() => useContext(LocationContext)!, { wrapper: ({ children }) => createElement(LocationProvider, null, children) })
+  let observed: unknown
+  await act(async () => { observed = await result.current.captureObservation() })
+  expect(observed).toEqual({ position: { lat: FIX.latitude, lng: FIX.longitude, accuracyM: FIX.accuracy, capturedAt: FIX.capturedAt }, unavailableReason: null })
+  await act(async () => { observed = await result.current.captureObservation() })
+  expect(observed).toEqual({ position: null, unavailableReason: 'permission_denied' })
 })

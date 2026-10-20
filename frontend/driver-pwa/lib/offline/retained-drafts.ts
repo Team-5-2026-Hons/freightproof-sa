@@ -89,7 +89,10 @@ function retain(key: string, record: Omit<RetainedDraft, 'id' | 'retainedAt'>): 
 function mismatch(stored: StoredDraft, stamp: CustodyStamp): string | null {
   if (stored.actorId === null) return UNKNOWN_CAPTURER_REASON
   if (stamp.actorId !== null && stored.actorId !== stamp.actorId) return OTHER_ACCOUNT_REASON
-  // Compared only when both are known: a period not yet loaded is not evidence of a change.
+  // Unknown is compatible only before any transfer; returning A must not relabel it.
+  if (stored.custodySequence === null && stamp.custodySequence !== null && stamp.custodySequence > 0) {
+    return EARLIER_PERIOD_REASON
+  }
   if (stored.custodySequence !== null && stamp.custodySequence !== null && stored.custodySequence !== stamp.custodySequence) {
     return EARLIER_PERIOD_REASON
   }

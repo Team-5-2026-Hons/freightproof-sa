@@ -5,7 +5,7 @@
 // the report is only posted with the COMPLETE id list (never a reduced set), and the
 // report's clientReportId never changes, so a lost POST response replays idempotently.
 import { uploadArtifact } from '@/lib/api/artifacts'
-import { currentActorId } from '@/lib/session/custody-context'
+import { captureActorLease, isActorLeaseCurrent } from '@/lib/session/custody-context'
 import {
   markExceptionNeedsAttention,
   recordPhotoUploaded,
@@ -157,9 +157,10 @@ async function markAttention(
 async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): Promise<ExceptionSendOutcome> {
   const { durable, post, onProgress } = options
   const id = envelope.clientReportId
+  const lease = captureActorLease()
   // FP-83: only the capturing account may send. A legacy envelope (no actor) is quarantined
   // by the migration and never reaches here; this guards a report from a previous sign-in.
-  if (envelope.status === 'quarantined' || (envelope.actorId != null && envelope.actorId !== currentActorId())) {
+  if (envelope.status === 'quarantined' || lease === null || envelope.actorId !== lease.actorId) {
     return { kind: 'not-yours' }
   }
   const custodySequence = envelope.body.custody_sequence ?? null
@@ -171,6 +172,7 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   let uploaded = ids.filter((v) => v !== null).length
 
   for (let i = 0; i < envelope.photos.length; i += 1) {
+    if (!isActorLeaseCurrent(lease)) return { kind: 'not-yours' }
     if (ids[i] !== null) continue
     const item = envelope.photos[i]
     if (item.blob === null) {
@@ -180,10 +182,12 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
     }
     let artifact: Awaited<ReturnType<typeof uploadArtifact>>
     try {
+      const dataUrl = await blobToDataUrl(item.blob)
+      if (!isActorLeaseCurrent(lease)) return { kind: 'not-yours' }
       artifact = await uploadArtifact({
         tripId: envelope.tripId,
         artifactType: 'photo',
-        dataUrl: await blobToDataUrl(item.blob),
+        dataUrl,
         capturedAt: item.capturedAt,
         custodySequence,
       })
@@ -214,6 +218,7 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   }
 
   try {
+    if (!isActorLeaseCurrent(lease)) return { kind: 'not-yours' }
     await post(ids.filter((value): value is string => value !== null))
   } catch (err) {
     const failure = classify(err)

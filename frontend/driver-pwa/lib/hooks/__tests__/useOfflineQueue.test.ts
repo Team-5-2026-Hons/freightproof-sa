@@ -1329,3 +1329,28 @@ describe('needs-attention reports', () => {
     expect(raiseException).not.toHaveBeenCalled()
   })
 })
+it('stops_after_account_generation_changes', async () => {
+  const actor = await import('@/lib/session/custody-context')
+  const { submitPhase } = await import('@/lib/api/phases')
+  const actorId = crypto.randomUUID()
+  actor.bindActorLease(actorId, actor.invalidateActorLease())
+  const { result } = await renderQueue()
+  vi.mocked(submitPhase).mockReset()
+  act(() => {
+    result.current.enqueuePhase('trip-1', 'phase-one', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+    result.current.enqueuePhase('trip-1', 'phase-two', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+  })
+  let release!: (value: { ok: true; trip: null; phaseStatus: 'completed' }) => void
+  vi.mocked(submitPhase).mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+  const flushing = result.current.flush()
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  actor.bindActorLease(crypto.randomUUID(), actor.invalidateActorLease())
+  actor.bindActorLease(actorId, actor.invalidateActorLease())
+  release({ ok: true, trip: null, phaseStatus: 'completed' })
+  await flushing
+  expect(submitPhase).toHaveBeenCalledTimes(1)
+  expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+    expect.objectContaining({ phaseEventId: 'phase-two', actorId }),
+  ])
+  actor.invalidateActorLease()
+})

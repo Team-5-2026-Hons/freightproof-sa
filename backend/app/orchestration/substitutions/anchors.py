@@ -35,10 +35,10 @@ from app.db.models.driver_substitutions import DriverSubstitutionCorrection, Dri
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, SubjectType
 from app.db.models.trips import DriverSubstitution, Trip
 from app.orchestration.evidence_anchors.dispatch import run_after_outer_commit
-from app.orchestration.substitutions import canonical
 from app.orchestration.substitutions.access import CustodyChainError, completed_links, derive_custody
+from app.orchestration.substitutions.canonical import UnsupportedPayload
 from app.orchestration.verification.substitution_payloads import (
-    rebuild_correction_payload, rebuild_substitution_payload,
+    completed_metadata_findings, receipt_binding_findings, ReceiptBinding, rebuild_correction_payload, rebuild_substitution_payload,
 )
 from app.schemas.driver_substitutions import CustodyIntegrityRead, CustodyIntegrityStatus, SubstitutionState
 
@@ -61,7 +61,10 @@ async def freeze_substitution(db: AsyncSession, row: DriverSubstitution) -> None
     payload = await rebuild_substitution_payload(db, row.id)
     if payload is None:  # a completion always has a request; reaching here is a caller bug
         raise ValueError(f"substitution {row.id} has no request to commit to")
-    row.payload_version = canonical.SUBSTITUTION_PAYLOAD_VERSION
+    version = payload["payload_version"]
+    if not isinstance(version, int):
+        raise ValueError("Custody payload version must be an integer")
+    row.payload_version = version
     row.payload_json = payload
     row.event_hash = compute_payload_hash(payload)
     row.anchor_status = AnchorStatus.PENDING.value
@@ -191,15 +194,20 @@ async def anchor_custody_record(db: AsyncSession, *, kind: CustodyAnchorKind, re
     linked_id = getattr(row, target.receipt_field)
     if linked_id is not None:
         receipt = await db.get(BlockchainReceipt, linked_id)
-        if (
-            receipt is not None and receipt.subject_type == target.subject_type and receipt.subject_id == row.id
-            and receipt.receipt_type == target.receipt_type and receipt.data_hash == row.event_hash
-        ):
+        if not receipt_binding_findings(
+            receipt, ReceiptBinding( receipt_id=linked_id, subject_id=row.id, subject_type=target.subject_type.value,
+            receipt_type=target.receipt_type.value, trip_id=trip_id, event_hash=row.event_hash,
+        )):
             return True
         logger.error("%s %s links a receipt that does not belong to it", kind.value, record_id)
         return False
 
-    live = await _rebuild(db, kind, record_id)
+    try:
+        live = await _rebuild(db, kind, record_id)
+    except UnsupportedPayload as error:
+        logger.error("%s %s has an unsupported commitment: %s", kind.value, record_id, error)
+        row.anchor_status = AnchorStatus.FAILED.value
+        return False
     if compute_payload_hash(row.payload_json) != row.event_hash or live is None or compute_payload_hash(live) != row.event_hash:
         # Edited after it was frozen: never anchored, never re-baselined.
         logger.error("%s %s: stored or live state no longer matches its frozen hash", kind.value, record_id)
@@ -261,12 +269,48 @@ async def _chain_findings(db: AsyncSession, trip: Trip, rows: list[DriverSubstit
         if row.event_hash is None or row.payload_json is None:
             findings.append(f"Amendment {row.sequence_number} has no frozen commitment.")
             continue
-        live = await rebuild_substitution_payload(db, row.id)
+        request = await db.get(DriverSubstitutionRequest, row.request_id)
+        if request is not None:
+            findings.extend(completed_metadata_findings(row, request))
+        receipt = await db.get(BlockchainReceipt, row.blockchain_receipt_id) if row.blockchain_receipt_id else None
+        findings.extend(receipt_binding_findings(
+            receipt, ReceiptBinding( receipt_id=row.blockchain_receipt_id, subject_id=row.id,
+            subject_type=SubjectType.DRIVER_SUBSTITUTION.value,
+            receipt_type=BlockchainReceiptType.DRIVER_SUBSTITUTION.value, trip_id=trip.id, event_hash=row.event_hash,
+        )))
+        try:
+            live = await rebuild_substitution_payload(db, row.id)
+        except UnsupportedPayload as error:
+            findings.append(f"Amendment {row.sequence_number} has an unsupported commitment: {error}")
+            continue
         if compute_payload_hash(row.payload_json) != row.event_hash or live is None or compute_payload_hash(live) != row.event_hash:
             findings.append(f"Amendment {row.sequence_number} no longer matches its commitment.")
         previous = by_id.get(row.previous_substitution_id) if row.previous_substitution_id else None
         if row.payload_json.get("previous_event_hash") != (previous.event_hash if previous else None):
             findings.append(f"Amendment {row.sequence_number} does not follow the amendment before it.")
+    return findings
+
+
+async def _correction_findings(db: AsyncSession, trip_id: uuid.UUID) -> list[str]:
+    rows = (await db.execute(select(DriverSubstitutionCorrection)
+        .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)
+        .where(DriverSubstitution.trip_id == trip_id))).scalars()
+    findings: list[str] = []
+    for row in rows:
+        try:
+            live = await rebuild_correction_payload(db, row.id)
+        except UnsupportedPayload as error:
+            findings.append(f'Clarification {row.id} has an unsupported commitment: {error}')
+            continue
+        if (row.payload_json is None or live is None or compute_payload_hash(row.payload_json) != row.event_hash
+                or compute_payload_hash(live) != row.event_hash):
+            findings.append(f"Clarification {row.id} no longer matches its commitment.")
+        receipt = await db.get(BlockchainReceipt, row.receipt_id) if row.receipt_id else None
+        findings.extend(receipt_binding_findings(
+            receipt, ReceiptBinding( receipt_id=row.receipt_id, subject_id=row.id,
+            subject_type=SubjectType.DRIVER_SUBSTITUTION_CORRECTION.value,
+            receipt_type=BlockchainReceiptType.DRIVER_SUBSTITUTION_CORRECTED.value, trip_id=trip_id, event_hash=row.event_hash,
+        )))
     return findings
 
 
@@ -307,13 +351,14 @@ async def verify_custody_chain(db: AsyncSession, *, trip_id: uuid.UUID, organiza
     rows = list((await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id).order_by(DriverSubstitution.sequence_number)
     )).scalars())
-    findings = [*await _chain_findings(db, trip, rows), *await _missing_rows(db, trip_id, rows)]
+    findings = [*await _chain_findings(db, trip, rows), *await _missing_rows(db, trip_id, rows), *await _correction_findings(db, trip_id)]
     pending_corrections = (await db.execute(
         select(func.count()).select_from(DriverSubstitutionCorrection)
         .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)
-        .where(DriverSubstitution.trip_id == trip_id, DriverSubstitutionCorrection.anchor_status.in_(_OWED))
+        .where(DriverSubstitution.trip_id == trip_id, DriverSubstitutionCorrection.receipt_id.is_(None))
     )).scalar_one()
-    pending = sum(1 for row in rows if row.anchor_status in _OWED) + pending_corrections
+    # A local status flag or an uncommitted legacy row cannot prove an anchor exists.
+    pending = sum(1 for row in rows if row.blockchain_receipt_id is None or row.request_id is None) + pending_corrections
     status = (
         CustodyIntegrityStatus.FAILED if findings
         else CustodyIntegrityStatus.PENDING if pending

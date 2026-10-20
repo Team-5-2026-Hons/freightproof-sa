@@ -441,6 +441,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/trips/{trip_id}/driver-substitutions/completed/{substitution_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/trips/{trip_id}/driver-substitutions/{request_id}": {
     "access": "dispatcher",
     "dependencies": [

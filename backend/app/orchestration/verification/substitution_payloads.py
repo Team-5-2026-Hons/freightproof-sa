@@ -9,6 +9,7 @@ custody-chain integrity read, so all four judge the same facts.
 """
 
 import uuid
+from dataclasses import dataclass
 from collections.abc import Mapping
 
 from sqlalchemy import select
@@ -19,8 +20,45 @@ from app.db.models.driver_substitutions import (
     DriverSubstitutionRequest,
 )
 from app.db.models.evidence import EvidenceArtifact
+from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.trips import DriverSubstitution
 from app.orchestration.substitutions import canonical
+
+
+def completed_metadata_findings(row: DriverSubstitution, request: DriverSubstitutionRequest) -> list[str]:
+    """Mirrored exported facts must agree with the authoritative committed request."""
+    pairs = {
+        "request": (row.request_id, request.id), "trip": (row.trip_id, request.trip_id),
+        "outgoing driver": (row.original_driver_id, request.outgoing_driver_id),
+        "incoming driver": (row.substituting_driver_id, request.incoming_driver_id),
+        "arranger": (row.approving_dispatcher_user_id, request.arranged_by_user_id),
+        "planned flag": (row.is_planned, request.is_planned),
+        "exchange label": (row.exchange_location, request.exchange_label),
+    }
+    return [f"Completed {name} differs from its request." for name, (actual, expected) in pairs.items() if actual != expected]
+
+
+@dataclass(frozen=True)
+class ReceiptBinding:
+    receipt_id: uuid.UUID | None
+    subject_id: uuid.UUID
+    subject_type: str
+    receipt_type: str
+    trip_id: uuid.UUID
+    event_hash: str | None
+
+
+def receipt_binding_findings(receipt: BlockchainReceipt | None, binding: ReceiptBinding) -> list[str]:
+    if binding.receipt_id is None:
+        return []  # not anchored yet; the caller reports PENDING
+    if receipt is None:
+        return ["Linked custody receipt is missing."]
+    if (receipt.id != binding.receipt_id or receipt.subject_id != binding.subject_id or receipt.subject_type != binding.subject_type
+            or receipt.receipt_type != binding.receipt_type or receipt.trip_id != binding.trip_id
+            or receipt.data_hash != binding.event_hash or not isinstance(receipt.payload_json, dict)
+            or canonical.canonical_hash(receipt.payload_json) != binding.event_hash):
+        return ["Linked custody receipt does not match its subject, trip, kind or commitment."]
+    return []
 
 
 async def _photos(
@@ -61,8 +99,18 @@ async def _captures(
             vehicles_sha256=canonical.vehicles_hash(row.confirmed_vehicle_ids),
             seal_checks_sha256=canonical.seal_checks_hash(row.seal_checks),
             note_sha256=canonical.text_hash_or_none(row.discrepancy_note), photos=photos,
+            location_observed_at=row.location_observed_at, location_unavailable_reason=row.location_unavailable_reason,
         ))
     return tuple(captures), artifacts
+
+
+def _exchange_commitment(request: DriverSubstitutionRequest) -> str | None:
+    if request.request_format != "planned_v1":
+        return None
+    if request.exchange_label is None or request.exchange_latitude is None or request.exchange_longitude is None:
+        raise canonical.UnsupportedPayload("Legacy request has incomplete exchange metadata")
+    return canonical.exchange_hash(label=request.exchange_label, latitude=request.exchange_latitude,
+        longitude=request.exchange_longitude, instructions=request.exchange_instructions)
 
 
 async def load_substitution_record(
@@ -88,10 +136,7 @@ async def load_substitution_record(
         outgoing_driver_id=row.original_driver_id, incoming_driver_id=row.substituting_driver_id,
         arranged_by_user_id=request.arranged_by_user_id, is_planned=request.is_planned,
         reason_sha256=canonical.sha256_text(request.reason),
-        exchange_sha256=canonical.exchange_hash(
-            label=request.exchange_label, latitude=request.exchange_latitude, longitude=request.exchange_longitude,
-            instructions=request.exchange_instructions,
-        ),
+        exchange_sha256=_exchange_commitment(request),
         expected_at=request.expected_at, effective_at=row.substitution_at,
         declared_exchange_at=row.declared_exchange_at, completion_mode=row.completion_mode,
         completed_by_driver_id=row.completed_by_driver_id, completed_by_user_id=row.completed_by_user_id,
@@ -104,15 +149,28 @@ async def load_substitution_record(
         ),
         licence_expiry=row.incoming_licence_expiry, eligibility_observed_at=row.eligibility_observed_at,
         captures=captures,
+        request_format=request.request_format, reservation_start_at=request.reservation_start_at,
     )
     return record, artifacts
 
 
 async def rebuild_substitution_payload(
     db: AsyncSession, substitution_id: uuid.UUID, *, live_file_hashes: Mapping[uuid.UUID, str] | None = None,
+    payload_version: int | None = None,
 ) -> dict[str, object] | None:
+    row = await db.get(DriverSubstitution, substitution_id)
+    request = await db.get(DriverSubstitutionRequest, row.request_id) if row is not None and row.request_id else None
+    if row is not None and request is not None and completed_metadata_findings(row, request):
+        return None
+    if row is None or request is None:
+        return None
+    version = row.payload_version if row.payload_version is not None else (1 if request.request_format == "planned_v1" else 2)
+    if payload_version is not None and payload_version != version:
+        raise canonical.UnsupportedPayload("Receipt and frozen row payload versions differ")
+    if version not in (1, 2) or version != (1 if request.request_format == "planned_v1" else 2):
+        raise canonical.UnsupportedPayload("Request and frozen payload versions differ")
     loaded = await load_substitution_record(db, substitution_id, live_file_hashes=live_file_hashes)
-    return None if loaded is None else canonical.compute_substitution_payload(record=loaded[0])
+    return None if loaded is None else canonical.compute_substitution_payload(record=loaded[0], payload_version=version)
 
 
 async def rebuild_correction_payload(db: AsyncSession, correction_id: uuid.UUID) -> dict[str, object] | None:
@@ -124,6 +182,9 @@ async def rebuild_correction_payload(db: AsyncSession, correction_id: uuid.UUID)
     if row is None:
         return None
     correction, trip_id = row
+    if correction.payload_version != canonical.CORRECTION_PAYLOAD_VERSION:
+        raise canonical.UnsupportedPayload('Unknown driver substitution correction payload version')
+    canonical.validate_correction_payload(correction.payload_json)
     return canonical.compute_correction_payload(record=canonical.CorrectionRecord(
         correction_id=correction.id, substitution_id=correction.substitution_id, trip_id=trip_id,
         recorded_by_user_id=correction.recorded_by_user_id, recorded_at=correction.created_at,

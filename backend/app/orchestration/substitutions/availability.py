@@ -34,7 +34,9 @@ class PendingReservation:
     request_id: uuid.UUID
     trip_id: uuid.UUID
     incoming_driver_id: uuid.UUID
-    expected_at: datetime
+    expected_at: datetime | None
+    request_format: str = "planned_v1"
+    reservation_start_at: datetime | None = None
 
 
 async def current_driver_ids(db: AsyncSession, trips: Sequence[Trip]) -> dict[uuid.UUID, uuid.UUID]:
@@ -66,19 +68,21 @@ async def pending_reservations(
         select(
             DriverSubstitutionRequest.id, DriverSubstitutionRequest.trip_id,
             DriverSubstitutionRequest.incoming_driver_id, DriverSubstitutionRequest.expected_at,
+            DriverSubstitutionRequest.request_format, DriverSubstitutionRequest.reservation_start_at,
         ).where(DriverSubstitutionRequest.trip_id.in_(trip_ids), DriverSubstitutionRequest.state == "pending")
     )
     return {
         row.trip_id: PendingReservation(
             request_id=row.id, trip_id=row.trip_id, incoming_driver_id=row.incoming_driver_id,
-            expected_at=row.expected_at,
+            expected_at=row.expected_at, request_format=row.request_format, reservation_start_at=row.reservation_start_at,
         )
         for row in rows
     }
 
 
 def reservation_window(
-    *, expected_at: datetime, planned_end: datetime | None, now: datetime,
+    *, expected_at: datetime | None, planned_end: datetime | None, now: datetime,
+    request_format: str = "planned_v1", reservation_start_at: datetime | None = None,
 ) -> tuple[datetime, datetime | None]:
     """The half-open [start, end) a pending takeover reserves; end None = until it is resolved.
 
@@ -88,6 +92,12 @@ def reservation_window(
     not happened is not a reason to release the driver, so it holds until cancelled, completed
     or the trip terminates. An overdue reservation therefore never starts later than `now`.
     """
+    if request_format == "immediate_v2":
+        if reservation_start_at is None:
+            raise ValueError("Immediate reservation requires its persisted server start")
+        return reservation_start_at, None
+    if request_format != "planned_v1" or expected_at is None:
+        raise ValueError("Unknown or incomplete driver reservation format")
     overdue = expected_at <= now
     if overdue or planned_end is None or planned_end <= now or planned_end <= expected_at:
         return expected_at, None

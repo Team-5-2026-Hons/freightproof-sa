@@ -1,0 +1,2256 @@
+{
+  "anchored": {
+    "arrange_body": {
+      "client_request_id": "f98a8642-fb84-4bd3-9652-f146e84ffa62",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "incoming_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "is_planned": true,
+      "reason": "Hours of service"
+    },
+    "offline_body": {
+      "accuracy_metres": 8.0,
+      "captured_at": "2026-10-19T07:50:00Z",
+      "client_request_id": "7cca97a5-91bd-4eda-b6c0-700d940eaf4b",
+      "confirmed_vehicle_ids": [
+        "d6d72103-1284-4f29-bde8-3d9efb95c468"
+      ],
+      "discrepancy_note": null,
+      "expected_version": 2,
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "d6d72103-1284-4f29-bde8-3d9efb95c468"
+        }
+      ]
+    },
+    "pack_id": "8dd3374e-f68c-439f-9094-1f83d1af9ba8",
+    "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+    "second_actor": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+    "substitution": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+    "world": {
+      "a": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+      "activation_id": "9c25cc93-d4b4-4fc2-84d4-5428db7edda7",
+      "b": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "c": "97b8d8fa-fcba-4bc9-a1e3-940c96114d33",
+      "client_org_id": "182e7b5e-ec36-4493-9426-20df81e97071",
+      "confirmation_id": "570c228e-edae-442b-8992-866647f90316",
+      "d": "7f7392b5-1899-4951-ae42-72cb5fac7188",
+      "dest_id": "60114602-0576-431e-8d0d-a8972c3a5f6d",
+      "horse_id": "d6d72103-1284-4f29-bde8-3d9efb95c468",
+      "org_id": "7c58cfea-9d5c-4706-874e-e9685b3aa2d8",
+      "origin_id": "b0494514-ef8c-4594-a44f-7d4b0548613d",
+      "other_org_id": "fce8ab72-504e-4f2b-8924-706c72929041",
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5"
+    }
+  },
+  "incoming_saved": {
+    "arrange_body": {
+      "client_request_id": "c348978f-73e8-4ee5-ae5a-b4f67c99a78f",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "incoming_driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+      "is_planned": true,
+      "reason": "Hours of service"
+    },
+    "offline_body": {
+      "accuracy_metres": 8.0,
+      "captured_at": "2026-10-19T07:50:00Z",
+      "client_request_id": "95dbc50f-2180-47ec-a254-7feeddb3d120",
+      "confirmed_vehicle_ids": [
+        "2e99bedf-2cab-48f3-8833-b20ec1348d1c"
+      ],
+      "discrepancy_note": null,
+      "expected_version": 2,
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "2e99bedf-2cab-48f3-8833-b20ec1348d1c"
+        }
+      ]
+    },
+    "request_id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+    "second_actor": "7ff3269a-e847-4607-9d14-0fd7752455e7",
+    "world": {
+      "a": "7ff3269a-e847-4607-9d14-0fd7752455e7",
+      "activation_id": "93623738-3920-4a75-97b6-e9cc1834f118",
+      "b": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+      "c": "97e5ef03-fd94-4925-b48a-1bfcbb240dcc",
+      "client_org_id": "fe163995-b051-450f-a1dc-dc3889ff1136",
+      "confirmation_id": "519c0a36-1a89-406e-95f6-64540305d70f",
+      "d": "7bf61b8a-60bd-4475-82ea-b023e969dff3",
+      "dest_id": "e98e0d9c-e0a1-40f1-b786-1ea04e799e4a",
+      "horse_id": "2e99bedf-2cab-48f3-8833-b20ec1348d1c",
+      "org_id": "77822e05-69eb-4e67-8767-80ca14c80723",
+      "origin_id": "cf40deee-82bd-43dd-978f-17018c358d14",
+      "other_org_id": "f60d6db7-e267-419b-a715-5fc71130e905",
+      "trip_id": "ae822a5e-7508-485a-bfb1-7ee6338fe7d8",
+      "user_id": "15fd5b58-5eac-4e1a-9eb5-8ad81bae1126"
+    }
+  },
+  "legacy": {
+    "substitution": "f972110d-e1c8-4192-bae5-b9a3b8ca5073",
+    "world": {
+      "a": "60170588-3b23-4381-8d87-b625a4d0e02c",
+      "activation_id": "78f571bc-f103-4f6b-b0b4-60f95610d654",
+      "b": "5f3b7735-d301-48ce-889f-b54fce712794",
+      "c": "f40b4554-57ad-463f-84fd-c1feca54777a",
+      "client_org_id": "28e6a8e2-b222-462a-a926-611ecfa02083",
+      "confirmation_id": "60669f2a-a5e5-42aa-b90a-4bda0287f466",
+      "d": "e2a9c29d-7d79-4a2e-84d0-916541e4e647",
+      "dest_id": "64549cfa-3f40-4f51-bb17-de6a3ed97b2b",
+      "horse_id": "9bec1a38-058b-4ca6-8b09-5da952c0b973",
+      "org_id": "b1f8e334-ef46-4ff0-b29d-7014ad93e994",
+      "origin_id": "c5097db3-c491-4843-8f4f-4f0c724f4ead",
+      "other_org_id": "3800d238-d6ea-4c1b-9517-bd7d8232d6cc",
+      "trip_id": "c618bb24-5788-4868-af65-a653841e82ee",
+      "user_id": "b16f9a36-cd4b-43ee-b265-b672c120898b"
+    }
+  },
+  "outgoing_saved": {
+    "arrange_body": {
+      "client_request_id": "3bb61b13-2f4e-4f16-9482-38947dd126c1",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "incoming_driver_id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+      "is_planned": true,
+      "reason": "Hours of service"
+    },
+    "offline_body": {
+      "accuracy_metres": 8.0,
+      "captured_at": "2026-10-19T07:50:00Z",
+      "client_request_id": "c288762e-46e4-42e4-b38f-a729133c1623",
+      "confirmed_vehicle_ids": [
+        "34dcf7f8-3bb3-4566-a941-3db0ecc5de54"
+      ],
+      "discrepancy_note": null,
+      "expected_version": 2,
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "34dcf7f8-3bb3-4566-a941-3db0ecc5de54"
+        }
+      ]
+    },
+    "request_id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+    "second_actor": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+    "world": {
+      "a": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+      "activation_id": "4e120def-b987-4f4a-ab37-0c4e71b67dbe",
+      "b": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+      "c": "1b3ea4e7-896a-4130-b3dc-e2fe959eca6d",
+      "client_org_id": "ada391f5-68f7-4acf-adf6-2575f6f15629",
+      "confirmation_id": "cbea0f61-e606-4d36-9f2a-96f40831b5d4",
+      "d": "f4c5084d-5dc4-4f37-9d15-e6abd272a70b",
+      "dest_id": "34304a9f-824d-4ee8-9e65-d045d56fc436",
+      "horse_id": "34dcf7f8-3bb3-4566-a941-3db0ecc5de54",
+      "org_id": "2c67b879-a534-479b-9e2b-85d2bbe9e2a7",
+      "origin_id": "d12c0e2a-d844-4138-bcc7-2ed4576f4abb",
+      "other_org_id": "d0d0366c-9d56-42c9-80ef-68182a7de69d",
+      "trip_id": "46b5942d-4d75-4ffe-b601-1e49e6264407",
+      "user_id": "419f9047-b413-4464-85d1-de17b1b67f58"
+    }
+  },
+  "owed": {
+    "arrange_body": {
+      "client_request_id": "196cc932-a0cb-45f8-aa85-90cadb39010c",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "incoming_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "is_planned": true,
+      "reason": "Hours of service"
+    },
+    "offline_body": {
+      "accuracy_metres": 8.0,
+      "captured_at": "2026-10-19T07:50:00Z",
+      "client_request_id": "24af975b-2fb6-4606-b40f-0d02c96ce6e4",
+      "confirmed_vehicle_ids": [
+        "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+      ],
+      "discrepancy_note": null,
+      "expected_version": 2,
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+        }
+      ]
+    },
+    "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+    "second_actor": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+    "substitution": "30872271-9e2e-4306-9d38-41241b5ec2a4",
+    "world": {
+      "a": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+      "activation_id": "8f064599-5053-44b3-9fda-e09198c94bc3",
+      "b": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "c": "eac8bbb3-5f71-4085-a272-4f677383c082",
+      "client_org_id": "24c18c36-519b-4381-be4f-317aab16aeab",
+      "confirmation_id": "a83c3068-171a-4113-9e7b-5432a196f7a8",
+      "d": "e6c5619a-bd1d-4ded-bfe7-71a179a92419",
+      "dest_id": "ebd3900e-536e-4ae5-8262-e520b4564871",
+      "horse_id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae",
+      "org_id": "64e30478-ed04-42b2-90e5-07fa08f465fa",
+      "origin_id": "cbf6590b-b382-486b-90aa-1911e242d045",
+      "other_org_id": "5e3ff43a-8f93-4e6b-bfa1-db3b44179196",
+      "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+      "user_id": "0ab55397-d591-4cb5-85d3-d1b2f201e593"
+    }
+  },
+  "replacement": {
+    "arrange_body": {
+      "client_request_id": "e78d6046-9c2b-41d9-8155-cc3b88213a70",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "incoming_driver_id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+      "is_planned": true,
+      "reason": "Hours of service"
+    },
+    "replace_body": {
+      "client_request_id": "dc05428e-78b2-49b3-b50d-8a0c3467aa32",
+      "exchange": {
+        "instructions": "Gate 2",
+        "label": "Beaufort West depot",
+        "latitude": -32.35,
+        "longitude": 22.58
+      },
+      "expected_at": "2026-10-19T10:00:00Z",
+      "expected_version": 1,
+      "incoming_driver_id": "a51d0f55-652a-40d4-9b59-30f87cec80cf",
+      "is_planned": true,
+      "reason": "Hours of service",
+      "replacement_reason": "Fixture replacement"
+    },
+    "replacement_id": "f674b7b0-b517-473d-b810-e33731147f82",
+    "request_id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+    "world": {
+      "a": "6df6ba1d-f415-428e-86df-f7760a563af1",
+      "activation_id": "c278eb74-8f5a-4daa-be86-a41c0d930171",
+      "b": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+      "c": "a51d0f55-652a-40d4-9b59-30f87cec80cf",
+      "client_org_id": "e7248e42-a6b8-4834-b8d9-76568b990ba3",
+      "confirmation_id": "e05406f8-ffa3-44a3-a926-65c39bbb3f88",
+      "d": "4dcce3ba-0512-4241-b4b9-e281ff693df0",
+      "dest_id": "ec5d4d8f-6217-42f5-9991-e7aa49236690",
+      "horse_id": "ef6a54ec-3b57-4dbb-ba99-75ac7b2c9e90",
+      "org_id": "7e38ca2e-bd47-48e3-a5c7-0bf5f07b2266",
+      "origin_id": "3deb5911-3be8-4858-b84e-40424b2f70ca",
+      "other_org_id": "9c3cd7a3-cfbb-4188-94e3-3983147e17dc",
+      "trip_id": "9d7d539b-6708-46e0-a931-49e00f847fb9",
+      "user_id": "fb9cac43-cc1b-4018-970a-92f65d8a9ecc"
+    }
+  },
+  "snapshot_audit_packs": [
+    {
+      "anchor_status": "anchored",
+      "blockchain_receipt_id": "0e0cd1f5-d09f-444a-9db4-ae87e0d2e640",
+      "consignment_id": null,
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "expires_at": "2026-11-18T08:00:00+00:00",
+      "external_reference": null,
+      "id": "8dd3374e-f68c-439f-9094-1f83d1af9ba8",
+      "include_full_driver_id": false,
+      "include_location_trail": true,
+      "issued_at": "2026-10-19T08:00:00+00:00",
+      "issued_by_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+      "manifest_json": {
+        "anchored_records": [
+          {
+            "canonical_payload": "{\"arranged_by_user_id\":\"d67ec558-2911-4f15-89c4-ef96c57595e5\",\"captures\":{\"incoming\":{\"captured_at\":\"2026-10-19T07:50:00.000000+00:00\",\"confirmation_id\":\"4ef3874c-31f9-49b1-9e1e-4141247fc33f\",\"driver_id\":\"2fa3e712-e55c-46f8-8933-a7b3bc7ed628\",\"location_sha256\":\"8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd\",\"note_sha256\":null,\"photos\":[],\"received_at\":\"2026-10-19T08:00:00.000000+00:00\",\"role\":\"incoming\",\"seal_checks_sha256\":\"388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3\",\"vehicles_sha256\":\"e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c\"},\"outgoing\":{\"captured_at\":\"2026-10-19T07:50:00.000000+00:00\",\"confirmation_id\":\"ca10636b-098d-4dbe-a10b-cf9e5d061981\",\"driver_id\":\"09e409b5-abb1-425b-a8e6-761d4c5083c8\",\"location_sha256\":\"8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd\",\"note_sha256\":null,\"photos\":[],\"received_at\":\"2026-10-19T08:00:00.000000+00:00\",\"role\":\"outgoing\",\"seal_checks_sha256\":\"388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3\",\"vehicles_sha256\":\"e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c\"}},\"completed_by_driver_id\":\"2fa3e712-e55c-46f8-8933-a7b3bc7ed628\",\"completed_by_user_id\":null,\"completion_mode\":\"normal\",\"declared_exchange_at\":null,\"effective_at\":\"2026-10-19T08:00:00.000000+00:00\",\"event_type\":\"driver_substitution\",\"exchange_sha256\":\"82c4c7afcb9260f7fd2277bdf87c158b2971bee4e8c7d83f84d3d6fd0a1894b4\",\"expected_at\":\"2026-10-19T10:00:00.000000+00:00\",\"identity\":{\"attestation_reason_sha256\":null,\"attested_at\":null,\"attested_by_user_id\":null,\"last_verified_at\":null,\"observed_at\":\"2026-10-19T08:00:00.000000+00:00\",\"status\":\"verified\"},\"incoming_driver_id\":\"2fa3e712-e55c-46f8-8933-a7b3bc7ed628\",\"is_planned\":true,\"licence\":{\"expiry\":\"2027-01-01\",\"observed_at\":\"2026-10-19T08:00:00.000000+00:00\"},\"missing_confirmation_reason_sha256\":null,\"outgoing_driver_id\":\"09e409b5-abb1-425b-a8e6-761d4c5083c8\",\"payload_version\":1,\"previous_event_hash\":null,\"previous_substitution_id\":null,\"reason_sha256\":\"a52ca4beb34f9885aa4a9038aac36983738bf6bf20130ff1909c5e55fa4a02a2\",\"request_id\":\"2405eef5-85ee-4b01-badc-2be8a5fede0e\",\"sequence_number\":1,\"substitution_id\":\"5a155be6-5521-4f8b-b82d-24642e3c4f64\",\"trip_id\":\"dcb4cfc1-5d11-46f0-ab8b-1273bea07db7\"}",
+            "data_hash": "5f02629601f5a47df9fd8752ebeaaa0766ae2903e0af5585021d5a85f4dd45a5",
+            "hedera_consensus_at": null,
+            "hedera_sequence_number": 1,
+            "hedera_topic_id": "0.0.1",
+            "hedera_tx_id": "tx",
+            "payload_matches_hash": true,
+            "receipt_id": "5577bc15-524a-4640-ba6a-8256bea7c5bf",
+            "receipt_type": "driver_substitution",
+            "subject_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+            "subject_type": "driver_substitution"
+          }
+        ],
+        "checkpoints": [],
+        "consignments": [],
+        "declarations": [],
+        "driver": {
+          "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+          "full_name": "A b15adf68",
+          "id_number": "*********5881",
+          "id_number_masked": true,
+          "license_expiry": "2027-01-01",
+          "license_number": "DRV-b15adf68",
+          "license_valid_on_trip_date": true,
+          "substitutions": [
+            {
+              "anchor_receipt_id": "5577bc15-524a-4640-ba6a-8256bea7c5bf",
+              "arranged_by_name": "D",
+              "commitment_sha256": "5f02629601f5a47df9fd8752ebeaaa0766ae2903e0af5585021d5a85f4dd45a5",
+              "completed_by": "driver",
+              "completion_mode": "normal",
+              "declarations": [
+                {
+                  "captured_at": "2026-10-19T07:50:00Z",
+                  "discrepancy_note": null,
+                  "driver_name": "A b15adf68",
+                  "location_recorded": true,
+                  "photo_sha256": [],
+                  "received_at": "2026-10-19T08:00:00Z",
+                  "role": "outgoing",
+                  "seal_readings": [
+                    "d6d72103-1284-4f29-bde8-3d9efb95c468: not_applicable (no number)"
+                  ]
+                },
+                {
+                  "captured_at": "2026-10-19T07:50:00Z",
+                  "discrepancy_note": null,
+                  "driver_name": "B 569c3845",
+                  "location_recorded": true,
+                  "photo_sha256": [],
+                  "received_at": "2026-10-19T08:00:00Z",
+                  "role": "incoming",
+                  "seal_readings": [
+                    "d6d72103-1284-4f29-bde8-3d9efb95c468: not_applicable (no number)"
+                  ]
+                }
+              ],
+              "exchange_location": "Beaufort West depot",
+              "identity_attested_at": null,
+              "identity_attested_by_name": null,
+              "incoming_identity_status": "verified",
+              "incoming_licence_expiry": "2027-01-01",
+              "is_planned": true,
+              "missing_confirmation_reason": null,
+              "original_driver_name": "A b15adf68",
+              "sequence_number": 1,
+              "substituting_driver_name": "B 569c3845",
+              "substitution_at": "2026-10-19T08:00:00Z",
+              "substitution_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+              "tier": "anchored"
+            }
+          ],
+          "trip_idvs_checked_at": null,
+          "trip_idvs_status": "verified"
+        },
+        "exceptions": [],
+        "generated_at": "2026-10-19T08:00:00Z",
+        "incident": null,
+        "late_evidence": [],
+        "location_coverage": {
+          "first_fix_at": null,
+          "fix_counts": {},
+          "gaps": [],
+          "last_fix_at": null,
+          "stationary_periods": [],
+          "window_end": null,
+          "window_start": null
+        },
+        "location_trail": [],
+        "manifest_version": 2,
+        "observations": [
+          {
+            "code": "custody.completeness",
+            "evidence_ids": [
+              "9c25cc93-d4b4-4fc2-84d4-5428db7edda7",
+              "570c228e-edae-442b-8992-866647f90316"
+            ],
+            "level": "attention",
+            "text": "1 of 3 phases resolved; 2 pending."
+          },
+          {
+            "code": "trip.incomplete",
+            "evidence_ids": [],
+            "level": "attention",
+            "text": "Trip did not complete: status active, no phase completed, 2 phases pending."
+          },
+          {
+            "code": "identity.driver",
+            "evidence_ids": [],
+            "level": "info",
+            "text": "Driver identity check for this trip (original driver, at the start of the trip): verified."
+          },
+          {
+            "code": "identity.substitution",
+            "evidence_ids": [
+              "5a155be6-5521-4f8b-b82d-24642e3c4f64"
+            ],
+            "level": "attention",
+            "text": "Driver changed from A b15adf68 to B 569c3845 at Beaufort West depot, 19 Oct 2026 10:00 SAST (planned); amendment 1; incoming driver identity verified."
+          }
+        ],
+        "options": {
+          "include_full_driver_id": false,
+          "include_location_trail": true,
+          "scope_consignment_id": null
+        },
+        "phases": [
+          {
+            "anchor_receipt_id": null,
+            "anchor_status": "not_required",
+            "anchored_fields": [],
+            "completed_at": null,
+            "driver_captured_at": null,
+            "driver_phone": null,
+            "driver_visual_count": null,
+            "evidence": [],
+            "location_assessment": null,
+            "location_warning_acknowledged_at": null,
+            "location_warning_reason": null,
+            "overridden_by_dispatcher": false,
+            "override_note": null,
+            "parcel_count_destination": null,
+            "parcel_count_origin": null,
+            "phase_event_id": "b42713b3-2ca6-4c8b-a35b-be0277dce6f3",
+            "phase_type": "trip_creation",
+            "precinct_name": null,
+            "seal_condition": null,
+            "seal_number": null,
+            "sequence_number": 0,
+            "slot_time": null,
+            "status": "completed",
+            "tier": "recorded",
+            "trailer_fixes": [],
+            "trip_stop_id": null,
+            "vehicle_tracker": null
+          },
+          {
+            "anchor_receipt_id": null,
+            "anchor_status": "not_required",
+            "anchored_fields": [],
+            "completed_at": null,
+            "driver_captured_at": null,
+            "driver_phone": null,
+            "driver_visual_count": null,
+            "evidence": [],
+            "location_assessment": null,
+            "location_warning_acknowledged_at": null,
+            "location_warning_reason": null,
+            "overridden_by_dispatcher": false,
+            "override_note": null,
+            "parcel_count_destination": null,
+            "parcel_count_origin": null,
+            "phase_event_id": "9c25cc93-d4b4-4fc2-84d4-5428db7edda7",
+            "phase_type": "activation",
+            "precinct_name": "O",
+            "seal_condition": null,
+            "seal_number": null,
+            "sequence_number": 1,
+            "slot_time": null,
+            "status": "pending",
+            "tier": "recorded",
+            "trailer_fixes": [],
+            "trip_stop_id": "71b8f847-faf5-442c-9ecd-8b1b8ec06f10",
+            "vehicle_tracker": null
+          },
+          {
+            "anchor_receipt_id": null,
+            "anchor_status": "not_required",
+            "anchored_fields": [],
+            "completed_at": null,
+            "driver_captured_at": null,
+            "driver_phone": null,
+            "driver_visual_count": null,
+            "evidence": [],
+            "location_assessment": null,
+            "location_warning_acknowledged_at": null,
+            "location_warning_reason": null,
+            "overridden_by_dispatcher": false,
+            "override_note": null,
+            "parcel_count_destination": null,
+            "parcel_count_origin": null,
+            "phase_event_id": "570c228e-edae-442b-8992-866647f90316",
+            "phase_type": "confirmation",
+            "precinct_name": "D",
+            "seal_condition": null,
+            "seal_number": null,
+            "sequence_number": 7,
+            "slot_time": null,
+            "status": "pending",
+            "tier": "recorded",
+            "trailer_fixes": [],
+            "trip_stop_id": "194cdca8-4984-4580-a188-50af88dbf0d4",
+            "vehicle_tracker": null
+          }
+        ],
+        "record_changes": [],
+        "redactions": [
+          "Driver phone number withheld.",
+          "Driver identity number masked to its last 4 digits."
+        ],
+        "stops": [
+          {
+            "address": null,
+            "geofence_polygon": null,
+            "geofence_radius_metres": 200,
+            "lat": 0.0,
+            "lng": 0.0,
+            "precinct_id": "b0494514-ef8c-4594-a44f-7d4b0548613d",
+            "precinct_name": "O",
+            "sequence": 0,
+            "slot_time": null,
+            "trip_stop_id": "71b8f847-faf5-442c-9ecd-8b1b8ec06f10"
+          },
+          {
+            "address": null,
+            "geofence_polygon": null,
+            "geofence_radius_metres": 200,
+            "lat": 1.0,
+            "lng": 1.0,
+            "precinct_id": "60114602-0576-431e-8d0d-a8972c3a5f6d",
+            "precinct_name": "D",
+            "sequence": 1,
+            "slot_time": null,
+            "trip_stop_id": "194cdca8-4984-4580-a188-50af88dbf0d4"
+          }
+        ],
+        "trip": {
+          "actual_arrival_at": null,
+          "actual_departure_at": null,
+          "client_names": [
+            "Client"
+          ],
+          "closed_at": null,
+          "created_at": "2026-10-20T14:25:47.466542Z",
+          "journey_lock_hash": null,
+          "operator_name": "Org",
+          "order_number": "ORD-SUB",
+          "planned_arrival_at": "2026-10-19T16:00:00Z",
+          "planned_departure_at": "2026-10-19T08:00:00Z",
+          "pulsit_trip_reference_id": null,
+          "status": "active",
+          "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+          "trip_reference": "FP-e7e9ec02",
+          "trip_type": "empty_leg"
+        },
+        "vehicles": [
+          {
+            "licence_disc_expiry": null,
+            "licence_disc_valid_on_trip_date": null,
+            "make": null,
+            "model": null,
+            "registration": "RADF37C",
+            "role": "horse",
+            "tracker_device_id": "PUL-f5dbd2",
+            "vehicle_id": "d6d72103-1284-4f29-bde8-3d9efb95c468",
+            "vehicle_type": "horse",
+            "vin_number": null,
+            "year": null
+          }
+        ]
+      },
+      "manifest_sha256": "515d1693f89dcee2d7947d3d14fb10af77c3a040a736be997a0274757196069b",
+      "manifest_version": 2,
+      "organization_id": "7c58cfea-9d5c-4706-874e-e9685b3aa2d8",
+      "pack_version": 1,
+      "pdf_sha256": "5830f977ce2c775fcee4ef970372a03f4d26dd49f4485936977ab0675edaf947",
+      "pdf_size_bytes": 41642,
+      "pdf_storage_bucket": "test",
+      "pdf_storage_key": "issued-v2.pdf",
+      "purpose": "insurance_claim",
+      "recipient_email": "reviewer@example.invalid",
+      "recipient_name": "Fixture Reviewer",
+      "recipient_organization": "Fixture Claims",
+      "revoked_at": null,
+      "revoked_by_user_id": null,
+      "token_hash": "5f33baef9893ef6b1b2795e82ae1caaba39f79b4897d8b493e7f8439bb96e596",
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    }
+  ],
+  "snapshot_blockchain_receipts": [
+    {
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "data_hash": "e7e4b05b13f2071e30ffba19652f8dfd0eb843d877b951c7f0b6167e210148be",
+      "hedera_consensus_timestamp": null,
+      "hedera_sequence_number": 2,
+      "hedera_topic_id": "0.0.1",
+      "hedera_tx_id": "tx",
+      "id": "0e0cd1f5-d09f-444a-9db4-ae87e0d2e640",
+      "payload_json": {
+        "issued_at": "2026-10-19T08:00:00+00:00",
+        "manifest_sha256": "515d1693f89dcee2d7947d3d14fb10af77c3a040a736be997a0274757196069b",
+        "pack_id": "8dd3374e-f68c-439f-9094-1f83d1af9ba8",
+        "pack_version": 1,
+        "payload_version": 1,
+        "pdf_sha256": "5830f977ce2c775fcee4ef970372a03f4d26dd49f4485936977ab0675edaf947",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7"
+      },
+      "receipt_type": "audit_pack_issued",
+      "subject_id": "8dd3374e-f68c-439f-9094-1f83d1af9ba8",
+      "subject_type": "audit_pack",
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "data_hash": "5f02629601f5a47df9fd8752ebeaaa0766ae2903e0af5585021d5a85f4dd45a5",
+      "hedera_consensus_timestamp": null,
+      "hedera_sequence_number": 1,
+      "hedera_topic_id": "0.0.1",
+      "hedera_tx_id": "tx",
+      "id": "5577bc15-524a-4640-ba6a-8256bea7c5bf",
+      "payload_json": {
+        "arranged_by_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+        "captures": {
+          "incoming": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "4ef3874c-31f9-49b1-9e1e-4141247fc33f",
+            "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "incoming",
+            "seal_checks_sha256": "388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3",
+            "vehicles_sha256": "e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c"
+          },
+          "outgoing": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "ca10636b-098d-4dbe-a10b-cf9e5d061981",
+            "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "outgoing",
+            "seal_checks_sha256": "388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3",
+            "vehicles_sha256": "e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c"
+          }
+        },
+        "completed_by_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+        "completed_by_user_id": null,
+        "completion_mode": "normal",
+        "declared_exchange_at": null,
+        "effective_at": "2026-10-19T08:00:00.000000+00:00",
+        "event_type": "driver_substitution",
+        "exchange_sha256": "82c4c7afcb9260f7fd2277bdf87c158b2971bee4e8c7d83f84d3d6fd0a1894b4",
+        "expected_at": "2026-10-19T10:00:00.000000+00:00",
+        "identity": {
+          "attestation_reason_sha256": null,
+          "attested_at": null,
+          "attested_by_user_id": null,
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00.000000+00:00",
+          "status": "verified"
+        },
+        "incoming_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+        "is_planned": true,
+        "licence": {
+          "expiry": "2027-01-01",
+          "observed_at": "2026-10-19T08:00:00.000000+00:00"
+        },
+        "missing_confirmation_reason_sha256": null,
+        "outgoing_driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+        "payload_version": 1,
+        "previous_event_hash": null,
+        "previous_substitution_id": null,
+        "reason_sha256": "a52ca4beb34f9885aa4a9038aac36983738bf6bf20130ff1909c5e55fa4a02a2",
+        "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+        "sequence_number": 1,
+        "substitution_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7"
+      },
+      "receipt_type": "driver_substitution",
+      "subject_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+      "subject_type": "driver_substitution",
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    }
+  ],
+  "snapshot_driver_substitution_confirmations": [
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "d6d72103-1284-4f29-bde8-3d9efb95c468"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "id": "4ef3874c-31f9-49b1-9e1e-4141247fc33f",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "role": "incoming",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "d6d72103-1284-4f29-bde8-3d9efb95c468"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "34dcf7f8-3bb3-4566-a941-3db0ecc5de54"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+      "id": "56665115-d24f-40a5-b6df-127394b54b16",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+      "role": "outgoing",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "34dcf7f8-3bb3-4566-a941-3db0ecc5de54"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "2e99bedf-2cab-48f3-8833-b20ec1348d1c"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+      "id": "5f5670a0-1666-433c-9c9c-80cce7ad534f",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+      "role": "incoming",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "2e99bedf-2cab-48f3-8833-b20ec1348d1c"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "d6d72103-1284-4f29-bde8-3d9efb95c468"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+      "id": "ca10636b-098d-4dbe-a10b-cf9e5d061981",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "role": "outgoing",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "d6d72103-1284-4f29-bde8-3d9efb95c468"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "id": "db7976ee-6f7b-4910-94c0-b8d5b59e2bdb",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "role": "incoming",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "accuracy_metres": 8.0,
+      "action_location_assessment": {
+        "driver_accuracy_metres": 8.0,
+        "driver_captured_at": "2026-10-19T07:50:00Z",
+        "driver_in_precinct": null,
+        "driver_lat": -32.35,
+        "driver_lng": 22.58,
+        "evaluated_at": "2026-10-19T08:00:00Z",
+        "expected_trip_stop_id": null,
+        "max_age_seconds": 60,
+        "max_phone_accuracy_metres": 50.0,
+        "max_separation_metres": 100.0,
+        "max_skew_seconds": 30,
+        "policy_version": "2026-10-14.1",
+        "precinct_geofence_polygon": null,
+        "precinct_id": null,
+        "precinct_lat": null,
+        "precinct_lng": null,
+        "precinct_radius_metres": null,
+        "precinct_tolerance_metres": null,
+        "proximity": "unverified",
+        "reasons": [
+          "missing_tracker",
+          "missing_time",
+          "stale_fix"
+        ],
+        "schema_version": 1,
+        "separation_metres": null,
+        "tracker_captured_at": null,
+        "tracker_lat": null,
+        "tracker_lng": null,
+        "truck_in_precinct": null
+      },
+      "captured_at": "2026-10-19T07:50:00+00:00",
+      "confirmed_vehicle_ids": [
+        "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+      ],
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "discrepancy_note": null,
+      "driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+      "id": "e4b66e0b-65f9-4733-8574-bc4f1a4d987d",
+      "latitude": -32.35,
+      "longitude": 22.58,
+      "received_at": "2026-10-19T08:00:00+00:00",
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "role": "outgoing",
+      "seal_checks": [
+        {
+          "condition": "not_applicable",
+          "not_applicable_reason": "Empty leg, nothing sealed",
+          "photo_artifact_ids": [],
+          "seal_number": null,
+          "vehicle_id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae"
+        }
+      ],
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    }
+  ],
+  "snapshot_driver_substitution_operations": [
+    {
+      "action": "confirm",
+      "actor_driver_id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+      "actor_user_id": null,
+      "body_digest": "e87f49c9fead7d8427cbd18f0022e31bb077787b5d20248f7f4b6938b1acf271",
+      "client_request_id": "e2dd94f9-7b78-45eb-9e24-039948d31939",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "11303b8b-4dba-4a28-a808-e525e0c10c74",
+      "late_evidence_id": null,
+      "request_id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+            "id": "56665115-d24f-40a5-b6df-127394b54b16",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "outgoing"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+        "identity": {
+          "driver_id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B f4ab7a32",
+          "id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+          "phone_number": "+2782f4ab7a3"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 81894746",
+          "id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+          "phone_number": "+27828189474"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "46b5942d-4d75-4ffe-b601-1e49e6264407",
+        "trip_reference": "FP-710899e1",
+        "vehicles": [
+          {
+            "id": "34dcf7f8-3bb3-4566-a941-3db0ecc5de54",
+            "registration": "R190B2B",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 2
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "replace",
+      "actor_driver_id": null,
+      "actor_user_id": "fb9cac43-cc1b-4018-970a-92f65d8a9ecc",
+      "body_digest": "e5cc027fb98e238a50ae103f818a95ee5d764ad5318342aaaf54744105e5dc02",
+      "client_request_id": "dc05428e-78b2-49b3-b50d-8a0c3467aa32",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "26556d63-1b0e-4bd3-ae7e-49c6b6dd1a3b",
+      "late_evidence_id": null,
+      "request_id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+        "identity": {
+          "driver_id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B e9c5b0ca",
+          "id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+          "phone_number": "+2782e9c5b0c"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 031b8361",
+          "id": "6df6ba1d-f415-428e-86df-f7760a563af1",
+          "phone_number": "+2782031b836"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": "f674b7b0-b517-473d-b810-e33731147f82",
+        "state": "cancelled",
+        "trip_id": "9d7d539b-6708-46e0-a931-49e00f847fb9",
+        "trip_reference": "FP-5747fe86",
+        "vehicles": [
+          {
+            "id": "ef6a54ec-3b57-4dbb-ba99-75ac7b2c9e90",
+            "registration": "R50DC5C",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 2
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "arrange",
+      "actor_driver_id": null,
+      "actor_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+      "body_digest": "76051c7a8d61272d1426059ef882068c7d94d9edb253bf26608f0048df34040e",
+      "client_request_id": "f98a8642-fb84-4bd3-9652-f146e84ffa62",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "2b4d6b9b-c0c2-4289-b390-3c957a3032ff",
+      "late_evidence_id": null,
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+        "identity": {
+          "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 569c3845",
+          "id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "phone_number": "+2782569c384"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A b15adf68",
+          "id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+          "phone_number": "+2782b15adf6"
+        },
+        "permitted_actions": [
+          "cancel",
+          "replace",
+          "complete_attested"
+        ],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+        "trip_reference": "FP-e7e9ec02",
+        "vehicles": [
+          {
+            "id": "d6d72103-1284-4f29-bde8-3d9efb95c468",
+            "registration": "RADF37C",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 1
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "arrange",
+      "actor_driver_id": null,
+      "actor_user_id": "fb9cac43-cc1b-4018-970a-92f65d8a9ecc",
+      "body_digest": "9c3e0c7e25dcb27280e165c0a9c47189ad5d6187e3ff0b2951e2222adb0ae5ee",
+      "client_request_id": "e78d6046-9c2b-41d9-8155-cc3b88213a70",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "414e11ad-e562-4511-a46c-de59eaf8af61",
+      "late_evidence_id": null,
+      "request_id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+        "identity": {
+          "driver_id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B e9c5b0ca",
+          "id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+          "phone_number": "+2782e9c5b0c"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 031b8361",
+          "id": "6df6ba1d-f415-428e-86df-f7760a563af1",
+          "phone_number": "+2782031b836"
+        },
+        "permitted_actions": [
+          "cancel",
+          "replace",
+          "complete_attested"
+        ],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "9d7d539b-6708-46e0-a931-49e00f847fb9",
+        "trip_reference": "FP-5747fe86",
+        "vehicles": [
+          {
+            "id": "ef6a54ec-3b57-4dbb-ba99-75ac7b2c9e90",
+            "registration": "R50DC5C",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 1
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "confirm",
+      "actor_driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+      "actor_user_id": null,
+      "body_digest": "110b8c04f56aa000a5ca641b333d59c14f75779177d0bd1f98b54ca32212a699",
+      "client_request_id": "a9aa161c-5090-474b-b8bf-62585c60ad6f",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "51590577-ce68-4a15-82fc-601a70694e64",
+      "late_evidence_id": null,
+      "request_id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+            "id": "5f5670a0-1666-433c-9c9c-80cce7ad534f",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "incoming"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+        "identity": {
+          "driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B be193fb1",
+          "id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+          "phone_number": "+2782be193fb"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing"
+        ],
+        "outgoing": {
+          "full_name": "A 05c4fb92",
+          "id": "7ff3269a-e847-4607-9d14-0fd7752455e7",
+          "phone_number": "+278205c4fb9"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "ae822a5e-7508-485a-bfb1-7ee6338fe7d8",
+        "trip_reference": "FP-d55ae011",
+        "vehicles": [
+          {
+            "id": "2e99bedf-2cab-48f3-8833-b20ec1348d1c",
+            "registration": "R3EB6BD",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 2
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "confirm",
+      "actor_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "actor_user_id": null,
+      "body_digest": "fe3adf92694c5c25c93cfe153da6e8105c62286365f8abe1bdae7b3ff74c0292",
+      "client_request_id": "24af975b-2fb6-4606-b40f-0d02c96ce6e4",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "8947c653-4e22-4549-ac23-a5204c409859",
+      "late_evidence_id": null,
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "result_json": {
+        "completed_substitution_id": "30872271-9e2e-4306-9d38-41241b5ec2a4",
+        "completion": {
+          "completed_by_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "completed_by_user_id": null,
+          "trigger": "driver_confirmation"
+        },
+        "completion_blocked_by": null,
+        "completion_mode": "normal",
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+            "id": "e4b66e0b-65f9-4733-8574-bc4f1a4d987d",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "outgoing"
+          },
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+            "id": "db7976ee-6f7b-4910-94c0-b8d5b59e2bdb",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "incoming"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": "2026-10-19T08:00:00Z",
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+        "identity": {
+          "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 0c351418",
+          "id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "phone_number": "+27820c35141"
+        },
+        "is_planned": true,
+        "missing_confirmations": [],
+        "outgoing": {
+          "full_name": "A 1a12896d",
+          "id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+          "phone_number": "+27821a12896"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "completed",
+        "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+        "trip_reference": "FP-432b0d3b",
+        "vehicles": [
+          {
+            "id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae",
+            "registration": "R41BFEC",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 3
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "confirm",
+      "actor_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "actor_user_id": null,
+      "body_digest": "eecf3b02bbe0a694303176d07558705dc656850737afaba05494fc0da8b202f5",
+      "client_request_id": "7cca97a5-91bd-4eda-b6c0-700d940eaf4b",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "93785dd3-bc51-4c45-85df-339b81262e19",
+      "late_evidence_id": null,
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "result_json": {
+        "completed_substitution_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+        "completion": {
+          "completed_by_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "completed_by_user_id": null,
+          "trigger": "driver_confirmation"
+        },
+        "completion_blocked_by": null,
+        "completion_mode": "normal",
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+            "id": "ca10636b-098d-4dbe-a10b-cf9e5d061981",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "outgoing"
+          },
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+            "id": "4ef3874c-31f9-49b1-9e1e-4141247fc33f",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "incoming"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": "2026-10-19T08:00:00Z",
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+        "identity": {
+          "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 569c3845",
+          "id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "phone_number": "+2782569c384"
+        },
+        "is_planned": true,
+        "missing_confirmations": [],
+        "outgoing": {
+          "full_name": "A b15adf68",
+          "id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+          "phone_number": "+2782b15adf6"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "completed",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+        "trip_reference": "FP-e7e9ec02",
+        "vehicles": [
+          {
+            "id": "d6d72103-1284-4f29-bde8-3d9efb95c468",
+            "registration": "RADF37C",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 3
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "arrange",
+      "actor_driver_id": null,
+      "actor_user_id": "419f9047-b413-4464-85d1-de17b1b67f58",
+      "body_digest": "1a521e3175ddcdc48ae211e46d659a1b1c3495e3c3bdd2a1c19317231b118413",
+      "client_request_id": "3bb61b13-2f4e-4f16-9482-38947dd126c1",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "ae66f6a9-8944-4218-b92a-4f48c6024031",
+      "late_evidence_id": null,
+      "request_id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+        "identity": {
+          "driver_id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B f4ab7a32",
+          "id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+          "phone_number": "+2782f4ab7a3"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 81894746",
+          "id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+          "phone_number": "+27828189474"
+        },
+        "permitted_actions": [
+          "cancel",
+          "replace",
+          "complete_attested"
+        ],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "46b5942d-4d75-4ffe-b601-1e49e6264407",
+        "trip_reference": "FP-710899e1",
+        "vehicles": [
+          {
+            "id": "34dcf7f8-3bb3-4566-a941-3db0ecc5de54",
+            "registration": "R190B2B",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 1
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "arrange",
+      "actor_driver_id": null,
+      "actor_user_id": "0ab55397-d591-4cb5-85d3-d1b2f201e593",
+      "body_digest": "67809b3600799024b5f2554a37f71bcdd4f39080e2ea815f1d18c3360fa5ba0d",
+      "client_request_id": "196cc932-a0cb-45f8-aa85-90cadb39010c",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "afca9448-04dc-484b-8cb4-5baaeb333a13",
+      "late_evidence_id": null,
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+        "identity": {
+          "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 0c351418",
+          "id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "phone_number": "+27820c35141"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 1a12896d",
+          "id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+          "phone_number": "+27821a12896"
+        },
+        "permitted_actions": [
+          "cancel",
+          "replace",
+          "complete_attested"
+        ],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+        "trip_reference": "FP-432b0d3b",
+        "vehicles": [
+          {
+            "id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae",
+            "registration": "R41BFEC",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 1
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "confirm",
+      "actor_driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+      "actor_user_id": null,
+      "body_digest": "2d668eea1cd6efa4257d7c6e997d1e1a15f3623060452dc9a340a95b2c36f96f",
+      "client_request_id": "284ccd23-7d19-4661-82e5-b52e9f14e383",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "cfaad7a6-1640-4ed3-9229-144ef2e1cef3",
+      "late_evidence_id": null,
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+            "id": "ca10636b-098d-4dbe-a10b-cf9e5d061981",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "outgoing"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+        "identity": {
+          "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 569c3845",
+          "id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+          "phone_number": "+2782569c384"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A b15adf68",
+          "id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+          "phone_number": "+2782b15adf6"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+        "trip_reference": "FP-e7e9ec02",
+        "vehicles": [
+          {
+            "id": "d6d72103-1284-4f29-bde8-3d9efb95c468",
+            "registration": "RADF37C",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 2
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "confirm",
+      "actor_driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+      "actor_user_id": null,
+      "body_digest": "71be5e395b0e56c055a79822d98b53f7d375fbeb10a1c29f1b01c9658231c177",
+      "client_request_id": "27392035-731a-4153-b56a-373a395038b8",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "ec5232a8-e401-4982-91c9-dc3c11990d78",
+      "late_evidence_id": null,
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [
+          {
+            "captured_at": "2026-10-19T07:50:00Z",
+            "driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+            "id": "e4b66e0b-65f9-4733-8574-bc4f1a4d987d",
+            "received_at": "2026-10-19T08:00:00Z",
+            "role": "outgoing"
+          }
+        ],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+        "identity": {
+          "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B 0c351418",
+          "id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+          "phone_number": "+27820c35141"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 1a12896d",
+          "id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+          "phone_number": "+27821a12896"
+        },
+        "permitted_actions": [],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+        "trip_reference": "FP-432b0d3b",
+        "vehicles": [
+          {
+            "id": "fe2b8f2e-b58f-46fd-ad1c-f99ed26b07ae",
+            "registration": "R41BFEC",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 2
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "action": "arrange",
+      "actor_driver_id": null,
+      "actor_user_id": "15fd5b58-5eac-4e1a-9eb5-8ad81bae1126",
+      "body_digest": "38e1352088039d91881af7378e3baa851c37efc9df60d6f88f7510c51aa0cf2e",
+      "client_request_id": "c348978f-73e8-4ee5-ae5a-b4f67c99a78f",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "id": "f6488968-139b-4a32-981c-b9e33e31c3ec",
+      "late_evidence_id": null,
+      "request_id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+      "result_json": {
+        "completed_substitution_id": null,
+        "completion": null,
+        "completion_blocked_by": null,
+        "completion_mode": null,
+        "confirmations": [],
+        "created_at": "2026-10-20T14:25:47.466542Z",
+        "effective_at": null,
+        "exchange": {
+          "instructions": "Gate 2",
+          "label": "Beaufort West depot",
+          "latitude": -32.35,
+          "longitude": 22.58
+        },
+        "expected_at": "2026-10-19T10:00:00Z",
+        "id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+        "identity": {
+          "driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00Z",
+          "status": "verified"
+        },
+        "incoming": {
+          "full_name": "B be193fb1",
+          "id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+          "phone_number": "+2782be193fb"
+        },
+        "is_planned": true,
+        "missing_confirmations": [
+          "outgoing",
+          "incoming"
+        ],
+        "outgoing": {
+          "full_name": "A 05c4fb92",
+          "id": "7ff3269a-e847-4607-9d14-0fd7752455e7",
+          "phone_number": "+278205c4fb9"
+        },
+        "permitted_actions": [
+          "cancel",
+          "replace",
+          "complete_attested"
+        ],
+        "reason": "Hours of service",
+        "replacement_request_id": null,
+        "state": "pending",
+        "trip_id": "ae822a5e-7508-485a-bfb1-7ee6338fe7d8",
+        "trip_reference": "FP-d55ae011",
+        "vehicles": [
+          {
+            "id": "2e99bedf-2cab-48f3-8833-b20ec1348d1c",
+            "registration": "R3EB6BD",
+            "vehicle_type": "horse"
+          }
+        ],
+        "version": 1
+      },
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    }
+  ],
+  "snapshot_driver_substitution_requests": [
+    {
+      "arranged_by_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "incoming_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "is_planned": true,
+      "outgoing_driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+      "reason": "Hours of service",
+      "replacement_request_id": null,
+      "state": "completed",
+      "terminal_at": "2026-10-19T08:00:00+00:00",
+      "terminal_reason": null,
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 3
+    },
+    {
+      "arranged_by_user_id": "419f9047-b413-4464-85d1-de17b1b67f58",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "377d55aa-3d5b-4019-afe2-2e27000643d4",
+      "incoming_driver_id": "dfaf331a-1cef-40b9-8fa2-33cd3f5b4c0b",
+      "is_planned": true,
+      "outgoing_driver_id": "13e4da68-cb0a-4751-8c0d-9ec426f0060a",
+      "reason": "Hours of service",
+      "replacement_request_id": null,
+      "state": "pending",
+      "terminal_at": null,
+      "terminal_reason": null,
+      "trip_id": "46b5942d-4d75-4ffe-b601-1e49e6264407",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 2
+    },
+    {
+      "arranged_by_user_id": "0ab55397-d591-4cb5-85d3-d1b2f201e593",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "incoming_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "is_planned": true,
+      "outgoing_driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+      "reason": "Hours of service",
+      "replacement_request_id": null,
+      "state": "completed",
+      "terminal_at": "2026-10-19T08:00:00+00:00",
+      "terminal_reason": null,
+      "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 3
+    },
+    {
+      "arranged_by_user_id": "fb9cac43-cc1b-4018-970a-92f65d8a9ecc",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "6f3c0c8e-be0e-471f-880e-22e09436e775",
+      "incoming_driver_id": "8c1ab68e-ea42-49b7-b028-aadd10c2b25b",
+      "is_planned": true,
+      "outgoing_driver_id": "6df6ba1d-f415-428e-86df-f7760a563af1",
+      "reason": "Hours of service",
+      "replacement_request_id": "f674b7b0-b517-473d-b810-e33731147f82",
+      "state": "cancelled",
+      "terminal_at": "2026-10-19T08:00:00+00:00",
+      "terminal_reason": "Fixture replacement",
+      "trip_id": "9d7d539b-6708-46e0-a931-49e00f847fb9",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 2
+    },
+    {
+      "arranged_by_user_id": "15fd5b58-5eac-4e1a-9eb5-8ad81bae1126",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "c1dcd90c-03f4-4db7-9dd2-573675734b12",
+      "incoming_driver_id": "d9ae57dc-62fc-4c98-83a5-419aff4d9dbe",
+      "is_planned": true,
+      "outgoing_driver_id": "7ff3269a-e847-4607-9d14-0fd7752455e7",
+      "reason": "Hours of service",
+      "replacement_request_id": null,
+      "state": "pending",
+      "terminal_at": null,
+      "terminal_reason": null,
+      "trip_id": "ae822a5e-7508-485a-bfb1-7ee6338fe7d8",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 2
+    },
+    {
+      "arranged_by_user_id": "fb9cac43-cc1b-4018-970a-92f65d8a9ecc",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "exchange_instructions": "Gate 2",
+      "exchange_label": "Beaufort West depot",
+      "exchange_latitude": -32.35,
+      "exchange_longitude": 22.58,
+      "expected_at": "2026-10-19T10:00:00+00:00",
+      "id": "f674b7b0-b517-473d-b810-e33731147f82",
+      "incoming_driver_id": "a51d0f55-652a-40d4-9b59-30f87cec80cf",
+      "is_planned": true,
+      "outgoing_driver_id": "6df6ba1d-f415-428e-86df-f7760a563af1",
+      "reason": "Hours of service",
+      "replacement_request_id": null,
+      "state": "pending",
+      "terminal_at": null,
+      "terminal_reason": null,
+      "trip_id": "9d7d539b-6708-46e0-a931-49e00f847fb9",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00",
+      "version": 1
+    }
+  ],
+  "snapshot_driver_substitutions": [
+    {
+      "anchor_status": "pending",
+      "approving_dispatcher_user_id": "0ab55397-d591-4cb5-85d3-d1b2f201e593",
+      "blockchain_receipt_id": null,
+      "completed_by_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "completed_by_user_id": null,
+      "completion_mode": "normal",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "declared_exchange_at": null,
+      "eligibility_observed_at": "2026-10-19T08:00:00+00:00",
+      "event_hash": "fdfc6fe5ca2a5803722e6a91f9c1ebaf4dd27d67bd553ee3fb43057adf2ff3a6",
+      "exception_id": null,
+      "exchange_location": "Beaufort West depot",
+      "id": "30872271-9e2e-4306-9d38-41241b5ec2a4",
+      "identity_attestation_reason": null,
+      "identity_attested_at": null,
+      "identity_attested_by_user_id": null,
+      "incoming_identity_last_verified_at": null,
+      "incoming_identity_observed_at": "2026-10-19T08:00:00+00:00",
+      "incoming_identity_status": "verified",
+      "incoming_licence_expiry": "2027-01-01",
+      "is_planned": true,
+      "missing_confirmation_reason": null,
+      "original_driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+      "payload_json": {
+        "arranged_by_user_id": "0ab55397-d591-4cb5-85d3-d1b2f201e593",
+        "captures": {
+          "incoming": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "db7976ee-6f7b-4910-94c0-b8d5b59e2bdb",
+            "driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "incoming",
+            "seal_checks_sha256": "9460e7f0d7216458bbab76affec85afdc602744f8504740a5000110e37664ce7",
+            "vehicles_sha256": "d0fae944a5b16c8f739986c658141bbe4489532d033213ed03113d7b6d9ff806"
+          },
+          "outgoing": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "e4b66e0b-65f9-4733-8574-bc4f1a4d987d",
+            "driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "outgoing",
+            "seal_checks_sha256": "9460e7f0d7216458bbab76affec85afdc602744f8504740a5000110e37664ce7",
+            "vehicles_sha256": "d0fae944a5b16c8f739986c658141bbe4489532d033213ed03113d7b6d9ff806"
+          }
+        },
+        "completed_by_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+        "completed_by_user_id": null,
+        "completion_mode": "normal",
+        "declared_exchange_at": null,
+        "effective_at": "2026-10-19T08:00:00.000000+00:00",
+        "event_type": "driver_substitution",
+        "exchange_sha256": "82c4c7afcb9260f7fd2277bdf87c158b2971bee4e8c7d83f84d3d6fd0a1894b4",
+        "expected_at": "2026-10-19T10:00:00.000000+00:00",
+        "identity": {
+          "attestation_reason_sha256": null,
+          "attested_at": null,
+          "attested_by_user_id": null,
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00.000000+00:00",
+          "status": "verified"
+        },
+        "incoming_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+        "is_planned": true,
+        "licence": {
+          "expiry": "2027-01-01",
+          "observed_at": "2026-10-19T08:00:00.000000+00:00"
+        },
+        "missing_confirmation_reason_sha256": null,
+        "outgoing_driver_id": "db1be9f5-9221-452b-90ba-355ca3e685d3",
+        "payload_version": 1,
+        "previous_event_hash": null,
+        "previous_substitution_id": null,
+        "reason_sha256": "a52ca4beb34f9885aa4a9038aac36983738bf6bf20130ff1909c5e55fa4a02a2",
+        "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+        "sequence_number": 1,
+        "substitution_id": "30872271-9e2e-4306-9d38-41241b5ec2a4",
+        "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144"
+      },
+      "payload_version": 1,
+      "previous_substitution_id": null,
+      "request_id": "59ce03f5-506a-40e0-ab31-c7602f9c5c7b",
+      "sequence_number": 1,
+      "substituting_driver_id": "0ad7a3d0-1660-42ca-87e9-11f44ca60dff",
+      "substitution_at": "2026-10-19T08:00:00+00:00",
+      "trip_id": "a3d050a5-3859-4466-90e7-98f19f9ed144",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "anchor_status": "anchored",
+      "approving_dispatcher_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+      "blockchain_receipt_id": "5577bc15-524a-4640-ba6a-8256bea7c5bf",
+      "completed_by_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "completed_by_user_id": null,
+      "completion_mode": "normal",
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "declared_exchange_at": null,
+      "eligibility_observed_at": "2026-10-19T08:00:00+00:00",
+      "event_hash": "5f02629601f5a47df9fd8752ebeaaa0766ae2903e0af5585021d5a85f4dd45a5",
+      "exception_id": null,
+      "exchange_location": "Beaufort West depot",
+      "id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+      "identity_attestation_reason": null,
+      "identity_attested_at": null,
+      "identity_attested_by_user_id": null,
+      "incoming_identity_last_verified_at": null,
+      "incoming_identity_observed_at": "2026-10-19T08:00:00+00:00",
+      "incoming_identity_status": "verified",
+      "incoming_licence_expiry": "2027-01-01",
+      "is_planned": true,
+      "missing_confirmation_reason": null,
+      "original_driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+      "payload_json": {
+        "arranged_by_user_id": "d67ec558-2911-4f15-89c4-ef96c57595e5",
+        "captures": {
+          "incoming": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "4ef3874c-31f9-49b1-9e1e-4141247fc33f",
+            "driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "incoming",
+            "seal_checks_sha256": "388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3",
+            "vehicles_sha256": "e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c"
+          },
+          "outgoing": {
+            "captured_at": "2026-10-19T07:50:00.000000+00:00",
+            "confirmation_id": "ca10636b-098d-4dbe-a10b-cf9e5d061981",
+            "driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+            "location_sha256": "8e973768bee318095da7ab5bf440c9db22833124429183575203a8f8051e84bd",
+            "note_sha256": null,
+            "photos": [],
+            "received_at": "2026-10-19T08:00:00.000000+00:00",
+            "role": "outgoing",
+            "seal_checks_sha256": "388a6f7baf6463ad712849a0fbcd1d680cf7badf178609a79e7003ba7a3804c3",
+            "vehicles_sha256": "e8fd0fb642aee70c96166524cd943a951bb6dd1433fd0e200f0f488aac6d5e0c"
+          }
+        },
+        "completed_by_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+        "completed_by_user_id": null,
+        "completion_mode": "normal",
+        "declared_exchange_at": null,
+        "effective_at": "2026-10-19T08:00:00.000000+00:00",
+        "event_type": "driver_substitution",
+        "exchange_sha256": "82c4c7afcb9260f7fd2277bdf87c158b2971bee4e8c7d83f84d3d6fd0a1894b4",
+        "expected_at": "2026-10-19T10:00:00.000000+00:00",
+        "identity": {
+          "attestation_reason_sha256": null,
+          "attested_at": null,
+          "attested_by_user_id": null,
+          "last_verified_at": null,
+          "observed_at": "2026-10-19T08:00:00.000000+00:00",
+          "status": "verified"
+        },
+        "incoming_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+        "is_planned": true,
+        "licence": {
+          "expiry": "2027-01-01",
+          "observed_at": "2026-10-19T08:00:00.000000+00:00"
+        },
+        "missing_confirmation_reason_sha256": null,
+        "outgoing_driver_id": "09e409b5-abb1-425b-a8e6-761d4c5083c8",
+        "payload_version": 1,
+        "previous_event_hash": null,
+        "previous_substitution_id": null,
+        "reason_sha256": "a52ca4beb34f9885aa4a9038aac36983738bf6bf20130ff1909c5e55fa4a02a2",
+        "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+        "sequence_number": 1,
+        "substitution_id": "5a155be6-5521-4f8b-b82d-24642e3c4f64",
+        "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7"
+      },
+      "payload_version": 1,
+      "previous_substitution_id": null,
+      "request_id": "2405eef5-85ee-4b01-badc-2be8a5fede0e",
+      "sequence_number": 1,
+      "substituting_driver_id": "2fa3e712-e55c-46f8-8933-a7b3bc7ed628",
+      "substitution_at": "2026-10-19T08:00:00+00:00",
+      "trip_id": "dcb4cfc1-5d11-46f0-ab8b-1273bea07db7",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    },
+    {
+      "anchor_status": null,
+      "approving_dispatcher_user_id": "b16f9a36-cd4b-43ee-b265-b672c120898b",
+      "blockchain_receipt_id": null,
+      "completed_by_driver_id": null,
+      "completed_by_user_id": null,
+      "completion_mode": null,
+      "created_at": "2026-10-20T14:25:47.466542+00:00",
+      "declared_exchange_at": null,
+      "eligibility_observed_at": null,
+      "event_hash": null,
+      "exception_id": null,
+      "exchange_location": "Historical depot",
+      "id": "f972110d-e1c8-4192-bae5-b9a3b8ca5073",
+      "identity_attestation_reason": null,
+      "identity_attested_at": null,
+      "identity_attested_by_user_id": null,
+      "incoming_identity_last_verified_at": null,
+      "incoming_identity_observed_at": null,
+      "incoming_identity_status": null,
+      "incoming_licence_expiry": null,
+      "is_planned": true,
+      "missing_confirmation_reason": null,
+      "original_driver_id": "60170588-3b23-4381-8d87-b625a4d0e02c",
+      "payload_json": null,
+      "payload_version": null,
+      "previous_substitution_id": null,
+      "request_id": null,
+      "sequence_number": 1,
+      "substituting_driver_id": "5f3b7735-d301-48ce-889f-b54fce712794",
+      "substitution_at": "2026-10-19T08:00:00+00:00",
+      "trip_id": "c618bb24-5788-4868-af65-a653841e82ee",
+      "updated_at": "2026-10-20T14:25:47.466542+00:00"
+    }
+  ]
+}

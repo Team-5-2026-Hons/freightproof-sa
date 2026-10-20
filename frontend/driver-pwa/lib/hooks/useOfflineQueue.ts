@@ -8,7 +8,7 @@ import { recordLocations, type LocationPingBody } from '@/lib/api/locations'
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import type { PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
-import { captureCustody, currentActorId, onCustodyActorChange, type CustodyStamp } from '@/lib/session/custody-context'
+import { captureActorLease, isActorLeaseCurrent, captureCustody, currentActorId, onCustodyActorChange, type CustodyStamp } from '@/lib/session/custody-context'
 import {
   ExceptionStoreError,
   getExceptionEnvelope,
@@ -320,6 +320,7 @@ async function migrateLegacyExceptions(): Promise<void> {
 // Sends each pending report independently: one that fails — transiently or terminally —
 // never holds up the ones behind it.
 async function flushExceptionEnvelopes(): Promise<void> {
+  const lease = captureActorLease()
   let envelopes: ExceptionEnvelope[]
   try {
     envelopes = await listExceptionEnvelopes()
@@ -331,6 +332,7 @@ async function flushExceptionEnvelopes(): Promise<void> {
   }
   const actorId = currentActorId()
   for (const listed of envelopes) {
+    if (lease === null || !isActorLeaseCurrent(lease)) break
     if (listed.status !== 'pending') continue
     // Only the capturing account sends its own reports (see isSendableNow).
     if (listed.actorId == null || listed.actorId !== actorId) continue
@@ -365,10 +367,12 @@ async function flushExceptionEnvelopes(): Promise<void> {
 
 async function flushQueue(): Promise<void> {
   if (flushingGlobal) return
+  const lease = captureActorLease()
   flushingGlobal = true
   try {
     await migrateForCustody()
     await migrateLegacyExceptions()
+    if (lease === null || !isActorLeaseCurrent(lease)) return
     await flushExceptionEnvelopes()
 
     const queue = loadQueue()
@@ -387,6 +391,7 @@ async function flushQueue(): Promise<void> {
     const stalledTripIds = new Set<string>()
 
     for (const entry of queue) {
+      if (!isActorLeaseCurrent(lease)) break
       // A legacy exception that could not be migrated waits for the store; it is never
       // sent from here and never dropped. Unreadable and quarantined entries never send.
       if (!isSendableEntry(entry) || !isSendableNow(entry, actorId)) continue
@@ -602,6 +607,7 @@ export function useOfflineQueue() {
       post: (artifactIds: string[]) => Promise<unknown>,
       onProgress?: (uploaded: number, total: number) => void,
     ): Promise<ExceptionSubmitOutcome> => {
+      const lease = captureActorLease()
       const now = new Date().toISOString()
       const photos: ExceptionPhotoRecord[] = []
       for (const [index, photo] of draft.photos.entries()) {
@@ -655,7 +661,11 @@ export function useOfflineQueue() {
           durable = false
           console.warn('useOfflineQueue: exception report could not be stored; sending without a saved copy', err)
         }
-        outcome = await sendExceptionReport(envelope, { durable, lockHeld: true, post, onProgress })
+        // Saving may wait behind an earlier send and IndexedDB. Do not reacquire a
+        // returned A account as though this interrupted submission were a new action.
+        outcome = lease !== null && isActorLeaseCurrent(lease)
+          ? await sendExceptionReport(envelope, { durable, lockHeld: true, post, onProgress })
+          : { kind: 'not-yours' }
       } finally {
         release()
       }

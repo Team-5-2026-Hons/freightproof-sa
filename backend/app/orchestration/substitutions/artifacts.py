@@ -50,7 +50,7 @@ from app.orchestration.substitutions.service import (
     OperationKey, body_digest, find_replay, lock_crew_and_request, record_operation, require_live,
     require_pending_at,
 )
-from app.schemas.driver_substitutions import SubstitutionRole
+from app.schemas.driver_substitutions import SubstitutionRole, IMMEDIATE_V2
 from app.schemas.evidence import EvidenceArtifactRead
 from app.schemas.people import DriverRead
 from app.storage.mime_allowlist import resolve_mime_type
@@ -165,6 +165,8 @@ async def _named_role(
 
 async def _require_open_role(db: AsyncSession, *, request: DriverSubstitutionRequest, role: SubstitutionRole) -> None:
     """Still pending, and this role's capture not yet saved (its photos could no longer be cited)."""
+    if request.request_format == IMMEDIATE_V2 and role is SubstitutionRole.OUTGOING:
+        raise SubstitutionInvalidError("Outgoing driver is notified only; no declaration is requested.")
     # An upload carries no version (contract), so only the state is checked here.
     require_pending_at(request, request.version)
     saved = (await db.execute(select(DriverSubstitutionConfirmation.id).where(

@@ -316,7 +316,8 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
   const counterpart = counterpartOf(context, role)
   const counterpartDeclaration = context.confirmations.find((confirmation) => confirmation.driver_id === counterpart.id) ?? null
   const result = capture?.result ?? null
-  const latest = result ?? context
+  // An operation receipt acknowledges that capture; the fresh read owns current state.
+  const latest = context
   const completed = latest.state === 'completed'
   const canConfirm = context.state === 'pending'
     && context.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
@@ -344,7 +345,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
         </p>
         <p className="text-title-2 text-surface-on">{context.trip_reference}</p>
         <p className="mt-1 text-subhead text-surface-on">
-          {context.exchange.label} · expected {formatDateTime(context.expected_at)}
+          {context.exchange?.label ?? 'Immediate transfer'} · expected {context.expected_at ? formatDateTime(context.expected_at) : 'No planned exchange time'}
         </p>
         <p className="text-subhead text-surface-on">
           {role === 'incoming' ? 'Handing over' : 'Taking over'}: {counterpart.full_name}

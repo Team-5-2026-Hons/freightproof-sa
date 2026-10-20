@@ -26,7 +26,7 @@ from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 # v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
 # action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
 # still validates and reads as v1; the stored JSON itself is never rewritten.
-AUDIT_PACK_MANIFEST_VERSION = 2
+AUDIT_PACK_MANIFEST_VERSION = 3
 
 # anchored:     its hash is on Hedera (field-level where the anchored payload names it)
 # corroborated: independent sources agreed at capture time, but nothing is anchored
@@ -131,14 +131,33 @@ class HandoverDeclarationRecord(_Frozen):
     seal_readings: list[str]
     photo_sha256: list[str]
     discrepancy_note: str | None
+    driver_id: UUID | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_metres: float | None = None
+    location_observed_at: datetime | None = None
+    location_unavailable_reason: str | None = None
+    location_observation_committed: bool = False
+
+
+class SubstitutionClarificationRecord(_Frozen):
+    id: UUID
+    recorded_by_user_id: UUID
+    recorded_by_name: str | None
+    recorded_at: datetime
+    reason: str
+    correction_note: str
+    event_hash: str | None
+    anchor_status: str | None
+    receipt_id: UUID | None
 
 
 class DriverSubstitutionRecord(_Frozen):
     substitution_id: UUID
     original_driver_name: str
     substituting_driver_name: str
-    exchange_location: str
-    is_planned: bool
+    exchange_location: str | None
+    is_planned: bool | None
     substitution_at: datetime
     anchor_receipt_id: UUID | None
     tier: EvidenceTier
@@ -158,6 +177,14 @@ class DriverSubstitutionRecord(_Frozen):
     incoming_licence_expiry: str | None = None
     commitment_sha256: str | None = None
     declarations: list[HandoverDeclarationRecord] = []
+    request_format: str | None = None
+    confirmation_policy: str | None = None
+    required_confirmation_roles: list[str] | None = None
+    completed_by_driver_id: UUID | None = None
+    completed_by_user_id: UUID | None = None
+    completed_by_name: str | None = None
+    identity_attestation_reason: str | None = None
+    corrections: list[SubstitutionClarificationRecord] = []
 
 
 class LateEvidenceRecord(_Frozen):

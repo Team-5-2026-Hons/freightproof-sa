@@ -56,6 +56,7 @@ class DriverSubstitutionRequest(Base):
         Index("ix_dsub_requests_trip_id", "trip_id"),
         CheckConstraint("version >= 1", name="ck_dsub_requests_version_positive"),
         CheckConstraint(_in_list("state", REQUEST_STATES), name="ck_dsub_requests_state"),
+        CheckConstraint("(request_format = 'planned_v1' AND reservation_start_at IS NULL AND num_nonnulls(exchange_label, exchange_latitude, exchange_longitude, exchange_instructions, expected_at, is_planned) = 6) OR (request_format = 'immediate_v2' AND reservation_start_at IS NOT NULL AND num_nonnulls(exchange_label, exchange_latitude, exchange_longitude, exchange_instructions, expected_at, is_planned) = 0)", name="ck_dsub_requests_format_shape"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -68,14 +69,16 @@ class DriverSubstitutionRequest(Base):
     incoming_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_dsub_requests_incoming_driver_id"), nullable=False
     )
-    # The agreed exchange point, frozen with the request (a change is a replacement).
-    exchange_label: Mapped[str] = mapped_column(String(255), nullable=False)
-    exchange_latitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    exchange_longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    exchange_instructions: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-    expected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_format: Mapped[str] = mapped_column(String(20), nullable=False, server_default="planned_v1")
+    reservation_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Legacy planning metadata stays intact; immediate requests explicitly have no plan.
+    exchange_label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    exchange_latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    exchange_longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    exchange_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_planned: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     arranged_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", name="fk_dsub_requests_arranged_by_user_id"), nullable=False
     )
@@ -123,6 +126,8 @@ class DriverSubstitutionConfirmation(Base):
     )
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    location_observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    location_unavailable_reason: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     accuracy_metres: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)

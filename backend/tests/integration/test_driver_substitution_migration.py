@@ -1,4 +1,4 @@
-"""The hand-written FP-83 C1 migration, run against the disposable TEST database.
+"""The hand-written FP-83 C1 migration plus v2, run on the disposable TEST database.
 
 CI never runs Alembic and autogenerate is unusable on this repo (CLAUDE.md), so this is the
 only proof the DDL and the legacy-data preflight work. Every step runs inside the test's
@@ -92,8 +92,16 @@ def _rewind_to_legacy(conn: Connection) -> None:
 
 def _run(conn: Connection, step: str) -> None:
     module = _load()
+    v2 = importlib.import_module('migrations.versions.2026_10_20_ciaran_driver_transfer_v2')
     with Operations.context(MigrationContext.configure(conn)):
-        getattr(module, step)()
+        # Current ORM inserts/shape assertions include v2 fields. Replaying C1 alone
+        # leaves a deliberately historical schema that those models cannot write.
+        if step == 'upgrade':
+            module.upgrade()
+            v2.upgrade()
+        else:
+            v2.downgrade()
+            module.downgrade()
 
 
 def _shape(conn: Connection) -> dict[str, object]:

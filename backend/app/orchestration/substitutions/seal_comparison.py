@@ -91,13 +91,26 @@ async def record_seal_findings(
     db: AsyncSession, *, trip: Trip, confirmation_id: uuid.UUID,
     outgoing: Sequence[SealCheck], incoming: Sequence[SealCheck],
 ) -> list[uuid.UUID]:
-    """Write one finding per discrepancy, scoped to `confirmation_id` (the second capture).
+    return await _record_discrepancies(db, trip=trip, confirmation_id=confirmation_id,
+        discrepancies=compare_seal_captures(outgoing=outgoing, incoming=incoming))
 
-    Idempotent like record_separation_finding: an existence check covers a replay and a SAVEPOINT
-    recovers only the named partial-index race. Returns the ids of the rows written now.
-    """
+
+async def record_incoming_seal_findings(
+    db: AsyncSession, *, trip: Trip, confirmation_id: uuid.UUID, incoming: Sequence[SealCheck],
+) -> list[uuid.UUID]:
+    # No outgoing observation was requested: a real damaged/missing seal is evidence,
+    # but a pairwise disagreement cannot be inferred from one driver's capture.
+    findings = [SealDiscrepancy(check.vehicle_id, ExceptionType.SEAL_COMPROMISED,
+        f"Incoming driver found seal {_reading(check)} at takeover.")
+        for check in incoming if check.condition in _BROKEN]
+    return await _record_discrepancies(db, trip=trip, confirmation_id=confirmation_id, discrepancies=findings)
+
+
+async def _record_discrepancies(
+    db: AsyncSession, *, trip: Trip, confirmation_id: uuid.UUID, discrepancies: Sequence[SealDiscrepancy],
+) -> list[uuid.UUID]:
     written: list[uuid.UUID] = []
-    for discrepancy in compare_seal_captures(outgoing=outgoing, incoming=incoming):
+    for discrepancy in discrepancies:
         existing = (await db.execute(select(TripException.id).where(
             TripException.substitution_confirmation_id == confirmation_id,
             TripException.vehicle_id == discrepancy.vehicle_id,

@@ -1,8 +1,8 @@
 """Unit tests for v6 model changes.
 
 Covers:
-  1. DriverSubstitution model — all four required log fields, is_planned flag,
-     nullable exception_id for unplanned-only linkage.
+  1. DriverSubstitution model — required actors and nullable legacy planning
+     fields, so immediate transfers do not fabricate an exchange location/flag.
   2. updated_at present on tables that previously lacked it:
      organizations, precincts, vehicles, trip_templates, sla_configs.
 
@@ -26,9 +26,8 @@ def _column_names(model_cls) -> set[str]:
     return {c.name for c in model_cls.__table__.columns}
 
 
-def test_driver_substitution_has_four_required_log_fields():
-    """original_driver_id, substituting_driver_id, exchange_location,
-    approving_dispatcher_user_id must all be present and non-nullable."""
+def test_driver_substitution_keeps_required_actor_fields() -> None:
+    """Both drivers and dispatcher attribution remain required in either format."""
     from app.db.models.trips import DriverSubstitution
 
     cols = {c.name: c for c in DriverSubstitution.__table__.columns}
@@ -36,21 +35,20 @@ def test_driver_substitution_has_four_required_log_fields():
     for field in (
         "original_driver_id",
         "substituting_driver_id",
-        "exchange_location",
         "approving_dispatcher_user_id",
     ):
         assert field in cols, f"missing required column: {field}"
         assert not cols[field].nullable, f"{field} must be non-nullable"
 
 
-def test_driver_substitution_is_planned_non_nullable():
-    """Planned substitutions are normal events; unplanned are exceptions.
-    is_planned must be a non-nullable boolean to enforce this distinction."""
+def test_driver_substitution_planning_fields_can_be_absent_for_immediate_transfers() -> None:
+    """Legacy values remain representable; immediate records have no invented plan."""
     from app.db.models.trips import DriverSubstitution
 
     cols = {c.name: c for c in DriverSubstitution.__table__.columns}
     assert "is_planned" in cols
-    assert not cols["is_planned"].nullable
+    assert cols["is_planned"].nullable
+    assert cols["exchange_location"].nullable
 
 
 def test_driver_substitution_exception_id_nullable():

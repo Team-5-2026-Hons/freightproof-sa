@@ -77,6 +77,10 @@ def arrangement(w: SubWorld, key: str | None = None, incoming: uuid.UUID | None 
     }
 
 
+def immediate_arrangement(w: SubWorld, key: str | None = None) -> dict[str, object]:
+    return {"client_request_id": key or str(uuid.uuid4()), "request_format": "immediate_v2", "incoming_driver_id": str(w.b), "reason": "Immediate relief"}
+
+
 def capture(w: SubWorld, version: int, key: str | None = None) -> dict[str, object]:
     return {
         "client_request_id": key or str(uuid.uuid4()), "expected_version": version, "captured_at": CAPTURED,
@@ -91,9 +95,12 @@ async def arranged(client: AsyncClient, db: AsyncSession) -> tuple[SubWorld, dic
     """A pending A -> B arrangement, B holding a VERIFIED fleet identity (as `armed` does)."""
     w = await world_with_licences(db)
     await set_identity(db, w.b, IdvsStatus.VERIFIED)
-    response = await client.post(f"{BASE}/{w.trip_id}/driver-substitutions", json=arrangement(w), headers=dispatcher(w))
-    assert response.status_code == 201, response.text
-    return w, response.json()
+    # An in-flight v1 request was accepted before deployment; new HTTP creates are v2.
+    from app.orchestration.substitutions.service import arrange_substitution
+    from app.schemas.driver_substitutions import ArrangeSubstitutionRequest
+    from tests.integration.test_driver_substitution_service import dispatcher as service_dispatcher
+    read = await arrange_substitution(db, trip_id=w.trip_id, actor=service_dispatcher(w), payload=ArrangeSubstitutionRequest.model_validate(arrangement(w)))
+    return w, read.model_dump(mode="json")
 
 
 def confirm_url(w: SubWorld, request_id: object) -> str:
@@ -111,7 +118,7 @@ async def count_requests(db: AsyncSession, trip_id: uuid.UUID) -> int:
 
 async def test_arrange_returns_201_and_an_exact_replay_returns_the_same_request(client: AsyncClient, db_session: AsyncSession):
     w = await world_with_licences(db_session)
-    body = arrangement(w)
+    body = immediate_arrangement(w)
     url = f"{BASE}/{w.trip_id}/driver-substitutions"
 
     first = await client.post(url, json=body, headers=dispatcher(w))
@@ -200,9 +207,9 @@ async def test_a_reused_key_with_a_changed_body_is_a_coded_conflict(client: Asyn
     w = await world_with_licences(db_session)
     url = f"{BASE}/{w.trip_id}/driver-substitutions"
     key = str(uuid.uuid4())
-    await client.post(url, json=arrangement(w, key), headers=dispatcher(w))
+    await client.post(url, json=immediate_arrangement(w, key), headers=dispatcher(w))
 
-    changed = await client.post(url, json={**arrangement(w, key), "reason": "Something else"}, headers=dispatcher(w))
+    changed = await client.post(url, json={**immediate_arrangement(w, key), "reason": "Something else"}, headers=dispatcher(w))
 
     assert changed.status_code == 409 and changed.json()["detail"]["code"] == "IDEMPOTENCY_KEY_REUSED"
 
@@ -359,3 +366,16 @@ def test_route_operation_ids_are_unique_and_driver_literals_precede_trip_ids():
     assert len(operation_ids) == len(set(operation_ids))
     paths = [route.path for route in app.routes if hasattr(route, "path")]
     assert paths.index("/api/v1/trips/me/driver-substitutions") < paths.index("/api/v1/trips/me/{trip_id}")
+
+async def test_completed_detail_is_dispatcher_org_scoped(client: AsyncClient, db_session: AsyncSession):
+    w, done = await completed(client, db_session)
+    url = f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}"
+    detail = await client.get(url, headers=dispatcher(w))
+    driver = await client.get(url, headers=driver_headers(w.a))
+    foreign = await client.get(url, headers=dispatcher(w, user_id=await foreign_dispatcher(db_session, w)))
+    anonymous = await client.get(url)
+    assert detail.status_code == 200, detail.text
+    assert len(detail.json()['confirmations']) == 2
+    assert driver.status_code == 403
+    assert foreign.status_code == 404
+    assert anonymous.status_code in (401, 403)

@@ -1,7 +1,7 @@
 import { ApiError, api } from './client'
 import type {
   AcknowledgeLateEvidenceRequest,
-  ArrangeSubstitutionRequest,
+  ArrangeSubstitutionRequest, ArrangeImmediateSubstitutionRequest, ReplaceImmediateSubstitutionRequest, CompletedSubstitutionDetail,
   CancelSubstitutionRequest,
   CompleteSubstitutionRequest,
   CorrectSubstitutionRequest,
@@ -19,7 +19,7 @@ import type {
 
 const base = (tripId: string) => `/api/v1/trips/${tripId}/driver-substitutions`
 
-export function arrangeSubstitution(tripId: string, body: ArrangeSubstitutionRequest): Promise<SubstitutionRequestRead> {
+export function arrangeSubstitution(tripId: string, body: ArrangeSubstitutionRequest | ArrangeImmediateSubstitutionRequest): Promise<SubstitutionRequestRead> {
   return api.post<SubstitutionRequestRead>(base(tripId), body, { idempotent: true })
 }
 
@@ -31,7 +31,7 @@ export function cancelSubstitution(tripId: string, requestId: string, body: Canc
   return api.post<SubstitutionRequestRead>(`${base(tripId)}/${requestId}/cancel`, body, { idempotent: true })
 }
 
-export function replaceSubstitution(tripId: string, requestId: string, body: ReplaceSubstitutionRequest): Promise<SubstitutionRequestRead> {
+export function replaceSubstitution(tripId: string, requestId: string, body: ReplaceSubstitutionRequest | ReplaceImmediateSubstitutionRequest): Promise<SubstitutionRequestRead> {
   return api.post<SubstitutionRequestRead>(`${base(tripId)}/${requestId}/replace`, body, { idempotent: true })
 }
 
@@ -61,4 +61,8 @@ export function substitutionErrorCode(error: unknown): SubstitutionErrorCode | n
 /** A fresh key for one intentional action; reuse it for that action's retries, never across actions. */
 export function newClientRequestId(): string {
   return crypto.randomUUID()
+}
+
+export function getCompletedSubstitution(tripId: string, substitutionId: string): Promise<CompletedSubstitutionDetail> {
+  return api.get<CompletedSubstitutionDetail>(`${base(tripId)}/completed/${substitutionId}`)
 }

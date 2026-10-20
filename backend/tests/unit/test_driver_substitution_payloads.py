@@ -3,9 +3,11 @@
 import dataclasses
 import hashlib
 import json
+import itertools
 import uuid
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +53,17 @@ def test_the_payload_is_deterministic_and_hashes_canonically():
     assert first == second
     assert compute_payload_hash(first) == canonical.canonical_hash(first)
     assert first["payload_version"] == 1 and first["event_type"] == "driver_substitution"
+
+
+def test_v1_bytes_and_hash_match_the_pre_upgrade_golden_builder(monkeypatch: pytest.MonkeyPatch):
+    identifiers = itertools.count(1)
+    monkeypatch.setattr(uuid, "uuid4", lambda: uuid.UUID(int=next(identifiers)))
+    golden = json.loads((Path(__file__).parents[1] / "fixtures/driver_substitution_v1_golden.json").read_text())
+
+    payload = canonical.compute_substitution_payload(record=record(), payload_version=1)
+
+    assert payload == golden["payload"]
+    assert compute_payload_hash(payload) == golden["sha256"]
 
 
 def test_free_text_and_positions_never_appear_in_the_payload():

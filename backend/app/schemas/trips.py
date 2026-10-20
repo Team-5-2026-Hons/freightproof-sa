@@ -19,7 +19,7 @@ from app.schemas.vehicles import VehicleRead
 
 if TYPE_CHECKING:  # FP-83: resolved by model_rebuild in schemas/driver_substitutions (it imports this module)
     from app.schemas.driver_substitutions import (
-        CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead,
+        CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead, CompletedSubstitutionSummary,
     )
 
 
@@ -447,6 +447,7 @@ class TripDetailResponse(BaseModel):
     # dispatcher-only (empty/None on driver reads); driver_access is set only on driver reads.
     original_driver: Optional[DriverRead] = None
     driver_substitutions: list["SubstitutionRequestRead"] = []
+    completed_driver_substitutions: list["CompletedSubstitutionSummary"] = []
     pending_driver_substitution: "SubstitutionRequestRead | None" = None
     custody_sequence: int = 0
     custody_integrity: "CustodyIntegrityRead | None" = None

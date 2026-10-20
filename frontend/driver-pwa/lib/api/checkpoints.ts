@@ -3,6 +3,7 @@ import { api } from './client'
 import type { Checkpoint, CheckpointId } from '@shared/lib/types/checkpoint'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { uploadArtifact } from './artifacts'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 
 export interface LogCheckpointBody {
   checkpoint_type: string
@@ -102,6 +103,7 @@ export const logCheckpoint = (tripId: string, body: LogCheckpointBody): Promise<
 // (tripId, evidence) stays unchanged so useOfflineQueue's retry path (which calls this
 // same function to replay a queued checkpoint) keeps working without modification.
 export async function submitCheckpoint(tripId: string, evidence: CheckpointEvidence): Promise<Checkpoint> {
+  const generation = actorGeneration()
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
     return {
@@ -130,6 +132,7 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
       : uploadArtifact({ tripId, artifactType: 'photo', dataUrl: selfieDataUrl, capturedAt: evidence.capturedAt, custodySequence }),
   ])
 
+  assertActorGeneration(generation)
   return logCheckpoint(tripId, {
     ...checkpointRequestBody(evidence, { cargoPhotoId: cargoPhoto.id, selfieId: selfie?.id ?? null }),
     ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),

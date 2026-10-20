@@ -5,6 +5,7 @@ import { substitutionErrorFixtures, substitutionFixturePack } from '@shared/lib/
 import type { LateEvidenceDetailRead } from '@shared/lib/types/driver-substitution'
 import { ApiError } from '@/lib/api/client'
 import { acknowledgeLateEvidence, listLateEvidence } from '@/lib/api/driverSubstitutions'
+import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { LateDriverEvidencePanel } from './LateDriverEvidencePanel'
 
 // The API client builds a Supabase client at import time — mocked like the other panel tests.
@@ -18,13 +19,15 @@ vi.mock('@/lib/api/driverSubstitutions', async () => {
   return { ...actual, listLateEvidence: vi.fn(), acknowledgeLateEvidence: vi.fn() }
 })
 
+vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }))
+
 const { lateEvidence } = substitutionFixturePack
 const item: LateEvidenceDetailRead = lateEvidence.detail
 const TRIP_ID = 'trip-under-test'
 const NAMES = { [item.driver_id]: 'Fixture Driver Outgoing' }
 
 function renderPanel(names: Record<string, string> = NAMES) {
-  render(<LateDriverEvidencePanel tripId={TRIP_ID} driverNames={names} />)
+  render(<ForensicModeProvider><LateDriverEvidencePanel tripId={TRIP_ID} driverNames={names} /></ForensicModeProvider>)
 }
 
 beforeEach(() => {
@@ -111,4 +114,23 @@ describe('LateDriverEvidencePanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Another dispatcher already reviewed this.')
     await waitFor(() => expect(listLateEvidence).toHaveBeenCalledTimes(2))
   })
+})
+
+it('renders_payload_and_authorised_photos_before_review', async () => {
+  const description = 'Rear tyre damaged before handover'
+  vi.mocked(listLateEvidence).mockResolvedValue([{
+    ...item, evidence: { kind: 'exception', payload: { exception_type: 'mechanical', description } },
+  }])
+  renderPanel()
+  expect(await screen.findByText(description)).toBeVisible()
+  expect(screen.getByRole('button', { name: /Open retained photo 1/i })).toBeVisible()
+  expect(screen.getByAltText('Retained photo 1')).toHaveAttribute('src', item.artifacts[0].signed_url)
+})
+
+it('new_receipt_appears_after_event_or_refocus', async () => {
+  vi.mocked(listLateEvidence).mockResolvedValueOnce([]).mockResolvedValue([item])
+  renderPanel()
+  await waitFor(() => expect(listLateEvidence).toHaveBeenCalledTimes(1))
+  fireEvent(window, new Event('focus'))
+  expect(await screen.findByText(/Fixture Driver Outgoing · checkpoint/)).toBeVisible()
 })

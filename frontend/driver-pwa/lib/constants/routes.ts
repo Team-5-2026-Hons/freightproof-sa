@@ -19,7 +19,7 @@ export const TRIP_ID_PARAM = 'id'
 
 // FP-83 handover check. Static path with query-string ids for the same static-export reason
 // as trip detail; both params are read by SubstitutionPageClient.
-const SUBSTITUTION_PATH = '/trips/substitution'
+export const SUBSTITUTION_PATH = '/trips/substitution'
 export const SUBSTITUTION_TRIP_PARAM = 'trip'
 export const SUBSTITUTION_REQUEST_PARAM = 'request'
 

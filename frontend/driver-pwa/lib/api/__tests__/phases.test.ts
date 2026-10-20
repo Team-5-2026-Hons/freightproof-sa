@@ -1016,3 +1016,25 @@ describe('submitPhase (demo-mode gate)', () => {
     expect(demoMockPost).not.toHaveBeenCalled()
   })
 })
+
+it('stops_after_account_generation_changes_between_upload_and_completion', async () => {
+  vi.resetModules()
+  vi.doMock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
+  vi.doMock('@/lib/api/artifacts', () => ({ uploadArtifact: (...args: unknown[]) => mockUploadArtifact(...args) }))
+  vi.doMock('@/lib/api/client', () => ({ api: { post: (...args: unknown[]) => mockPost(...args) } }))
+  const actor = await import('@/lib/session/custody-context')
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  let release!: (value: { id: string }) => void
+  mockUploadArtifact.mockReset().mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+  mockPost.mockClear()
+  const { submitPhase } = await import('../phases')
+  const result = submitPhase('trip', 'phase', 'loading', { ...LOADING_EVIDENCE, linehaulPhotoDataUrl: 'bytes', linehaulPdfDataUrl: 'pdf-bytes' }, 'key', null, DRIVER_CAPTURED_AT).catch((error: unknown) => error)
+  await vi.waitFor(() => expect(mockUploadArtifact).toHaveBeenCalledTimes(1))
+  actor.bindActorLease('driver-b', actor.invalidateActorLease())
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  release({ id: 'saved-first' })
+  await result
+  expect(mockUploadArtifact).toHaveBeenCalledTimes(1)
+  expect(mockPost).not.toHaveBeenCalled()
+  actor.invalidateActorLease()
+})

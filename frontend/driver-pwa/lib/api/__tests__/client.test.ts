@@ -360,3 +360,29 @@ describe('api client — superseded device', () => {
     })
   })
 })
+
+describe('account generation during auth awaits', () => {
+  beforeEach(() => vi.clearAllMocks())
+  it.each(['cold', 'refresh'])('stops_after_account_generation_changes (%s)', async (stage) => {
+    const context = await import('@/lib/session/custody-context')
+    context.__resetCustodyContextForTests()
+    context.bindActorLease('driver-a', context.invalidateActorLease())
+    let release!: (value: { data: { session: { access_token: string } }; error: null }) => void
+    const paused = new Promise<{ data: { session: { access_token: string } }; error: null }>((resolve) => { release = resolve })
+    mockGetAccessToken.mockReturnValue(stage === 'cold' ? null : 'old-token')
+    mockGetSession.mockReturnValue(paused)
+    mockRefreshSession.mockReturnValue(paused)
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({ detail: 'expired' }) })
+    vi.stubGlobal('fetch', fetchSpy)
+    const { api } = await import('../client')
+    const result = api.post('/capture', { key: 'same-original-key' }).catch((error: unknown) => error)
+    await vi.waitFor(() => expect(stage === 'cold' ? mockGetSession : mockRefreshSession).toHaveBeenCalled())
+    context.bindActorLease('driver-b', context.invalidateActorLease())
+    context.bindActorLease('driver-a', context.invalidateActorLease())
+    release({ data: { session: { access_token: 'new-account-token' } }, error: null })
+    await result
+    expect(fetchSpy).toHaveBeenCalledTimes(stage === 'cold' ? 0 : 1)
+    vi.unstubAllGlobals()
+    context.__resetCustodyContextForTests()
+  })
+})

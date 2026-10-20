@@ -18,10 +18,7 @@ import {
   cancelSubstitution, completeSubstitution, correctSubstitution, newClientRequestId, substitutionErrorCode,
 } from '@/lib/api/driverSubstitutions'
 import { sastInputToIso } from '@/lib/format/sast'
-import { useDrivers } from '@/lib/hooks/useDrivers'
-import { DriverSubstitutionDialog } from './DriverSubstitutionDialog'
 
-const LIVE_STATUSES = new Set(['active', 'exception_hold'])
 
 const INTEGRITY_CHIP: Record<CustodyIntegrityStatus, { type: ChipType; label: string }> = {
   verified: { type: 'transit', label: 'Chain verified' },
@@ -64,26 +61,15 @@ interface Props {
  * permitted_actions and the new-arrangement flag, and the server enforces each one again.
  */
 export function DriverSubstitutionPanel({ trip, onChanged }: Props) {
-  const { drivers } = useDrivers()
-  const [dialog, setDialog] = useState<{ replacing: SubstitutionRequestRead | null } | null>(null)
-  const [dialogKey, setDialogKey] = useState(0)
   const pending = trip.pending_driver_substitution ?? null
   const history = (trip.driver_substitutions ?? []).filter(r => r.state !== 'pending')
   const enabled = trip.driver_substitutions_enabled === true
-  const live = LIVE_STATUSES.has(trip.status)
   const changedDriver = trip.original_driver && trip.driver && trip.original_driver.id !== trip.driver.id
-  const candidates = drivers.filter(d => d.id !== trip.driver?.id)
-
-  function openDialog(replacing: SubstitutionRequestRead | null) {
-    setDialogKey(k => k + 1)
-    setDialog({ replacing })
-  }
 
   return (
     <section aria-labelledby="driver-handover-heading" className="flex flex-col gap-3 border-t border-outline-v/30 pt-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="driver-handover-heading" className="text-sm font-bold text-on-surf">Driver and handover</h3>
-        {enabled && live && !pending && <Button size="sm" variant="secondary" onClick={() => openDialog(null)}>Arrange handover</Button>}
       </div>
       {!enabled && <p className="text-[12px] text-on-surf-v">New handovers are switched off. Existing handovers still work.</p>}
 
@@ -101,7 +87,7 @@ export function DriverSubstitutionPanel({ trip, onChanged }: Props) {
       )}
 
       {pending && (
-        <PendingHandover tripId={trip.id} request={pending} onChanged={onChanged} onReplace={() => openDialog(pending)} canReplace={enabled} />
+        <p className="text-[13px]">Pending transfer: {pending.outgoing.full_name} → {pending.incoming.full_name}. Open View transfer in the trip header to resolve it.</p>
       )}
 
       {history.length > 0 && (
@@ -110,15 +96,11 @@ export function DriverSubstitutionPanel({ trip, onChanged }: Props) {
         </ul>
       )}
 
-      {dialog && (
-        <DriverSubstitutionDialog key={dialogKey} tripId={trip.id} open drivers={candidates} replacing={dialog.replacing}
-          onClose={() => setDialog(null)} onSaved={() => { setDialog(null); onChanged() }} />
-      )}
     </section>
   )
 }
 
-function PendingHandover({ tripId, request, canReplace, onChanged, onReplace }: {
+export function PendingHandover({ tripId, request, canReplace, onChanged, onReplace }: {
   tripId: string; request: SubstitutionRequestRead; canReplace: boolean; onChanged: () => void; onReplace: () => void
 }) {
   const [mode, setMode] = useState<'idle' | 'complete' | 'cancel'>('idle')
@@ -130,6 +112,7 @@ function PendingHandover({ tripId, request, canReplace, onChanged, onReplace }: 
   const [problem, setProblem] = useState<string | null>(null)
   // One key per intentional action; a fresh one when the dispatcher opens the form again.
   const [key, setKey] = useState(newClientRequestId)
+  const incomingOnly = request.request_format === 'immediate_v2'
   const missing = request.missing_confirmations.length > 0
   const mayAttestIdentity = request.permitted_actions.includes('attest_identity')
   const can = (action: SubstitutionRequestRead['permitted_actions'][number]) => request.permitted_actions.includes(action)
@@ -170,10 +153,11 @@ function PendingHandover({ tripId, request, canReplace, onChanged, onReplace }: 
         <span className="font-bold">{request.outgoing.full_name} → {request.incoming.full_name}</span>
         <Chip type="pending" label="Pending" />
       </div>
-      <p className="mt-1">Planned exchange: {request.exchange.label}, {when(request.expected_at)}</p>
-      <p className="text-[12px] text-on-surf-v">
+      {request.exchange && <p className="mt-1">Planned exchange: {request.exchange.label}, {when(request.expected_at)}</p>}
+      {request.exchange && <p className="text-[12px] text-on-surf-v">
         Planned point {request.exchange.latitude.toFixed(5)}, {request.exchange.longitude.toFixed(5)} (not the vehicle’s live position)
-      </p>
+      </p>}
+      {incomingOnly && <p>Outgoing driver: Not requested — notification only. Incoming driver acceptance is required.</p>}
       <p className="mt-1">
         Confirmed by: {request.confirmations.length ? request.confirmations.map(c => c.role).join(', ') : 'no one yet'}
         {missing && ` · waiting for ${request.missing_confirmations.join(' and ')}`}
@@ -184,14 +168,14 @@ function PendingHandover({ tripId, request, canReplace, onChanged, onReplace }: 
 
       {mode === 'idle' && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {can('complete_attested') && <Button size="sm" variant="secondary" onClick={() => start('complete')}>Complete handover</Button>}
+          {can('complete_attested') && !(incomingOnly && missing) && <Button size="sm" variant="secondary" onClick={() => start('complete')}>Complete handover</Button>}
           {can('replace') && canReplace && <Button size="sm" variant="ghost" onClick={onReplace}>Replace</Button>}
           {can('cancel') && <Button size="sm" variant="danger" onClick={() => start('cancel')}>Cancel handover</Button>}
         </div>
       )}
       {mode === 'complete' && (
         <div className="mt-2 flex flex-col gap-2">
-          {missing && <TextArea label="Why complete without both confirmations" value={missingReason} maxLength={1000} onChange={e => setMissingReason(e.target.value)} />}
+          {missing && !incomingOnly && <TextArea label="Why complete without both confirmations" value={missingReason} maxLength={1000} onChange={e => setMissingReason(e.target.value)} />}
           {mayAttestIdentity && (
             <TextArea label="Attest unavailable identity verification (admin; leave empty to not attest)" value={identityReason}
               maxLength={1000} onChange={e => setIdentityReason(e.target.value)} />
@@ -248,7 +232,7 @@ function HistoryItem({ tripId, request, onChanged }: { tripId: string; request: 
       </div>
       {completed
         ? <p className="text-[12px] text-on-surf-v">
-          Effective {when(request.effective_at)} · {request.completion_mode === 'dispatcher_attested' ? 'dispatcher attested' : 'both drivers confirmed'}
+          Effective {when(request.effective_at)} · {request.completion_mode === 'dispatcher_attested' ? 'dispatcher attested' : request.request_format === 'immediate_v2' ? 'incoming driver accepted' : 'both drivers confirmed'}
           {' · '}incoming identity {request.identity.status}
         </p>
         : <p className="text-[12px] text-on-surf-v">Cancelled{request.replacement_request_id ? ' and replaced' : ''}. Custody did not change.</p>}

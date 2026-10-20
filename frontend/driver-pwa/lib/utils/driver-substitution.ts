@@ -70,6 +70,9 @@ export function substitutionStatusLine(request: SubstitutionRequestRead, role: S
   if (request.state === 'cancelled') {
     return request.replacement_request_id !== null ? 'Replaced by a new arrangement' : 'Handover cancelled'
   }
+  if (request.request_format === 'immediate_v2' && role === 'outgoing') {
+    return hasConfirmed(request, 'incoming') ? 'Incoming acceptance saved — waiting on dispatch' : 'Transfer authorised — waiting for incoming driver'
+  }
   if (request.completion_blocked_by !== null) return 'Saved — waiting on dispatch'
   if (!hasConfirmed(request, role)) return 'Waiting for your handover check'
   const other = role === 'incoming' ? 'outgoing' : 'incoming'

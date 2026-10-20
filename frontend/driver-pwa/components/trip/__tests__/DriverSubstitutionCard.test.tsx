@@ -16,6 +16,8 @@ vi.mock('@/lib/api/driver-substitutions', () => ({
 }))
 
 const incomingPending = pack.incomingPendingNoActiveTrip.pending[0]
+const legacyExchange = incomingPending.exchange
+if (legacyExchange === null) throw new Error('Legacy fixture requires its recorded exchange')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -28,8 +30,8 @@ describe('DriverSubstitutionCard', () => {
 
     expect(screen.getByText('Collect this trip')).toBeInTheDocument()
     expect(screen.getByText(incomingPending.trip_reference)).toBeInTheDocument()
-    expect(screen.getByText(incomingPending.exchange.label)).toBeInTheDocument()
-    expect(screen.getByText(incomingPending.exchange.instructions)).toBeInTheDocument()
+    expect(screen.getByText(legacyExchange.label)).toBeInTheDocument()
+    expect(screen.getByText(legacyExchange.instructions)).toBeInTheDocument()
     expect(screen.getByText(incomingPending.outgoing.full_name)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /\+27/ })).toHaveAttribute('href', `tel:${incomingPending.outgoing.phone_number}`)
     expect(screen.getByText(incomingPending.vehicles.map((v) => v.registration).join(' · '))).toBeInTheDocument()
@@ -47,7 +49,7 @@ describe('DriverSubstitutionCard', () => {
   it('test_exchange_point_offers_directions_to_its_coordinates', () => {
     render(<DriverSubstitutionCard request={incomingPending} role="incoming" />)
 
-    const { latitude, longitude } = incomingPending.exchange
+    const { latitude, longitude } = legacyExchange
     expect(screen.getByRole('link', { name: /Directions/ })).toHaveAttribute(
       'href',
       `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${latitude},${longitude}`)}`,
@@ -102,4 +104,9 @@ describe('DriverSubstitutionCard', () => {
 
     expect(screen.getByText('Replaced by a new arrangement')).toBeInTheDocument()
   })
+})
+
+it('pending_card_renders_real_button', () => {
+  render(<DriverSubstitutionCard request={incomingPending} role="incoming" />)
+  expect(screen.getAllByRole('link', { name: /Record your takeover check/ })).toHaveLength(1)
 })
