@@ -1241,6 +1241,92 @@
         "title": "AuditPackRead",
         "type": "object"
       },
+      "Basis": {
+        "description": "One tool call an answer rests on: which tab, which dates, how many closed trips.",
+        "properties": {
+          "closed_trip_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Trip Count"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "week",
+                  "month",
+                  "year"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "tab": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tab"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "tab",
+          "label",
+          "start",
+          "end",
+          "grain",
+          "closed_trip_count"
+        ],
+        "title": "Basis",
+        "type": "object"
+      },
       "BlockchainReceiptRead": {
         "description": "Full receipt shape returned by blockchain endpoints and embedded in TripDetailResponse.\n\nUses subject_type/subject_id rather than the legacy trip_id field so that\nreceipts for vehicles, drivers, and events can all be represented uniformly.",
         "properties": {
@@ -1588,6 +1674,122 @@
           "cancelled_at"
         ],
         "title": "CancelledTrip",
+        "type": "object"
+      },
+      "ChatAnswer": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "basis": {
+            "items": {
+              "$ref": "#/components/schemas/Basis"
+            },
+            "title": "Basis",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "answer",
+              "follow_up",
+              "declined"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpendStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "answer",
+          "kind",
+          "basis",
+          "spend"
+        ],
+        "title": "ChatAnswer",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurn"
+            },
+            "maxItems": 10,
+            "title": "History",
+            "type": "array"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatStatus": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpendStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "spend"
+        ],
+        "title": "ChatStatus",
+        "type": "object"
+      },
+      "ChatTurn": {
+        "additionalProperties": false,
+        "description": "One earlier message, as text only. Kept in the browser, never on the server (spec D7).\nThe browser could send anything here, which is harmless: it only shapes the caller's own\nanswer, and the tools take the organisation from the token, never from the conversation.",
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "ChatTurn",
         "type": "object"
       },
       "CheckpointRead": {
@@ -10862,6 +11064,29 @@
         "title": "SiteActivity",
         "type": "object"
       },
+      "SpendStatus": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "budget_usd": {
+            "title": "Budget Usd",
+            "type": "number"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "spent_usd",
+          "budget_usd",
+          "available"
+        ],
+        "title": "SpendStatus",
+        "type": "object"
+      },
       "StationaryPeriod": {
         "additionalProperties": false,
         "properties": {
@@ -14377,6 +14602,80 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/analytics/chat": {
+      "post": {
+        "operationId": "ask_analytics_chat_endpoint_api_v1_analytics_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Answer a question from the fleet analytics figures, with what each answer is based on",
+        "tags": [
+          "analytics",
+          "analytics"
+        ]
+      }
+    },
+    "/api/v1/analytics/chat/status": {
+      "get": {
+        "operationId": "get_analytics_chat_status_endpoint_api_v1_analytics_chat_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether the analytics chat is on, and this organisation's AI spend this month",
+        "tags": [
+          "analytics",
+          "analytics"
+        ]
+      }
+    },
     "/api/v1/analytics/cost-profile": {
       "get": {
         "operationId": "get_cost_profile_endpoint_api_v1_analytics_cost_profile_get",

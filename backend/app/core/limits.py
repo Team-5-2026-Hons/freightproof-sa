@@ -61,3 +61,7 @@ AUDIT_PACK_BUILD = RateLimit(max_requests=20, window_seconds=_ONE_MINUTE, name="
 # Counted per IP: share-link reads carry no account. Generous enough for one adjuster
 # paging through photos, low enough that guessing tokens is pointless on top of 256 bits.
 AUDIT_PACK_PUBLIC = RateLimit(max_requests=120, window_seconds=_ONE_MINUTE, name="audit_pack_public")
+
+# Every analytics chat question can cost real money (FP-295); a person asks one at a time, so
+# 10 a minute is generous for them and a hard brake on a script. The monthly budget is the real cap.
+ANALYTICS_CHAT = RateLimit(max_requests=10, window_seconds=_ONE_MINUTE, name="analytics_chat")
