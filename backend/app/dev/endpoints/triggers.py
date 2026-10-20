@@ -74,6 +74,16 @@ def dev_panel_enabled() -> bool:
     return settings.DEV_PANEL_ENABLED
 
 
+def _dev_consignment(
+    c: Consignment, barcodes_by_consignment: dict[uuid.UUID, list[str]],
+) -> DevConsignment:
+    return DevConsignment(
+        consignment_id=c.id,
+        parcel_perfect_reference=c.parcel_perfect_reference,
+        barcodes=barcodes_by_consignment.get(c.id, []),
+    )
+
+
 @router.get("/trips", response_model=list[DevTripSummary], summary="Trips and stops for the panel")
 async def list_dev_trips(
     db: AsyncSession = Depends(get_db),
@@ -174,13 +184,6 @@ async def list_dev_trips(
             return None
         return max(preceding, key=lambda item: item[0])[1]
 
-    def _dev_consignment(c: Consignment) -> DevConsignment:
-        return DevConsignment(
-            consignment_id=c.id,
-            parcel_perfect_reference=c.parcel_perfect_reference,
-            barcodes=barcodes_by_consignment.get(c.id, []),
-        )
-
     # One query for horses, one for trailers, same batched-query discipline as above.
     horses = {v.id: v for v in (await db.execute(
         select(Vehicle).where(Vehicle.id.in_([t.horse_id for t in trips]))
@@ -213,10 +216,10 @@ async def list_dev_trips(
                 sequence=stop.sequence,
                 precinct_name=precinct_name,
                 pickup_consignments=[
-                    _dev_consignment(c) for c in consignments if c.pickup_stop_id == stop.id
+                    _dev_consignment(c, barcodes_by_consignment) for c in consignments if c.pickup_stop_id == stop.id
                 ],
                 delivery_consignments=[
-                    _dev_consignment(c) for c in consignments if c.delivery_stop_id == stop.id
+                    _dev_consignment(c, barcodes_by_consignment) for c in consignments if c.delivery_stop_id == stop.id
                 ],
                 loading_phase_status=phase_status_by_stop.get((stop.id, PhaseType.LOADING)),
                 confirmation_phase_status=phase_status_by_stop.get(

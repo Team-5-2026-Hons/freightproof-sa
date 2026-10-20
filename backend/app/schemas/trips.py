@@ -1,15 +1,20 @@
 """Pydantic v2 schemas for Consignment, Parcel, Trip creation requests and trip reads."""
 
 from datetime import datetime
-from decimal import Decimal
 from uuid import UUID
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.constants import MINIMUM_TRIP_DURATION
-from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
+from app.db.models.enums import IdvsStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
+from app.schemas.cargo import (
+    ConsignmentBase as ConsignmentBase,
+    ConsignmentRead as ConsignmentRead,
+    ParcelBase as ParcelBase,
+    ParcelRead as ParcelRead,
+)
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
 from app.schemas.text import RequiredFreeText, ShortNoteStr
@@ -21,54 +26,6 @@ if TYPE_CHECKING:  # FP-83: resolved by model_rebuild in schemas/driver_substitu
     from app.schemas.driver_substitutions import (
         CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead, CompletedSubstitutionSummary,
     )
-
-
-class ConsignmentBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: Optional[UUID] = None
-    parcel_perfect_reference: str
-    client_organization_id: Optional[UUID] = None  # resolved from the PP accnum; may be NULL
-    origin_precinct_id: Optional[UUID] = None
-    destination_precinct_id: Optional[UUID] = None
-    declared_value: Optional[Decimal] = None
-    parcel_count_expected: Optional[int] = None
-    slot_time_origin: Optional[datetime] = None
-    slot_time_destination: Optional[datetime] = None
-    pp_raw_json: Optional[Any] = None
-    pickup_stop_id: Optional[UUID] = None
-    delivery_stop_id: Optional[UUID] = None
-    load_priority: Optional[int] = None
-    unit_count_expected: Optional[int] = None
-    pp_manifest_number: Optional[int] = None
-
-
-class ConsignmentRead(ConsignmentBase):
-    id: UUID
-    created_at: datetime
-    updated_at: datetime
-    # Live scan progress, recomputed per request. Distinct from the phase rows'
-    # parcel_count_origin/_destination, which are stamped once and never revised.
-    scanned_out_count: int = 0
-    scanned_in_count: int = 0
-
-
-class ParcelBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    consignment_id: UUID
-    barcode: str
-    description: Optional[str] = None
-    delivery_stop: Optional[str] = None
-    status: ParcelStatus = ParcelStatus.PENDING
-
-
-class ParcelRead(ParcelBase):
-    id: UUID
-    pp_scan_out_at: Optional[datetime] = None
-    pp_scan_in_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
 
 
 def stop_slot_times(stops: Optional[list["TripStopCreate"]]) -> list[datetime]:

@@ -23,10 +23,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from fastapi import status as http_status
-from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.handover_responses import _verification_state
 from app.auth.dependencies import get_current_driver
 from app.core.client_ip import resolve_client_ip
 from app.core.config import settings
@@ -40,12 +40,10 @@ from app.core.exceptions import (
 from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
 from app.db.models.enums import (
-    ReceiverVerificationStatus,
     ReceiverVerificationTier,
     ReceiverVerificationUnverifiedReason,
 )
 from app.db.models.handover import HandoverCapabilityToken
-from app.db.models.receiver_verification import ReceiverIdentityVerification
 from app.db.session import get_db
 from app.orchestration.handover.capability import build_scan_url, session_secret_matches
 from app.orchestration.handover.receiver_verification import (
@@ -70,6 +68,7 @@ from app.orchestration.handover.service import (
     submit_consent,
 )
 from app.schemas.handover import (
+    IssueTokenQuery,
     HandoverConfirmRequest,
     HandoverConfirmResponse,
     HandoverConsentRequest,
@@ -108,21 +107,6 @@ _DIDIT_SIGNATURE_HEADER = "x-signature"
 _DIDIT_TIMESTAMP_HEADER = "x-timestamp"
 
 
-def _verification_state(v: ReceiverIdentityVerification) -> HandoverVerificationState:
-    # Coerced through the enum constructor, not `.value` directly: these columns are
-    # mapped_column(String(20)), and a freshly-loaded row hands back a bare str with no
-    # .value. EnumClass(x) accepts either a member or its raw string, so this covers both.
-    return HandoverVerificationState(
-        status=ReceiverVerificationStatus(v.status).value,
-        tier=ReceiverVerificationTier(v.tier).value,
-        unverified_reason=(
-            ReceiverVerificationUnverifiedReason(v.unverified_reason).value
-            if v.unverified_reason else None
-        ),
-        identity_match=v.identity_match,
-    )
-
-
 @contextmanager
 def _confirmation_errors() -> Iterator[None]:
     """A confirmation lookup's failures as HTTP: 404 for a missing event or a trip the driver
@@ -136,15 +120,6 @@ def _confirmation_errors() -> Iterator[None]:
         ) from None
     except CustodyAccessError as exc:
         raise custody_http_exception(exc) from exc
-
-
-class IssueTokenQuery(BaseModel):
-    """Query string of the issue-link route."""
-
-    # The driver's "show a new code" escape hatch.
-    force: bool = False
-    # The custody period the driver is acting in (see the driver-substitution contract).
-    custody_sequence: int | None = Field(default=None, ge=0)
 
 
 @router.post(

@@ -1,6 +1,7 @@
 // frontend/driver-pwa/lib/hooks/__tests__/useArtifactUpload.test.ts
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { useArtifactUpload } from '../useArtifactUpload'
 
 // The hook only runs its real-upload branch outside demo mode.
@@ -30,6 +31,7 @@ const CAPTURED_AT = '2026-10-12T10:00:00Z'
 describe('useArtifactUpload', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authenticateTestDriver('trip-1', 2)
   })
 
   it('retake before the first upload resolves keeps the retake', async () => {
@@ -108,6 +110,7 @@ describe('useArtifactUpload', () => {
       dataUrl: 'data:a',
       capturedAt: CAPTURED_AT,
       attribution: { phaseEventId: 'phase-1', role: 'pod_photo' },
+      custodySequence: 2,
     })
   })
 })
