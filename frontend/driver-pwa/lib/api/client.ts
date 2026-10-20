@@ -213,6 +213,9 @@ async function request<T>(
     throw err
   }
 
+  // A response authorized for the previous account must never reach the new account's UI.
+  checkAccount()
+
   // A 401 usually means the access token expired between resolveToken() and the
   // backend validating it, or the cache was simply stale — not that the session is
   // truly invalid. Force one refresh and retry exactly once with the new token; a
@@ -222,6 +225,7 @@ async function request<T>(
   // decided by its detail rather than its status — and a Response body can only be
   // consumed once. Non-401 errors reuse this same parse when they throw below.
   const parsedError = res.ok ? null : await readError(res)
+  checkAccount()
   const errorMessage = parsedError?.message ?? null
 
   // A superseded device (app/auth/sessions.py) must NOT be refresh-retried: a refresh
@@ -269,7 +273,9 @@ async function request<T>(
   }
 
   if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  const body = await res.json() as T
+  checkAccount()
+  return body
 }
 
 export const api = {

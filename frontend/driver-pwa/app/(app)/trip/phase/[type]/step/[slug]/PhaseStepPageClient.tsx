@@ -43,6 +43,7 @@ import type {
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
+import { actorGeneration, captureCustody } from '@/lib/session/custody-context'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = {
@@ -234,15 +235,12 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
     return <UnknownStep phaseType={phase.phase_type} slug={slug} />
   }
 
+  const custody = captureCustody(String(trip.id))
   return (
-    // Keyed on phase_event_id — not just phase_type — so navigating between two
-    // occurrences of the SAME phase type on a cross-dock plan (e.g. unloading at stop 1,
-    // then unloading again at stop 2) fully remounts this subtree. Without the key,
-    // React would reconcile the same component instance across that transition (same
-    // element type at the same tree position) and usePhaseDraft's internal state
-    // wouldn't reset to the new phase_event_id's own stored draft.
+    // A different phase, account or custody period also resets pending location checks
+    // and submission refs; the previous period's draft is retained by usePhaseDraft.
     <PhaseStepRouter
-      key={phase.phase_event_id}
+      key={`${phase.phase_event_id}:${actorGeneration()}:${custody.actorId}:${custody.custodySequence}`}
       trip={trip}
       phase={phase}
       slug={slug}
@@ -334,6 +332,13 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver } = useTrip()
   const { capture } = useLocation()
   const tripId = String(trip.id)
+  const captureScope = useRef({ ...captureCustody(tripId), generation: actorGeneration() })
+  function isCurrentCapture(): boolean {
+    const live = captureCustody(tripId)
+    const original = captureScope.current
+    return actorGeneration() === original.generation && live.actorId === original.actorId
+      && live.custodySequence === original.custodySequence
+  }
 
   const [draft, updateDraftRaw, clearDraft] = usePhaseDraft<T>(tripId, phase.phase_event_id, initial)
   const [locationAssessment, setLocationAssessment] = useState<ActionLocationAssessment | null>(null)
@@ -356,6 +361,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   useEffect(() => { draftRef.current = draft }, [draft])
 
   function onUpdate(patch: Partial<T>) {
+    if (!isCurrentCapture()) return
     draftRef.current = { ...draftRef.current, ...patch }
     updateDraftRaw(patch)
   }
@@ -433,12 +439,13 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // the app router, and clearDraft/onResolved write their localStorage synchronously
   // before touching any component state.
   function handleOutcome(outcome: PhaseSubmissionOutcome, evidence: T) {
+    if (!isCurrentCapture()) return
     switch (outcome.kind) {
       case 'recorded': {
         onResolved(outcome.trip, evidence)
         // Only NOW, once the backend has confirmed. Clearing at hand-off would leave a
         // driver with no evidence and no record if the submission then failed.
-        clearDraft()
+        clearDraft(evidence)
         if (outcome.trip !== null) {
           adoptTrip(outcome.trip)
           // Reconcile: the real plan already shows this phase resolved, so dropping the
@@ -453,7 +460,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
       }
       case 'hold': {
         onResolved(outcome.trip, evidence)
-        clearDraft()
+        clearDraft(evidence)
         adoptTrip(outcome.trip)
         clearPhaseSyncing(phase.phase_event_id)
         notifyTripOnHold()
@@ -497,7 +504,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         // was taken in. The draft is cleared only once that retained copy is on disk, so the
         // evidence always exists in exactly one durable place.
         clearPhaseSyncing(phase.phase_event_id)
-        if (outcome.persisted) clearDraft()
+        if (outcome.persisted) clearDraft(evidence)
         notify({ kind: 'error', title: 'Not recorded on the trip', body: outcome.message })
         if (outcome.handedOver) noteTripHandedOver(tripId)
         return
@@ -516,6 +523,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     driverCapturedAt: string,
     acknowledgement: LocationWarningAcknowledgement | null,
   ) {
+    if (!isCurrentCapture()) return
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
@@ -524,7 +532,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
     // instant, never the retry's own clock.
     // Return value deliberately ignored: `false` means a submission for this exact
-    // phase_event_id is already running, and the right response to that is still to mark
+    // phase_event_id in this account and custody period is already running, so still mark
     // and navigate — the driver's evidence is on its way either way, and leaving them on
     // the step screen would only invite a third swipe.
     startPhaseSubmission({
@@ -538,6 +546,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
       // would compare a different location than the driver saw, so retry replaces both.
       position: Promise.resolve(position),
       acknowledgement,
+      custody: { actorId: captureScope.current.actorId, custodySequence: captureScope.current.custodySequence },
       enqueuePhase,
       refetchTrip,
       onOutcome: (outcome) => handleOutcome(outcome, evidence),
@@ -554,7 +563,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   }
 
   async function startLocationCheck(): Promise<void> {
-    if (locationPreviewLoading) return
+    if (locationPreviewLoading || !isCurrentCapture()) return
     const attemptStartedAt = new Date().toISOString()
     setLocationPreviewLoading(true)
     setLocationPreviewError(null)
@@ -565,6 +574,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     const offline = typeof navigator !== 'undefined' && !navigator.onLine
     setOfflineLocationCheck(offline)
     const coords = await capture()
+    if (!isCurrentCapture()) return
     if (coords === null) {
       setPendingCapturedAt(attemptStartedAt)
       setLocationPreviewLoading(false)
@@ -590,6 +600,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         accuracy_metres: position.accuracyM,
         captured_at: coords.capturedAt,
       })
+      if (!isCurrentCapture()) return
       const requiresAcknowledgement =
         (assessment.proximity === 'separated' && assessment.separation_metres !== null)
         || assessment.truck_in_precinct === false
@@ -609,10 +620,11 @@ function usePhaseStepController<T extends PhaseEvidence>(
         handOffSubmission(position, coords.capturedAt, null)
       }
     } catch (err) {
+      if (!isCurrentCapture()) return
       console.error('PhaseStepPageClient: location preview failed', err)
       setLocationPreviewError('Location preview failed')
     } finally {
-      setLocationPreviewLoading(false)
+      if (isCurrentCapture()) setLocationPreviewLoading(false)
     }
   }
 

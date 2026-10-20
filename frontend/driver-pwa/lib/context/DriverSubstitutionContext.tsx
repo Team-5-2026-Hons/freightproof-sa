@@ -26,6 +26,7 @@ import {
 import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
 import { flushSubstitutionCaptures } from '@/lib/hooks/useSubstitutionCapture'
 import { substitutionRoleFor } from '@/lib/utils/driver-substitution'
+import { useAccountGuard } from '@/lib/session/useAccountGuard'
 import { AuthContext } from './AuthContext'
 import { TripContext } from './TripContext'
 
@@ -60,6 +61,7 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
   const tripCtx = useContext(TripContext)
   const driverId = authCtx?.user?.id !== undefined ? String(authCtx.user.id) : null
   const enabled = !IS_DEMO_MODE && driverId !== null
+  const isCurrentAccount = useAccountGuard(driverId)
 
   const [pending, setPending] = useState<SubstitutionRequestRead[]>([])
   const [notices, setNotices] = useState<SubstitutionNoticeRead[]>([])
@@ -76,7 +78,7 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
   const handledCompletionsRef = useRef(new Set<string>())
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!enabled || driverId === null) return
+    if (!enabled || driverId === null || !isCurrentAccount()) return
     // The interval keeps ticking while a browser tab is hidden; there is nobody to show the
     // answer to. The foreground listener refreshes the moment the app is visible again.
     if (isAppHidden()) return
@@ -84,12 +86,14 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
     // A confirmation pressed while offline (or whose answer was lost) is resent here, on the
     // same refresh moments, before the list is read — so the list shows the server's answer.
     await flushSubstitutionCaptures()
+    if (!isCurrentAccount()) return
 
     // Settled separately: a failed notice read must not hide an arrangement that did load.
     const [pendingResult, noticeResult] = await Promise.allSettled([
       fetchDriverSubstitutions(),
       fetchSubstitutionNotices(),
     ])
+    if (!isCurrentAccount()) return
     if (pendingResult.status === 'fulfilled') {
       for (const request of pendingResult.value) {
         const role = substitutionRoleFor(request, driverId)
@@ -110,7 +114,7 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
       setLastRefreshedAt(new Date().toISOString())
     }
     setIsLoading(false)
-  }, [enabled, driverId])
+  }, [enabled, driverId, isCurrentAccount])
 
   useTripAutoRefresh({ pollingEnabled: enabled, intervalMs: TRIP_POLL_INTERVAL_MS, onRefresh: refresh })
 
@@ -148,12 +152,13 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
   }
 
   const markNoticeRead = useCallback(async (noticeId: string): Promise<void> => {
-    if (!enabled) return
+    if (!enabled || !isCurrentAccount()) return
     // Removed only after the server records it: a notice that silently reappears on the next
     // poll would read as a new handover. A failure leaves it visible and rethrows for the UI.
     await markSubstitutionNoticeRead(noticeId)
+    if (!isCurrentAccount()) return
     setNotices((prev) => prev.filter((notice) => notice.id !== noticeId))
-  }, [enabled])
+  }, [enabled, isCurrentAccount])
 
   return (
     <DriverSubstitutionContext.Provider

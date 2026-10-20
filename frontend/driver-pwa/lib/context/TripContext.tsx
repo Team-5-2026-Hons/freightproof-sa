@@ -16,7 +16,8 @@ import { isTripHandedOver } from '@/lib/api/driver-substitutions'
 import { raiseException } from '@/lib/api/exceptions'
 import { actionablePhase, contextPhaseEventId } from '@/lib/phase/derive'
 import { useTripAutoRefresh } from '@/lib/hooks/useTripAutoRefresh'
-import { captureCustody, setCustodyContext } from '@/lib/session/custody-context'
+import { actorGeneration, captureCustody, setCustodyContext } from '@/lib/session/custody-context'
+import { useAccountGuard } from '@/lib/session/useAccountGuard'
 import { AuthContext } from './AuthContext'
 import { ToastContext } from './ToastContext'
 
@@ -147,8 +148,16 @@ export interface TripState {
 export const TripContext = createContext<TripState | null>(null)
 
 export function TripProvider({ children }: { children: React.ReactNode }) {
+  const authCtx = useContext(AuthContext)
+  // Account-local selections, optimistic phases and children must reset before a new
+  // account can render them. Persistent evidence remains in its original local stores.
+  return <AccountTripProvider key={`${authCtx?.user?.id ?? ''}:${actorGeneration()}`}>{children}</AccountTripProvider>
+}
+
+function AccountTripProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const authCtx = useContext(AuthContext)
+  const isCurrentAccount = useAccountGuard(authCtx?.user ? String(authCtx.user.id) : null)
 
   const mockTrip = useMemo(() => {
     if (!authCtx?.user) return null
@@ -163,7 +172,12 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // instead, which is this plus any in-flight optimistic advance — keeping the two apart
   // means a local guess can never be mistaken for, or written back as, the ledger.
   const [serverTrip, setServerTrip] = useState<Trip | null>(null)
-  const [syncingPhaseIds, setSyncingPhaseIds] = useState<readonly string[]>([])
+  const custodySequence = serverTrip?.driver_access?.custody_sequence ?? serverTrip?.custody_sequence ?? null
+  const [syncingPhases, setSyncingPhases] = useState<readonly { id: string; custodySequence: number | null }[]>([])
+  // A server-confirmed transfer invalidates the old period's optimistic guesses, even
+  // while the same account remains signed in and an old request has not settled yet.
+  const syncingPhaseIds = useMemo(() => syncingPhases
+    .filter(item => item.custodySequence === custodySequence).map(item => item.id), [syncingPhases, custodySequence])
   const trip = useMemo(
     () => withOptimisticResolution(serverTrip, syncingPhaseIds),
     [serverTrip, syncingPhaseIds],
@@ -200,14 +214,17 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   // pick (GET /trips/me/active). Single resolver so refetchTrip and the mount effect can
   // never disagree about it.
   const loadTrip = useCallback(async (): Promise<Trip | null> => {
+    if (!isCurrentAccount()) return null
     if (selectedTripId !== null) {
       try {
         const selected = await fetchMyTrip(selectedTripId)
+        if (!isCurrentAccount()) return null
         if (!TERMINAL_STATUSES.includes(selected.status)) return selected
         // A finished trip is no longer "the trip I'm on" — drop the pin so the driver
         // isn't stranded on a closed trip, and let the server choose what's next.
         persistSelection(null)
       } catch (err) {
+        if (!isCurrentAccount()) return null
         // 404 means the trip is no longer this driver's (reassigned, or never theirs) —
         // the selection is genuinely dead, so clear it. TRIP_HANDED_OVER is the coded 409 a
         // known former participant gets: also dead as WORKING context, but remembered so
@@ -222,69 +239,79 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       }
     }
     return fetchMyActiveTrip()
-  }, [selectedTripId, persistSelection])
+  }, [selectedTripId, persistSelection, isCurrentAccount])
 
   // refetchTrip is exposed for manual re-fetching after a handshake submission. It's
   // deliberately not called directly inside the useEffect below — calling a setState-
   // containing callback synchronously from an effect causes cascading renders (same
   // anti-pattern AuthContext.tsx avoids); the effect inlines its own fetch instead.
   const refetchTrip = useCallback(async () => {
+    if (!isCurrentAccount()) return null
     if (IS_DEMO_MODE) { setServerTrip(mockTrip); return mockTrip }
     if (!authCtx?.user) { setServerTrip(null); setIsLoading(false); return null }
     setIsLoading(true)
     try {
       const fetched = await loadTrip()
+      if (!isCurrentAccount()) return null
       setServerTrip(fetched)
       return fetched
     } finally {
-      setIsLoading(false)
+      if (isCurrentAccount()) setIsLoading(false)
     }
-  }, [authCtx?.user, mockTrip, loadTrip])
+  }, [authCtx?.user, mockTrip, loadTrip, isCurrentAccount])
 
   // Pin the flow to one specific trip, then load it. Awaited by callers (the trip-detail
   // Activate button) so they only navigate once the phase flow is actually pointed at it.
   const selectTrip = useCallback(async (tripId: string): Promise<Trip | null> => {
+    if (!isCurrentAccount()) return null
     if (IS_DEMO_MODE) { setServerTrip(mockTrip); return mockTrip }
     persistSelection(tripId)
     setIsLoading(true)
     try {
       const fetched = await fetchMyTrip(tripId)
+      if (!isCurrentAccount()) return null
       setServerTrip(fetched)
       return fetched
     } finally {
-      setIsLoading(false)
+      if (isCurrentAccount()) setIsLoading(false)
     }
-  }, [mockTrip, persistSelection])
+  }, [mockTrip, persistSelection, isCurrentAccount])
 
   // Deliberately not a setter for arbitrary state: it takes a server response only, so
   // the context can never drift into a locally-invented trip. The phase flow's own
   // sequencing guard reads trip.phases from here, and it must only ever reflect what the
   // ledger actually says.
   const adoptTrip = useCallback((fresh: Trip) => {
+    if (!isCurrentAccount()) return
     setServerTrip(fresh)
     setIsLoading(false)
-  }, [])
+  }, [isCurrentAccount])
 
   const markPhaseSyncing = useCallback((phaseEventId: string) => {
-    setSyncingPhaseIds((prev) => (prev.includes(phaseEventId) ? prev : [...prev, phaseEventId]))
-  }, [])
+    if (!isCurrentAccount()) return
+    setSyncingPhases(previous => previous.some(item => item.id === phaseEventId && item.custodySequence === custodySequence)
+      ? previous : [...previous, { id: phaseEventId, custodySequence }])
+  }, [custodySequence, isCurrentAccount])
 
   const clearPhaseSyncing = useCallback((phaseEventId: string) => {
-    setSyncingPhaseIds((prev) => (prev.includes(phaseEventId) ? prev.filter((id) => id !== phaseEventId) : prev))
-  }, [])
+    if (!isCurrentAccount()) return
+    setSyncingPhases(previous => previous.filter(item => item.id !== phaseEventId || item.custodySequence !== custodySequence))
+  }, [custodySequence, isCurrentAccount])
 
   const clearSelectedTrip = useCallback(async (): Promise<Trip | null> => {
+    if (!isCurrentAccount()) return null
     if (IS_DEMO_MODE) { setServerTrip(mockTrip); return mockTrip }
     persistSelection(null)
     setIsLoading(true)
     try {
       const fetched = await fetchMyActiveTrip()
+      if (!isCurrentAccount()) return null
       setServerTrip(fetched)
       return fetched
     } finally {
-      setIsLoading(false)
+      if (isCurrentAccount()) setIsLoading(false)
     }
-  }, [mockTrip, persistSelection])
+  }, [mockTrip, persistSelection, isCurrentAccount])
 
   // Optional: TripContext.test.tsx / TripContext.real.test.tsx render TripProvider
   // without a ToastProvider ancestor, and useToast() throws outside one. Reading the
@@ -304,27 +331,30 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
   const refreshQuietly = useCallback(async (): Promise<void> => {
     // No server to ask in demo mode — mirrors every other IS_DEMO_MODE branch above.
     if (IS_DEMO_MODE) return
-    if (!authCtx?.user) return
+    if (!authCtx?.user || !isCurrentAccount()) return
 
     setIsRefreshing(true)
     try {
       const fetched = await loadTrip()
+      if (!isCurrentAccount()) return
       setServerTrip(fetched)
       setLastRefreshedAt(new Date().toISOString())
       // The unblock toast is deliberately NOT raised here — see the gate-transition effect
       // below for why it has to watch the rendered plan instead of this one fetch.
     } catch (err) {
+      if (!isCurrentAccount()) return
       // Never surfaced as a toast or rethrown — useTripAutoRefresh's interval and
       // foreground listeners call this directly, and a rejection reaching them every poll
       // tick while a blocked driver has no signal would be its own kind of harassment.
       // Logged so the failure is still visible in devtools/telemetry.
       console.error('Quiet trip refresh failed', err)
     } finally {
-      setIsRefreshing(false)
+      if (isCurrentAccount()) setIsRefreshing(false)
     }
-  }, [authCtx?.user, loadTrip])
+  }, [authCtx?.user, loadTrip, isCurrentAccount])
 
   const noteTripHandedOver = useCallback((tripId: string) => {
+    if (!isCurrentAccount()) return
     setHandedOverTripId(tripId)
     // A changed selection re-runs the mount effect's load on its own; only a trip that came
     // from the server's own pick (no pin) needs an explicit refresh.
@@ -337,7 +367,7 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
       setServerTrip(null)
       void refreshQuietly()
     }
-  }, [selectedTripId, serverTrip, persistSelection, refreshQuietly])
+  }, [selectedTripId, serverTrip, persistSelection, refreshQuietly, isCurrentAccount])
 
   const dismissHandedOver = useCallback(() => setHandedOverTripId(null), [])
 
@@ -395,26 +425,27 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
     // matches AuthContext.tsx's mount effect, which only ever calls setState from
     // inside a .then() callback to avoid the cascading-render anti-pattern.
     if (IS_DEMO_MODE) {
-      Promise.resolve().then(() => setServerTrip(mockTrip))
+      Promise.resolve().then(() => { if (isCurrentAccount()) setServerTrip(mockTrip) })
       return
     }
     if (!authCtx?.user) {
-      Promise.resolve().then(() => { setServerTrip(null); setIsLoading(false) })
+      Promise.resolve().then(() => { if (isCurrentAccount()) { setServerTrip(null); setIsLoading(false) } })
       return
     }
 
-    Promise.resolve().then(() => setIsLoading(true))
+    Promise.resolve().then(() => { if (isCurrentAccount()) setIsLoading(true) })
     loadTrip()
-      .then(setServerTrip)
+      .then(fetched => { if (isCurrentAccount()) setServerTrip(fetched) })
       // Previously uncaught: a rejected fetch here (offline, 5xx) became an unhandled
       // rejection and left isLoading stuck true, which reads as a frozen screen. Log and
       // leave trip null so the "no active trip" state renders instead of a dead spinner.
       .catch((err: unknown) => {
+        if (!isCurrentAccount()) return
         console.error('Failed to load the driver\'s current trip', err)
         setServerTrip(null)
       })
-      .finally(() => setIsLoading(false))
-  }, [authCtx?.user, mockTrip, loadTrip])
+      .finally(() => { if (isCurrentAccount()) setIsLoading(false) })
+  }, [authCtx?.user, mockTrip, loadTrip, isCurrentAccount])
 
   const [exceptions, setExceptions] = useState<TripException[]>([])
   // Track which trip's initial state we've applied — avoids the useEffect + setState anti-pattern.
