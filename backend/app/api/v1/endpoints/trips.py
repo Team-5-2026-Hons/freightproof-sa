@@ -45,6 +45,7 @@ from app.core.rate_limit import rate_limit
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
+from app.orchestration.substitutions.reads import with_dispatcher_custody
 from app.orchestration.trips.detail import get_trip_detail
 from app.orchestration.trips.listing import list_trip_history, list_trips
 from app.orchestration.trips.availability import CrewFilter, TimeWindow, busy_crew_in_window
@@ -414,4 +415,4 @@ async def get_trip_detail_endpoint(
         ) from exc
     if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
         detail = detail.model_copy(update={"blockchain_receipts": []})
-    return detail
+    return await with_dispatcher_custody(db, detail, actor=current_user)

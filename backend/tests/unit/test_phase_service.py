@@ -35,7 +35,10 @@ from app.db.models.vehicles import Vehicle
 from app.integrations import scan_feed as scan_feed_module
 from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.orchestration.phases.findings import _raise_scan_shortfall_if_unrecorded
-from app.orchestration.phases.payloads import compute_confirmation_canonical_payload_v2
+from app.orchestration.phases.payloads import (
+    compute_confirmation_canonical_payload_v2,
+    compute_phase_actor_envelope_v4,
+)
 from app.orchestration.phases.override import override_phase
 from app.orchestration.consignments.scans import ingest_scans
 from app.orchestration.phases.plan import PlanStop, build_phase_plan
@@ -770,7 +773,9 @@ async def test_advance_departure_happy_path_completes(
     assert len(pickup_dispatches) == 1
     dispatched_event_id, dispatched_payload, dispatched_type = pickup_dispatches[0]
     assert dispatched_event_id == str(phases["departure"].id)
-    assert dispatched_payload["seal_number"] == "AB-1234"
+    # Driver-performed, so the v2 evidence sits inside the v4 actor envelope.
+    assert dispatched_payload["payload_version"] == 4
+    assert dispatched_payload["evidence"]["seal_number"] == "AB-1234"
     assert dispatched_type == BlockchainReceiptType.PICKUP.value
 
 
@@ -4102,7 +4107,12 @@ async def test_confirmation_with_no_driver_visual_count_completes_and_stores_nul
     )
     assert expected_payload["driver_visual_count"] is None
     assert "driver_visual_count" in expected_payload  # present, never omitted
-    assert compute_payload_hash(expected_payload) == event.event_hash
+    # Driver-performed, so the anchored hash is of the v4 actor envelope around that payload.
+    expected_envelope = compute_phase_actor_envelope_v4(
+        phase_event_id=event.id, evidence=expected_payload,
+        driver_id=event.performed_by_driver_id, custody_sequence=event.custody_sequence,
+    )
+    assert compute_payload_hash(expected_envelope) == event.event_hash
 
 
 async def test_a_parcel_lost_in_transit_raises_a_scoped_mismatch_with_no_visual_count(

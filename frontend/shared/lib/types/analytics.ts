@@ -33,6 +33,9 @@ export interface DriverMetrics {
   confirmation_dwell_events_count: number
   phase_events_count: number
   override_count: number
+  // FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
+  // whole-trip rates (they cannot be fairly split); optional until every consumer's fixtures carry it.
+  shared_trip_count?: number
   exception_trip_rate: number | null
   on_time_departure_rate: number | null
   override_rate: number | null

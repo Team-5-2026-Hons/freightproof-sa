@@ -3,7 +3,7 @@
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -16,6 +16,11 @@ from app.schemas.text import RequiredFreeText, ShortNoteStr
 from app.schemas.pp_manifest import PPManifestRef, PPManifestSnapshotRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
+
+if TYPE_CHECKING:  # FP-83: resolved by model_rebuild in schemas/driver_substitutions (it imports this module)
+    from app.schemas.driver_substitutions import (
+        CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead,
+    )
 
 
 class ConsignmentBase(BaseModel):
@@ -217,6 +222,10 @@ class DriverTripListItemResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     needs_review_count: int  # unreviewed critical rows only; the driver has no review workflow
+    # FP-83: a trip this driver handed over stays listed as history while it is still active.
+    participation: "DriverParticipation | None" = None
+    last_participation_ended_at: Optional[datetime] = None
+    custody_sequence: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -433,5 +442,20 @@ class TripDetailResponse(BaseModel):
     # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode
     # warnings). Always [] on GET — never persisted.
     warnings: list[str] = []
+    # FP-83 (contract "Existing reads"): `driver` above is the DERIVED current driver; the
+    # original is kept for the journey lock. The substitution lists, integrity and flag are
+    # dispatcher-only (empty/None on driver reads); driver_access is set only on driver reads.
+    original_driver: Optional[DriverRead] = None
+    driver_substitutions: list["SubstitutionRequestRead"] = []
+    pending_driver_substitution: "SubstitutionRequestRead | None" = None
+    custody_sequence: int = 0
+    custody_integrity: "CustodyIntegrityRead | None" = None
+    driver_substitutions_enabled: Optional[bool] = None
+    driver_access: "DriverAccess | None" = None
     created_at: datetime
     updated_at: datetime
+
+
+# FP-83: importing the substitution schemas resolves the forward references above, whichever of
+# the two modules is imported first (a plain module import is safe mid-cycle).
+import app.schemas.driver_substitutions  # noqa: E402,F401

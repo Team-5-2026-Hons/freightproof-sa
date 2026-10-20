@@ -128,6 +128,11 @@ async def _completed_links(db: AsyncSession, *, trip_id: uuid.UUID) -> list[Comp
     ]
 
 
+async def completed_links(db: AsyncSession, *, trip_id: uuid.UUID) -> list[CompletedCustodyLink]:
+    """The trip's completed handovers in sequence order, unvalidated (feed them to derive_custody)."""
+    return await _completed_links(db, trip_id=trip_id)
+
+
 async def get_current_custody(db: AsyncSession, *, trip: Trip) -> CurrentCustody:
     """Current custody of `trip`, read fresh from the completed chain."""
     return derive_custody(trip.driver_id, await _completed_links(db, trip_id=trip.id))
@@ -171,6 +176,26 @@ async def participant_driver_ids(db: AsyncSession, *, trip_id: uuid.UUID) -> set
     for outgoing, incoming in rows:
         participants.update((outgoing, incoming))
     return participants
+
+
+async def current_driver_ids(db: AsyncSession, *, trip_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, uuid.UUID]:
+    """Each trip's current driver in one statement, for list views (the SQL twin of derive_custody)."""
+    rows = await db.execute(
+        select(Trip.id, current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id))
+        .where(Trip.id.in_(trip_ids))
+    )
+    return {trip_id: driver_id for trip_id, driver_id in rows}
+
+
+async def custody_holders(db: AsyncSession, *, trip: Trip) -> dict[int, uuid.UUID]:
+    """Who held each custody period: sequence 0 is the original driver, sequence k the incoming
+    driver of the k-th completed handover. Validated through derive_custody first, so a broken
+    chain raises rather than attributing evidence to a guessed holder (FP-83 C4 late evidence)."""
+    links = await _completed_links(db, trip_id=trip.id)
+    derive_custody(trip.driver_id, links)
+    holders = {ORIGINAL_CUSTODY_SEQUENCE: trip.driver_id}
+    holders.update({link.sequence_number: link.incoming_driver_id for link in links})
+    return holders
 
 
 # ── the access gate ──────────────────────────────────────────────────────────
@@ -232,9 +257,10 @@ async def _resolve_custody(
     if lock:
         trip = await lock_trip(db, trip_id=trip_id)
     else:
-        trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
-        if trip is None:
+        found = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+        if found is None:
             raise ResourceNotFoundError("Trip", str(trip_id))
+        trip = found
     return trip, await get_current_custody(db, trip=trip)
 
 

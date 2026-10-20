@@ -25,6 +25,7 @@ from app.db.models.people import Driver
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripTrailer
 from app.db.models.vehicles import Vehicle
+from app.orchestration.substitutions.access import current_driver_ids
 from app.orchestration.phases.state import RESOLVED_PHASE_STATUSES
 from app.orchestration.trips.detail import _client_names, _pp_manifest
 from app.schemas.people import DriverRead
@@ -60,8 +61,8 @@ async def list_trips(
     trip_ids = [t.id for t in trips]
 
     # Batch-fetch to avoid N+1 queries on list views.
-    driver_ids = list({t.driver_id for t in trips})
-    drivers_result = await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))
+    current = await current_driver_ids(db, trip_ids=[t.id for t in trips])  # FP-83: who holds each trip now
+    drivers_result = await db.execute(select(Driver).where(Driver.id.in_(set(current.values()))))
     drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
 
     horse_ids = list({t.horse_id for t in trips})
@@ -151,7 +152,7 @@ async def list_trips(
             pp_manifest=_pp_manifest(t, client_names),
             status=t.status,
             trip_type=TripType(t.trip_type),
-            driver=DriverRead.model_validate(drivers_by_id[t.driver_id]),
+            driver=DriverRead.model_validate(drivers_by_id[current[t.id]]),
             horse=VehicleRead.model_validate(horses_by_id[t.horse_id]),
             trailers=[VehicleRead.model_validate(v) for v in trailers_by_trip.get(t.id, [])],
             origin_precinct_id=t.origin_precinct_id,

@@ -168,7 +168,7 @@ async def test_current_driver_expression_is_scoped_per_trip(db_session: AsyncSes
     rows = dict((await db_session.execute(
         select(Trip.id, current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id))
         .where(Trip.id.in_([first.trip_id, second.trip_id]))
-    )).all())
+    )).tuples().all())
 
     assert rows == {first.trip_id: cover.id, second.trip_id: second.driver_id}
 

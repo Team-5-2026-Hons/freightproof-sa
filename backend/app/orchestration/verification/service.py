@@ -37,12 +37,18 @@ from app.orchestration.verification.phase_payloads import (
     _PhaseEvidenceMissing,
     _PhasePayloadState,
     _payload_with_live_artifact_hashes,
-    _reconstruct_phase_event_payload,
+    reconstruct_phase_state,
+)
+from app.orchestration.substitutions import canonical as substitution_canonical
+from app.orchestration.verification.substitution_payloads import (
+    load_substitution_record,
+    rebuild_correction_payload,
 )
 from app.orchestration.verification.trip_payloads import _reconstruct_trip_payload
 from app.storage.supabase_storage import (
     EvidenceObjectIntegrityError,
     EvidenceStorageUnavailableError,
+    hash_stored_evidence_file,
 )
 
 
@@ -182,7 +188,7 @@ async def _rebuild_precinct_event(
 async def _rebuild_phase_event(
     db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
 ) -> _Rebuilt:
-    state = await _reconstruct_phase_event_payload(
+    state = await reconstruct_phase_state(
         db, subject_id, anchored_payload=receipt.payload_json,
     )
     return _Rebuilt(state.payload, state)
@@ -202,6 +208,45 @@ async def _rebuild_evidence_event(
     return _Rebuilt(state.payload, evidence_state=state)
 
 
+async def _rebuild_driver_substitution(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    """FP-83 C5: a completed handover rebuilt from its live rows, with every capture photo's hash
+    taken from the bytes in Storage now, so an edited object fails like an edited row."""
+    try:
+        substitution_canonical.validate_substitution_payload(receipt.payload_json)
+    except substitution_canonical.UnsupportedPayload as error:
+        raise _UnsupportedPhasePayloadVersion(str(error)) from error
+    loaded = await load_substitution_record(db, subject_id)
+    if loaded is None:
+        return None
+    try:
+        live = {
+            artifact.id: await hash_stored_evidence_file(s3_bucket=artifact.s3_bucket, s3_key=artifact.s3_key)
+            for artifact in loaded[1]
+        }
+    except EvidenceObjectIntegrityError as error:
+        raise _EvidenceMissing("a committed handover photo is gone or altered") from error
+    except EvidenceStorageUnavailableError as error:
+        # An outage is not tampering: reported as an error, never a mismatch.
+        raise _UnsupportedPhasePayloadVersion("evidence storage unavailable") from error
+    rebuilt = await load_substitution_record(db, subject_id, live_file_hashes=live)
+    if rebuilt is None:
+        return None
+    return _Rebuilt(substitution_canonical.compute_substitution_payload(record=rebuilt[0]))
+
+
+async def _rebuild_driver_substitution_correction(
+    db: AsyncSession, subject_id: uuid.UUID, receipt: BlockchainReceipt,
+) -> _Rebuilt | None:
+    try:
+        substitution_canonical.validate_correction_payload(receipt.payload_json)
+    except substitution_canonical.UnsupportedPayload as error:
+        raise _UnsupportedPhasePayloadVersion(str(error)) from error
+    payload = await rebuild_correction_payload(db, subject_id)
+    return None if payload is None else _Rebuilt(payload)
+
+
 # The orchestration half of the subject policy: how each verifiable subject type is rebuilt.
 # The blockchain half (tenant visibility) is SUBJECT_VISIBILITY_QUERIES in
 # blockchain/subject_visibility.py; two registries and not one object because blockchain/
@@ -213,6 +258,8 @@ SUBJECT_RECONSTRUCTORS: Mapping[SubjectType, _Reconstructor] = MappingProxyType(
     SubjectType.PHASE_EVENT: _rebuild_phase_event,
     SubjectType.PRECINCT_EVENT: _rebuild_precinct_event,
     SubjectType.EVIDENCE_EVENT: _rebuild_evidence_event,
+    SubjectType.DRIVER_SUBSTITUTION: _rebuild_driver_substitution,
+    SubjectType.DRIVER_SUBSTITUTION_CORRECTION: _rebuild_driver_substitution_correction,
 })
 
 # Subject types verify_subject does not rebuild: they report no_receipt even when a receipt

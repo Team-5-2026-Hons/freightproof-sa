@@ -8,6 +8,7 @@ that the Python and TypeScript sides name the same fields and values.
 Cross-trip vehicle membership is deliberately absent: it needs the DB and is tested in C4.
 """
 
+import enum
 import math
 import re
 import uuid
@@ -690,7 +691,7 @@ _REPO = Path(__file__).resolve().parents[3]
 _TS_TYPES = _REPO / "frontend" / "shared" / "lib" / "types" / "driver-substitution.ts"
 
 # Contract type name -> the Pydantic model that must carry exactly the same field names.
-_PARITY_MODELS = {
+_PARITY_MODELS: dict[str, type[BaseModel]] = {
     "DriverContact": ds.DriverContact,
     "ExchangePoint": ds.ExchangePoint,
     "VehicleRef": ds.VehicleRef,
@@ -718,7 +719,7 @@ _PARITY_MODELS = {
     "LateEvidenceDetailRead": ds.LateEvidenceDetailRead,
 }
 
-_PARITY_ENUMS = {
+_PARITY_ENUMS: dict[str, type[enum.Enum]] = {
     "SubstitutionState": ds.SubstitutionState,
     "SubstitutionRole": ds.SubstitutionRole,
     "SubstitutionSealCondition": ds.SubstitutionSealCondition,

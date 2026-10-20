@@ -6,16 +6,20 @@ writes.
 """
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, TripStatus
 from app.db.models.organisations import Precinct
 from app.db.models.transit import TripException
-from app.db.models.trips import Trip
-from app.orchestration.substitutions.access import current_driver_id_expression, require_current_driver
+from app.db.models.trips import DriverSubstitution, Trip
+from app.orchestration.substitutions.access import (
+    completed_links, current_driver_id_expression, custody_holders, require_current_driver,
+)
 from app.orchestration.trips.detail import get_trip_detail
+from app.schemas.driver_substitutions import DriverAccess, DriverParticipation
 from app.schemas.trips import DriverTripListItemResponse, TripDetailResponse
 
 
@@ -83,16 +87,35 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
     # blockchain_receipts because the PWA anchor UI renders them. Receipts
     # carry hashes/tx ids only — no PII (POPIA-safe). Covered by
     # test_active_trip_includes_receipts_for_driver.
-    return _driver_view(
-        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    return await _driver_view(
+        db, await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id),
+        trip=trip, driver_id=driver_id,
     )
 
 
-def _driver_view(detail: TripDetailResponse) -> TripDetailResponse:
+async def _driver_view(
+    db: AsyncSession, detail: TripDetailResponse, *, trip: Trip, driver_id: uuid.UUID,
+) -> TripDetailResponse:
     """The dispatcher's trip detail minus what the driver app must not receive. The PP
     manifest key names the client's manifest: dispatcher context, never shown to the
-    driver, who identifies a trip by trip_reference (FP-281 §12)."""
-    return detail.model_copy(update={"pp_manifest": None})
+    driver, who identifies a trip by trip_reference (FP-281 §12).
+
+    FP-83: the caller here is always the CURRENT driver (both callers resolve that first). They
+    get driver_access, whose custody_sequence their live writes must carry, and none of the
+    dispatcher's substitution context: no original-driver record (another person's details),
+    no request list, integrity result or flag.
+    """
+    holders = await custody_holders(db, trip=trip)
+    earlier = any(holder == driver_id and seq != detail.custody_sequence for seq, holder in holders.items())
+    return detail.model_copy(update={
+        "pp_manifest": None, "original_driver": None, "driver_substitutions": [],
+        "pending_driver_substitution": None, "custody_integrity": None, "driver_substitutions_enabled": None,
+        "driver_access": DriverAccess(
+            participation=DriverParticipation.CURRENT, custody_sequence=detail.custody_sequence,
+            can_advance=TripStatus(detail.status) not in (TripStatus.CLOSED, TripStatus.CANCELLED),
+            can_submit_late_evidence=earlier,
+        ),
+    })
 
 
 async def list_trips_for_driver(
@@ -109,11 +132,16 @@ async def list_trips_for_driver(
     rows to populate its Past tab, and grouping is the client's job — filtering them
     out here would make a completed-trip history impossible to build.
     """
+    # FP-83: every trip this driver ever held, not only those they were originally assigned: a
+    # takeover is theirs to work, and a handed-over trip stays in their history.
+    held_later = select(DriverSubstitution.trip_id).where(or_(
+        DriverSubstitution.original_driver_id == driver_id, DriverSubstitution.substituting_driver_id == driver_id,
+    ))
     trips = (
         (
             await db.execute(
                 select(Trip)
-                .where(Trip.driver_id == driver_id)
+                .where(or_(Trip.driver_id == driver_id, Trip.id.in_(held_later)))
                 .order_by(Trip.created_at.desc())
             )
         )
@@ -122,6 +150,7 @@ async def list_trips_for_driver(
     )
     if not trips:
         return []
+    participation = {t.id: await _participation(db, t, driver_id) for t in trips}
 
     trip_ids = [t.id for t in trips]
 
@@ -179,11 +208,29 @@ async def list_trips_for_driver(
             planned_arrival_at=t.planned_arrival_at,
             actual_arrival_at=t.actual_arrival_at,
             needs_review_count=exc_counts.get(t.id, 0),
+            participation=participation[t.id][0],
+            last_participation_ended_at=participation[t.id][1],
+            custody_sequence=participation[t.id][2],
             created_at=t.created_at,
             updated_at=t.updated_at,
         )
         for t in trips
     ]
+
+
+async def _participation(
+    db: AsyncSession, trip: Trip, driver_id: uuid.UUID,
+) -> tuple[DriverParticipation, datetime | None, int]:
+    """(current or former, when the caller's last period ended, the sequence to show). A current
+    holder sees the live sequence; a former one sees their own last period, never a later one's."""
+    links = await completed_links(db, trip_id=trip.id)
+    holders = await custody_holders(db, trip=trip)
+    current_sequence = max(holders)
+    if holders[current_sequence] == driver_id:
+        return DriverParticipation.CURRENT, None, current_sequence
+    last_own = max(seq for seq, holder in holders.items() if holder == driver_id)
+    ended = next(link.effective_at for link in links if link.sequence_number == last_own + 1)
+    return DriverParticipation.FORMER, ended, last_own
 
 
 async def get_own_trip_detail_for_driver(
@@ -203,6 +250,7 @@ async def get_own_trip_detail_for_driver(
     # 404 for a driver who never held the trip, TripHandedOverError for one who held it earlier
     # (their history is a separate, restricted read); never the current trip data.
     trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
-    return _driver_view(
-        await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id)
+    return await _driver_view(
+        db, await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id),
+        trip=trip, driver_id=driver_id,
     )

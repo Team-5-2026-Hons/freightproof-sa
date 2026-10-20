@@ -495,6 +495,14 @@ class IdentityAttestationForbiddenError(SubstitutionError):
     message = "Only an admin dispatcher can attest unavailable driver identity."
 
 
+class SubstitutionsDisabledError(SubstitutionError):
+    """New arrangements are switched off by DRIVER_SUBSTITUTIONS_ENABLED (503). Existing pending
+    handovers, completion, history, late evidence and anchoring keep working."""
+
+    code = "SUBSTITUTIONS_DISABLED"
+    message = "New driver handovers are temporarily unavailable. Existing handovers still work."
+
+
 class SubstitutionInvalidError(Exception):
     """The handover content is well-formed but not acceptable (422): the same driver on both
     sides, a capture naming the wrong vehicles, a reason that does not apply. Carries a

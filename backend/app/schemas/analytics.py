@@ -48,6 +48,9 @@ class DriverMetrics(BaseModel):
     confirmation_dwell_events_count: int
     phase_events_count: int
     override_count: int
+    # FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
+    # whole-trip rates (they cannot be fairly split), so a ranking can say what it left out.
+    shared_trip_count: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property

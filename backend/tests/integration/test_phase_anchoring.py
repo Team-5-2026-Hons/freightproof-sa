@@ -42,6 +42,7 @@ from app.db.models.trips import Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
+from app.orchestration.phases.payloads import driver_actor_sha256
 
 from tests.conftest import auth_header, make_token
 
@@ -452,7 +453,11 @@ async def test_upload_complete_anchor_verify_and_detect_replacement_end_to_end(
     await _drain_anchors(db_session, captured_anchor_dispatches)
     event = await db_session.get(PhaseEvent, uuid.UUID(event_id))
     receipt = await db_session.get(BlockchainReceipt, event.blockchain_receipt_id)
-    assert receipt.payload_json["payload_version"] == 2
+    # Driver-performed, so the v2 evidence payload sits inside the v4 actor envelope.
+    assert receipt.payload_json["payload_version"] == 4
+    assert receipt.payload_json["evidence"]["payload_version"] == 2
+    assert receipt.payload_json["actor_sha256"] == driver_actor_sha256(event.performed_by_driver_id)
+    assert receipt.payload_json["custody_sequence"] == event.custody_sequence
     assert receipt.data_hash == event.event_hash
     artifact = await db_session.get(EvidenceArtifact, uuid.UUID(selected_artifact_id))
     original_hash = artifact.file_hash
