@@ -56,5 +56,3 @@ async def validate_capture(
             raise SubstitutionInvalidError(
                 "A cited photo is not your own upload for this handover, or backs another capture."
             )
-
-

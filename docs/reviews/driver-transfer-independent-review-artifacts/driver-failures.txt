@@ -101,4 +101,3 @@ terminal failure rolls the optimistic advance back, raises an error notice, and 
 
 /privatefrontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/__tests__/PhaseStepPageClient.tripgate.test.tsx
 trip-loading gate — drafts survive a mount that begins before the trip loads (Fix 1) loads a previously persisted draft under the real (tripId, phase_event_id) key, and the next update merges instead of wiping it
-
