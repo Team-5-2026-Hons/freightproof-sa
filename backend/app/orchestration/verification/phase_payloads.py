@@ -17,6 +17,7 @@ from app.db.models.phases import PhaseEvent
 from app.orchestration.phases.payloads import (
     PHASE_PAYLOAD_VERSION_V2,
     PHASE_PAYLOAD_VERSION_V3,
+    PHASE_PAYLOAD_VERSION_V4,
     compute_activation_canonical_payload_v2,
     compute_arrival_canonical_payload_v2,
     compute_confirmation_canonical_payload_v1,
@@ -27,6 +28,7 @@ from app.orchestration.phases.payloads import (
     compute_loading_canonical_payload_v2,
     compute_loading_canonical_payload_v3,
     compute_override_canonical_payload_v2,
+    compute_phase_actor_envelope_v4,
     compute_unloading_canonical_payload_v2,
 )
 from app.orchestration.verification.errors import _UnsupportedPhasePayloadVersion
@@ -319,6 +321,12 @@ async def _reconstruct_phase_event_payload(
 
 
 async def _payload_with_live_artifact_hashes(state: _PhasePayloadState) -> dict[str, Any]:
+    if state.payload.get("payload_version") == PHASE_PAYLOAD_VERSION_V4:
+        # The artifact keys live in the embedded evidence payload, not on the envelope.
+        inner = await _payload_with_live_artifact_hashes(
+            _PhasePayloadState(payload=state.payload["evidence"], artifacts=state.artifacts),
+        )
+        return {**state.payload, "evidence": inner}
     payload = dict(state.payload)
     live_hashes = await asyncio.gather(*(
         hash_stored_evidence_file(
@@ -330,6 +338,47 @@ async def _payload_with_live_artifact_hashes(state: _PhasePayloadState) -> dict[
     for commitment, live_hash in zip(state.artifacts, live_hashes, strict=True):
         payload[commitment.payload_key] = live_hash
     return payload
+
+
+def _is_actor_envelope(anchored_payload: Any) -> bool:
+    return isinstance(anchored_payload, dict) and anchored_payload.get("payload_version") == PHASE_PAYLOAD_VERSION_V4
+
+
+async def reconstruct_phase_state(
+    db: AsyncSession, event_id: uuid.UUID, *, anchored_payload: Any,
+) -> _PhasePayloadState:
+    """Rebuild any phase receipt's payload, v1-v4 (FP-83 C5).
+
+    v4 is an envelope: its embedded evidence payload is rebuilt by exactly the v1/v2/v3 rules in
+    _reconstruct_phase_event_payload, and the actor commitment and custody sequence are rebuilt
+    from the row's live performed_by_driver_id / custody_sequence, so an edited actor fails.
+    """
+    if not _is_actor_envelope(anchored_payload):
+        return await _reconstruct_phase_event_payload(db, event_id, anchored_payload=anchored_payload)
+    inner_contract = anchored_payload.get("evidence")
+    if _is_actor_envelope(inner_contract):
+        raise _UnsupportedPhasePayloadVersion("a v4 envelope cannot wrap another envelope")
+    inner = await _reconstruct_phase_event_payload(db, event_id, anchored_payload=inner_contract)
+    return _with_actor(await _event(db, event_id), inner)
+
+
+async def _event(db: AsyncSession, event_id: uuid.UUID) -> PhaseEvent:
+    event = (await db.execute(select(PhaseEvent).where(PhaseEvent.id == event_id))).scalar_one_or_none()
+    if event is None:
+        raise _PhaseEvidenceMissing("anchored phase event is missing")
+    return event
+
+
+def _with_actor(event: PhaseEvent, inner: _PhasePayloadState) -> _PhasePayloadState:
+    if event.performed_by_driver_id is None or event.custody_sequence is None:
+        raise _PhaseEvidenceMissing("the anchored phase's performing driver is no longer recorded")
+    return _PhasePayloadState(
+        payload=compute_phase_actor_envelope_v4(
+            phase_event_id=event.id, evidence=inner.payload, driver_id=event.performed_by_driver_id,
+            custody_sequence=event.custody_sequence,
+        ),
+        artifacts=inner.artifacts,
+    )
 
 
 async def reconstruct_pending_phase_payload(
@@ -353,4 +402,9 @@ async def reconstruct_pending_phase_payload(
             continue
         if _hash_payload(state.payload) == event.event_hash:
             return state.payload
+        # FP-83 C5: a driver-performed phase was queued as a v4 envelope around this contract.
+        if event.performed_by_driver_id is not None and event.custody_sequence is not None:
+            wrapped = _with_actor(event, state).payload
+            if _hash_payload(wrapped) == event.event_hash:
+                return wrapped
     return None

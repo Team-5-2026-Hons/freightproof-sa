@@ -282,4 +282,81 @@ describe('api client — superseded device', () => {
 
     vi.unstubAllGlobals()
   })
+
+  // FP-83 contract "Stable errors": domain conflicts arrive as a {code, message, ...} detail
+  // object, while every older endpoint still sends a string or a 422 field-error array.
+  describe('coded error details', () => {
+    function stubErrorResponse(status: number, detail: unknown): void {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: false,
+        status,
+        statusText: 'Conflict',
+        json: () => Promise.resolve({ detail }),
+      }))
+    }
+
+    it('test_coded_detail_preserves_code_and_optional_fields', async () => {
+      stubErrorResponse(409, {
+        code: 'SUBSTITUTION_VERSION_CHANGED',
+        message: 'The arrangement changed.',
+        request_id: 'request-1',
+        current_version: 3,
+        evidence_id: null,
+      })
+      const { api } = await import('../client')
+
+      const err = await api.post('/api/v1/x').catch((e: unknown) => e)
+
+      expect(err).toMatchObject({
+        status: 409,
+        message: 'The arrangement changed.',
+        code: 'SUBSTITUTION_VERSION_CHANGED',
+        detail: { code: 'SUBSTITUTION_VERSION_CHANGED', requestId: 'request-1', currentVersion: 3, evidenceId: null },
+      })
+      vi.unstubAllGlobals()
+    })
+
+    it('test_unknown_code_still_reaches_the_caller', async () => {
+      stubErrorResponse(409, { code: 'A_CODE_THIS_BUILD_DOES_NOT_KNOW', message: 'New conflict.' })
+      const { api } = await import('../client')
+
+      const err = await api.get('/api/v1/x').catch((e: unknown) => e)
+
+      // Surfaced, not dropped: the caller must be able to treat it as an unrecognised conflict.
+      expect(err).toMatchObject({ code: 'A_CODE_THIS_BUILD_DOES_NOT_KNOW' })
+      vi.unstubAllGlobals()
+    })
+
+    it('test_legacy_string_detail_has_no_code', async () => {
+      stubErrorResponse(409, 'Phase already completed')
+      const { api } = await import('../client')
+
+      const err = await api.get('/api/v1/x').catch((e: unknown) => e)
+
+      expect(err).toMatchObject({ status: 409, message: 'Phase already completed' })
+      expect((err as { code?: string }).code).toBeUndefined()
+      vi.unstubAllGlobals()
+    })
+
+    it('test_object_detail_without_code_keeps_its_message', async () => {
+      stubErrorResponse(409, { message: 'Something conflicted.' })
+      const { api } = await import('../client')
+
+      const err = await api.get('/api/v1/x').catch((e: unknown) => e)
+
+      expect(err).toMatchObject({ message: 'Something conflicted.' })
+      expect((err as { code?: string }).code).toBeUndefined()
+      vi.unstubAllGlobals()
+    })
+
+    it('test_422_field_errors_still_use_the_first_message', async () => {
+      stubErrorResponse(422, [{ msg: 'expected_version must be at least 1' }])
+      const { api } = await import('../client')
+
+      const err = await api.post('/api/v1/x').catch((e: unknown) => e)
+
+      expect(err).toMatchObject({ status: 422, message: 'expected_version must be at least 1' })
+      vi.unstubAllGlobals()
+    })
+  })
 })

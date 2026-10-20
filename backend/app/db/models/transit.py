@@ -20,6 +20,11 @@ from app.db.models.enums import (
     ExceptionType,
 )
 
+# FP-83 C3 CP4: the partial unique indexes that make a handover capture's findings idempotent.
+# Named here so the recorders can tell their own insert race apart from any other integrity fault.
+SUBSTITUTION_SEPARATION_INDEX = "uq_exceptions_substitution_separation"
+SUBSTITUTION_SEAL_FINDING_INDEX = "uq_exceptions_substitution_seal"
+
 
 class Checkpoint(Base):
     """Driver-logged or Pulsit-pulled in-transit event between phases."""
@@ -168,6 +173,28 @@ class TripException(Base):
                 "exception_type = 'trailer_location_mismatch' AND phase_event_id IS NOT NULL"
             ),
         ),
+        # FP-83 C3 CP4: a driver-handover capture is a third finding scope beside a phase event
+        # and a checkpoint. One separation finding per capture, and one seal finding per vehicle
+        # and type per capture pair (the second confirmation, which runs the comparison).
+        Index(
+            SUBSTITUTION_SEPARATION_INDEX,
+            "substitution_confirmation_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_vehicle_separation' AND substitution_confirmation_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            SUBSTITUTION_SEAL_FINDING_INDEX,
+            "substitution_confirmation_id",
+            "vehicle_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type IN ('seal_mismatch', 'seal_compromised') AND substitution_confirmation_id IS NOT NULL"
+            ),
+        ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
         # in the deployed database (created by an earlier migration, never modelled here).
         Index("ix_exceptions_severity", "severity"),
@@ -183,6 +210,14 @@ class TripException(Base):
     )
     checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
+    )
+    # FP-83 C3 CP4: the driver-handover capture a system finding was measured on (a capture's
+    # driver/vehicle separation, or a seal discrepancy between the two drivers' captures). A
+    # handover is not a phase, so it never borrows phase_event_id. NULL on every other row.
+    substitution_confirmation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_substitution_confirmations.id", name="fk_exceptions_substitution_confirmation_id"),
+        nullable=True,
     )
     # Scope an exception to one client's cargo / one stop on the route, so a multi-client
     # evidence chain can be cut per client (a FedEx discrepancy must not surface

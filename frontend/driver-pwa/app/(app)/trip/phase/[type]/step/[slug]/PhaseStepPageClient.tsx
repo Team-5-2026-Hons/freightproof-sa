@@ -331,7 +331,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
+  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver } = useTrip()
   const { capture } = useLocation()
   const tripId = String(trip.id)
 
@@ -489,6 +489,17 @@ function usePhaseStepController<T extends PhaseEvidence>(
         })
         // The toast fades; the failure notice in OfflineBanner does not, because a driver
         // who missed it would otherwise believe evidence was recorded when it was not.
+        return
+      }
+      case 'retained': {
+        // FP-83: custody moved on before this reached the server. The phase is NOT recorded
+        // (roll the advance back), but the capture is kept for review under the period it
+        // was taken in. The draft is cleared only once that retained copy is on disk, so the
+        // evidence always exists in exactly one durable place.
+        clearPhaseSyncing(phase.phase_event_id)
+        if (outcome.persisted) clearDraft()
+        notify({ kind: 'error', title: 'Not recorded on the trip', body: outcome.message })
+        if (outcome.handedOver) noteTripHandedOver(tripId)
         return
       }
       default: {

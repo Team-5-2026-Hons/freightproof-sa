@@ -52,10 +52,14 @@ export function issueHandoverToken(
   tripId: string,
   phaseEventId: string,
   force = false,
+  // FP-83: the period the driver is initiating the receiver handover in. A former driver
+  // cannot issue a link; the server refuses a stale period rather than retargeting it.
+  custodySequence: number | null = null,
 ): Promise<HandoverTokenResponse> {
   const query = force ? '?force=true' : ''
   return api.post<HandoverTokenResponse>(
     `/api/v1/trips/${tripId}/phases/${phaseEventId}/handover/tokens${query}`,
+    custodySequence !== null ? { custody_sequence: custodySequence } : undefined,
   )
 }
 

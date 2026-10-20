@@ -36,6 +36,9 @@ from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Consignment, DriverSubstitution, Parcel, Trip, TripStop, TripTrailer
 from app.db.models.vehicles import Vehicle
 from app.core.display import DISPLAY_TIMEZONE
+from app.orchestration.audit_packs.custody import (
+    CustodyFacts, late_evidence_records, load_custody_facts, substitution_records,
+)
 from app.orchestration.audit_packs.anchor_tiers import ExceptionAnchors, assess_exception_anchors
 from app.orchestration.audit_packs.incident_declarations import load_declarations
 from app.orchestration.evidence_anchors.reads import load_photos_by_exception
@@ -56,7 +59,6 @@ from app.schemas.audit_pack import (
     CheckpointRecord,
     ConsignmentRecord,
     DriverRecord,
-    DriverSubstitutionRecord,
     EvidenceFile,
     EvidenceRole,
     EvidenceTier,
@@ -308,6 +310,7 @@ class _TripGraph:
     exception_photos: dict[uuid.UUID, list[EvidenceArtifact]]
     evidence_events: list[EvidenceAnchorEvent]
     substitutions: list[DriverSubstitution]
+    custody: CustodyFacts
     drivers: dict[uuid.UUID, Driver]
     horse: Vehicle
     trailers: list[Vehicle]
@@ -409,7 +412,8 @@ async def _load_crew(
     """Driver substitutions, every driver who held the trip, the horse and its trailers."""
     substitutions = list((await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.trip_id == trip.id)
-        .order_by(DriverSubstitution.substitution_at)
+        # FP-83: the chain's order is its sequence number; a timestamp can tie or contradict it.
+        .order_by(DriverSubstitution.sequence_number)
     )).scalars())
     driver_ids = _crew_driver_ids(trip, substitutions)
     drivers = {d.id: d for d in (await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))).scalars()}
@@ -528,6 +532,7 @@ async def _load_trip_graph(
     stop_rows, phases, snapshots, checkpoints = await _load_route(db, trip.id)
     exceptions = await _load_exceptions(db, trip.id, scope_id)
     substitutions, drivers, horse, trailers = await _load_crew(db, trip)
+    custody = await load_custody_facts(db, trip_id=trip.id, substitutions=substitutions)
 
     window_start = min(
         (p.completed_at for p in phases if p.completed_at is not None and p.phase_type != PhaseType.TRIP_CREATION),
@@ -558,7 +563,7 @@ async def _load_trip_graph(
     return _TripGraph(
         trip=trip, consignments=consignments, in_scope=in_scope, parcels=parcels, stop_rows=stop_rows,
         phases=phases, snapshots=snapshots, checkpoints=checkpoints, exceptions=exceptions,
-        exception_photos=exception_photos, evidence_events=evidence_events, substitutions=substitutions, drivers=drivers, horse=horse, trailers=trailers,
+        exception_photos=exception_photos, evidence_events=evidence_events, substitutions=substitutions, custody=custody, drivers=drivers, horse=horse, trailers=trailers,
         vehicle_events=vehicle_events, driver_events=driver_events, receipts=receipts, artifacts=artifacts,
         pings=pings, orgs=orgs, users=users, window_start=window_start, window_end=window_end,
     )
@@ -758,17 +763,7 @@ def _vehicle_record(vehicle: Vehicle, role: Literal["horse", "trailer"], trip_da
 def _driver_record(graph: _TripGraph, *, include_full_id: bool, trip_date: date) -> DriverRecord:
     drivers = graph.drivers
     driver = drivers[graph.trip.driver_id]
-    substitutions = [
-        DriverSubstitutionRecord(
-            substitution_id=s.id,
-            original_driver_name=drivers[s.original_driver_id].full_name,
-            substituting_driver_name=drivers[s.substituting_driver_id].full_name,
-            exchange_location=s.exchange_location, is_planned=s.is_planned, substitution_at=s.substitution_at,
-            anchor_receipt_id=s.blockchain_receipt_id,
-            tier="anchored" if s.blockchain_receipt_id is not None else "recorded",
-        )
-        for s in graph.substitutions
-    ]
+    substitutions = substitution_records(graph.substitutions, graph.custody, drivers)
     return DriverRecord(
         driver_id=driver.id, full_name=driver.full_name,
         id_number=driver.id_number if include_full_id else mask_id_number(driver.id_number),
@@ -884,6 +879,7 @@ async def build_audit_manifest(
         # location fact a claim form and a SAPS docket cannot do without.
         incident=summarise_incident(exception_records, fixes=all_fixes),
         declarations=declarations,
+        late_evidence=late_evidence_records(graph.custody, graph.drivers),
         observations=[],
         redactions=redactions,
     )

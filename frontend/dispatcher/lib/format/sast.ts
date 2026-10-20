@@ -9,3 +9,10 @@ export function sastInputToIso(value: string): string | null {
   if (!value) return null
   return `${value.length === MINUTE_PRECISION_LENGTH ? `${value}:00` : value}${SAST_OFFSET}`
 }
+
+const SAST_OFFSET_MS = 2 * 60 * 60 * 1000
+
+/** The inverse, for pre-filling an input: any ISO instant → its SAST "YYYY-MM-DDTHH:mm". */
+export function isoToSastInput(iso: string): string {
+  return new Date(new Date(iso).getTime() + SAST_OFFSET_MS).toISOString().slice(0, MINUTE_PRECISION_LENGTH)
+}

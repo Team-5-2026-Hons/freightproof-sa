@@ -1,6 +1,28 @@
 {
   "components": {
     "schemas": {
+      "AcknowledgeLateEvidenceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "note"
+        ],
+        "title": "AcknowledgeLateEvidenceRequest",
+        "type": "object"
+      },
       "ActionLocationAssessment": {
         "additionalProperties": false,
         "description": "One evaluated snapshot: a driver/truck proximity verdict plus the\nprecinct-membership facts evaluated alongside it.\n\n`frozen=True`: an assessment is a record of what was observed at\n`evaluated_at` — mutating it after construction would let a caller silently\nrewrite history. `extra=\"forbid\"`: a field this contract does not know about\nis a sign the wire format has drifted between backend and frontend, and\nshould fail loudly rather than pass through unnoticed.",
@@ -570,6 +592,49 @@
         "title": "AnchoredRecord",
         "type": "object"
       },
+      "ArrangeSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "exchange": {
+            "$ref": "#/components/schemas/ExchangePoint"
+          },
+          "expected_at": {
+            "format": "date-time",
+            "title": "Expected At",
+            "type": "string"
+          },
+          "incoming_driver_id": {
+            "format": "uuid",
+            "title": "Incoming Driver Id",
+            "type": "string"
+          },
+          "is_planned": {
+            "title": "Is Planned",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incoming_driver_id",
+          "exchange",
+          "expected_at",
+          "is_planned",
+          "reason",
+          "client_request_id"
+        ],
+        "title": "ArrangeSubstitutionRequest",
+        "type": "object"
+      },
       "ArrivalCompleteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -933,6 +998,14 @@
                 "type": "null"
               }
             ]
+          },
+          "late_evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LateEvidenceRecord"
+            },
+            "title": "Late Evidence",
+            "type": "array"
           },
           "location_coverage": {
             "$ref": "#/components/schemas/LocationCoverage"
@@ -1367,7 +1440,8 @@
           "audit_pack_issued",
           "exception_raised",
           "exception_reviewed",
-          "trip_cancelled"
+          "trip_cancelled",
+          "driver_substitution_corrected"
         ],
         "title": "BlockchainReceiptType",
         "type": "string"
@@ -1464,6 +1538,132 @@
         "title": "Body_upload_artifact_endpoint_api_v1_artifacts_post",
         "type": "object"
       },
+      "Body_upload_handover_artifact_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__artifacts_post": {
+        "properties": {
+          "artifact_type": {
+            "$ref": "#/components/schemas/ArtifactType"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "captured_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured Lat"
+          },
+          "captured_lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured Lng"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SubstitutionRole"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "artifact_type",
+          "captured_at",
+          "file",
+          "role"
+        ],
+        "title": "Body_upload_handover_artifact_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__artifacts_post",
+        "type": "object"
+      },
+      "Body_upload_late_artifact_endpoint_api_v1_trips_me__trip_id__late_evidence_artifacts_post": {
+        "properties": {
+          "artifact_type": {
+            "$ref": "#/components/schemas/ArtifactType"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "captured_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured Lat"
+          },
+          "captured_lng": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured Lng"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "custody_sequence",
+          "client_request_id",
+          "artifact_type",
+          "captured_at",
+          "file"
+        ],
+        "title": "Body_upload_late_artifact_endpoint_api_v1_trips_me__trip_id__late_evidence_artifacts_post",
+        "type": "object"
+      },
       "BusyEntry": {
         "description": "One driver, horse or trailer, and the trip that has it in the asked-about window.",
         "properties": {
@@ -1533,6 +1733,34 @@
           "planned_until"
         ],
         "title": "BusyEntry",
+        "type": "object"
+      },
+      "CancelSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "reason"
+        ],
+        "title": "CancelSubstitutionRequest",
         "type": "object"
       },
       "CancelTripRequest": {
@@ -1865,6 +2093,161 @@
         "title": "CheckpointRecord",
         "type": "object"
       },
+      "CompleteSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "declared_exchange_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declared Exchange At"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "identity_unavailable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Unavailable Reason"
+          },
+          "missing_confirmation_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Confirmation Reason"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version"
+        ],
+        "title": "CompleteSubstitutionRequest",
+        "type": "object"
+      },
+      "ConfirmSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy_metres": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accuracy Metres"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "confirmed_vehicle_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Confirmed Vehicle Ids",
+            "type": "array"
+          },
+          "discrepancy_note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discrepancy Note"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "seal_checks": {
+            "items": {
+              "$ref": "#/components/schemas/SealCheck"
+            },
+            "title": "Seal Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "captured_at",
+          "confirmed_vehicle_ids",
+          "seal_checks"
+        ],
+        "title": "ConfirmSubstitutionRequest",
+        "type": "object"
+      },
       "ConfirmationCompleteRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1994,6 +2377,43 @@
           "pod_signature_artifact_id"
         ],
         "title": "ConfirmationCompleteRequest",
+        "type": "object"
+      },
+      "ConfirmationSummary": {
+        "description": "A submitted capture, without its evidence. An upload alone is never a confirmation.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SubstitutionRole"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "driver_id",
+          "captured_at",
+          "received_at"
+        ],
+        "title": "ConfirmationSummary",
         "type": "object"
       },
       "ConsignmentManifest": {
@@ -2358,6 +2778,35 @@
           "parcels"
         ],
         "title": "ConsignmentRecord",
+        "type": "object"
+      },
+      "CorrectSubstitutionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "correction_note": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Correction Note",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "reason",
+          "correction_note"
+        ],
+        "title": "CorrectSubstitutionRequest",
         "type": "object"
       },
       "CostBucket": {
@@ -2817,6 +3266,96 @@
         "title": "CursorPage[TripHistoryListItemResponse]",
         "type": "object"
       },
+      "CustodyIntegrityRead": {
+        "description": "Dispatcher-only result of verifying the full custody chain.",
+        "properties": {
+          "amendment_count": {
+            "minimum": 0.0,
+            "title": "Amendment Count",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "pending_anchor_count": {
+            "minimum": 0.0,
+            "title": "Pending Anchor Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CustodyIntegrityStatus"
+          }
+        },
+        "required": [
+          "status",
+          "amendment_count",
+          "pending_anchor_count",
+          "findings"
+        ],
+        "title": "CustodyIntegrityRead",
+        "type": "object"
+      },
+      "CustodyIntegrityStatus": {
+        "enum": [
+          "verified",
+          "pending",
+          "failed"
+        ],
+        "title": "CustodyIntegrityStatus",
+        "type": "string"
+      },
+      "CustodyPeriodRead": {
+        "properties": {
+          "completion_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          }
+        },
+        "required": [
+          "custody_sequence"
+        ],
+        "title": "CustodyPeriodRead",
+        "type": "object"
+      },
       "DayBlock": {
         "description": "A quarter of the South African day, for chart 3.5 (risky times of day).",
         "enum": [
@@ -3158,6 +3697,34 @@
         "title": "DispatcherRole",
         "type": "string"
       },
+      "DriverAccess": {
+        "properties": {
+          "can_advance": {
+            "title": "Can Advance",
+            "type": "boolean"
+          },
+          "can_submit_late_evidence": {
+            "title": "Can Submit Late Evidence",
+            "type": "boolean"
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "participation": {
+            "$ref": "#/components/schemas/DriverParticipation"
+          }
+        },
+        "required": [
+          "participation",
+          "custody_sequence",
+          "can_advance",
+          "can_submit_late_evidence"
+        ],
+        "title": "DriverAccess",
+        "type": "object"
+      },
       "DriverCheckpointCreateBody": {
         "additionalProperties": false,
         "description": "Slim checkpoint-creation body for the driver endpoint — trip_id comes from the URL path.\n\nUnlike CheckpointBase above (a read shape, which must echo whatever is already\nstored), this is client input and carries the full constraint set: bounded strings,\nand GPS ranges matching the ones TripExceptionBase already enforces. Both coordinate\npairs are a driver-supplied position on an evidence record, so an out-of-range value\nis a 422, not a row that can never be plotted.",
@@ -3326,6 +3893,31 @@
           "checkpoint_type"
         ],
         "title": "DriverCheckpointCreateBody",
+        "type": "object"
+      },
+      "DriverContact": {
+        "description": "What the other party may see of a driver: no identity number, licence number or\nverification vendor data.",
+        "properties": {
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "phone_number": {
+            "title": "Phone Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "full_name",
+          "phone_number"
+        ],
+        "title": "DriverContact",
         "type": "object"
       },
       "DriverCreateBody": {
@@ -3912,6 +4504,11 @@
             "title": "Phase Events Count",
             "type": "integer"
           },
+          "shared_trip_count": {
+            "default": 0,
+            "title": "Shared Trip Count",
+            "type": "integer"
+          },
           "total_exceptions_count": {
             "title": "Total Exceptions Count",
             "type": "integer"
@@ -3982,6 +4579,70 @@
           "confirmation_dwell_minutes_avg"
         ],
         "title": "DriverMetricsResponse",
+        "type": "object"
+      },
+      "DriverParticipation": {
+        "enum": [
+          "current",
+          "former"
+        ],
+        "title": "DriverParticipation",
+        "type": "string"
+      },
+      "DriverParticipationHistoryRead": {
+        "description": "What a known former (or current) participant may see of their own periods. No later\nlive tracker trail, other drivers' identity details, cargo manifest or exception stream.",
+        "properties": {
+          "action_references": {
+            "items": {
+              "$ref": "#/components/schemas/ParticipationActionRef"
+            },
+            "title": "Action References",
+            "type": "array"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactWithUrl"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "custody_periods": {
+            "items": {
+              "$ref": "#/components/schemas/CustodyPeriodRead"
+            },
+            "title": "Custody Periods",
+            "type": "array"
+          },
+          "declarations": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionConfirmationDetail"
+            },
+            "title": "Declarations",
+            "type": "array"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "custody_periods",
+          "action_references",
+          "artifacts",
+          "declarations"
+        ],
+        "title": "DriverParticipationHistoryRead",
         "type": "object"
       },
       "DriverRead": {
@@ -4154,6 +4815,212 @@
         "title": "DriverRecord",
         "type": "object"
       },
+      "DriverSubstitutionContextRead": {
+        "description": "The ongoing-collection context for a pending incoming/outgoing driver. Stops and\nfindings reuse the existing driver-safe shapes rather than inventing parcel data.",
+        "properties": {
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactWithUrl"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "completed_substitution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Substitution Id"
+          },
+          "completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_blocked_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionBlocker"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionConfirmationDetail"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhaseType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "exchange": {
+            "$ref": "#/components/schemas/ExchangePoint"
+          },
+          "expected_at": {
+            "format": "date-time",
+            "title": "Expected At",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TripExceptionRead"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/IdentitySnapshot"
+          },
+          "incoming": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "is_planned": {
+            "title": "Is Planned",
+            "type": "boolean"
+          },
+          "missing_confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionRole"
+            },
+            "title": "Missing Confirmations",
+            "type": "array"
+          },
+          "outgoing": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "permitted_actions": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionAction"
+            },
+            "title": "Permitted Actions",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "remaining_stops": {
+            "items": {
+              "$ref": "#/components/schemas/TripStopRead"
+            },
+            "title": "Remaining Stops",
+            "type": "array"
+          },
+          "replacement_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Request Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SubstitutionState"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "vehicles": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleRef"
+            },
+            "title": "Vehicles",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "trip_id",
+          "trip_reference",
+          "version",
+          "state",
+          "outgoing",
+          "incoming",
+          "vehicles",
+          "exchange",
+          "expected_at",
+          "is_planned",
+          "reason",
+          "created_at",
+          "confirmations",
+          "identity",
+          "missing_confirmations",
+          "permitted_actions",
+          "remaining_stops",
+          "findings",
+          "artifacts"
+        ],
+        "title": "DriverSubstitutionContextRead",
+        "type": "object"
+      },
       "DriverSubstitutionRecord": {
         "additionalProperties": false,
         "properties": {
@@ -4169,17 +5036,140 @@
             ],
             "title": "Anchor Receipt Id"
           },
+          "arranged_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arranged By Name"
+          },
+          "commitment_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commitment Sha256"
+          },
+          "completed_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "driver",
+                  "dispatcher"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By"
+          },
+          "completion_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Mode"
+          },
+          "declarations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HandoverDeclarationRecord"
+            },
+            "title": "Declarations",
+            "type": "array"
+          },
           "exchange_location": {
             "title": "Exchange Location",
             "type": "string"
+          },
+          "identity_attested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Attested At"
+          },
+          "identity_attested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Attested By Name"
+          },
+          "incoming_identity_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incoming Identity Status"
+          },
+          "incoming_licence_expiry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incoming Licence Expiry"
           },
           "is_planned": {
             "title": "Is Planned",
             "type": "boolean"
           },
+          "missing_confirmation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Confirmation Reason"
+          },
           "original_driver_name": {
             "title": "Original Driver Name",
             "type": "string"
+          },
+          "sequence_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence Number"
           },
           "substituting_driver_name": {
             "title": "Substituting Driver Name",
@@ -4251,6 +5241,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "custody_sequence": {
+            "default": 0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
           "destination_precinct_id": {
             "anyOf": [
               {
@@ -4279,6 +5274,18 @@
             "title": "Id",
             "type": "string"
           },
+          "last_participation_ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Participation Ended At"
+          },
           "needs_review_count": {
             "title": "Needs Review Count",
             "type": "integer"
@@ -4305,6 +5312,16 @@
               }
             ],
             "title": "Origin Precinct Name"
+          },
+          "participation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverParticipation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "planned_arrival_at": {
             "anyOf": [
@@ -5463,6 +6480,41 @@
         "title": "ExceptionType",
         "type": "string"
       },
+      "ExchangePoint": {
+        "properties": {
+          "instructions": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Instructions",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "label",
+          "latitude",
+          "longitude"
+        ],
+        "title": "ExchangePoint",
+        "type": "object"
+      },
       "ExpiryBands": {
         "description": "Separate bands, never cumulative. Further out than 180 days is in none of them.",
         "properties": {
@@ -5723,6 +6775,71 @@
         "title": "HandoverConsentRequest",
         "type": "object"
       },
+      "HandoverDeclarationRecord": {
+        "additionalProperties": false,
+        "description": "One driver's own capture at a handover (FP-83): what they declared, on their device.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "discrepancy_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discrepancy Note"
+          },
+          "driver_name": {
+            "title": "Driver Name",
+            "type": "string"
+          },
+          "location_recorded": {
+            "title": "Location Recorded",
+            "type": "boolean"
+          },
+          "photo_sha256": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Photo Sha256",
+            "type": "array"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "seal_readings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Seal Readings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "role",
+          "driver_name",
+          "captured_at",
+          "received_at",
+          "location_recorded",
+          "seal_readings",
+          "photo_sha256",
+          "discrepancy_note"
+        ],
+        "title": "HandoverDeclarationRecord",
+        "type": "object"
+      },
       "HandoverResolveRequest": {
         "description": "What the receiver typed, for the identity cross-check against the vendor's document.\n\nA body, not query parameters: a name and an ID number in a URL are written to the\naccess log, proxy logs and platform logs. Defaults stay empty (not required) so a\nreceiver whose storage was cleared across the vendor redirect can still resolve;\nempty simply compares as \"nothing typed\". Still no session identifier: the server\nuses the one it stored itself.",
         "properties": {
@@ -5974,6 +7091,43 @@
           "checks"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IdentitySnapshot": {
+        "description": "The incoming driver's fleet verification status as observed. An admin attestation is a\nseparate fact and never rewrites this status.",
+        "properties": {
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IdvsStatus"
+          }
+        },
+        "required": [
+          "driver_id",
+          "status",
+          "observed_at"
+        ],
+        "title": "IdentitySnapshot",
         "type": "object"
       },
       "IdvsStatus": {
@@ -6774,6 +7928,510 @@
           "problems_per_trip"
         ],
         "title": "LaneRisk",
+        "type": "object"
+      },
+      "LateCheckpointEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "checkpoint",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/DriverCheckpointCreateBody"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "title": "LateCheckpointEvidence",
+        "type": "object"
+      },
+      "LateEvidenceDetailRead": {
+        "description": "Dispatcher view: the retained typed evidence, its commitment and scoped artifact URLs,\nso acknowledgement follows an actual review.",
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceArtifactWithUrl"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "evidence": {
+            "discriminator": {
+              "mapping": {
+                "checkpoint": "#/components/schemas/LateCheckpointEvidence",
+                "exception": "#/components/schemas/LateExceptionEvidence",
+                "location": "#/components/schemas/LateLocationEvidence",
+                "phase": "#/components/schemas/LatePhaseEvidence"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LatePhaseEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateCheckpointEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateLocationEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateExceptionEvidence"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload_sha256": {
+            "title": "Payload Sha256",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By User Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LateEvidenceStatus"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trip_id",
+          "driver_id",
+          "custody_sequence",
+          "captured_at",
+          "received_at",
+          "status",
+          "artifact_ids",
+          "evidence",
+          "payload_sha256",
+          "artifacts"
+        ],
+        "title": "LateEvidenceDetailRead",
+        "type": "object"
+      },
+      "LateEvidenceKind": {
+        "enum": [
+          "phase",
+          "checkpoint",
+          "location",
+          "exception"
+        ],
+        "title": "LateEvidenceKind",
+        "type": "string"
+      },
+      "LateEvidenceRead": {
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed By User Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LateEvidenceStatus"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "trip_id",
+          "driver_id",
+          "custody_sequence",
+          "captured_at",
+          "received_at",
+          "status",
+          "artifact_ids"
+        ],
+        "title": "LateEvidenceRead",
+        "type": "object"
+      },
+      "LateEvidenceRecord": {
+        "additionalProperties": false,
+        "description": "Evidence a driver captured in an earlier custody period, retained for review (FP-83).\nIt never completed a phase; `payload_sha256` is a local commitment, not a Hedera receipt.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "custody_sequence": {
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "driver_name": {
+            "title": "Driver Name",
+            "type": "string"
+          },
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload_sha256": {
+            "title": "Payload Sha256",
+            "type": "string"
+          },
+          "photo_sha256": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Photo Sha256",
+            "type": "array"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "driver_name",
+          "custody_sequence",
+          "kind",
+          "captured_at",
+          "received_at",
+          "status",
+          "payload_sha256",
+          "photo_sha256",
+          "reviewed_at"
+        ],
+        "title": "LateEvidenceRecord",
+        "type": "object"
+      },
+      "LateEvidenceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Artifact Ids",
+            "type": "array"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "evidence": {
+            "discriminator": {
+              "mapping": {
+                "checkpoint": "#/components/schemas/LateCheckpointEvidence",
+                "exception": "#/components/schemas/LateExceptionEvidence",
+                "location": "#/components/schemas/LateLocationEvidence",
+                "phase": "#/components/schemas/LatePhaseEvidence"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LatePhaseEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateCheckpointEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateLocationEvidence"
+              },
+              {
+                "$ref": "#/components/schemas/LateExceptionEvidence"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "original_idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Idempotency Key"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "custody_sequence",
+          "captured_at",
+          "evidence",
+          "artifact_ids"
+        ],
+        "title": "LateEvidenceRequest",
+        "type": "object"
+      },
+      "LateEvidenceStatus": {
+        "enum": [
+          "awaiting_review",
+          "acknowledged"
+        ],
+        "title": "LateEvidenceStatus",
+        "type": "string"
+      },
+      "LateExceptionEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "exception",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/DriverExceptionCreateBody"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "title": "LateExceptionEvidence",
+        "type": "object"
+      },
+      "LateLocationEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "location",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/LocationPingBatch"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "title": "LateLocationEvidence",
+        "type": "object"
+      },
+      "LatePhaseEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "phase",
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "activation": "#/components/schemas/ActivationCompleteRequest",
+                "arrival": "#/components/schemas/ArrivalCompleteRequest",
+                "confirmation": "#/components/schemas/ConfirmationCompleteRequest",
+                "departure": "#/components/schemas/DepartureCompleteRequest",
+                "in_transit": "#/components/schemas/InTransitCompleteRequest",
+                "loading": "#/components/schemas/LoadingCompleteRequest",
+                "unloading": "#/components/schemas/UnloadingCompleteRequest"
+              },
+              "propertyName": "phase_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActivationCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/LoadingCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/DepartureCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/InTransitCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ArrivalCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/UnloadingCompleteRequest"
+              },
+              {
+                "$ref": "#/components/schemas/ConfirmationCompleteRequest"
+              }
+            ],
+            "title": "Payload"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "title": "LatePhaseEvidence",
         "type": "object"
       },
       "Lateness": {
@@ -8866,6 +10524,37 @@
         "title": "ParcelTraceResponse",
         "type": "object"
       },
+      "ParticipationActionRef": {
+        "description": "An opaque reference to one of this driver's own immutable actions.",
+        "properties": {
+          "custody_sequence": {
+            "minimum": 0.0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LateEvidenceKind"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "custody_sequence",
+          "recorded_at"
+        ],
+        "title": "ParticipationActionRef",
+        "type": "object"
+      },
       "PatternBar": {
         "description": "One bar of a busy-pattern chart: an hour, weekday, date or month.",
         "properties": {
@@ -10737,6 +12426,63 @@
         "title": "RecordChange",
         "type": "object"
       },
+      "ReplaceSubstitutionRequest": {
+        "additionalProperties": false,
+        "description": "Cancels the old request and creates a fresh one atomically: the complete new\narrangement, with its own ``reason``, plus why it replaces the old one.",
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "exchange": {
+            "$ref": "#/components/schemas/ExchangePoint"
+          },
+          "expected_at": {
+            "format": "date-time",
+            "title": "Expected At",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "incoming_driver_id": {
+            "format": "uuid",
+            "title": "Incoming Driver Id",
+            "type": "string"
+          },
+          "is_planned": {
+            "title": "Is Planned",
+            "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "replacement_reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Replacement Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incoming_driver_id",
+          "exchange",
+          "expected_at",
+          "is_planned",
+          "reason",
+          "client_request_id",
+          "expected_version",
+          "replacement_reason"
+        ],
+        "title": "ReplaceSubstitutionRequest",
+        "type": "object"
+      },
       "ReviewAgeBand": {
         "description": "Chart 4.1: how long critical problems have waited for review.",
         "enum": [
@@ -10883,6 +12629,58 @@
           "lanes"
         ],
         "title": "RoutesResponse",
+        "type": "object"
+      },
+      "SealCheck": {
+        "additionalProperties": false,
+        "description": "One vehicle's seal declaration at a handover (contract \"Types\" and seal rules).",
+        "properties": {
+          "condition": {
+            "$ref": "#/components/schemas/SubstitutionSealCondition"
+          },
+          "not_applicable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Applicable Reason"
+          },
+          "photo_artifact_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Photo Artifact Ids",
+            "type": "array"
+          },
+          "seal_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Number"
+          },
+          "vehicle_id": {
+            "format": "uuid",
+            "title": "Vehicle Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicle_id",
+          "condition"
+        ],
+        "title": "SealCheck",
         "type": "object"
       },
       "SealCondition": {
@@ -11169,9 +12967,553 @@
           "phase_event",
           "precinct_event",
           "audit_pack",
-          "evidence_event"
+          "evidence_event",
+          "driver_substitution",
+          "driver_substitution_correction"
         ],
         "title": "SubjectType",
+        "type": "string"
+      },
+      "SubstitutionAction": {
+        "enum": [
+          "confirm_outgoing",
+          "confirm_incoming",
+          "cancel",
+          "replace",
+          "complete_attested",
+          "attest_identity"
+        ],
+        "title": "SubstitutionAction",
+        "type": "string"
+      },
+      "SubstitutionCompletionBlocker": {
+        "description": "Declaration order IS the contract's fixed precedence when several checks fail.",
+        "enum": [
+          "incoming_driver_inactive",
+          "licence_invalid",
+          "driver_unavailable",
+          "identity_not_verified"
+        ],
+        "title": "SubstitutionCompletionBlocker",
+        "type": "string"
+      },
+      "SubstitutionCompletionMode": {
+        "enum": [
+          "normal",
+          "dispatcher_attested"
+        ],
+        "title": "SubstitutionCompletionMode",
+        "type": "string"
+      },
+      "SubstitutionCompletionRead": {
+        "description": "Who caused completion; exactly one actor, matching the trigger.",
+        "properties": {
+          "completed_by_driver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By Driver Id"
+          },
+          "completed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By User Id"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/SubstitutionCompletionTrigger"
+          }
+        },
+        "required": [
+          "trigger"
+        ],
+        "title": "SubstitutionCompletionRead",
+        "type": "object"
+      },
+      "SubstitutionCompletionTrigger": {
+        "enum": [
+          "driver_confirmation",
+          "dispatcher_action"
+        ],
+        "title": "SubstitutionCompletionTrigger",
+        "type": "string"
+      },
+      "SubstitutionConfirmationDetail": {
+        "description": "Summary plus the permitted declaration, for the context read and participation history.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "confirmed_vehicle_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Confirmed Vehicle Ids",
+            "type": "array"
+          },
+          "discrepancy_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discrepancy Note"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SubstitutionRole"
+          },
+          "seal_checks": {
+            "items": {
+              "$ref": "#/components/schemas/SealCheck"
+            },
+            "title": "Seal Checks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "driver_id",
+          "captured_at",
+          "received_at",
+          "confirmed_vehicle_ids",
+          "seal_checks"
+        ],
+        "title": "SubstitutionConfirmationDetail",
+        "type": "object"
+      },
+      "SubstitutionCorrectionRead": {
+        "description": "An appended clarification — never an edit and never a new custody assignment.",
+        "properties": {
+          "anchor_status": {
+            "$ref": "#/components/schemas/AnchorStatus"
+          },
+          "correction_note": {
+            "title": "Correction Note",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "receipt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by_user_id": {
+            "format": "uuid",
+            "title": "Recorded By User Id",
+            "type": "string"
+          },
+          "substitution_id": {
+            "format": "uuid",
+            "title": "Substitution Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "substitution_id",
+          "recorded_by_user_id",
+          "recorded_at",
+          "reason",
+          "correction_note",
+          "anchor_status"
+        ],
+        "title": "SubstitutionCorrectionRead",
+        "type": "object"
+      },
+      "SubstitutionErrorCode": {
+        "enum": [
+          "TRIP_HANDED_OVER",
+          "CUSTODY_CONTEXT_CHANGED",
+          "CUSTODY_CONTEXT_REQUIRED",
+          "SUBSTITUTION_VERSION_CHANGED",
+          "SUBSTITUTION_NOT_PENDING",
+          "DRIVER_UNAVAILABLE",
+          "INCOMING_DRIVER_INACTIVE",
+          "LICENCE_INVALID",
+          "IDENTITY_ATTESTATION_FORBIDDEN",
+          "IDENTITY_NOT_VERIFIED",
+          "IDEMPOTENCY_KEY_REUSED",
+          "EVIDENCE_ALREADY_RECORDED",
+          "SUBSTITUTIONS_DISABLED"
+        ],
+        "title": "SubstitutionErrorCode",
+        "type": "string"
+      },
+      "SubstitutionErrorDetail": {
+        "description": "FastAPI's ``detail`` object for a domain conflict. Existing clients must also parse the\nlegacy string ``detail``.",
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/SubstitutionErrorCode"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "SubstitutionErrorDetail",
+        "type": "object"
+      },
+      "SubstitutionErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/SubstitutionErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "SubstitutionErrorResponse",
+        "type": "object"
+      },
+      "SubstitutionNoticeKind": {
+        "enum": [
+          "arranged",
+          "cancelled",
+          "completed"
+        ],
+        "title": "SubstitutionNoticeKind",
+        "type": "string"
+      },
+      "SubstitutionNoticeRead": {
+        "description": "Details require an authorised fetch; the notice itself carries references only.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SubstitutionNoticeKind"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "request_id",
+          "trip_id",
+          "kind",
+          "created_at"
+        ],
+        "title": "SubstitutionNoticeRead",
+        "type": "object"
+      },
+      "SubstitutionRequestRead": {
+        "description": "An explicit response schema, not a raw ORM dump (contract \"Types\").",
+        "properties": {
+          "completed_substitution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Substitution Id"
+          },
+          "completion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_blocked_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionBlocker"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completion_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionCompletionMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/ConfirmationSummary"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "exchange": {
+            "$ref": "#/components/schemas/ExchangePoint"
+          },
+          "expected_at": {
+            "format": "date-time",
+            "title": "Expected At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/IdentitySnapshot"
+          },
+          "incoming": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "is_planned": {
+            "title": "Is Planned",
+            "type": "boolean"
+          },
+          "missing_confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionRole"
+            },
+            "title": "Missing Confirmations",
+            "type": "array"
+          },
+          "outgoing": {
+            "$ref": "#/components/schemas/DriverContact"
+          },
+          "permitted_actions": {
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionAction"
+            },
+            "title": "Permitted Actions",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "replacement_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement Request Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SubstitutionState"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "vehicles": {
+            "items": {
+              "$ref": "#/components/schemas/VehicleRef"
+            },
+            "title": "Vehicles",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "trip_id",
+          "trip_reference",
+          "version",
+          "state",
+          "outgoing",
+          "incoming",
+          "vehicles",
+          "exchange",
+          "expected_at",
+          "is_planned",
+          "reason",
+          "created_at",
+          "confirmations",
+          "identity",
+          "missing_confirmations",
+          "permitted_actions"
+        ],
+        "title": "SubstitutionRequestRead",
+        "type": "object"
+      },
+      "SubstitutionRole": {
+        "enum": [
+          "outgoing",
+          "incoming"
+        ],
+        "title": "SubstitutionRole",
+        "type": "string"
+      },
+      "SubstitutionSealCondition": {
+        "description": "Deliberately NOT the phase ``SealCondition``: not_applicable is a substitution-only\nanswer (an empty leg has no seal) and must never become a legal phase seal value.",
+        "enum": [
+          "intact",
+          "damaged",
+          "missing",
+          "not_applicable"
+        ],
+        "title": "SubstitutionSealCondition",
+        "type": "string"
+      },
+      "SubstitutionState": {
+        "enum": [
+          "pending",
+          "completed",
+          "cancelled"
+        ],
+        "title": "SubstitutionState",
         "type": "string"
       },
       "TheftSignalsBucket": {
@@ -11552,6 +13894,21 @@
             ],
             "title": "Current Stop"
           },
+          "custody_integrity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustodyIntegrityRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custody_sequence": {
+            "default": 0,
+            "title": "Custody Sequence",
+            "type": "integer"
+          },
           "destination_precinct_id": {
             "format": "uuid",
             "title": "Destination Precinct Id",
@@ -11559,6 +13916,35 @@
           },
           "driver": {
             "$ref": "#/components/schemas/DriverRead"
+          },
+          "driver_access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverAccess"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "driver_substitutions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SubstitutionRequestRead"
+            },
+            "title": "Driver Substitutions",
+            "type": "array"
+          },
+          "driver_substitutions_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Substitutions Enabled"
           },
           "exceptions": {
             "items": {
@@ -11593,6 +13979,26 @@
             "format": "uuid",
             "title": "Origin Precinct Id",
             "type": "string"
+          },
+          "original_driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DriverRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pending_driver_substitution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstitutionRequestRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "phases": {
             "items": {
@@ -14314,6 +16720,29 @@
           "tracker_device_id"
         ],
         "title": "VehicleRecord",
+        "type": "object"
+      },
+      "VehicleRef": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "registration": {
+            "title": "Registration",
+            "type": "string"
+          },
+          "vehicle_type": {
+            "$ref": "#/components/schemas/VehicleType"
+          }
+        },
+        "required": [
+          "id",
+          "registration",
+          "vehicle_type"
+        ],
+        "title": "VehicleRef",
         "type": "object"
       },
       "VehicleStreakResponse": {
@@ -18300,6 +20729,138 @@
         ]
       }
     },
+    "/api/v1/trips/me/driver-substitutions": {
+      "get": {
+        "description": "Pending handovers naming this driver; independent of /trips/me/active.",
+        "operationId": "my_substitutions_endpoint_api_v1_trips_me_driver_substitutions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubstitutionRequestRead"
+                  },
+                  "title": "Response My Substitutions Endpoint Api V1 Trips Me Driver Substitutions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Substitutions Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/substitution-notices": {
+      "get": {
+        "operationId": "my_notices_endpoint_api_v1_trips_me_substitution_notices_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "unread_only",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Unread Only",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubstitutionNoticeRead"
+                  },
+                  "title": "Response My Notices Endpoint Api V1 Trips Me Substitution Notices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Notices Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/substitution-notices/{notice_id}/read": {
+      "post": {
+        "description": "Marks the notice read. Never a confirmation and never a custody change.",
+        "operationId": "read_notice_endpoint_api_v1_trips_me_substitution_notices__notice_id__read_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notice_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notice Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionNoticeRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Notice Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
     "/api/v1/trips/me/{trip_id}": {
       "get": {
         "description": "404 when the trip belongs to another driver — deliberately indistinguishable\nfrom a non-existent trip, so this cannot be used to probe for real trip ids.",
@@ -18346,6 +20907,447 @@
         "summary": "Full detail for one of the driver's own trips",
         "tags": [
           "trips"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/driver-substitutions/{request_id}": {
+      "get": {
+        "operationId": "my_substitution_context_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverSubstitutionContextRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Substitution Context Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/driver-substitutions/{request_id}/artifacts": {
+      "post": {
+        "description": "A photo for the caller's own side of a pending handover (no phase_event_id).",
+        "operationId": "upload_handover_artifact_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__artifacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_handover_artifact_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__artifacts_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceArtifactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Handover Artifact Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/driver-substitutions/{request_id}/confirmations": {
+      "post": {
+        "description": "200 whenever the capture was saved, including a pending request with completion_blocked_by.",
+        "operationId": "confirm_substitution_endpoint_api_v1_trips_me__trip_id__driver_substitutions__request_id__confirmations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/late-evidence": {
+      "post": {
+        "description": "Retained for review; never advances a phase or changes custody.",
+        "operationId": "submit_late_evidence_endpoint_api_v1_trips_me__trip_id__late_evidence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LateEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LateEvidenceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Late Evidence Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/late-evidence/artifacts": {
+      "post": {
+        "operationId": "upload_late_artifact_endpoint_api_v1_trips_me__trip_id__late_evidence_artifacts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_late_artifact_endpoint_api_v1_trips_me__trip_id__late_evidence_artifacts_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceArtifactRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Late Artifact Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/me/{trip_id}/participation": {
+      "get": {
+        "operationId": "my_participation_endpoint_api_v1_trips_me__trip_id__participation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverParticipationHistoryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My Participation Endpoint",
+        "tags": [
+          "driver-substitutions"
         ]
       }
     },
@@ -18991,6 +21993,554 @@
         ]
       }
     },
+    "/api/v1/trips/{trip_id}/driver-substitutions": {
+      "get": {
+        "operationId": "list_substitutions_endpoint_api_v1_trips__trip_id__driver_substitutions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubstitutionRequestRead"
+                  },
+                  "title": "Response List Substitutions Endpoint Api V1 Trips  Trip Id  Driver Substitutions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Substitutions Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      },
+      "post": {
+        "operationId": "arrange_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArrangeSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Arrange Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/completed/{substitution_id}/corrections": {
+      "post": {
+        "operationId": "correct_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions_completed__substitution_id__corrections_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "substitution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Substitution Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionCorrectionRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Correct Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/{request_id}": {
+      "get": {
+        "operationId": "get_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions__request_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/{request_id}/cancel": {
+      "post": {
+        "operationId": "cancel_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions__request_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/{request_id}/complete": {
+      "post": {
+        "operationId": "complete_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions__request_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Complete Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/driver-substitutions/{request_id}/replace": {
+      "post": {
+        "operationId": "replace_substitution_endpoint_api_v1_trips__trip_id__driver_substitutions__request_id__replace_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceSubstitutionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionRequestRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replace Substitution Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
     "/api/v1/trips/{trip_id}/exceptions": {
       "post": {
         "operationId": "raise_exception_endpoint_api_v1_trips__trip_id__exceptions_post",
@@ -19154,6 +22704,146 @@
         "summary": "Declare police-report and notification facts for a trip's incident",
         "tags": [
           "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/late-evidence": {
+      "get": {
+        "operationId": "list_late_evidence_endpoint_api_v1_trips__trip_id__late_evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LateEvidenceDetailRead"
+                  },
+                  "title": "Response List Late Evidence Endpoint Api V1 Trips  Trip Id  Late Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Late Evidence Endpoint",
+        "tags": [
+          "driver-substitutions"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/late-evidence/{evidence_id}/acknowledge": {
+      "post": {
+        "operationId": "acknowledge_late_evidence_endpoint_api_v1_trips__trip_id__late_evidence__evidence_id__acknowledge_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcknowledgeLateEvidenceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LateEvidenceRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubstitutionErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Acknowledge Late Evidence Endpoint",
+        "tags": [
+          "driver-substitutions"
         ]
       }
     },

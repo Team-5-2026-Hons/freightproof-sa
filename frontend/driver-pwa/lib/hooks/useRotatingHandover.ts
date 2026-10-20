@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchHandoverStatus, issueHandoverToken } from '@/lib/api/handover'
+import { captureCustody } from '@/lib/session/custody-context'
 
 // How often the driver's screen asks whether the receiver has confirmed. Fast enough that
 // the step advances while the receiver is still handing the phone back; slow enough that a
@@ -64,7 +65,8 @@ export function useRotatingHandover(tripId: string, phaseEventId: string): Rotat
 
     setIsIssuing(true)
     try {
-      const res = await issueHandoverToken(tripId, phaseEventId, force)
+      // FP-83: the period this initiation happens in; a former driver is refused server-side.
+      const res = await issueHandoverToken(tripId, phaseEventId, force, captureCustody(tripId).custodySequence)
       rotationSecondsRef.current = res.rotate_after_seconds > 0
         ? res.rotate_after_seconds
         : FALLBACK_ROTATION_SECONDS

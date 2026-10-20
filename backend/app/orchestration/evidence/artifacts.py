@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundError
+from app.core.exceptions import EvidenceAttributionError, ResourceNotFoundError
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.enums import ArtifactType
@@ -153,7 +153,7 @@ async def _persist_artifact(
             db, attribution=attribution, file_hash=hashlib.sha256(file_bytes).hexdigest(),
         )
         if existing is not None:
-            return _duplicate_result(existing, captured_at)
+            return _duplicate_result(existing, captured_at, captured_by_driver_id=captured_by_driver_id)
 
     upload = await upload_evidence_file(
         trip_id=str(trip.id), file_bytes=file_bytes, mime_type=verified_mime_type,
@@ -191,7 +191,7 @@ async def _persist_artifact(
                 "Storage object %s/%s orphaned: lost the deduplication race to artifact %s",
                 upload.s3_bucket, upload.s3_key, winner.id,
             )
-            return _duplicate_result(winner, captured_at)
+            return _duplicate_result(winner, captured_at, captured_by_driver_id=captured_by_driver_id)
 
     await db.refresh(artifact)
     enqueue_event(
@@ -239,9 +239,20 @@ async def _insert_attributed(
     return None
 
 
-def _duplicate_result(existing: EvidenceArtifact, incoming_captured_at: datetime) -> EvidenceArtifactRead:
+def _duplicate_result(
+    existing: EvidenceArtifact, incoming_captured_at: datetime, *, captured_by_driver_id: uuid.UUID | None,
+) -> EvidenceArtifactRead:
     """The stored row, exactly as it was. A differing capture time is logged, never written:
-    the original record is the evidence, and the mismatch points at a client defect."""
+    the original record is the evidence, and the mismatch points at a client defect.
+
+    Only ever the caller's OWN row (FP-83 C4): after a handover the same bytes for the same phase
+    and role may already be the previous driver's capture, and answering with that row would let
+    the new driver cite it as theirs. The index allows one row per bytes, so the upload is refused.
+    """
+    if captured_by_driver_id is not None and existing.captured_by_driver_id != captured_by_driver_id:
+        raise EvidenceAttributionError(
+            "This exact photo is already recorded for this step by another driver; take your own photo."
+        )
     if existing.captured_at != incoming_captured_at:
         logger.warning(
             "Identical upload for artifact %s arrived with captured_at %s; keeping stored %s",

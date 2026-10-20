@@ -225,6 +225,9 @@ class BlockchainReceiptType(str, enum.Enum):
     EXCEPTION_RAISED    = "exception_raised"
     EXCEPTION_REVIEWED  = "exception_reviewed"
     TRIP_CANCELLED      = "trip_cancelled"
+    # FP-83 C5: a clarification appended to a completed driver substitution. Also the event_type
+    # inside its payload. The substitution itself uses DRIVER_SUBSTITUTION above.
+    DRIVER_SUBSTITUTION_CORRECTED = "driver_substitution_corrected"
 
 
 class SubjectType(str, enum.Enum):
@@ -238,6 +241,9 @@ class SubjectType(str, enum.Enum):
     AUDIT_PACK      = "audit_pack"
     # An EvidenceAnchorEvent id (one raise / review / cancel), never the exception or trip id.
     EVIDENCE_EVENT  = "evidence_event"
+    # FP-83 C5: a completed DriverSubstitution id, and a DriverSubstitutionCorrection id.
+    DRIVER_SUBSTITUTION = "driver_substitution"
+    DRIVER_SUBSTITUTION_CORRECTION = "driver_substitution_correction"
 
 
 class VehicleEventType(str, enum.Enum):

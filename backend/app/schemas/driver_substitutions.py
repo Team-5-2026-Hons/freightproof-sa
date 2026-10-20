@@ -612,3 +612,19 @@ class SubstitutionErrorDetail(BaseModel):
 
 class SubstitutionErrorResponse(BaseModel):
     detail: SubstitutionErrorDetail
+
+
+# The trip reads embed these types, but schemas/trips is imported by this module, so they are
+# forward references there, resolved here once both modules exist (FP-83 C6).
+def _resolve_trip_read_references() -> None:
+    from app.schemas import trips
+
+    namespace = {
+        "CustodyIntegrityRead": CustodyIntegrityRead, "DriverAccess": DriverAccess,
+        "DriverParticipation": DriverParticipation, "SubstitutionRequestRead": SubstitutionRequestRead,
+    }
+    trips.TripDetailResponse.model_rebuild(_types_namespace=namespace)
+    trips.DriverTripListItemResponse.model_rebuild(_types_namespace=namespace)
+
+
+_resolve_trip_read_references()

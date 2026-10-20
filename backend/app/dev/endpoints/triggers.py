@@ -34,6 +34,7 @@ from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUn
 from app.integrations.parcel_perfect.factory import get_pp_client
 from app.integrations.parcel_perfect.mock import MockParcelPerfectClient
 from app.integrations.scan_feed import MockScanFeed, ScanDirection, get_scan_feed
+from app.orchestration.substitutions.access import current_driver_id_expression, get_current_custody
 from app.orchestration.consignments import scans as scan_service
 from app.orchestration.consignments import sync as consignment_service
 from app.orchestration.exceptions import creation as exception_creation
@@ -82,7 +83,8 @@ async def list_dev_trips(
     warehouse-scan gate status at each stop, for the panel's own pickers."""
     trips_with_driver = list((await db.execute(
         select(Trip, Driver.full_name)
-        .outerjoin(Driver, Driver.id == Trip.driver_id)
+        # FP-83: label the driver who holds the trip now, not the journey lock's original.
+        .outerjoin(Driver, Driver.id == current_driver_id_expression(trip_id=Trip.id, original_driver_id=Trip.driver_id))
         .where(Trip.operator_organization_id == current_user.organization_id)
         .order_by(Trip.created_at.desc())
     )).all())
@@ -470,13 +472,15 @@ async def trigger_exception(
             status_code=http_status.HTTP_404_NOT_FOUND, detail=f"Trip {body.trip_id} not found.",
         )
 
+    # Acts as the CURRENT driver in the current custody period (FP-83), read from the trip, not
+    # the body, so the service's own driver and custody checks run for real instead of being
+    # bypassed. Trip.driver_id is only the original driver; after a handover it would be refused.
+    custody = await get_current_custody(db, trip=trip)
     try:
-        # driver_id read from the trip, not the body, so the service's own
-        # assigned-driver check runs for real instead of being bypassed.
         raised = await exception_creation.raise_exception(
-            db, trip_id=body.trip_id, driver_id=trip.driver_id,
+            db, trip_id=body.trip_id, driver_id=custody.driver_id,
             exception_type=body.exception_type, description=body.description,
-            supporting_artifact_id=None,
+            supporting_artifact_id=None, custody_sequence=custody.sequence,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

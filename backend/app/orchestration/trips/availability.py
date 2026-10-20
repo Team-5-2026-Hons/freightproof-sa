@@ -294,9 +294,9 @@ async def busy_crew_in_window(
         held = _occupied_window(occupied, now)
         if held is None:
             continue
-        for resource_type, resource_id, window in _shared_resources(occupied, crew, held, now):
-            if windows_overlap(window[0], window[1], start, end):
-                hits.append((resource_type, resource_id, occupied, *window))
+        for resource_type, resource_id, shared in _shared_resources(occupied, crew, held, now):
+            if windows_overlap(shared[0], shared[1], start, end):
+                hits.append((resource_type, resource_id, occupied, *shared))
     if not hits:
         return []
 

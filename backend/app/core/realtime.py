@@ -69,6 +69,9 @@ class RealtimeKind(str, Enum):
     TRIP_CLOSED = "trip_closed"
     # A new evidence artifact was stored. Refreshes only the artifacts resource; INFO, never a toast.
     EVIDENCE_UPLOADED = "evidence_uploaded"
+    # FP-83: a driver handover was arranged, cancelled, replaced or completed. Ids only, INFO;
+    # the dispatcher refetches the trip. Drivers learn of it from their durable notices.
+    DRIVER_SUBSTITUTION_CHANGED = "driver_substitution_changed"
 
 
 class EventSeverity(str, Enum):

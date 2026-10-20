@@ -69,8 +69,17 @@ export function useTripAutoRefresh({ pollingEnabled, intervalMs, onRefresh }: Tr
       void runRefresh()
     }
 
+    // Reconnect is the third "catch up now" moment: everything that happened while the
+    // phone had no signal (a handover completed, an arrangement cancelled) is only learned
+    // by asking, and the next interval tick could be a full interval away — or never, when
+    // polling is off. The offline skip above made every tick during the outage a no-op.
+    function handleOnline(): void {
+      void runRefresh()
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
+    window.addEventListener('online', handleOnline)
 
     let intervalId: ReturnType<typeof setInterval> | null = null
     if (pollingEnabled) {
@@ -88,6 +97,7 @@ export function useTripAutoRefresh({ pollingEnabled, intervalMs, onRefresh }: Tr
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('online', handleOnline)
       if (intervalId !== null) clearInterval(intervalId)
     }
   }, [pollingEnabled, intervalMs])
