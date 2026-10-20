@@ -6,10 +6,11 @@
 // optimistically advanced so Home does not re-offer it, and the submission settles in the
 // background (lib/submission/phase-submitter.ts) with its own reconcile / queue / rollback
 // paths.
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
 import { authenticateTestDriver } from '@/lib/session/testing/custody'
+import { setCustodyContext } from '@/lib/session/custody-context'
 import { writeDraft } from '@/lib/offline/retained-drafts'
 import { ApiError } from '@/lib/api/client'
 import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
@@ -291,6 +292,32 @@ describe('type-mismatch guard', () => {
   })
 })
 
+describe('capture scope during location checks', () => {
+  it.each(['gps', 'preview'] as const)('does not submit an old-period capture when custody changes during %s', async stage => {
+    const loading = makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })
+    setTripState(makeTrip([loading]))
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
+    let complete!: () => void
+    if (stage === 'gps') mockLocationCapture.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(FRESH_LOCATION) }))
+    else mockPreviewPhaseLocation.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(PASSING_ASSESSMENT) }))
+    mockSubmitPhase.mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' })
+    const view = render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(stage === 'gps' ? mockLocationCapture : mockPreviewPhaseLocation).toHaveBeenCalledTimes(1))
+
+    setCustodyContext({ actorId: 'driver-1', tripId: TRIP_ID, custodySequence: 4 })
+    setTripState(makeTrip([loading], { custody_sequence: 4 }))
+    view.rerender(<PhaseStepPageClient />)
+    await act(async () => { complete(); await Promise.resolve() })
+
+    expect(mockSubmitPhase).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledTimes(1))
+    expect(mockSubmitPhase.mock.calls[0][8]).toBe(4)
+  })
+})
+
 describe('mid-phase step — advance only, no submit', () => {
   it('navigates to the next slug in the SAME phase recipe without calling submitPhase', () => {
     setTripState(makeTrip([makePhase({ phase_type: 'departure', sequence_number: 1, status: 'in_progress' })]))
@@ -522,7 +549,7 @@ describe('offline-queued submit', () => {
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: '2026-01-01T00:00:00Z' }),
       { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
-      FRESH_LOCATION.capturedAt, null, { actorId: 'driver-1', custodySequence: 2 },
+      FRESH_LOCATION.capturedAt, null, { actorId: 'driver-1', custodySequence: 2 }, null, mockSubmitPhase.mock.calls[0][4],
     ))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', body: expect.stringContaining('Stored on this device') }),

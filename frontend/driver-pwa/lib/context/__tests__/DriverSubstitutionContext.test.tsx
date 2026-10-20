@@ -4,7 +4,7 @@
 // incoming driver with no trip still learns of a collection; a completed handover drops the
 // outgoing driver's working trip; and refresh failures never blank what already loaded.
 // Built on Ciaran's shared fixture pack — no locally invented response shapes.
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   noticeFixtures,
@@ -17,6 +17,7 @@ import { AuthContext } from '../AuthContext'
 import { TripContext, type TripState } from '../TripContext'
 import { DriverSubstitutionProvider } from '../DriverSubstitutionContext'
 import { useDriverSubstitutions } from '@/lib/hooks/useDriverSubstitutions'
+import { bindActorLease, invalidateActorLease } from '@/lib/session/custody-context'
 
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: false }))
 
@@ -46,7 +47,7 @@ function authFor(user: DriverUser | null): AuthState {
 const unreadCompleted: SubstitutionNoticeRead = { ...noticeFixtures.completedRead, read_at: null }
 
 function Probe() {
-  const { pending, notices, loadError, isLoading, markNoticeRead } = useDriverSubstitutions()
+  const { pending, notices, loadError, isLoading, markNoticeRead, refresh } = useDriverSubstitutions()
   return (
     <div>
       <p data-testid="loading">{String(isLoading)}</p>
@@ -54,6 +55,7 @@ function Probe() {
       <p data-testid="notices">{notices.map((n) => `${n.kind}:${n.id}`).join(',')}</p>
       <p data-testid="error">{loadError ?? ''}</p>
       <button type="button" onClick={() => void markNoticeRead(notices[0].id).catch(() => undefined)}>read first</button>
+      <button type="button" onClick={() => void refresh()}>refresh handovers</button>
     </div>
   )
 }
@@ -103,6 +105,31 @@ afterEach(() => {
 })
 
 describe('DriverSubstitutionProvider', () => {
+  it.each(['success', 'failure'] as const)('ignores an old account refresh %s after the new account loads', async outcome => {
+    bindActorLease(INCOMING_ID, invalidateActorLease())
+    let complete!: () => void
+    const oldResult = new Promise<SubstitutionNoticeRead[]>((resolve, reject) => {
+      complete = () => outcome === 'success' ? resolve([unreadCompleted]) : reject(new Error('old account request failed'))
+    })
+    mockFetchPending.mockResolvedValueOnce([incomingPending]).mockResolvedValue([])
+    mockFetchNotices.mockReturnValueOnce(oldResult).mockResolvedValue([])
+    const harness = renderProvider(driverWithId(INCOMING_ID))
+    await waitFor(() => expect(mockFetchNotices).toHaveBeenCalledTimes(1))
+
+    const otherId = crypto.randomUUID()
+    bindActorLease(otherId, invalidateActorLease())
+    harness.rerender(driverWithId(otherId))
+    fireEvent.click(screen.getByRole('button', { name: 'refresh handovers' }))
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    await act(async () => { complete(); await Promise.resolve() })
+
+    expect(screen.getByTestId('pending').textContent).toBe('')
+    expect(screen.getByTestId('notices').textContent).toBe('')
+    expect(screen.getByTestId('error').textContent).toBe('')
+    expect(harness.noteTripHandedOver).not.toHaveBeenCalled()
+    expect(harness.refreshQuietly).not.toHaveBeenCalled()
+  })
+
   it('test_incoming_assignment_loads_with_no_current_trip', async () => {
     mockFetchPending.mockResolvedValue([incomingPending])
     mockFetchNotices.mockResolvedValue([noticeFixtures.arrangedUnread])

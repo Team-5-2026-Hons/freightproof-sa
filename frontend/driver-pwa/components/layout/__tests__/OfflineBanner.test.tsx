@@ -2,7 +2,8 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { OfflineBanner } from '../OfflineBanner'
 import { ApiError } from '@/lib/api/client'
-import { bindActorLease, invalidateActorLease } from '@/lib/session/custody-context'
+import { setCustodyContext } from '@/lib/session/custody-context'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { ROUTES } from '@/lib/constants/routes'
 import { __resetOfflineQueueStoreForTests } from '@/lib/hooks/useOfflineQueue'
 import {
@@ -85,7 +86,8 @@ beforeEach(() => {
   __resetOfflineQueueStoreForTests()
   __resetPhaseSubmitterForTests()
   vi.clearAllMocks()
-  bindActorLease('driver-1', invalidateActorLease())
+  // A phase can be handed off only after TripContext has loaded its trip scope.
+  authenticateTestDriver('trip-1', 0)
 })
 
 afterEach(() => {
@@ -224,6 +226,23 @@ describe('OfflineBanner', () => {
   // Workstream 1: the driver is sent Home the instant they swipe, so the only place that
   // can honestly say "this is still going" — or "this never landed" — is here.
   describe('background phase submissions', () => {
+    it('hides an old custody marker and its late failure without remounting the banner', async () => {
+      const { submitPhase } = await import('@/lib/api/phases')
+      let reject!: (error: Error) => void
+      vi.mocked(submitPhase).mockImplementationOnce(() => new Promise((_resolve, refuse) => { reject = refuse }))
+      let finish!: () => void
+      const outcome = new Promise<void>(resolve => { finish = resolve })
+      render(<OfflineBanner />)
+      act(() => { startPhaseSubmission(phaseSubmission({ onOutcome: finish })) })
+      expect(await screen.findByText(/^Recording evidence…$/)).toBeInTheDocument()
+      await waitFor(() => expect(submitPhase).toHaveBeenCalledTimes(1))
+
+      act(() => { setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 }) })
+      await waitFor(() => expect(screen.queryByText(/recording evidence/i)).not.toBeInTheDocument())
+      await act(async () => { reject(new ApiError(422, 'Old period refused')); await outcome })
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
     it('shows a recording indicator while a handed-off submission is in flight, and hides it once it settles', async () => {
       const { submitPhase } = await import('@/lib/api/phases')
       let resolveSubmit: (value: SubmitPhaseResult) => void = () => {}

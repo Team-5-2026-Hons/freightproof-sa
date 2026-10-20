@@ -511,12 +511,13 @@ export function useOfflineQueue() {
       // FP-83: set when the server already refused this capture on a custody conflict, so it
       // is stored for review rather than queued to send.
       attention: RetainedAttention | null = null,
+      originalIdempotencyKey?: string,
     ): boolean => {
-      // Generated once, reused as both the queue id and the wire idempotency_key, so a
-      // resend of this entry is indistinguishable server-side from the original attempt.
+      // Queue identity is local. An interrupted online attempt must keep its original
+      // wire key so the server can prove the same actor's completion after a handover.
       const id = crypto.randomUUID()
       const entry: PhaseQueueEntry = {
-        kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: id,
+        kind: 'phase', id, tripId, phaseEventId, phaseType, evidence, idempotencyKey: originalIdempotencyKey ?? id,
         position, driverCapturedAt, acknowledgement: acknowledgement ?? null,
         enqueuedAt: new Date().toISOString(),
         ...stampFor(tripId, custody),

@@ -20,7 +20,7 @@ import { useSyncExternalStore } from 'react'
 import { submitPhase } from '@/lib/api/phases'
 import { ApiError } from '@/lib/api/client'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
-import { actorGeneration, captureCustody, type CustodyStamp } from '@/lib/session/custody-context'
+import { actorGeneration, captureCustody, isCurrentTripCustody, onCustodyActorChange, onTripCustodyChange, type CustodyStamp } from '@/lib/session/custody-context'
 import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
@@ -144,6 +144,7 @@ type EnqueuePhase = (
   acknowledgement?: LocationWarningAcknowledgement | null,
   custody?: CustodyStamp,
   attention?: RetainedAttention | null,
+  originalIdempotencyKey?: string,
 ) => boolean
 
 export interface PhaseSubmissionRequest {
@@ -194,16 +195,39 @@ type StoreListener = () => void
 
 const listeners = new Set<StoreListener>()
 
-const EMPTY_STATE: PhaseSubmissionStoreState = { inFlight: [], failures: [] }
+interface SubmissionScope {
+  key: string
+  generation: number
+  tripId: string
+  phaseEventId: string
+  custody: CustodyStamp
+}
 
-let state: PhaseSubmissionStoreState = EMPTY_STATE
+interface ScopedSubmissionState {
+  inFlight: readonly SubmissionScope[]
+  failures: readonly { scope: SubmissionScope; failure: PhaseSubmissionFailure }[]
+}
+
+const EMPTY_STATE: PhaseSubmissionStoreState = { inFlight: [], failures: [] }
+let state: ScopedSubmissionState = { inFlight: [], failures: [] }
+let snapshot: PhaseSubmissionStoreState = EMPTY_STATE
+
+function isCurrentScope(scope: SubmissionScope): boolean {
+  return scope.generation === actorGeneration()
+    && isCurrentTripCustody(scope.tripId, scope.custody)
+}
 
 // Frozen constant so useSyncExternalStore's server/hydration snapshot is referentially
 // stable — same trick useOfflineQueue uses for its own store.
 const SERVER_SNAPSHOT: PhaseSubmissionStoreState = EMPTY_STATE
 
-function publish(next: PhaseSubmissionStoreState): void {
-  state = next
+function publish(next: ScopedSubmissionState): void {
+  state = {
+    // Keep other trips' attempts: switching the selected trip hides them, but
+    // returning must recover their markers while their requests are still running.
+    inFlight: next.inFlight.filter(scope => scope.generation === actorGeneration()),
+    failures: next.failures.filter(({ scope }) => scope.generation === actorGeneration()),
+  }
   listeners.forEach((listener) => listener())
 }
 
@@ -213,8 +237,25 @@ function subscribe(listener: StoreListener): () => void {
 }
 
 function getSnapshot(): PhaseSubmissionStoreState {
-  return state
+  const inFlight = state.inFlight.filter(isCurrentScope).map(scope => scope.phaseEventId)
+  const failures = state.failures.filter(({ scope }) => isCurrentScope(scope)).map(({ failure }) => failure)
+  // Custody can change without an account change. Filter on read, but keep the
+  // reference stable while the visible values are unchanged for useSyncExternalStore.
+  if (inFlight.length === 0 && failures.length === 0) snapshot = EMPTY_STATE
+  else if (inFlight.length !== snapshot.inFlight.length || failures.length !== snapshot.failures.length
+    || inFlight.some((id, index) => id !== snapshot.inFlight[index])
+    || failures.some((failure, index) => failure !== snapshot.failures[index])) {
+    snapshot = { inFlight, failures }
+  }
+  return snapshot
 }
+
+onCustodyActorChange(() => {
+  if (state.inFlight.some(scope => scope.generation !== actorGeneration())
+    || state.failures.some(({ scope }) => scope.generation !== actorGeneration())) publish(state)
+})
+
+onTripCustodyChange(() => { listeners.forEach(listener => listener()) })
 
 function getServerSnapshot(): PhaseSubmissionStoreState {
   return SERVER_SNAPSHOT
@@ -229,7 +270,7 @@ export function usePhaseSubmissions(): PhaseSubmissionStoreState {
 export function dismissPhaseSubmissionFailure(phaseEventId: string): void {
   publish({
     ...state,
-    failures: state.failures.filter((failure) => failure.phaseEventId !== phaseEventId),
+    failures: state.failures.filter(({ failure }) => failure.phaseEventId !== phaseEventId),
   })
 }
 
@@ -241,12 +282,12 @@ export function dismissPhaseSubmissionFailure(phaseEventId: string): void {
 export function __resetPhaseSubmitterForTests(): void {
   running.clear()
   lastKnownFix = null
-  publish(EMPTY_STATE)
+  publish({ inFlight: [], failures: [] })
 }
 
 // ─── Submission ────────────────────────────────────────────────────────────────
 
-// phase_event_ids currently running. Belt-and-braces against a double submit: the
+// Account/custody-scoped phase attempts currently running. Guard against a double submit: the
 // optimistic advance in TripContext already stops the driver re-entering a step whose
 // submission is in flight, but a stale tab or a deep link should not be able to fire a
 // second POST for the same ledger row either.
@@ -272,7 +313,7 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
   const position = await resolvePosition(request.position, generation)
   const retainAfterAccountChange = (): PhaseSubmissionOutcome => ({
     kind: 'retained', message: 'Account changed; captured work is retained.', handedOver: false,
-    persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody),
+    persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey),
   })
   // The GPS promise belongs to the account that swiped, including an A→B→A return.
   if (actorGeneration() !== generation) return retainAfterAccountChange()
@@ -282,6 +323,7 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
       tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement,
       custody.custodySequence,
     )
+    if (actorGeneration() !== generation) return retainAfterAccountChange()
     if (result.trip !== null && result.trip.status === 'exception_hold') {
       return { kind: 'hold', trip: result.trip }
     }
@@ -302,7 +344,7 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
         // evidence; never resent live and never lost with the rolled-back step.
         const persisted = request.enqueuePhase(
           tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement,
-          custody, failure.attention,
+          custody, failure.attention, idempotencyKey,
         )
         return {
           kind: 'retained',
@@ -322,12 +364,15 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
       try {
         fetched = await request.refetchTrip()
       } catch (refetchErr: unknown) {
+        if (actorGeneration() !== generation) return retainAfterAccountChange()
         // Offline right after a 409 — we cannot tell replay from conflict, and guessing
         // "already recorded" would tell a driver their evidence landed when it may not
         // have. Report the conflict so the notice stays up and the phase rolls back.
         console.error('phase-submitter: could not refetch the trip to resolve a 409', refetchErr)
         return { kind: 'conflict', message: err.message || DEFAULT_CONFLICT_MESSAGE }
       }
+
+      if (actorGeneration() !== generation) return retainAfterAccountChange()
 
       if (fetched !== null && fetched.status === 'exception_hold') {
         return { kind: 'hold', trip: fetched }
@@ -346,7 +391,7 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
       // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
       // the server recovers. The position and the capture instant go WITH the entry so a
       // replay hours later still reports where — and when — the driver actually swiped.
-      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody)
+      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey)
       return { kind: 'queued' }
     }
 
@@ -357,19 +402,19 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
   }
 }
 
-function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome): void {
-  running.delete(request.phaseEventId)
+function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome, scope: SubmissionScope): void {
+  running.delete(scope.key)
 
-  const inFlight = state.inFlight.filter((id) => id !== request.phaseEventId)
+  const inFlight = state.inFlight.filter((attempt) => attempt.key !== scope.key)
   const isTerminal = outcome.kind === 'failed' || outcome.kind === 'conflict' || outcome.kind === 'retained'
   const failures = isTerminal
     ? [
-        // Replace any earlier notice for this same phase rather than stacking duplicates.
-        ...state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId),
-        { phaseEventId: request.phaseEventId, phaseType: request.phaseType, message: outcome.message },
+        ...state.failures.filter((entry) => entry.scope.key !== scope.key),
+        { scope, failure: { phaseEventId: request.phaseEventId, phaseType: request.phaseType, message: outcome.message } },
       ]
-    : state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId)
+    : state.failures.filter((entry) => entry.scope.key !== scope.key)
 
+  // A late period-0 completion owns only its attempt, never period 2's marker or notice.
   publish({ inFlight, failures })
 
   // Runs last, and outside the store update, so a throwing subscriber can never leave a
@@ -380,34 +425,37 @@ function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome
 /**
  * Hand a phase submission to the background and return immediately.
  *
- * @returns false when a submission for this phase_event_id is already running, in which
+ * @returns false when a submission for this phase in the same account/custody period is already running, in which
  * case nothing new was started — the caller should still navigate, because the driver's
  * evidence is already on its way.
  */
 export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
+  const generation = actorGeneration()
+  const custody = request.custody ?? captureCustody(request.tripId)
   // Attached before the dedupe check so an ignored request can never leave an unhandled
   // rejection behind.
   const guardedRequest: PhaseSubmissionRequest = {
     ...request,
     // Stamped HERE, synchronously at the swipe — not after the GPS wait — so the period
     // recorded is the one the driver acted in.
-    custody: request.custody ?? captureCustody(request.tripId),
+    custody,
     position: request.position.catch((err: unknown) => {
       console.error('phase-submitter: position capture rejected', err)
       return null
     }),
   }
 
-  if (running.has(request.phaseEventId)) return false
-  running.add(request.phaseEventId)
+  const runningKey = JSON.stringify([generation, request.tripId, custody.actorId, custody.custodySequence ?? 0, request.phaseEventId])
+  const scope: SubmissionScope = { key: runningKey, generation, tripId: request.tripId, phaseEventId: request.phaseEventId, custody }
+  if (running.has(runningKey)) return false
+  running.add(runningKey)
   publish({
-    inFlight: [...state.inFlight, request.phaseEventId],
-    // A fresh attempt supersedes the previous notice for the same phase.
-    failures: state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId),
+    inFlight: [...state.inFlight, scope],
+    failures: state.failures.filter((entry) => entry.scope.key !== runningKey),
   })
 
-  void runSubmission(guardedRequest, actorGeneration()).then(
-    (outcome) => settle(guardedRequest, outcome),
+  void runSubmission(guardedRequest, generation).then(
+    (outcome) => settle(guardedRequest, outcome, scope),
     (err: unknown) => {
       // runSubmission catches everything it expects; reaching here means a defect in
       // this module rather than a submission failure. Never swallow it, and never leave
@@ -416,7 +464,7 @@ export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
       settle(guardedRequest, {
         kind: 'failed',
         message: err instanceof Error ? err.message : DEFAULT_TERMINAL_MESSAGE,
-      })
+      }, scope)
     },
   )
 

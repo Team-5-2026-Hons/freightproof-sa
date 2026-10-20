@@ -1,6 +1,6 @@
 // One endpoint completes every phase: POST /trips/{id}/phases/{phase_event_id}/complete,
 // returning the trip's full updated TripDetailResponse rather than just the phase.
-import { api } from './client'
+import { api, ApiError } from './client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseStatus, PhaseType, SealCondition } from '@shared/lib/types/phase'
 import type {
@@ -194,15 +194,28 @@ export interface ArtifactIdRequest {
 // is attributed too; the server de-duplicates identical bytes for the same phase and role.
 async function artifactIdFor(request: ArtifactIdRequest, custodySequence: number | null): Promise<string> {
   if (request.readyId !== null) return request.readyId
-  const uploaded = await uploadArtifact({
-    tripId: request.tripId,
-    artifactType: request.artifactType,
-    dataUrl: request.dataUrl,
-    capturedAt: request.capturedAt,
-    attribution: request.attribution,
-    custodySequence,
-  })
-  return uploaded.id
+  try {
+    const uploaded = await uploadArtifact({
+      tripId: request.tripId,
+      artifactType: request.artifactType,
+      dataUrl: request.dataUrl,
+      capturedAt: request.capturedAt,
+      attribution: request.attribution,
+      custodySequence,
+    })
+    return uploaded.id
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'EVIDENCE_ALREADY_RECORDED') {
+      // This acknowledges only the uploaded bytes. Complete the phase separately with
+      // its ORIGINAL key; only that endpoint can acknowledge the entire submission.
+      const artifactId = err.detail?.evidenceId
+      if (artifactId) return artifactId
+      // Never let an incomplete artifact receipt escape as a phase-level duplicate.
+      // The live draft / offline entry remains intact for a later retry.
+      throw new Error('Artifact receipt missing; phase completion is unconfirmed.', { cause: err })
+    }
+    throw err
+  }
 }
 
 /**
