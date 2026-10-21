@@ -23,6 +23,9 @@ export interface PushNotificationsState {
   simulateGateArrival: (phaseType: GateArrivalPhaseType) => void
 }
 
+const GATE_ARRIVAL_TYPE = 'GATE_ARRIVAL'
+const GATE_ARRIVAL_PHASES: readonly GateArrivalPhaseType[] = ['activation', 'in_transit']
+
 // The route itself never carries a trip id (see lib/constants/routes.ts's header note,
 // which lib/phase/routes.ts's phaseStepRoute inherits) — the backend enforces one active
 // trip per driver, so "which trip" always comes from TripContext, never from the push
@@ -38,24 +41,48 @@ function gateArrivalRoute(phaseType: GateArrivalPhaseType): string {
   return slug === undefined ? ROUTES.activeTripDetail : phaseStepRoute(phaseType, slug)
 }
 
+/**
+ * The phase a push payload points at, or null for anything else. A payload is server
+ * data read off the wire: an unknown `phase_type` used to be cast and indexed straight
+ * into STEP_SLUGS, which throws inside the listener and leaves the tap doing nothing.
+ */
+export function gateArrivalPhaseFrom(data: unknown): GateArrivalPhaseType | null {
+  if (typeof data !== 'object' || data === null) return null
+  const payload = data as Record<string, unknown>
+  if (payload.type !== GATE_ARRIVAL_TYPE) return null
+  const phase = payload.phase_type
+  return GATE_ARRIVAL_PHASES.find((known) => known === phase) ?? null
+}
+
 export function usePushNotifications(): PushNotificationsState {
   const router = useRouter()
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
 
-    PushNotifications.requestPermissions().then(result => {
-      if (result.receive === 'granted') PushNotifications.register()
-    })
+    const openFor = (data: unknown) => {
+      const phaseType = gateArrivalPhaseFrom(data)
+      if (phaseType !== null) router.push(gateArrivalRoute(phaseType))
+    }
 
-    const listenerPromise = PushNotifications.addListener('pushNotificationReceived', notification => {
-      if (notification.data?.type !== 'GATE_ARRIVAL') return
-      const phaseType = notification.data.phase_type as GateArrivalPhaseType
-      router.push(gateArrivalRoute(phaseType))
-    })
+    PushNotifications.requestPermissions()
+      .then((result) => { if (result.receive === 'granted') return PushNotifications.register() })
+      // A device without push services rejects here; the app must carry on without push.
+      .catch((err: unknown) => console.warn('Push notifications unavailable on this device', err))
+
+    // Two moments, two events: `pushNotificationReceived` fires only while the app is in
+    // the foreground; a notification the driver TAPS from the shade (the usual case for a
+    // gate arrival) arrives as `pushNotificationActionPerformed` and was never handled, so
+    // the tap opened the app on Home and went no further.
+    const listeners = [
+      PushNotifications.addListener('pushNotificationReceived', (notification) => openFor(notification.data)),
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => openFor(action.notification.data)),
+    ]
 
     return () => {
-      listenerPromise.then(l => l.remove())
+      for (const listener of listeners) {
+        listener.then((handle) => handle.remove()).catch((err: unknown) => console.warn('Could not remove push listener', err))
+      }
     }
   }, [router])
 

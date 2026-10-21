@@ -7,6 +7,20 @@ import { ROUTES } from '@/lib/constants/routes'
 import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import { dismissPhaseSubmissionFailure, usePhaseSubmissions } from '@/lib/submission/phase-submitter'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
+import { cn } from '@/lib/utils'
+
+// The header strip is the one place a notice must stay compact, so these are the
+// StatusBanner tones (components/ui/StatusBanner.tsx) at footnote size rather than
+// the raw *-container chip fills the strip used before. Same words, same tints the
+// rest of the app uses for "attention" and "error", so a driver reads them the same way.
+const ROW_CLASS = 'flex items-center gap-2 px-4 py-2 text-footnote font-semibold'
+const PROGRESS_ROW = 'bg-fill text-surface-on-variant'
+const ATTENTION_ROW = 'bg-attention-tint text-attention-ink'
+const ERROR_ROW = 'bg-error-tint text-error'
+// 44px hit area on the dismiss X (the app's documented touch-target minimum; see
+// Button/IconButton and Toast's own dismiss), padded outward so the row stays the
+// same height.
+const DISMISS_CLASS = '-my-2.5 flex size-11 shrink-0 items-center justify-center rounded-full active:bg-surface-on/10'
 
 // navigator.onLine via useSyncExternalStore: SSR-safe (server snapshot = online)
 // and updates on the browser's online/offline events without manual listeners in effects.
@@ -44,8 +58,8 @@ export function OfflineBanner() {
   return (
     <div className="flex flex-col">
       {!online && (
-        <div role="status" className="flex items-center gap-2 bg-tertiary-container px-4 py-2 text-xs font-medium text-tertiary-on-container">
-          <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
+        <div role="status" className={cn(ROW_CLASS, ATTENTION_ROW)}>
+          <WifiOff className="size-4 shrink-0" aria-hidden />
           You&rsquo;re offline — evidence you capture is saved on this device.
         </div>
       )}
@@ -55,8 +69,8 @@ export function OfflineBanner() {
           that work would be completely invisible, and "recorded" would be the only thing
           the driver ever saw — including for evidence still in flight. */}
       {inFlight.length > 0 && (
-        <div role="status" className="flex items-center gap-2 bg-secondary-container px-4 py-1.5 text-xs font-medium text-secondary-on-container">
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        <div role="status" className={cn(ROW_CLASS, PROGRESS_ROW)}>
+          <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
           {inFlight.length === 1
             ? 'Recording evidence…'
             : `Recording evidence for ${inFlight.length} phases…`}
@@ -68,8 +82,8 @@ export function OfflineBanner() {
           yet. This shows any time entries are pending — including while online, mid-flush
           — and disappears the moment the queue empties. */}
       {queueLength > 0 && (
-        <div role="status" className="flex items-center gap-2 bg-secondary-container px-4 py-1.5 text-xs font-medium text-secondary-on-container">
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        <div role="status" className={cn(ROW_CLASS, PROGRESS_ROW)}>
+          <Loader2 className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
           {queueLength} {queueLength === 1 ? 'item' : 'items'} waiting to sync
         </div>
       )}
@@ -83,7 +97,7 @@ export function OfflineBanner() {
         <div
           key={failure.phaseEventId}
           role="alert"
-          className="flex items-center gap-2 bg-error-container px-4 py-2 text-xs font-medium text-error-on-container"
+          className={cn(ROW_CLASS, ERROR_ROW)}
         >
           <span className="flex-1">
             {PHASE_NAMES[failure.phaseType]} was not recorded: {failure.message} Your
@@ -93,9 +107,9 @@ export function OfflineBanner() {
             type="button"
             onClick={() => dismissPhaseSubmissionFailure(failure.phaseEventId)}
             aria-label={`Dismiss ${PHASE_NAMES[failure.phaseType]} failure notice`}
-            className="shrink-0 rounded p-0.5 hover:bg-error-on-container/10"
+            className={DISMISS_CLASS}
           >
-            <X className="h-3.5 w-3.5" aria-hidden />
+            <X className="size-4" aria-hidden />
           </button>
         </div>
       ))}
@@ -106,7 +120,7 @@ export function OfflineBanner() {
           Surfaced here as a dismissible line instead; dismissDropped() resets the shared
           count so it clears for every mounted instance, not just this one. */}
       {droppedCount > 0 && (
-        <div role="alert" className="flex items-center gap-2 bg-error-container px-4 py-2 text-xs font-medium text-error-on-container">
+        <div role="alert" className={cn(ROW_CLASS, ERROR_ROW)}>
           <span className="flex-1">
             {droppedCount} {droppedCount === 1 ? 'item' : 'items'} could not be synced and{' '}
             {droppedCount === 1 ? 'was' : 'were'} removed. Contact your dispatcher.
@@ -115,9 +129,9 @@ export function OfflineBanner() {
             type="button"
             onClick={dismissDropped}
             aria-label="Dismiss sync failure notice"
-            className="shrink-0 rounded p-0.5 hover:bg-error-on-container/10"
+            className={DISMISS_CLASS}
           >
-            <X className="h-3.5 w-3.5" aria-hidden />
+            <X className="size-4" aria-hidden />
           </button>
         </div>
       )}
@@ -127,7 +141,7 @@ export function OfflineBanner() {
           in bulk — the review screen does it one item at a time, with its own warning, and
           offers "Send as late evidence" where custody has moved on. */}
       {attentionCount > 0 && (
-        <div role="alert" className="flex flex-col gap-2 bg-error-container px-4 py-2 text-xs font-medium text-error-on-container">
+        <div role="alert" className={cn('flex flex-col gap-2 px-4 py-2 text-footnote font-semibold', ERROR_ROW)}>
           <span>
             {attentionCount} {attentionCount === 1 ? 'item needs' : 'items need'} attention &mdash; kept on this
             phone. Nothing was deleted.
@@ -136,14 +150,14 @@ export function OfflineBanner() {
             <button
               type="button"
               onClick={() => router.push(ROUTES.retainedEvidence)}
-              className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+              className="min-h-11 rounded-full bg-surface px-4 text-subhead font-semibold text-error active:bg-surface/80"
             >
               Review
             </button>
             <button
               type="button"
               onClick={() => void retryAttention()}
-              className="min-h-11 rounded px-4 text-sm font-semibold hover:bg-error-on-container/10"
+              className="min-h-11 rounded-full bg-surface px-4 text-subhead font-semibold text-error active:bg-surface/80"
             >
               Try again
             </button>
