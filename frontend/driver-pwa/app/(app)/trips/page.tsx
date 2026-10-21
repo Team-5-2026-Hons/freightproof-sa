@@ -16,6 +16,7 @@ import { SectionHeading } from '@/components/ui/SectionHeading'
 import { TruckLoader } from '@/components/ui/TruckLoader'
 import { ActiveTripCard } from '@/components/trip/ActiveTripCard'
 import { DriverSubstitutionPanel } from '@/components/trip/DriverSubstitutionPanel'
+import { TripEndedByDispatchBanner } from '@/components/trip/TripEndedByDispatchBanner'
 import { useDriverSubstitutions } from '@/lib/hooks/useDriverSubstitutions'
 import { TripList } from '@/components/trip/TripRow'
 import { TAB_BAR_SPACER } from '@/components/layout/AppShell'
@@ -82,6 +83,7 @@ export default function TripsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-3">
+      <TripEndedByDispatchBanner className="mx-4 mb-4 shrink-0" />
       <DriverSubstitutionPanel className="mx-4 mb-4 shrink-0" />
       {current !== null && (
         <ActiveTripCard summary={current} trip={sessionTrip} onOpen={() => open(current)} />
