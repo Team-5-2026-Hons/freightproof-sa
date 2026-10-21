@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Chip } from '@/components/ui/Chip'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
+import { SkeletonBar } from '@/components/ui/Skeleton'
 import { Table, type TableColumn } from '@/components/ui/Table'
 import { DashboardPanel } from '@/components/dashboard/DashboardPanel'
 import { ROUTES } from '@/lib/constants/routes'
@@ -42,6 +43,8 @@ function buildColumns(now: Date): TableColumn<TripExceptionListItem>[] {
     },
     {
       id: 'incident', label: 'Exception', width: 262, minWidth: 170,
+      // Chip-sized, so placeholder rows are as tall as real ones.
+      skeleton: <div className="flex items-center gap-2"><SkeletonBar className="h-6 w-16 rounded-md" /><SkeletonBar className="h-3 w-28" /></div>,
       render: item => {
         const severity = EXCEPTION_SEVERITY_META[item.severity]
         const title = fmtExceptionType(item.exception_type)

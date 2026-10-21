@@ -160,6 +160,7 @@ Custom 24×24 stroke icon set (`IP` object, 22 paths). All icons:
 | `shield` | Verification badge | IDVS-verified driver, Highest evidence |
 | `sat` | Satellite | GPS / Pulsit geofence reading |
 | `siren` | Emergency | PANIC button |
+| `route` | Journey | Active Trips nav item (`truck` stays the vehicle glyph) |
 | `back`, `chev` | Navigation | Mobile back, "View →" links |
 | `map`, `eye`, `dl`, `filter`, `search` | Utility | Route picker, view, download, table filter |
 

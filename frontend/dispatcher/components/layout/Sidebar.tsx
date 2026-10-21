@@ -51,7 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Trips',
     items: [
-      { label: 'Active Trips', href: ROUTES.trips, icon: 'truck', activePatterns: [ROUTES.trips], exact: true },
+      { label: 'Active Trips', href: ROUTES.trips, icon: 'route', activePatterns: [ROUTES.trips], exact: true },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
       { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
       // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real

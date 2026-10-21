@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { RecordLink } from '@/components/ui/RecordLink'
+import { SkeletonBar } from '@/components/ui/Skeleton'
 import { Table, type TableColumn } from '@/components/ui/Table'
 import { DashboardPanel } from '@/components/dashboard/DashboardPanel'
 import { IncidentStatusChip } from '@/components/incidents/IncidentStatusChip'
@@ -26,6 +27,10 @@ const CLOCK_TICK_MS = 60_000
 // Panel width below which the age column folds away rather than the table scrolling sideways.
 const RECEIVED_HIDE_BELOW_PX = 540
 
+// A chip's height, so the placeholder rows are as tall as the real ones and the panel does not
+// change height when data arrives.
+const CHIP_SKELETON = <SkeletonBar className="h-6 w-20 rounded-md" />
+
 // Single-line rows, for the same reason as the Exceptions panel: five must fit without scrolling.
 function buildColumns(now: Date): TableColumn<IncidentSummary>[] {
   return [
@@ -33,9 +38,9 @@ function buildColumns(now: Date): TableColumn<IncidentSummary>[] {
       id: 'received', label: 'Received', width: 90, minWidth: 80, hideBelow: RECEIVED_HIDE_BELOW_PX,
       render: i => <span className="whitespace-nowrap tabular-nums text-on-surf-v" title={fmtSastDateTime(i.received_at) ?? undefined}>{Number.isFinite(Date.parse(i.received_at)) ? `${fmtAge(i.received_at, now)} ago` : '—'}</span>,
     },
-    { id: 'reference', label: 'Incident', width: 230, minWidth: 200, render: i => <RecordLink href={ROUTES.incidentDetail(i.incident_id)} className="whitespace-nowrap tabular-nums">{i.trip_reference} · {i.reference}</RecordLink> },
+    { id: 'reference', label: 'Incident', width: 230, minWidth: 200, render: i => <RecordLink href={ROUTES.incidentDetail(i.incident_id)} className="!min-h-0 whitespace-nowrap tabular-nums">{i.trip_reference} · {i.reference}</RecordLink> },
     { id: 'type', label: 'Type', width: 100, minWidth: 80, render: i => <span className="block truncate" title={INCIDENT_TYPE_LABELS[i.incident_type]}>{INCIDENT_TYPE_LABELS[i.incident_type]}</span> },
-    { id: 'status', label: 'Status', width: 120, minWidth: 100, render: i => <IncidentStatusChip status={i.status} /> },
+    { id: 'status', label: 'Status', width: 120, minWidth: 100, skeleton: CHIP_SKELETON, render: i => <IncidentStatusChip status={i.status} /> },
   ]
 }
 
