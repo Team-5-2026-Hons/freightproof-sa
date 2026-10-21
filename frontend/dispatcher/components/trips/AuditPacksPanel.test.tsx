@@ -55,9 +55,12 @@ describe('AuditPacksPanel', () => {
 
     // Assert
     expect(await screen.findByText('TRP-0042-AP1')).toBeInTheDocument()
-    expect(screen.getByText(/Jane Adjuster, Santam Claims · Insurance claim · ref CLM-88123/)).toBeInTheDocument()
+    expect(screen.getByText(/Jane Adjuster, Santam Claims/)).toBeInTheDocument()
+    expect(screen.getByText(/Insurance claim · ref CLM-88123/)).toBeInTheDocument()
     expect(screen.getByText(/Sealed on Hedera/)).toBeInTheDocument()
-    expect(screen.getByText(/Opened 2×/)).toBeInTheDocument()
+    expect(screen.getByText(/2× · last/)).toBeInTheDocument()
+    // The raw transaction id is not the dispatcher's to read.
+    expect(screen.queryByText('0.0.1@1.0')).not.toBeInTheDocument()
   })
 
   it('opens with its own actions, carries no heading (the section supplies it) and no explainer', async () => {

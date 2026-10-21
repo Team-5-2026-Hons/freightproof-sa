@@ -56,6 +56,7 @@ export function DashboardIncidentsPanel(): React.JSX.Element {
       count={initialLoad || loadFailed ? null : `${open.length} open`}
       noun="incidents"
       viewAllHref={ROUTES.incidents}
+      help="incidents"
     >
       {loadFailed ? (
         <EmptyState

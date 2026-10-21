@@ -86,6 +86,7 @@ export function DashboardExceptionsPanel(): React.JSX.Element {
       count={initialLoad || loadFailed ? null : `${waiting.length} ${waiting.length === 1 ? 'needs' : 'need'} review`}
       noun="exceptions"
       viewAllHref={ROUTES.exceptions}
+      help="exceptions"
     >
       {loadFailed ? (
         <EmptyState

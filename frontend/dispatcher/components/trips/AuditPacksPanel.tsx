@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Ic } from '@/components/ui/Ic'
 import { Chip, type ChipType } from '@/components/ui/Chip'
 import { useToast } from '@/lib/hooks/useToast'
 import { useAuditPacks } from '@/lib/hooks/useAuditPacks'
@@ -104,26 +105,26 @@ export function AuditPacksPanel({ tripId, tripReference, onIssue, onLoaded }: Pr
           const chip = STATUS_CHIP[pack.status]
           return (
             <li key={pack.id} className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3">
+              {/* Same shape as the incident and handover rows, with the pack's actions in one row at the foot. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[14px] font-extrabold tabular-nums tracking-[0.03em]">{pack.pack_label}</span>
+                <span className="text-[13px] font-semibold tabular-nums text-on-surf">{pack.pack_label}</span>
                 <Chip type={chip.type} label={chip.label} />
               </div>
-              <p className="mt-1 text-[13px]">
-                {pack.recipient_name}, {pack.recipient_organization} · {purposeLabel(pack.purpose)}
-                {pack.external_reference && ` · ref ${pack.external_reference}`}
+              <p className="mt-1 text-xs text-on-surf">
+                {pack.recipient_name}, {pack.recipient_organization}
+                <span className="block text-on-surf-v">{purposeLabel(pack.purpose)}{pack.external_reference && ` · ref ${pack.external_reference}`}</span>
               </p>
-              <p className="mt-0.5 text-[12px] text-on-surf-v">
-                Issued {when(pack.issued_at)} · {pack.revoked_at ? `revoked ${when(pack.revoked_at)}` : `expires ${when(pack.expires_at)}`}
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-on-surf-v">Issued</dt><dd className="text-on-surf">{when(pack.issued_at)}</dd>
+                <dt className="text-on-surf-v">{pack.revoked_at ? 'Revoked on' : 'Expires'}</dt><dd className="text-on-surf">{when(pack.revoked_at ?? pack.expires_at)}</dd>
+                <dt className="text-on-surf-v">Opened</dt><dd className="text-on-surf">{pack.view_count === 0 ? 'Not yet' : `${pack.view_count}× · last ${when(pack.last_viewed_at)}`}</dd>
+              </dl>
+              {/* The transaction id is for the verifier page, not the dispatcher: here only whether the seal exists. */}
+              <p className={`mt-1.5 flex items-center gap-1 text-xs ${pack.anchor_status === 'anchored' ? 'text-on-surf-v' : 'text-warn'}`}>
+                {pack.anchor_status === 'anchored' && <Ic n="check" s={12} className="text-ok" />}
+                {pack.anchor_status === 'anchored' ? 'Sealed on Hedera' : 'Not sealed on Hedera'}
               </p>
-              <p className="mt-0.5 flex min-w-0 gap-1 text-[12px] text-on-surf-v">
-                {pack.anchor_status === 'anchored'
-                  ? <><span className="shrink-0">Sealed on Hedera ·</span><span className="truncate" title={pack.hedera_tx_id ?? undefined}>{pack.hedera_tx_id ?? ''}</span></>
-                  : <span>Not sealed on Hedera</span>}
-              </p>
-              <p className="mt-0.5 text-[12px] text-on-surf-v">
-                {pack.view_count === 0 ? 'Not opened yet' : `Opened ${pack.view_count}× · last ${when(pack.last_viewed_at)}`}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" loading={busy === `pdf-${pack.id}`} onClick={() => download(pack)}>PDF</Button>
                 <Button size="sm" variant="ghost" loading={busy === `log-${pack.id}`} onClick={() => showLog(pack)}>Access log</Button>
                 {pack.status === 'active' && (

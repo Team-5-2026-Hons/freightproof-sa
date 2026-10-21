@@ -370,12 +370,12 @@ describe('TripDetailPanel Info sections', () => {
     expect(screen.queryByRole('heading', { name: 'Custody' })).not.toBeInTheDocument()
   })
 
-  it('puts a small Cancel trip button, not a full-width one, at the bottom', async () => {
+  it('puts a filled, full-width Cancel trip button at the bottom', async () => {
     renderPanel(vi.fn(), activeTrip)
 
     const cancel = screen.getByRole('button', { name: 'Cancel trip' })
 
-    expect(cancel).not.toHaveClass('w-full')
+    expect(cancel).toHaveClass('w-full', 'bg-err')
     expect(screen.getByRole('region', { name: 'Trip actions' })).toContainElement(cancel)
   })
 

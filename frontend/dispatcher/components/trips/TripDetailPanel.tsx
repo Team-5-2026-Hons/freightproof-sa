@@ -234,7 +234,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
         </section>
         {!isTripTerminal(trip.status) && <section aria-labelledby={TRIP_ACTIONS_HEADING_ID} className="py-4">
           <h3 id={TRIP_ACTIONS_HEADING_ID} className="mb-2 text-sm font-bold text-on-surf">Trip actions</h3>
-          <Button variant="danger" size="sm" onClick={() => setCancelOpen(true)}>Cancel trip</Button>
+          <Button variant="danger" size="sm" full onClick={() => setCancelOpen(true)}>Cancel trip</Button>
         </section>}
       </div>}
       {panel === TRIP_PANELS.manifest && <ManifestContent tripId={trip.id} />}

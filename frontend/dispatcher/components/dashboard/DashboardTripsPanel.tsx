@@ -35,6 +35,7 @@ export function DashboardTripsPanel(): React.JSX.Element {
       count={initialLoad || loadFailed ? null : `${trips.length} active · ${needAction} ${needAction === 1 ? 'needs' : 'need'} action`}
       noun="active trips"
       viewAllHref={ROUTES.trips}
+      help="trips"
       className="min-h-0 flex-1"
     >
       {loadFailed ? (
