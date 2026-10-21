@@ -1,7 +1,7 @@
 'use client'
 
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { NO_DATA, fmtRand } from '@/lib/format/analytics'
+import { NO_DATA, fmtAxisAmount, fmtRand } from '@/lib/format/analytics'
 import { fmtBucketLabel, type TabQuery } from '@/lib/format/period'
 import { useFleetCost, type FleetQueryResult } from '@/lib/hooks/useFleetAnalytics'
 import { SERIES_COLORS } from '@/lib/tokens'
@@ -198,6 +198,7 @@ function OperatingCard({ cost, grain, today }: CardProps) {
         tickLabel={(key) => fmtBucketLabel(key, grain)}
         isPartial={(row) => row.is_partial}
         yLabel={COPY.axis.rand}
+        valueFormatter={fmtAxisAmount}
         series={series}
         renderTooltip={(row) => (
           <ChartTooltip
@@ -247,6 +248,7 @@ function DelayCard({ cost, grain, today }: CardProps) {
         tickLabel={(key) => fmtBucketLabel(key, grain)}
         isPartial={(row) => row.is_partial}
         yLabel={COPY.axis.rand}
+        valueFormatter={fmtAxisAmount}
         series={[{ key: 'delay', label: d.cost, color: DELAY_COLOR, value: (row) => row.delay_cost }]}
         renderTooltip={(row) => (
           <ChartTooltip
@@ -303,6 +305,7 @@ function ValueCard({ cost, grain, today }: CardProps) {
         tickLabel={(key) => fmtBucketLabel(key, grain)}
         isPartial={(row) => row.is_partial}
         yLabel={COPY.axis.rand}
+        valueFormatter={fmtAxisAmount}
         series={series}
         renderTooltip={(row) => (
           <ChartTooltip
@@ -378,6 +381,7 @@ function LanesCard({ cost }: { cost: FleetQueryResult<FleetCost> }) {
         rowKey={laneKey}
         categoryLabel={laneName}
         yLabel={COPY.axis.rand}
+        valueFormatter={fmtAxisAmount}
         series={[{ key: 'operating', label: l.operating, color: () => LANE_COLOR, value: (lane) => lane.operating_total }]}
         renderTooltip={(lane) => (
           <ChartTooltip

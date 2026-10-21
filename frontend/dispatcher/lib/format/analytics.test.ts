@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   NO_DATA,
+  fmtAxisAmount,
   fmtHours,
   fmtMinutes,
   fmtOptionalCount,
@@ -126,5 +127,20 @@ describe('fmtRandRate', () => {
 
   it('shows "—" when there is no figure', () => {
     expect(fmtRandRate(null)).toBe(NO_DATA)
+  })
+})
+
+describe('fmtAxisAmount', () => {
+  // 21 Oct: "160000" on the Delay cost axis ran into the "Rand" heading beside it.
+  it('shortens thousands and millions so an axis number stays about four characters', () => {
+    expect(fmtAxisAmount(160000)).toBe('160k')
+    expect(fmtAxisAmount(50000)).toBe('50k')
+    expect(fmtAxisAmount(2500)).toBe('2,5k')
+    expect(fmtAxisAmount(1200000)).toBe('1,2m')
+  })
+
+  it('leaves amounts under a thousand, and zero, as they are', () => {
+    expect(fmtAxisAmount(0)).toBe('0')
+    expect(fmtAxisAmount(850)).toBe('850')
   })
 })

@@ -258,7 +258,6 @@ function LaneRiskCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
         xLabel={COPY.axis.tripsOnLane}
         yLabel={COPY.axis.problemsPerTrip}
         color={SERIES_COLORS[0]}
-        pointLabel={laneName}
         cornerLabel={COPY.laneRisk.corner}
         renderTooltip={(lane) => (
           <ChartTooltip

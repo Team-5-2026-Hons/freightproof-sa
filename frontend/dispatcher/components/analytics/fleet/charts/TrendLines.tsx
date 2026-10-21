@@ -77,7 +77,8 @@ export function TrendLines<Row>({
   }))
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
+    <ResponsiveContainer width="100%" height="100%" minHeight={height}>
       <LineChart data={data} margin={TIME_CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis
