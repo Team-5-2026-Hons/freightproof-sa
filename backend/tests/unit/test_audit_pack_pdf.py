@@ -341,6 +341,106 @@ def test_audit_pack_pdf_renders_a_two_photo_anchored_exception():
     assert "Photo 2" in _text(pdf)
 
 
+# ── Layout: cover, numbered sections and the journey strip ──────────────────
+
+
+def test_audit_pack_html_cover_lists_the_numbered_sections_with_page_links():
+    # Act
+    html = render_audit_pack_html(make_manifest(phases=[]), issue=_issue(), mirror_base_url=MIRROR)
+
+    # Assert
+    for anchor in ("ch-summary", "ch-journey", "ch-exceptions", "ch-details", "ch-verification",
+                   "ch-data-protection", "ch-certificate"):
+        assert f'href="#{anchor}"' in html
+        assert f'id="{anchor}"' in html
+    assert "Section 1" in html and "Section 7" in html
+
+
+def test_audit_pack_html_journey_strip_marks_the_incident_after_the_last_completed_phase():
+    # Arrange: P1 completes at 09:00 UTC; the critical exception is raised at 12:00 UTC.
+    from app.schemas.audit_pack import IncidentSummary
+
+    phases = [make_phase(0, "trip_creation"), make_phase(1, "departure"),
+              make_phase(2, "in_transit", status="pending", completed_at=None)]
+    incident = IncidentSummary(
+        exception_ids=[uuid.uuid4()], first_exception_type="hijacking", first_raised_at=T0 + timedelta(hours=4),
+        position=None, last_known_position=None, first_reviewed_at=None, minutes_to_first_review=None,
+    )
+    manifest = make_manifest(phases=phases).model_copy(update={"incident": incident})
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert 'class="journey"' in html
+    assert "after P1 was completed" in html
+    assert 'stroke-dasharray' in html
+
+
+def test_audit_pack_html_journey_strip_has_no_break_without_an_incident():
+    # Act
+    html = render_audit_pack_html(make_manifest(phases=[make_phase(0, "trip_creation")]), issue=None,
+                                  mirror_base_url=MIRROR)
+
+    # Assert
+    assert 'class="journey"' in html
+    assert "Red break" not in html
+    assert "stroke-dasharray" not in html
+
+
+# ── Plain-language verification and operator-declared incidents ─────────────
+
+
+def test_audit_pack_html_names_each_receipt_in_plain_words_before_the_technical_appendix():
+    # Arrange
+    record = _record().model_copy(update={"receipt_type": "journey_lock", "subject_type": "trip"})
+    manifest = make_manifest(phases=[]).model_copy(update={"anchored_records": [record]})
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    plain = html[html.index('id="unchanged"'):html.index('id="integrity"')]
+    assert "Trip plan locked when the trip was created" in plain
+    assert "Unchanged" in plain
+    assert record.data_hash not in plain
+    assert record.data_hash in html[html.index('id="integrity"'):]
+
+
+def test_audit_pack_html_falls_back_to_the_system_name_for_an_unknown_receipt_type():
+    # Arrange
+    record = _record().model_copy(update={"receipt_type": "future_thing", "subject_type": "trip"})
+    manifest = make_manifest(phases=[]).model_copy(update={"anchored_records": [record]})
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert "Future thing · Trip" in html
+
+
+def test_audit_pack_html_summarises_an_operator_declared_incident_without_a_critical_exception():
+    # Arrange: a hijacking the dispatcher logged from a phone call — no critical exception behind it.
+    from app.schemas.audit_pack import IncidentSummary
+
+    incident = IncidentSummary(
+        exception_ids=[], first_exception_type="hijacking", first_raised_at=T0 + timedelta(hours=4),
+        position=None, last_known_position=None, first_reviewed_at=None, minutes_to_first_review=None,
+        basis="investigation",
+    )
+    manifest = make_manifest(phases=[]).model_copy(update={"incident": incident})
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    summary = html[html.index('id="incident"'):html.index('id="ch-journey"')]
+    assert "Reported event (declared by the operator)" in summary
+    assert "tier-declared" in summary
+    assert "No review recorded" not in summary
+    assert "Critical exceptions" not in summary
+
+
 def _without_order_number(manifest: AuditPackManifest) -> AuditPackManifest:
     # Validated, not model_copy: the schema itself must accept a trip with no order number.
     trip = TripSummary.model_validate({**manifest.trip.model_dump(), "order_number": None})
@@ -355,7 +455,7 @@ def test_audit_pack_html_without_order_number_says_not_recorded():
     html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
 
     # Assert
-    assert "<tr><th>Order number</th><td>Not recorded</td></tr>" in html
+    assert "<th>Order number</th><td>Not recorded</td>" in html
     assert ">None<" not in html
 
 

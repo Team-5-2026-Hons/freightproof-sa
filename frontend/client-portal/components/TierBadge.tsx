@@ -27,6 +27,10 @@ export function tierMeaning(tier: EvidenceTier): string {
   return STYLE[tier].meaning
 }
 
+export function tierLabel(tier: EvidenceTier): string {
+  return STYLE[tier].label
+}
+
 export function TierBadge({ tier }: { tier: EvidenceTier }) {
   const style = STYLE[tier]
   return (
