@@ -39,6 +39,8 @@ interface TrendColumnsProps<Row> {
   /** The y-axis heading, e.g. "Trips". Required: every chart names its value axis. */
   yLabel: string
   height?: number
+  /** How the value axis writes its numbers, e.g. fmtAxisAmount for rand. Plain numbers by default. */
+  valueFormatter?: (value: number) => string
 }
 
 // Internal keys, prefixed so no series key can collide with them.
@@ -50,7 +52,7 @@ type Datum = Record<string, string | number | boolean>
 /** Stacked columns over time. Thin Recharts wrapper: bars at most 24px, a 2px surface gap
  *  between segments, only the top segment rounded, partial buckets faded. */
 export function TrendColumns<Row>({
-  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
+  rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT, valueFormatter,
 }: TrendColumnsProps<Row>) {
   // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
@@ -64,7 +66,8 @@ export function TrendColumns<Row>({
   const topIndex = series.length - 1
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
+    <ResponsiveContainer width="100%" height="100%" minHeight={height}>
       <BarChart data={data} margin={TIME_CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis
@@ -74,7 +77,7 @@ export function TrendColumns<Row>({
         />
         <YAxis
           allowDecimals={false} tick={AXIS_TICK} tickLine={false} axisLine={false} width={Y_AXIS_WIDTH}
-          label={yAxisHeading(yLabel)}
+          label={yAxisHeading(yLabel)} tickFormatter={valueFormatter}
         />
         <Tooltip
           cursor={{ fill: GRID_COLOR, fillOpacity: CURSOR_OPACITY }}

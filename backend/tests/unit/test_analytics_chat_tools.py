@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from app.analytics.fleet.periods import Grain, Period
 from app.orchestration.analytics_chat import tools
+from app.orchestration.analytics_chat.definitions import about
 from app.orchestration.analytics_chat.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from app.schemas.cost_analytics import CostResponse
 from app.schemas.fleet_analytics import (
@@ -133,6 +134,9 @@ async def test_run_tool_calls_its_service_for_the_callers_org(
 
     assert outcome.error is None
     assert outcome.result is not None
+    # The page's own lines about this tab come first, before any figure (B43).
+    assert next(iter(outcome.result)) == "about"
+    assert outcome.result["about"] == about(tool_name)
     for service in _TOOL_SERVICES[tool_name]:
         call = services[service].await_args
         assert services[service].await_count == 1
@@ -181,6 +185,7 @@ async def test_run_tool_activity_sends_patterns_no_grain(services: dict[str, Asy
     assert services["get_patterns"].await_args is not None
     assert services["get_patterns"].await_args.kwargs["period"].grain is None
     assert outcome.result == {
+        "about": about("activity"),
         "activity": {"totals": {"stub": True}, "value": 1}, "busy_patterns": {"totals": {"stub": True}, "value": 1},
     }
 
@@ -305,3 +310,24 @@ def test_personal_data_check_catches_a_nested_driver_name() -> None:
         rows: list[_Row]
 
     assert _personal_fields((_Response,)) == ["_Row.driver_name"]
+
+
+# ── What the descriptions say a figure counts (B43) ─────────────────────────
+
+
+def test_right_now_says_live_trips_include_planned_ones_and_where_each_trip_is_listed() -> None:
+    description = TOOLS_BY_NAME["right_now"].description
+
+    # 21 Oct: the chat said planned trips weren't tracked, while the tile counts them.
+    assert "created, underway or on hold" in description
+    assert "planned trips that haven't departed yet" in description
+    assert "Active Trips list" in description
+    assert "last 30 days" in description
+
+
+def test_no_period_tool_claims_closed_trips_only_without_deferring_to_about() -> None:
+    # Cancellations (dated when cancelled), busy patterns (any status) and the review desk (any
+    # status) are not closed-trips-by-departure; the old wording said every tool was.
+    for tool in TOOLS:
+        assert "Counts closed trips only" not in tool.description
+        assert "`about`" in tool.description

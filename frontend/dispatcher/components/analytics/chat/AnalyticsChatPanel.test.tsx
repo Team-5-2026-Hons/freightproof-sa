@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, api } from '@/lib/api/client'
 import type { ChatAnswer, SpendStatus } from '@shared/lib/types/analytics-chat'
-import { AnalyticsChatPanel } from './AnalyticsChatPanel'
+import { AnalyticsChatPanel, MAX_QUESTION_CHARS } from './AnalyticsChatPanel'
 
 vi.mock('@/lib/api/client', () => ({
   api: { post: vi.fn() },
@@ -73,6 +73,69 @@ describe('AnalyticsChatPanel', () => {
     expect(onOpenBasis).toHaveBeenCalledWith(ANSWER.basis[0])
   })
 
+  it('shows an answer\'s "- " lines as a real list, and its Based on lines as chips', async () => {
+    mockedPost.mockResolvedValue({
+      ...ANSWER, answer: 'From the headline figures:\n- There are 4 live trips.\n- 1 critical problem is waiting.',
+    })
+    renderPanel()
+
+    ask('Any live trips?')
+
+    const log = screen.getByRole('log')
+    const items = await within(log).findAllByRole('listitem')
+    expect(items.map((item) => item.textContent)).toEqual(['There are 4 live trips.', '1 critical problem is waiting.'])
+    expect(within(log).queryByText(/^- /)).not.toBeInTheDocument()
+    expect(within(log).getByText('Based on:')).toBeInTheDocument()
+    expect(within(log).getByRole('button', { name: 'Open On time with these dates' }).parentElement).toHaveClass('rounded-md', 'border')
+  })
+
+  it('shows three pulsing dots while an answer is worked out, still for reduced motion', async () => {
+    mockedPost.mockReturnValue(new Promise<ChatAnswer>(() => {}) as never)
+    renderPanel()
+
+    ask('How late were we?')
+
+    const status = await screen.findByRole('status')
+    const dots = within(status).getAllByTestId('thinking-dot')
+    expect(dots).toHaveLength(3)
+    expect(dots[0]).toHaveClass('motion-safe:animate-pulse')
+    expect(dots.map((dot) => dot.style.animationDelay)).toEqual(['0ms', '150ms', '300ms'])
+  })
+
+  it('scrolls a new answer to its start, not its end, within the conversation only', async () => {
+    // The conversation's top edge is at 100 px; the new answer arrives with its top at 700 px.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect(this: HTMLElement) {
+      if (this.getAttribute('role') === 'log') return { top: 100 } as DOMRect
+      return { top: this.textContent?.includes('On-time arrivals fell') ? 700 : 0 } as DOMRect
+    })
+    let resolve: (answer: ChatAnswer) => void = () => {}
+    mockedPost.mockReturnValue(new Promise<ChatAnswer>((done) => { resolve = done }) as never)
+    renderPanel()
+    const log = screen.getByRole('log')
+    let scrollTop = 0
+    Object.defineProperty(log, 'scrollTop', { get: () => scrollTop, set: (value: number) => { scrollTop = value } })
+    Object.defineProperty(log, 'scrollHeight', { get: () => 1500 })
+
+    ask('How did delays change?')
+    await screen.findByRole('status')
+    // While waiting: the question and the dots, at the bottom.
+    expect(scrollTop).toBe(1500)
+
+    scrollTop = 1500
+    resolve(ANSWER)
+    await within(log).findByText(/On-time arrivals fell/)
+
+    // Moved up by the answer's distance below the top edge, less the 8 px gap: 1500 + 600 - 8.
+    await waitFor(() => expect(scrollTop).toBe(1500 + (700 - 100) - 8))
+    vi.restoreAllMocks()
+  })
+
+  it('draws a full-strength line under the header, where the conversation starts', () => {
+    renderPanel()
+
+    expect(screen.getByRole('heading', { name: 'Ask about these figures' }).closest('header')).toHaveClass('border-b', 'border-outline-v')
+  })
+
   it('clears the box the moment a question is asked, before the answer arrives', async () => {
     mockedPost.mockReturnValue(new Promise<ChatAnswer>(() => {}) as never)
     renderPanel()
@@ -81,6 +144,39 @@ describe('AnalyticsChatPanel', () => {
 
     expect(input().value).toBe('')
     expect(await screen.findByRole('status')).toHaveTextContent('Looking up the figures…')
+  })
+
+  it('counts the characters typed against the limit, quietly in the corner of the box', () => {
+    renderPanel()
+    const counter = screen.getByTestId('question-char-count')
+
+    expect(counter).toHaveTextContent('0/500')
+    fireEvent.change(input(), { target: { value: 'How late were we?' } })
+
+    expect(counter).toHaveTextContent('17/500')
+    expect(counter).toHaveClass('text-on-surf-v/60')
+    expect(input()).toHaveAccessibleDescription('17 of 500 characters')
+    expect(input()).toHaveAttribute('maxLength', String(MAX_QUESTION_CHARS))
+  })
+
+  it('turns the counter the warning colour once the box is full', () => {
+    renderPanel()
+
+    fireEvent.change(input(), { target: { value: 'x'.repeat(MAX_QUESTION_CHARS) } })
+
+    const counter = screen.getByTestId('question-char-count')
+    expect(counter).toHaveTextContent('500/500')
+    expect(counter).toHaveClass('text-warn')
+  })
+
+  it('resets the counter when a question is asked and the box clears', async () => {
+    mockedPost.mockReturnValue(new Promise<ChatAnswer>(() => {}) as never)
+    renderPanel()
+
+    ask('How late were we?')
+
+    expect(await screen.findByRole('status')).toBeInTheDocument()
+    expect(screen.getByTestId('question-char-count')).toHaveTextContent('0/500')
   })
 
   it('underlines the Ask button text in white on hover', () => {

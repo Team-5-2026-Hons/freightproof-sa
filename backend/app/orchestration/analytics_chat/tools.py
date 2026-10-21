@@ -21,6 +21,7 @@ from datetime import UTC, date, datetime
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analytics.fleet.constants import EXPIRY_BAND_EDGES_DAYS, TILE_WINDOW_DAYS
 from app.analytics.fleet.periods import Grain, Period, today_sast
 from app.orchestration.analytics.fleet import (
     check_period,
@@ -35,6 +36,7 @@ from app.orchestration.analytics.fleet import (
     get_tiles,
     resolve_period_start,
 )
+from app.orchestration.analytics_chat.definitions import about
 from app.orchestration.analytics_chat.periods import PeriodPreset, resolve_preset
 from app.orchestration.analytics_chat.totals import (
     activity_totals,
@@ -174,12 +176,18 @@ async def _right_now(db: AsyncSession, org: uuid.UUID, period: Period | None, no
     return _with_totals(right_now_totals(response, now), response)
 
 
+# The licence tile skips expiries beyond its last band.
+MAX_EXPIRY_BAND_DAYS = EXPIRY_BAND_EDGES_DAYS[-1]
+
 # Said once and appended to every period tool, so all of them describe the scope the same way.
+# "Unless `about` says otherwise": cancellations (dated when cancelled) and busy patterns (any
+# trip status) are exceptions on the page itself, and used to be described wrongly here (B43).
 _SCOPE = (
-    " Counts closed trips only, grouped by the day of their first departure in South African time. "
-    "Buckets marked is_partial are not a whole week, month or year. A null rate means nothing to measure, "
-    "not zero. Starts with `totals`: whole-period sums, rates and leaders (which is biggest, lowest, "
-    "highest, ties listed) worked out by the server; use them, never add up or compare rows yourself."
+    " Unless the result's `about` lines say otherwise, counts closed trips, grouped by the day of their first "
+    "departure in South African time. Buckets marked is_partial are not a whole week, month or year. A null "
+    "rate means nothing to measure, not zero. Starts with `about` (what the page says each chart counts) and "
+    "`totals`: whole-period sums, rates and leaders (which is biggest, lowest, highest, ties listed) worked "
+    "out by the server; use them, never add up or compare rows yourself."
 )
 
 TOOLS: tuple[ChatTool, ...] = (
@@ -216,7 +224,8 @@ TOOLS: tuple[ChatTool, ...] = (
             "Review desk tab: critical problems waiting for review now by how long they've waited, "
             "the waiting pile over time, how fast critical problems get reviewed (median and mean "
             "hours), and what reviews concluded. Counts problems, not trips, and isn't limited to "
-            "closed trips. Starts with `totals` worked out by the server; use them for any total. "
+            "closed trips. Starts with `about` (what the page says each chart counts) and `totals` worked out "
+            "by the server; use them for any total. "
             "Median and mean review times are per bucket only and can't be added."
         ),
         input_model=TrendInput, runner=_review,
@@ -251,10 +260,15 @@ TOOLS: tuple[ChatTool, ...] = (
     ChatTool(
         name="right_now", tab=None, label="Right now",
         description=(
-            "The headline tiles, as of this moment (no period): live trips, critical problems waiting "
-            "for review and the oldest one's age, driver licence and vehicle disc expiries in bands, "
-            "and vehicles unused recently. Starts with `totals`, which gives how long the oldest critical "
-            "problem has waited (whole days and hours, as the tile shows); never work it out from a date."
+            "The headline tiles, as of this moment (no period): live trips (created, underway or on hold, so "
+            "they include planned trips that haven't departed yet; the tile doesn't split them), critical "
+            "problems waiting for review and the oldest one's age, driver licence and vehicle disc expiries in "
+            f"bands (none more than {MAX_EXPIRY_BAND_DAYS} days away), and trucks and trailers that neither "
+            f"departed in the last {TILE_WINDOW_DAYS} days nor are on a live trip. No trip-by-trip detail: the "
+            "Live trips tile opens the Dispatcher Dashboard, whose Active Trips list shows each trip. "
+            "Starts with `about` (what the page says each tile counts) and `totals`, which gives how long the "
+            "oldest critical problem has waited (whole days and hours, as the tile shows); never work it out "
+            "from a date."
         ),
         input_model=NoInput, runner=_right_now,
     ),
@@ -306,4 +320,5 @@ async def run_tool(
         except ValueError as exc:
             return ToolOutcome(tool=tool, result=None, error=str(exc), period=None)
     result = await tool.runner(db, organization_id, period, moment)
-    return ToolOutcome(tool=tool, result=result, error=None, period=period)
+    # The page's own explanation of each figure goes first, so the model reads it before the numbers.
+    return ToolOutcome(tool=tool, result={"about": about(tool.name), **result}, error=None, period=period)

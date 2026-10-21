@@ -67,3 +67,18 @@ export function fmtRand(value: number | null): string {
 export function fmtRandRate(value: number | null): string {
   return value === null ? NO_DATA : RAND_CENTS.format(value)
 }
+
+// Chart axes have room for about four characters beside their heading, so large amounts are
+// shortened there: 160 000 reads "160k". The heading ("Rand") names the unit; tooltips and
+// tables keep the full fmtRand figure.
+const THOUSAND = 1_000
+const MILLION = 1_000_000
+const AXIS_AMOUNT = new Intl.NumberFormat(RAND_LOCALE, { maximumFractionDigits: 1 })
+
+/** An axis tick for an amount: "0", "850", "50k", "160k", "1,2m". */
+export function fmtAxisAmount(value: number): string {
+  const size = Math.abs(value)
+  if (size >= MILLION) return `${AXIS_AMOUNT.format(value / MILLION)}m`
+  if (size >= THOUSAND) return `${AXIS_AMOUNT.format(value / THOUSAND)}k`
+  return AXIS_AMOUNT.format(value)
+}
