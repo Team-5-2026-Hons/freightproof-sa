@@ -29,6 +29,12 @@ class TripStatus(str, enum.Enum):
     EXCEPTION_HOLD   = "exception_hold"
 
 
+class PushPlatform(str, enum.Enum):
+    """The native shell a push token came from; the sender picks the FCM/APNs path by it."""
+    ANDROID = "android"
+    IOS     = "ios"
+
+
 class TripType(str, enum.Enum):
     """Loaded = normal cargo run; empty_leg = repositioning, no consignments."""
     LOADED    = "loaded"

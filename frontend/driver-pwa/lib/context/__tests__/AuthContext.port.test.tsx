@@ -15,16 +15,13 @@ import type { AuthChangeListener, AuthSession, OtpAuthPort } from '@shared/lib/a
 import type { DriverProfileSource } from '@/lib/auth/DriverProfileSource'
 import { AuthProvider } from '@/lib/context/AuthContext'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { api } from '@/lib/api/client'
 import type { DriverUser } from '@/lib/types/user'
 
-// Stubs that record any call: the assertions below require them to stay untouched.
-vi.mock('@/lib/supabase', () => ({
-  supabase: {
-    auth: { signInWithOtp: vi.fn(), verifyOtp: vi.fn(), getSession: vi.fn(), onAuthStateChange: vi.fn(), signOut: vi.fn() },
-  },
-}))
+// Stubs that record any call: the assertions below require them to stay untouched. With an
+// injected port the real Supabase client must never even be built.
+vi.mock('@/lib/supabase', () => ({ getSupabase: vi.fn() }))
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() }, ApiError: class ApiError extends Error {} }))
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
 
@@ -79,8 +76,7 @@ function renderWith(port: OtpAuthPort, profiles: DriverProfileSource) {
 }
 
 function expectNothingElseTouched() {
-  const auth = vi.mocked(supabase.auth)
-  for (const method of Object.values(auth)) expect(method).not.toHaveBeenCalled()
+  expect(vi.mocked(getSupabase)).not.toHaveBeenCalled()
   expect(vi.mocked(api.get)).not.toHaveBeenCalled()
 }
 

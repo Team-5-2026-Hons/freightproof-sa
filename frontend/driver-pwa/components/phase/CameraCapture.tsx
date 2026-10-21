@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon, Check } from 'lucide-react'
@@ -8,6 +8,9 @@ import { useToast } from '@/lib/hooks/useToast'
 import { fileToCompressedJpegDataUrl } from '@/lib/utils/image'
 import { EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT, EVIDENCE_PHOTO_MAX_EDGE_PX } from '@/lib/constants/evidence-photo'
 import { formatTime } from '@/lib/utils/format-time'
+import {
+  captureKey, claimRestoredPhoto, clearCapturePending, markCapturePending, subscribeRestoredPhoto,
+} from '@/lib/camera/restored-photo'
 
 interface CameraCaptureProps {
   /** What the photo is — the field label and the captured image's alt text. */
@@ -59,6 +62,22 @@ export function CameraCapture({
   // button that reopens the same refusal every time it is tapped.
   const [nativeCameraUnavailable, setNativeCameraUnavailable] = useState(false)
   const { notify } = useToast()
+  // Latest onCapture without re-subscribing below: callers pass inline closures.
+  const onCaptureRef = useRef(onCapture)
+  onCaptureRef.current = onCapture
+
+  // A photo taken while Android killed the WebView comes back through CapacitorBridge,
+  // not through getPhoto(). Claim it on mount (resume.ts has just put the driver back on
+  // this step) or whenever it arrives while this control is already on screen.
+  useEffect(() => {
+    const key = captureKey(window.location.pathname, label)
+    const claim = (): void => {
+      const restored = claimRestoredPhoto(key)
+      if (restored !== null) onCaptureRef.current(restored)
+    }
+    claim()
+    return subscribeRestoredPhoto(claim)
+  }, [label])
 
   const notifyCaptureFailed = useCallback(() => {
     notify({
@@ -130,6 +149,9 @@ export function CameraCapture({
         if (dataUrl !== null) onCapture(dataUrl)
         return
       }
+      // Marked before the camera opens: if Android reclaims the WebView behind it, this
+      // marker is the only thing that says which control the restored photo belongs to.
+      markCapturePending(captureKey(window.location.pathname, label))
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
@@ -166,9 +188,11 @@ export function CameraCapture({
           notifyCaptureFailed()
       }
     } finally {
+      // The camera answered this session, so there is nothing left to restore.
+      clearCapturePending()
       setIsCapturing(false)
     }
-  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable, nativeSource])
+  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable, nativeSource, label])
 
   const verb = isCapturing ? 'Opening Camera…' : nativeCameraUnavailable ? 'Choose a Photo Instead' : actionLabel
 

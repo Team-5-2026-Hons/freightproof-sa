@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { Input } from '@/components/ui/Input'
@@ -47,7 +47,9 @@ interface ConditionChoiceProps {
 
 // Large tiles, one tap each — a driver reading a physical seal at a gate is not the place
 // for a dropdown. role="radiogroup"/"radio" mirrors native select-one semantics.
-function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
+// Memoised, with the photo tile below: every keystroke in the seal number re-renders this
+// step (51-124 ms per key at 4x CPU throttling), and neither depends on what is typed.
+const ConditionChoice = memo(function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
   return (
     // auto-fit on a rem minimum, not a fixed 3 columns: the three sit in a row at normal
     // text sizes and stack once Dynamic Type makes "Damaged" wider than a third of the
@@ -74,7 +76,9 @@ function ConditionChoice({ value, onChange }: ConditionChoiceProps) {
       })}
     </div>
   )
-}
+})
+
+const SealPhoto = memo(CameraCapture)
 
 // Blind entry, same principle as unloading's own visual count: showing the driver the
 // seal set at departure before they type invites copying, not verification.
@@ -94,6 +98,10 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   // Judged when the OCR answer arrives, not when the photo was taken (see CaptureSeal).
   const draftRef = useRef(draft)
   useEffect(() => { draftRef.current = draft }, [draft])
+  // The host passes a new onUpdate each render; read through a ref so the handlers handed
+  // to the memoised children below stay the same function across keystrokes.
+  const onUpdateRef = useRef(onUpdate)
+  onUpdateRef.current = onUpdate
   const hasInput = input.trim().length > 0
   // The backend 422s any non-null seal number not matching XX-#### before its own
   // comparison runs, so format must still be caught here — but only when a number is
@@ -113,13 +121,14 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
   //
   // OCR stays blind entry: it reads the physical seal in this photo, never paperwork and
   // never the departure value. A missing seal has nothing to read.
-  function handleSealPhoto(dataUrl: string) {
+  const handleSealPhoto = useCallback((dataUrl: string) => {
+    const onUpdate = onUpdateRef.current
     const capturedAt = new Date().toISOString()
     onUpdate({ sealPhotoDataUrl: dataUrl, sealPhotoArtifactId: null, capturedAt })
     void uploadNow(dataUrl, 'photo', capturedAt, 'seal_photo').then((artifactId) => {
-      if (artifactId !== null) onUpdate({ sealPhotoArtifactId: artifactId })
+      if (artifactId !== null) onUpdateRef.current({ sealPhotoArtifactId: artifactId })
     })
-    if (draft.sealCondition === 'missing') return
+    if (draftRef.current.sealCondition === 'missing') return
     void readSeal(dataUrl).then((result) => {
       const current = draftRef.current
       if (result.stale || current.sealCondition === 'missing') return
@@ -128,24 +137,24 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
       // has made the field their own their number stands and submits as "typed".
       if (canReplaceWithOcr(current.sealNumberAtArrival, current.sealNumberAtArrivalOcr ?? null)) {
         setInput(result.value ?? '')
-        onUpdate({ sealNumberAtArrivalOcr: result.value, sealNumberAtArrival: result.value })
+        onUpdateRef.current({ sealNumberAtArrivalOcr: result.value, sealNumberAtArrival: result.value })
       } else {
-        onUpdate({ sealNumberAtArrivalOcr: null })
+        onUpdateRef.current({ sealNumberAtArrivalOcr: null })
       }
     })
-  }
+  }, [uploadNow, readSeal])
 
-  function handleConditionChange(condition: SealCondition) {
+  const handleConditionChange = useCallback((condition: SealCondition) => {
     // Clearing the number when the seal is missing rather than merely hiding the field:
     // a number left over from an earlier condition choice must never reach the wire
     // alongside a 'missing' condition.
     if (condition === 'missing') {
       setInput('')
-      onUpdate({ sealCondition: condition, sealNumberAtArrival: null, sealNumberAtArrivalOcr: null })
+      onUpdateRef.current({ sealCondition: condition, sealNumberAtArrival: null, sealNumberAtArrivalOcr: null })
     } else {
-      onUpdate({ sealCondition: condition })
+      onUpdateRef.current({ sealCondition: condition })
     }
-  }
+  }, [])
 
   function handleInputChange(value: string) {
     // Stores the exact value isValidSealFormat checks, so a stray leading/trailing space
@@ -183,7 +192,7 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
         <ConditionChoice value={draft.sealCondition} onChange={handleConditionChange} />
       </section>
 
-      <CameraCapture
+      <SealPhoto
         label="Seal photo"
         actionLabel={isMissing ? 'Photograph the door latch' : 'Photograph the seal'}
         hint={isMissing ? 'Where the seal should be' : 'As found, before it is broken'}

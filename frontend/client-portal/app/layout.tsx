@@ -5,6 +5,11 @@ import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 
+// Every page rendered per request: middleware.ts issues a fresh CSP nonce for each response,
+// and a page prerendered at build time would carry inline scripts with no nonce, which the
+// policy then blocks.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Audit pack · FreightProof',
   // Every /p/ URL carries a live share token; nothing here belongs in a search index.

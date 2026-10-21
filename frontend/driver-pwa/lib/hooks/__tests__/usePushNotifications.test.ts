@@ -15,14 +15,18 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }))
 
-const { native, listeners } = vi.hoisted(() => ({
+const { native, platform, listeners, registerPushToken } = vi.hoisted(() => ({
   native: { value: false },
+  platform: { value: 'android' },
   listeners: new Map<string, (payload: unknown) => void>(),
+  registerPushToken: vi.fn(),
 }))
 
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => native.value },
+  Capacitor: { isNativePlatform: () => native.value, getPlatform: () => platform.value },
 }))
+
+vi.mock('@/lib/api/push', () => ({ registerPushToken }))
 
 vi.mock('@capacitor/push-notifications', () => ({
   PushNotifications: {
@@ -40,7 +44,9 @@ import { PushNotifications } from '@capacitor/push-notifications'
 beforeEach(() => {
   vi.clearAllMocks()
   native.value = false
+  platform.value = 'android'
   listeners.clear()
+  registerPushToken.mockResolvedValue(undefined)
 })
 
 describe('usePushNotifications', () => {
@@ -96,5 +102,51 @@ describe('usePushNotifications', () => {
 
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith('Push notifications unavailable on this device', expect.any(Error)))
     expect(PushNotifications.register).not.toHaveBeenCalled()
+  })
+
+  // Without this the OS issued a token nobody stored, and no push could reach the driver.
+  it('sends the token the OS issues to the backend with this device\'s platform', async () => {
+    native.value = true
+    platform.value = 'ios'
+    renderHook(() => usePushNotifications())
+    await vi.waitFor(() => expect(listeners.has('registration')).toBe(true))
+
+    act(() => listeners.get('registration')!({ value: 'apns-token-1' }))
+
+    expect(registerPushToken).toHaveBeenCalledWith('apns-token-1', 'ios')
+  })
+
+  it('attaches the registration listener before asking the OS for a token', async () => {
+    native.value = true
+    renderHook(() => usePushNotifications())
+
+    await vi.waitFor(() => expect(PushNotifications.register).toHaveBeenCalled())
+
+    const order = vi.mocked(PushNotifications.addListener).mock.invocationCallOrder[0]
+    expect(order).toBeLessThan(vi.mocked(PushNotifications.register).mock.invocationCallOrder[0])
+    expect(vi.mocked(PushNotifications.addListener).mock.calls[0][0]).toBe('registration')
+  })
+
+  it('a token the server refuses is logged, not thrown', async () => {
+    native.value = true
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    registerPushToken.mockRejectedValueOnce(new Error('offline'))
+    renderHook(() => usePushNotifications())
+    await vi.waitFor(() => expect(listeners.has('registration')).toBe(true))
+
+    act(() => listeners.get('registration')!({ value: 'fcm-token-1' }))
+
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith('Could not register the push token with the server', expect.any(Error)))
+  })
+
+  it('does not post a token from an unknown platform', async () => {
+    native.value = true
+    platform.value = 'electron'
+    renderHook(() => usePushNotifications())
+    await vi.waitFor(() => expect(listeners.has('registration')).toBe(true))
+
+    act(() => listeners.get('registration')!({ value: 'x' }))
+
+    expect(registerPushToken).not.toHaveBeenCalled()
   })
 })

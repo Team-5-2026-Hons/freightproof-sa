@@ -32,6 +32,9 @@ interface FailureText {
 }
 const FAILURE_BY_STATUS: Record<number, FailureText> = {
   401: { text: 'Access expired — reload the page to enter a new code', retry: false },
+  // The server refused to serve bytes that no longer hash to what was sealed. Not retryable:
+  // the stored file changed, and only the issuing operator can explain why.
+  409: { text: 'The stored file no longer matches the one sealed — contact the issuing operator', retry: false },
   410: { text: 'This link has been closed', retry: false },
   429: { text: 'Too many requests — try again shortly', retry: true },
   503: { text: 'Temporarily unavailable', retry: true },

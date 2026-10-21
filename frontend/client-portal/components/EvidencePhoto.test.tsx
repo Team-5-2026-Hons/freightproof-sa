@@ -136,6 +136,7 @@ describe('EvidencePhoto — loading', () => {
 describe('EvidencePhoto — failures', () => {
   it.each([
     [401, 'Access expired — reload the page to enter a new code', false],
+    [409, 'The stored file no longer matches the one sealed — contact the issuing operator', false],
     [410, 'This link has been closed', false],
     [429, 'Too many requests — try again shortly', true],
     [503, 'Temporarily unavailable', true],

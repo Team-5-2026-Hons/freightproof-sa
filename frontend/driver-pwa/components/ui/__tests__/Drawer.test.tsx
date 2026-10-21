@@ -189,6 +189,41 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('test_follows_the_finger_without_re_rendering_the_sheet_on_every_move', () => {
+    // Arrange
+    let childRenders = 0
+    function Counted() {
+      childRenders += 1
+      return <p>Panel body</p>
+    }
+    render(<Drawer open onClose={vi.fn()} side="bottom" title="Profile"><Counted /></Drawer>)
+    const panel = screen.getByRole('dialog')
+    fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
+    const rendersAfterGrab = childRenders
+
+    // Act
+    for (const dy of [10, 20, 30, 40, 50]) fireEvent.pointerMove(dragHandle(), { clientY: 100 + dy, pointerId: 1 })
+
+    // Assert
+    expect(panel.style.transform).toBe('translateY(50px)')
+    expect(childRenders).toBe(rendersAfterGrab)
+  })
+
+  it('test_hands_the_position_back_to_the_classes_after_release', () => {
+    // Arrange
+    render(<Drawer open onClose={vi.fn()} side="bottom" title="Profile"><p>Panel body</p></Drawer>)
+    const panel = screen.getByRole('dialog')
+
+    // Act — a short drag that springs back (instantly, under Reduce Motion).
+    fireEvent.pointerDown(dragHandle(), { clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(dragHandle(), { clientY: 140, pointerId: 1 })
+    fireEvent.pointerUp(dragHandle(), { clientY: 140, pointerId: 1 })
+
+    // Assert
+    expect(panel.style.transform).toBe('')
+    expect(panel.className).toContain('translate-y-0')
+  })
+
   it('keeps the scrim mounted while closed so it can fade out rather than vanish', () => {
     const { container } = render(
       <Drawer open={false} onClose={vi.fn()} side="bottom" title="Profile"><p>Panel body</p></Drawer>,

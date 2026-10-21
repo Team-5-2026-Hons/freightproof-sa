@@ -12,11 +12,25 @@ describe('root layout viewport', () => {
   })
 })
 
+interface NextConfigModule {
+  (phase: string): { poweredByHeader?: boolean }
+  assertApiUrl: (phase: string, env: Record<string, string | undefined>) => void
+}
+
+const loadConfig = (): NextConfigModule => createRequire(import.meta.url)('../next.config.js') as NextConfigModule
+
 describe('next.config', () => {
   it('does not advertise the framework in an X-Powered-By header', () => {
-    const nodeRequire = createRequire(import.meta.url)
-    const config = nodeRequire('../next.config.js') as { poweredByHeader?: boolean }
+    const config = loadConfig()('phase-development-server')
 
     expect(config.poweredByHeader).toBe(false)
+  })
+
+  it('fails a production build that has no API URL', () => {
+    const { assertApiUrl } = loadConfig()
+
+    expect(() => assertApiUrl('phase-production-build', {})).toThrow(/NEXT_PUBLIC_API_URL/)
+    expect(() => assertApiUrl('phase-production-build', { NEXT_PUBLIC_API_URL: 'https://api.example.test' })).not.toThrow()
+    expect(() => assertApiUrl('phase-development-server', {})).not.toThrow()
   })
 })

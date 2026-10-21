@@ -226,7 +226,14 @@ async def shared_artifact_endpoint(
         return _closed(exc)
     except EmailVerificationRequired as exc:
         return _unverified(exc)
-    except (FileStorageUnavailableError, StoredFileMismatchError) as exc:
+    except StoredFileMismatchError as exc:
+        # An integrity failure, not an outage: "try again" would hide that the stored file
+        # changed after it was sealed. Same status as the PDF route's mismatch.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT,
+            detail="The stored evidence file no longer matches the one sealed. Contact the issuing operator.",
+        ) from exc
+    except FileStorageUnavailableError as exc:
         raise HTTPException(status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again shortly.") from exc
     # Evidence bytes must never be interpreted as a page by the browser.
     return Response(

@@ -35,7 +35,7 @@ import {
   type StashedIdentity,
 } from '@/lib/identity-stash'
 import { MAX_RECEIVER_ID_NUMBER_LENGTH, MAX_RECEIVER_NAME_LENGTH } from '@/lib/limits'
-import { renderAttestation } from '@shared/lib/utils/render-attestation'
+import { ATTESTATION_SUBTITLE, renderAttestation } from '@shared/lib/utils/render-attestation'
 import { hasRecipientIdentity, looksLikeSaIdNumber } from '@shared/lib/utils/sa-id'
 import type { PositionFix } from '@shared/lib/types/position'
 
@@ -319,6 +319,24 @@ export function HandoverPageClient({ token }: { token: string }) {
   const hasReadStashRef = useRef(false)
   const stashedIdentityRef = useRef<StashedIdentity | null>(null)
 
+  // Read by the pageshow listener below, which is registered once.
+  const statusRef = useRef(status)
+  useEffect(() => { statusRef.current = status }, [status])
+
+  // Back from the vendor's page restores this one from the back/forward cache exactly as it
+  // was left: on "Taking you to the identity check", with no navigation coming, stuck. The
+  // receiver backed out of the check, so put them back at the choice they made, and drop
+  // the identity stashed for a vendor return that will now never happen.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (!event.persisted || statusRef.current !== 'verifying') return
+      clearStashedIdentity()
+      setStatus('consent')
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [])
+
   useEffect(() => {
     let cancelled = false
 
@@ -444,6 +462,7 @@ export function HandoverPageClient({ token }: { token: string }) {
         tripId: scan.trip_reference,
         recipientName: name.trim(),
         recipientIdNumber: idNumber.trim(),
+        subtitle: ATTESTATION_SUBTITLE.receiverDevice,
       })
 
       if (dataUrl === null) {

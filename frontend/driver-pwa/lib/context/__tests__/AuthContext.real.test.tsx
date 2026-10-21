@@ -12,7 +12,7 @@ const mockOnAuthStateChange = vi.fn()
 const mockSignOut = vi.fn()
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: {
+  getSupabase: () => ({
     auth: {
       signInWithOtp: (...args: unknown[]) => mockSignInWithOtp(...args),
       verifyOtp: (...args: unknown[]) => mockVerifyOtp(...args),
@@ -20,7 +20,7 @@ vi.mock('@/lib/supabase', () => ({
       onAuthStateChange: (...args: unknown[]) => mockOnAuthStateChange(...args),
       signOut: (...args: unknown[]) => mockSignOut(...args),
     },
-  },
+  }),
 }))
 
 const mockApiGet = vi.fn()

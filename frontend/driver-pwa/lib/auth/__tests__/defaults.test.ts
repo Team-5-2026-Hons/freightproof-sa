@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/supabase', () => ({ supabase: { auth: {} } }))
+vi.mock('@/lib/supabase', () => ({ getSupabase: () => ({ auth: {} }) }))
 vi.mock('@/lib/api/client', () => ({ api: { get: vi.fn() }, ApiError: class ApiError extends Error {} }))
 
 describe('default adapters', () => {

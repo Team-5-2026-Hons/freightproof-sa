@@ -3,6 +3,11 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
+// Every page rendered per request: middleware.ts issues a fresh CSP nonce for each response,
+// and a page prerendered at build time would carry inline scripts with no nonce, which the
+// policy then blocks.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Confirm delivery · FreightProof',
   // Nothing about this page should ever reach a search index: every URL under it carries

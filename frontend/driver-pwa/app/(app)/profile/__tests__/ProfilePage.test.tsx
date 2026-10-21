@@ -21,6 +21,8 @@ const mockPick = vi.fn()
 const mockNotify = vi.fn()
 let mockTrip: { trip_reference: string; horse: { registration: string } | null } | null = null
 let mockQueueLength = 0
+// Counts page renders: useOfflineQueue is read once per render of the page body only.
+let mockPageRenders = 0
 const mockPermission: Record<string, string | null> = { location: 'granted', camera: 'granted' }
 
 const user = {
@@ -38,7 +40,12 @@ vi.mock('next/navigation', () => ({
 }))
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user, signOut: mockSignOut }) }))
 vi.mock('@/lib/hooks/useTrip', () => ({ useTrip: () => ({ trip: mockTrip }) }))
-vi.mock('@/lib/hooks/useOfflineQueue', () => ({ useOfflineQueue: () => ({ queueLength: mockQueueLength }) }))
+vi.mock('@/lib/hooks/useOfflineQueue', () => ({
+  useOfflineQueue: () => {
+    mockPageRenders += 1
+    return { queueLength: mockQueueLength }
+  },
+}))
 vi.mock('@/lib/hooks/usePermissionStatus', () => ({ usePermissionStatus: (k: string) => mockPermission[k] }))
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: mockNotify }) }))
 vi.mock('@/lib/profile/pick-driver-photo', () => ({ pickDriverPhoto: () => mockPick() }))
@@ -49,6 +56,7 @@ beforeEach(() => {
   mockSignOut.mockResolvedValue(undefined)
   mockTrip = { trip_reference: 'TRP-2026-0041', horse: { registration: 'GP 12-34 ZX' } }
   mockQueueLength = 0
+  mockPageRenders = 0
   mockSupportPhone = null
   mockPermission.location = 'granted'
   mockPermission.camera = 'granted'
@@ -237,5 +245,17 @@ describe('Profile — sign out', () => {
     await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith(ROUTES.login))
     expect(mockSignOut).toHaveBeenCalledOnce()
     expect(getDriverPhoto('drv-1')).toBeNull()
+  })
+})
+
+describe('Profile — sheet state stays out of the page', () => {
+  it('test_opening_and_closing_a_sheet_does_not_re_render_the_page', () => {
+    render(<ProfilePage />)
+    const rendersAfterMount = mockPageRenders
+
+    fireEvent.click(screen.getByRole('button', { name: /Appearance/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }))
+
+    expect(mockPageRenders).toBe(rendersAfterMount)
   })
 })
