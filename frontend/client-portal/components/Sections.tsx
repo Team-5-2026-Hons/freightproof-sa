@@ -128,7 +128,7 @@ export function Parties({ manifest }: { manifest: AuditPackManifest }) {
       <dl>
         <Field label="Operator">{trip.operator_name}</Field>
         <Field label="Client(s)">{trip.client_names.join(', ') || '—'}</Field>
-        <Field label="Order number"><span className="num">{trip.order_number}</span></Field>
+        <Field label="Order number"><span className="num">{trip.order_number ?? '—'}</span></Field>
         <Field label="Created / closed"><span className="num">{formatSast(trip.created_at)} / {formatSast(trip.closed_at)}</span></Field>
         <Field label="Status">{humanise(trip.status)}</Field>
       </dl>

@@ -414,7 +414,7 @@ export interface InvestigationRecord {
 export interface TripSummary {
   trip_id: string
   trip_reference: string
-  order_number: string
+  order_number: string | null
   trip_type: string
   status: string
   operator_name: string
