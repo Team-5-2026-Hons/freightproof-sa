@@ -1,5 +1,5 @@
 import type { OtpAuthPort } from '@shared/lib/auth/port'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 
 import { ApiDriverProfileSource } from './ApiDriverProfileSource'
@@ -16,7 +16,7 @@ let profileSource: DriverProfileSource | undefined
 
 /** The auth backend the app uses unless a provider is handed another one. */
 export function defaultOtpAuth(): OtpAuthPort {
-  otpAuth ??= IS_DEMO_MODE ? new DemoOtpAuth() : new SupabaseOtpAuth(supabase)
+  otpAuth ??= IS_DEMO_MODE ? new DemoOtpAuth() : new SupabaseOtpAuth(getSupabase())
   return otpAuth
 }
 

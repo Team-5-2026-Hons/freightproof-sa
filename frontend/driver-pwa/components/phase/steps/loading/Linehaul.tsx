@@ -8,7 +8,6 @@ import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { WarehouseWaitAction, WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
-import { buildLinehaulPdf } from '@/lib/scan/buildLinehaulPdf'
 import { scanLinehaulSheet } from '@/lib/scan/scanLinehaulSheet'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
@@ -66,7 +65,11 @@ export function Linehaul({
     const capture = latestCapture.current
     pdfStartedFor.current = dataUrl
     setPdfBuilding(true)
-    void buildLinehaulPdf(dataUrl)
+    // Imported here, not at the top: it pulls in pdf-lib and pako (118-170 ms to parse),
+    // and the step registry imports every step, so a static import put that cost on every
+    // step route. Only this step, and only after a scan, ever needs it.
+    void import('@/lib/scan/buildLinehaulPdf')
+      .then(({ buildLinehaulPdf }) => buildLinehaulPdf(dataUrl))
       .then(async (pdf): Promise<string | null> => {
         if (capture !== latestCapture.current) return null
         onUpdate({ linehaulPdfDataUrl: pdf })

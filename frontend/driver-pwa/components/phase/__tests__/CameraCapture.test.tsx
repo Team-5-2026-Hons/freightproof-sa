@@ -2,6 +2,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CameraCapture } from '../CameraCapture'
+import { __resetRestoredPhotoForTests, captureKey, markCapturePending, receiveRestoredPhoto } from '@/lib/camera/restored-photo'
 
 const SAMPLE_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -336,5 +337,48 @@ describe('CameraCapture retake', () => {
     fireEvent.click(screen.getByText('Retake'))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith(RETAKEN))
+  })
+})
+
+describe('CameraCapture after Android reclaimed the WebView mid-capture', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    __resetRestoredPhotoForTests()
+  })
+
+  it('test_claims_the_restored_photo_into_its_own_draft_on_mount', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).toHaveBeenCalledWith(SAMPLE_DATA_URL)
+  })
+
+  it('test_does_not_take_another_controls_restored_photo', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="POD photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).not.toHaveBeenCalled()
+  })
+
+  it('test_marks_the_capture_pending_while_the_camera_is_open_and_clears_it_after', async () => {
+    mockIsNativePlatform.mockReturnValue(true)
+    let pendingWhileOpen: string | null = null
+    mockGetPhoto.mockImplementation(async () => {
+      pendingWhileOpen = window.localStorage.getItem('fp:pending-camera-capture')
+      return { dataUrl: SAMPLE_DATA_URL }
+    })
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Take Photo/ }))
+
+    await waitFor(() => expect(mockGetPhoto).toHaveBeenCalled())
+    expect(pendingWhileOpen).toContain('Seal photo')
+    await waitFor(() => expect(window.localStorage.getItem('fp:pending-camera-capture')).toBeNull())
   })
 })

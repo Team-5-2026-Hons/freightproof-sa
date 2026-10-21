@@ -9,12 +9,21 @@ import { TripProvider } from '@/lib/context/TripContext'
 import { LocationProvider } from '@/lib/context/LocationContext'
 import { DriverSubstitutionProvider } from '@/lib/context/DriverSubstitutionContext'
 import { AppShell } from '@/components/layout/AppShell'
+import { CapacitorBridge } from '@/components/layout/CapacitorBridge'
 import { ROUTES } from '@/lib/constants/routes'
 import { isFullBleedRoute } from '@/lib/navigation/full-bleed'
+import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
 import { saveReturnPath } from '@shared/lib/session/return-path'
 
 // Kept in step with AuthContext's own list — see that file for why '/otp' isn't in ROUTES.
 const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
+
+// Rendered only once a driver is signed in, so the token POST carries their bearer, and
+// once per app (not per page) so each push event has exactly one listener behind it.
+function PushNotificationsListener(): null {
+  usePushNotifications()
+  return null
+}
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const auth = useContext(AuthContext)
@@ -61,6 +70,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // sits inside TripProvider, so a completed handover can drop the working trip at once;
     // it is mounted here, once, so every screen shares a single notice refresh timer.
     <TripProvider>
+      <PushNotificationsListener />
+      <CapacitorBridge />
       <DriverSubstitutionProvider>
         <LocationProvider>
           {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}

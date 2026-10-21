@@ -25,7 +25,8 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 
 // jsdom has no 2D canvas, so the renderer returns null there. The attestation image is not
 // what is under test.
-vi.mock('@shared/lib/utils/render-attestation', () => ({
+vi.mock('@shared/lib/utils/render-attestation', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@shared/lib/utils/render-attestation')>(),
   renderAttestation: vi.fn(),
 }))
 
@@ -38,7 +39,7 @@ import {
   rememberConfirmOutcome,
   stashIdentity,
 } from '@/lib/identity-stash'
-import { renderAttestation } from '@shared/lib/utils/render-attestation'
+import { ATTESTATION_SUBTITLE, renderAttestation } from '@shared/lib/utils/render-attestation'
 import { HandoverPageClient } from './HandoverPageClient'
 
 const TOKEN = 'tok123'
@@ -329,6 +330,16 @@ describe('HandoverPageClient confirm failures', () => {
     expect(readConfirmOutcome(TOKEN)).toBe('confirmed')
   })
 
+  it('stamps the signature as made on the receiver\'s own phone, not the driver\'s', async () => {
+    await reachReady()
+    vi.mocked(api.confirmHandover).mockResolvedValue(CONFIRMED)
+
+    pressSwipe()
+
+    await waitFor(() => expect(renderAttestation).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(renderAttestation).mock.calls[0][0].subtitle).toBe(ATTESTATION_SUBTITLE.receiverDevice)
+  })
+
   it('sends the typed identity and no position when none is available', async () => {
     await reachReady()
     vi.mocked(api.confirmHandover).mockResolvedValue(CONFIRMED)
@@ -553,6 +564,30 @@ describe('HandoverPageClient vendor redirect', () => {
     expect(await screen.findByLabelText(SWIPE_LABEL)).toBeInTheDocument()
     expect(assign).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent(/couldn.t start the identity check/i)
+  })
+
+  it('returns to the identity choice when Back restores the page from the back/forward cache', async () => {
+    stubLocation()
+    await startIdentityCheck('https://verify.example.invalid/session/abc')
+    await screen.findByText('Taking you to the identity check')
+
+    const restored = new Event('pageshow') as PageTransitionEvent
+    Object.defineProperty(restored, 'persisted', { value: true })
+    act(() => { window.dispatchEvent(restored) })
+
+    expect(await screen.findByRole('button', { name: /i have my id with me/i })).toBeInTheDocument()
+    expect(screen.queryByText('Taking you to the identity check')).toBeNull()
+    expect(readStashedIdentity()).toBeNull()
+  })
+
+  it('ignores an ordinary page show, which is not a restore', async () => {
+    stubLocation()
+    await startIdentityCheck('https://verify.example.invalid/session/abc')
+    await screen.findByText('Taking you to the identity check')
+
+    act(() => { window.dispatchEvent(new Event('pageshow')) })
+
+    expect(screen.getByText('Taking you to the identity check')).toBeInTheDocument()
   })
 
   it('says so when starting the check fails outright', async () => {

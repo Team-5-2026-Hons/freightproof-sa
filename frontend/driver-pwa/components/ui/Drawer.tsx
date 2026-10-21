@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SPRING_FLICK, SPRING_SETTLE, animateSpring, projectMomentum, rubberband } from '@/lib/motion/spring'
@@ -76,13 +76,16 @@ interface DragSample {
 // behind on <body> is exactly the kind of stale lock that breaks scrolling for good.
 export function Drawer({ open, onClose, side = 'right', children, title }: DrawerProps) {
   const titleId = useId()
-  // The sheet's live drag offset in px while a gesture or its spring owns the position;
-  // null hands the position back to the CSS open/closed classes.
-  const [dragOffset, setDragOffset] = useState<number | null>(null)
-  // Mirrors dragOffset synchronously, for the spring's starting point and a re-grab: both
-  // must read the live on-screen value, not the last rendered one (emil-apple-design §3).
+  // Whether a gesture or its spring owns the sheet's position; false hands it back to the
+  // CSS open/closed classes. State only flips at the start and end of a drag: the offset
+  // itself is written straight to the DOM (applyOffset), because rendering it re-rendered
+  // the sheet and everything in it on every pointer move and every spring frame.
+  const [dragOwned, setDragOwned] = useState(false)
+  // The live drag offset in px, for the spring's starting point and a re-grab: both must
+  // read the on-screen value, not the last rendered one (emil-apple-design §3).
   const dragOffsetRef = useRef(0)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const scrimRef = useRef<HTMLDivElement | null>(null)
   const startYRef = useRef(0)
   const samplesRef = useRef<DragSample[]>([])
   const isDraggingRef = useRef(false)
@@ -133,6 +136,34 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
 
   useEffect(() => () => cancelSpringRef.current?.(), [])
 
+  // Hand the position back only once the classes are in the DOM, in the same frame:
+  // clearing the inline transform any earlier showed the sheet at its open position for a
+  // frame after a dismissing throw.
+  useLayoutEffect(() => {
+    if (dragOwned) return
+    const panel = panelRef.current
+    const scrim = scrimRef.current
+    if (panel !== null) panel.style.transform = ''
+    if (scrim !== null) {
+      scrim.style.opacity = ''
+      scrim.style.transition = ''
+    }
+  }, [dragOwned])
+
+  // Moves the sheet and thins the scrim in step with it, without a render.
+  const applyOffset = useCallback((value: number) => {
+    dragOffsetRef.current = value
+    const panel = panelRef.current
+    if (panel === null) return
+    panel.style.transform = `translateY(${value}px)`
+    const scrim = scrimRef.current
+    const height = panel.offsetHeight
+    if (scrim !== null && height > 0) {
+      scrim.style.transition = 'none'
+      scrim.style.opacity = String(Math.max(0, 1 - Math.max(value, 0) / height))
+    }
+  }, [])
+
   const isSheet = side === 'bottom'
 
   const settleTo = useCallback((target: number, velocity: number, dismiss: boolean) => {
@@ -141,7 +172,7 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
       cancelSpringRef.current = null
       if (dismiss) onClose()
       // Hand back to the classes only once they agree with where the sheet now sits.
-      setDragOffset(null)
+      setDragOwned(false)
     }
     if (prefersReducedMotion()) {
       finish()
@@ -153,13 +184,10 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
       velocity,
       // A thrown sheet keeps a little of its throw; one let go of gently just settles.
       config: dismiss ? SPRING_SETTLE : SPRING_FLICK,
-      onUpdate: (value) => {
-        dragOffsetRef.current = value
-        setDragOffset(value)
-      },
+      onUpdate: applyOffset,
       onComplete: finish,
     })
-  }, [onClose])
+  }, [onClose, applyOffset])
 
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!isSheet || !open) return
@@ -169,7 +197,11 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
     cancelSpringRef.current = null
     isDraggingRef.current = true
     // Grab the sheet where it is — mid-spring included — keeping the finger's offset.
-    if (dragOffset === null) dragOffsetRef.current = 0
+    if (!dragOwned) {
+      // Pin the resting position inline before the classes let go of it, so nothing moves.
+      applyOffset(0)
+      setDragOwned(true)
+    }
     startYRef.current = e.clientY - dragOffsetRef.current
     samplesRef.current = [{ y: dragOffsetRef.current, t: performance.now() }]
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -180,8 +212,7 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
     const raw = e.clientY - startYRef.current
     // Down follows the finger exactly; up resists, because there is nothing above.
     const next = raw >= 0 ? raw : -rubberband(-raw, OVERPULL_LIMIT_PX)
-    dragOffsetRef.current = next
-    setDragOffset(next)
+    applyOffset(next)
     const now = performance.now()
     samplesRef.current = [...samplesRef.current, { y: next, t: now }].filter((s) => now - s.t <= VELOCITY_WINDOW_MS)
   }
@@ -233,9 +264,6 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
   }
 
   const { container, open: openClass, closed } = panelClasses[side]
-  const height = panelRef.current?.offsetHeight ?? 0
-  // The scrim thins as the sheet is pulled down, so the page reappears in step with it.
-  const scrimOpacity = dragOffset !== null && height > 0 ? Math.max(0, 1 - Math.max(dragOffset, 0) / height) : undefined
 
   return (
     <>
@@ -243,11 +271,13 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
           instead of the dark layer vanishing in one frame. touch-none: a finger that lands
           on the scrim is dismissing or waiting, never scrolling the page underneath. */}
       <div
+        ref={scrimRef}
+        // The scrim thins as the sheet is pulled down (applyOffset), so the page reappears
+        // in step with it.
         className={cn(
           'fixed inset-0 z-overlay touch-none bg-black/40 transition-opacity duration-300 motion-reduce:transition-none',
           open ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
-        style={scrimOpacity !== undefined ? { opacity: scrimOpacity, transition: 'none' } : undefined}
         onClick={onClose}
         aria-hidden="true"
       />
@@ -272,11 +302,10 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
           'overflow-y-auto overscroll-contain',
           // The drag (or its spring) owns the transform while it runs; the eased CSS
           // transition is only for programmatic open/close.
-          dragOffset === null && 'transition-transform duration-300 ease-out motion-reduce:transition-none',
+          !dragOwned && 'transition-transform duration-300 ease-out motion-reduce:transition-none',
           container,
-          dragOffset === null && (open ? openClass : closed),
+          !dragOwned && (open ? openClass : closed),
         )}
-        style={dragOffset !== null ? { transform: `translateY(${dragOffset}px)` } : undefined}
       >
         {title && (
           // On a sheet this whole strip — grabber and title row — is the drag handle.

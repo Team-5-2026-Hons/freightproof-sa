@@ -1,4 +1,5 @@
 const path = require('path')
+const { PHASE_PRODUCTION_BUILD } = require('next/constants')
 
 // Opened by strangers from an unverifiable QR link, so headers are stricter than the
 // dispatcher's in most places, looser only for geolocation.
@@ -27,4 +28,19 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+/**
+ * Refuses a production build without the API URL. lib/api.ts throws too, but only when the
+ * module first runs in a browser: every page renders on demand, so `next build` never
+ * evaluates it and CI went green on a bundle that would fail on every receiver's phone.
+ */
+function assertApiUrl(phase, env = process.env) {
+  if (phase === PHASE_PRODUCTION_BUILD && !env.NEXT_PUBLIC_API_URL) {
+    throw new Error('NEXT_PUBLIC_API_URL must be set for a production build of the receiver app.')
+  }
+}
+
+module.exports = (phase) => {
+  assertApiUrl(phase)
+  return nextConfig
+}
+module.exports.assertApiUrl = assertApiUrl

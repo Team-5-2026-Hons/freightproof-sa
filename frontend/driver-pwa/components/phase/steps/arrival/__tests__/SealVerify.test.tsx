@@ -26,10 +26,13 @@ vi.mock('next/navigation', () => ({
 // no business requiring of this suite — stubbed exactly as departure/CaptureSeal.test.tsx
 // does, so these tests exercise SealVerify's own gating logic. CameraCapture has its own
 // coverage in components/phase/__tests__/CameraCapture.test.tsx.
+// Counts its renders so the keystroke test below can show the photo tile is left alone.
+const { cameraRenders } = vi.hoisted(() => ({ cameraRenders: { count: 0 } }))
 vi.mock('@/components/phase/CameraCapture', () => ({
-  CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => (
-    <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
-  ),
+  CameraCapture: ({ label, onCapture }: { label: string; onCapture: (dataUrl: string) => void }) => {
+    cameraRenders.count += 1
+    return <button onClick={() => onCapture(`data:image/jpeg;base64,${label}`)}>{label}</button>
+  },
 }))
 
 // The hook is the seam under test here: what matters is the phase id and role each step
@@ -539,5 +542,19 @@ describe('SealVerify — reading the seal number from the photo', () => {
     const photo = screen.getByRole('button', { name: 'Seal photo' })
     const input = screen.getByLabelText('Seal number you see')
     expect(photo.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
+describe('arrival SealVerify — typing stays cheap', () => {
+  it('does not re-render the photo tile on each keystroke of the seal number', () => {
+    renderStateful({ draft: makeDraft({ sealCondition: 'intact' }) })
+    const rendersBeforeTyping = cameraRenders.count
+
+    typeSeal('A')
+    typeSeal('AB')
+    typeSeal('AB-1')
+
+    expect(cameraRenders.count).toBe(rendersBeforeTyping)
+    expect(screen.getByLabelText('Seal number you see')).toHaveValue('AB-1')
   })
 })

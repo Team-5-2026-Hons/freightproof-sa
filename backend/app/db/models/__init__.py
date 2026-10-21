@@ -67,3 +67,4 @@ from app.db.models.driver_substitutions import (  # noqa: E402,F401
     LateDriverEvidence,
     LateDriverEvidenceArtifact,
 )
+from app.db.models.driver_push_tokens import DriverPushToken  # noqa: E402,F401

@@ -5,7 +5,7 @@
 // single-use capability token, not incidental behaviour. See vitest.setup.ts for the jsdom
 // polyfills (ResizeObserver, pointer capture, a measurable clientWidth) that make the drag
 // math exercisable here at all.
-import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Swipe } from './Swipe'
 import { setMockTrackClientWidthPx } from '../vitest.setup'
@@ -65,15 +65,9 @@ function pointerInit(clientX: number, overrides: PointerEventInit = {}): Pointer
 
 type PointerEventName = 'pointerDown' | 'pointerMove' | 'pointerUp' | 'pointerCancel'
 
-/**
- * fireEvent for pointer events. The PointerEvent polyfill in vitest.setup.ts keeps
- * pointerId and clientX but drops `isPrimary`, which the component now checks, so it is
- * stamped onto the event here. Like the real API, it defaults to false when not given.
- */
+/** fireEvent for pointer events; the polyfill in vitest.setup.ts carries isPrimary through. */
 function firePointer(name: PointerEventName, target: Element, init: PointerEventInit): void {
-  const event = createEvent[name](target, init)
-  Object.defineProperty(event, 'isPrimary', { value: init.isPrimary ?? false })
-  fireEvent(target, event)
+  fireEvent[name](target, init)
 }
 
 /** A real swipe: lands on the thumb, drags, lets go. */

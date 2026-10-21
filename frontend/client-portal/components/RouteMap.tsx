@@ -8,10 +8,10 @@ import L from 'leaflet'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatSast } from '@/lib/format'
 import { mediaMatches, prefersReducedMotion } from '@/lib/media'
+import { OSM_TILES } from '@/lib/tiles'
 import { instantMs, compareInstants, type TimelineItem } from '@/lib/timeline'
 import type { AuditPackManifest, CoverageGap, PositionFix, StopRecord } from '@/lib/types'
 
-const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 const TILE_URL = process.env.NEXT_PUBLIC_TILE_URL || OSM_TILES
 // Static markup we author, so it is safe for Leaflet's attribution control (which sets innerHTML).
 // Opens in a new tab: the visitor must not lose the pack they are reading.
