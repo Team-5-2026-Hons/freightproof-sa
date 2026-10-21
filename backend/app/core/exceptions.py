@@ -495,7 +495,53 @@ class IdentityAttestationForbiddenError(SubstitutionError):
     message = "Only an admin dispatcher can attest unavailable driver identity."
 
 
+class SubstitutionsDisabledError(SubstitutionError):
+    """New arrangements are switched off by DRIVER_SUBSTITUTIONS_ENABLED (503). Existing pending
+    handovers, completion, history, late evidence and anchoring keep working."""
+
+    code = "SUBSTITUTIONS_DISABLED"
+    message = "New driver handovers are temporarily unavailable. Existing handovers still work."
+
+
 class SubstitutionInvalidError(Exception):
     """The handover content is well-formed but not acceptable (422): the same driver on both
     sides, a capture naming the wrong vehicles, a reason that does not apply. Carries a
     human-readable explanation; it has no contract code because no client branches on it."""
+
+
+class IncidentStateError(Exception):
+    """An incident action the investigation's current state forbids (409): changing a closed
+    incident, closing one twice, reopening one that is open, or a status move the lifecycle
+    does not allow. Carries the human-readable reason; no client branches on a code."""
+
+
+class IncidentClosedError(IncidentStateError):
+    """The incident is closed. Follow-up must reopen it first, with a reason, so the record
+    shows the investigation resumed rather than a closed one quietly changing."""
+
+    def __init__(self, incident_id: uuid.UUID) -> None:
+        super().__init__(f"Incident '{incident_id}' is closed. Reopen it to record further follow-up.")
+        self.incident_id = incident_id
+
+
+class ExceptionAlreadyInIncidentError(Exception):
+    """The exception is already grouped under another incident (409). Names that incident so
+    the dispatcher can open it instead of starting a second investigation of the same event."""
+
+    def __init__(self, exception_id: uuid.UUID, incident_id: uuid.UUID) -> None:
+        super().__init__(f"Exception '{exception_id}' already belongs to incident '{incident_id}'.")
+        self.exception_id = exception_id
+        self.incident_id = incident_id
+
+
+class IncidentInvalidError(Exception):
+    """The request is well-formed but not acceptable (422): a parcel or exception from another
+    trip, a blank closing reason, a finding for a parcel that is not on the incident."""
+
+
+class IncidentDocumentsDisabledError(Exception):
+    """Dispatcher document upload is switched off by INCIDENT_DOCUMENTS_ENABLED (503).
+    Everything else about incidents keeps working."""
+
+    def __init__(self) -> None:
+        super().__init__("Attaching documents to incidents is turned off on this server.")

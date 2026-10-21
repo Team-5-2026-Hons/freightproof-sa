@@ -45,6 +45,12 @@ export interface PastOutcome {
  */
 export function pastOutcome(trip: DriverTripSummary): PastOutcome {
   if (trip.status === 'cancelled') return { tone: 'neutral', text: 'Cancelled' }
+  // Before the delivery checks: a driver who handed the load over did not deliver it —
+  // even once the trip closes — and it may not have arrived yet. The delivery outcome
+  // belongs to whoever finished it; this row only records that this driver's part ended.
+  if (trip.participation === 'former') {
+    return { tone: 'neutral', text: 'Handed over' }
+  }
   if (trip.needs_review_count > 0) {
     const n = trip.needs_review_count
     return { tone: 'attention', text: `Under review · ${n} exception${n === 1 ? '' : 's'}` }

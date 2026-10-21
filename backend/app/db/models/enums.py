@@ -225,6 +225,9 @@ class BlockchainReceiptType(str, enum.Enum):
     EXCEPTION_RAISED    = "exception_raised"
     EXCEPTION_REVIEWED  = "exception_reviewed"
     TRIP_CANCELLED      = "trip_cancelled"
+    # FP-83 C5: a clarification appended to a completed driver substitution. Also the event_type
+    # inside its payload. The substitution itself uses DRIVER_SUBSTITUTION above.
+    DRIVER_SUBSTITUTION_CORRECTED = "driver_substitution_corrected"
 
 
 class SubjectType(str, enum.Enum):
@@ -238,6 +241,9 @@ class SubjectType(str, enum.Enum):
     AUDIT_PACK      = "audit_pack"
     # An EvidenceAnchorEvent id (one raise / review / cancel), never the exception or trip id.
     EVIDENCE_EVENT  = "evidence_event"
+    # FP-83 C5: a completed DriverSubstitution id, and a DriverSubstitutionCorrection id.
+    DRIVER_SUBSTITUTION = "driver_substitution"
+    DRIVER_SUBSTITUTION_CORRECTION = "driver_substitution_correction"
 
 
 class VehicleEventType(str, enum.Enum):
@@ -415,6 +421,111 @@ class AuditPackAccessEventType(str, enum.Enum):
     CODE_VERIFIED      = "code_verified"
     DENIED_BAD_CODE    = "denied_bad_code"
     DENIED_UNVERIFIED  = "denied_unverified"
+
+
+class IncidentType(str, enum.Enum):
+    """What an incident investigates. An exception is one observation; an incident is the
+    investigation several observations can belong to. Breakdowns are deliberately absent:
+    out of MVP scope (Tim, 20 Oct 2026) — MECHANICAL stays an exception."""
+
+    HIJACKING       = "hijacking"
+    PARCEL_SHORTAGE = "parcel_shortage"
+    PARCEL_DAMAGE   = "parcel_damage"
+
+
+class IncidentStatus(str, enum.Enum):
+    """Where the investigation is. Independent of Trip.status (a trip can close while a
+    shortage investigation stays open) and of each exception's review_status."""
+
+    OPEN          = "open"
+    INVESTIGATING = "investigating"
+    CLOSED        = "closed"
+
+
+class IncidentConfidence(str, enum.Enum):
+    """How well-founded the incident is. A client's phone call stays REPORTED until
+    something independent agrees — it never becomes a system-confirmed theft by itself."""
+
+    SUSPECTED    = "suspected"
+    REPORTED     = "reported"
+    CORROBORATED = "corroborated"
+
+
+class IncidentReporterRole(str, enum.Enum):
+    DRIVER           = "driver"
+    CLIENT           = "client"
+    RECEIVER         = "receiver"
+    TRACKING_COMPANY = "tracking_company"
+    POLICE           = "police"
+    OPERATOR_STAFF   = "operator_staff"
+    # Opened from FreightProof's own signals (an exception), not from a person's report.
+    FREIGHTPROOF     = "freightproof"
+    OTHER            = "other"
+
+
+class IncidentReportChannel(str, enum.Enum):
+    PHONE     = "phone"
+    WHATSAPP  = "whatsapp"
+    EMAIL     = "email"
+    IN_PERSON = "in_person"
+    # Opened from an exception already in FreightProof (a panic alert, a short count).
+    IN_APP    = "in_app"
+
+
+class IncidentOutcome(str, enum.Enum):
+    """What the investigation established. Kept apart from IncidentStatus so closing never
+    has to pretend cargo was recovered — INCONCLUSIVE is a legitimate way to close."""
+
+    RECORDING_ERROR    = "recording_error"
+    CARGO_RECOVERED    = "cargo_recovered"
+    PARTIAL_RECOVERY   = "partial_recovery"
+    SHORTAGE_CONFIRMED = "shortage_confirmed"
+    DAMAGE_CONFIRMED   = "damage_confirmed"
+    THEFT_REPORTED     = "theft_reported"
+    INCONCLUSIVE       = "inconclusive"
+
+
+class IncidentUpdateKind(str, enum.Enum):
+    """One entry on an incident's append-only ledger. The status, confidence, owner and
+    outcome columns on Incident are caches rebuilt from these, never edited directly."""
+
+    OPENED             = "opened"
+    NOTE               = "note"
+    STATUS_CHANGED     = "status_changed"
+    ASSIGNED           = "assigned"
+    CONFIDENCE_CHANGED = "confidence_changed"
+    EXCEPTION_LINKED   = "exception_linked"
+    PARCEL_ADDED       = "parcel_added"
+    PARCEL_FINDING     = "parcel_finding"
+    EXTERNAL_ACTION    = "external_action"
+    DOCUMENT_ATTACHED  = "document_attached"
+    TRIP_STOPPED       = "trip_stopped"
+    CLOSED             = "closed"
+    REOPENED           = "reopened"
+
+
+class ParcelFinding(str, enum.Enum):
+    """What a dispatcher established about one affected parcel. There is no "stolen" and no
+    "no scan recorded" here: a missing scan-in is a scan fact read from Parcel, shown beside
+    the finding, and a parcel with no finding yet is simply not established."""
+
+    LOCATED           = "located"
+    CONFIRMED_MISSING = "confirmed_missing"
+    DAMAGE_CONFIRMED  = "damage_confirmed"
+    RECORDING_ERROR   = "recording_error"
+
+
+class IncidentExternalAction(str, enum.Enum):
+    """Something done outside FreightProof that the dispatcher records. FreightProof records
+    these responses; it never performs them (docs/scope-boundaries.md §0)."""
+
+    TRACKING_COMPANY_ALERTED = "tracking_company_alerted"
+    SAPS_REPORTED            = "saps_reported"
+    INSURER_NOTIFIED         = "insurer_notified"
+    CLIENT_NOTIFIED          = "client_notified"
+    DRIVER_WELFARE_CHECK     = "driver_welfare_check"
+    RECOVERY_REPORTED        = "recovery_reported"
+    OTHER                    = "other"
 
 
 def enum_text(value: enum.Enum | str) -> str:

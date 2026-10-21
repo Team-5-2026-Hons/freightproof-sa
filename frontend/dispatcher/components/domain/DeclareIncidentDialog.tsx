@@ -12,6 +12,8 @@ import { sastInputToIso } from '@/lib/format/sast'
 
 interface Props {
   tripId: string
+  /** Pins the declaration to an incident (the hijacking guide's SAPS step). */
+  incidentId?: string | null
   open: boolean
   onClose: () => void
   onDeclared: () => void
@@ -31,7 +33,7 @@ const EMPTY: Draft = {
  * and case number, and when each party was told. Append-only — saving again adds a new
  * declaration rather than editing the old one, so the record of what was said stands.
  */
-export function DeclareIncidentDialog({ tripId, open, onClose, onDeclared }: Props) {
+export function DeclareIncidentDialog({ tripId, incidentId = null, open, onClose, onDeclared }: Props) {
   const { notify } = useToast()
   const [draft, setDraft] = useState<Draft>(EMPTY)
   const [submitting, setSubmitting] = useState(false)
@@ -55,6 +57,7 @@ export function DeclareIncidentDialog({ tripId, open, onClose, onDeclared }: Pro
     try {
       await recordIncidentDeclaration(tripId, {
         exception_id: null,
+        incident_id: incidentId,
         ...Object.fromEntries(TEXT_FIELDS.map(key => [key, draft[key].trim() || null])),
         ...Object.fromEntries(TIME_FIELDS.map(key => [key, sastInputToIso(draft[key])])),
       } as Parameters<typeof recordIncidentDeclaration>[1])

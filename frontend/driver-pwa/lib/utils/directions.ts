@@ -13,7 +13,15 @@ import { mockPrecincts } from '@shared/lib/mocks/precincts'
 export function directionsUrl(precinctId: string): string | null {
   const precinct = mockPrecincts.find((p) => String(p.id) === precinctId)
   if (precinct === undefined) return null
-  const latLng = `${precinct.latitude},${precinct.longitude}`
+  return coordinateDirectionsUrl(precinct.latitude, precinct.longitude)
+}
+
+/**
+ * The same hand-off for a point the server named by coordinates — a substitution exchange
+ * point, which is not a precinct and so has no entry in the precinct lookup.
+ */
+export function coordinateDirectionsUrl(latitude: number, longitude: number): string {
+  const latLng = `${latitude},${longitude}`
   switch (Capacitor.getPlatform()) {
     case 'android':
       return `google.navigation:q=${latLng}`

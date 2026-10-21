@@ -15,6 +15,9 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { SectionHeading } from '@/components/ui/SectionHeading'
 import { TruckLoader } from '@/components/ui/TruckLoader'
 import { ActiveTripCard } from '@/components/trip/ActiveTripCard'
+import { DriverSubstitutionPanel } from '@/components/trip/DriverSubstitutionPanel'
+import { TripEndedByDispatchBanner } from '@/components/trip/TripEndedByDispatchBanner'
+import { useDriverSubstitutions } from '@/lib/hooks/useDriverSubstitutions'
 import { TripList } from '@/components/trip/TripRow'
 import { TAB_BAR_SPACER } from '@/components/layout/AppShell'
 import { cn } from '@/lib/utils'
@@ -45,6 +48,9 @@ export default function TripsPage() {
   const router = useRouter()
   const { trip: sessionTrip } = useTrip()
   const { active, upcoming, past, isLoading, loadError, reload } = useGroupedTrips()
+  // An incoming collection is not in /trips/me until custody actually transfers, so "No
+  // trips yet" would be false for a driver whose only work is a pending handover.
+  const { pending: pendingHandovers } = useDriverSubstitutions()
   const pastRef = useRef<HTMLDivElement>(null)
   const pastFits = useRowsThatFit(pastRef, TRIP_ROW_PX, PAST_PREVIEW_FALLBACK)
 
@@ -65,7 +71,7 @@ export default function TripsPage() {
     )
   }
 
-  if (current === null && upcoming.length === 0 && past.length === 0) {
+  if (current === null && upcoming.length === 0 && past.length === 0 && pendingHandovers.length === 0) {
     return (
       <EmptyState
         icon={<Inbox strokeWidth={1.5} aria-hidden />}
@@ -77,6 +83,8 @@ export default function TripsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-3">
+      <TripEndedByDispatchBanner className="mx-4 mb-4 shrink-0" />
+      <DriverSubstitutionPanel className="mx-4 mb-4 shrink-0" />
       {current !== null && (
         <ActiveTripCard summary={current} trip={sessionTrip} onOpen={() => open(current)} />
       )}

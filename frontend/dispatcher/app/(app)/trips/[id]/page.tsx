@@ -7,6 +7,7 @@ import { BackButton } from '@/components/ui/BackButton'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
+import { DriverTransferController, transferActionFor } from '@/components/trips/DriverTransferController'
 import { TripSummary, TRIP_PANELS, type TripPanel } from '@/components/trips/TripSummary'
 import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
 import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView, type TimelineWarning } from '@/components/trips/TripTimeline'
@@ -23,7 +24,7 @@ import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/trip-detail'
 import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
-import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
+import { RETURN_TO_PARAM, safeReturnTo, withReturnTo } from '@/lib/navigation/returnTo'
 import { buildTripPanelQuery } from '@/lib/trips/panel-query'
 import { firstUnreviewedException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 import { exceptionEventTime } from '@/lib/phase/acts'
@@ -248,7 +249,10 @@ function TripDetail({ tripId }: { tripId: string }) {
         runs top to bottom beside it. */}
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
-        {facts && <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} onShowFirstUnreviewed={showFirstUnreviewed} />}
+        {facts && <DriverTransferController trip={trip} onChanged={refetchSilent}>{openTransfer =>
+          <TripSummary facts={facts} precincts={precincts} driver={trip.driver ?? null} returnTo={returnTo} onBack={back} onPanel={setPanel} compact={timelineExpanded} onShowFirstUnreviewed={showFirstUnreviewed}
+            transferAction={transferActionFor(trip, openTransfer)} />
+        }</DriverTransferController>}
         <div ref={timelineRef} data-timeline-scroller className="min-h-0 flex-1 overflow-y-auto bg-surf-lowest">
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
             view={timelineView} onViewChange={changeTimelineView}
@@ -263,7 +267,7 @@ function TripDetail({ tripId }: { tripId: string }) {
         // Picking a filter is leaving the single-record view, so the selection goes.
         onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId, null)}
         onClearPhaseFilter={() => setPanel('exceptions', undefined, null, null)} onClearExceptionSelection={() => setPanel('exceptions', undefined, undefined, null)} onShowInTimeline={showInTimeline}
-        onChanged={refetchSilent} returnTo={returnTo} />
+        onChanged={refetchSilent} returnTo={returnTo} onIncidentReported={id => router.push(withReturnTo(ROUTES.incidentDetail(id), returnTo))} />
     </div>
   </div>
 }

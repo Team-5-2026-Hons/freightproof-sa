@@ -94,6 +94,20 @@ class Settings(BaseSettings):
     # A trip's stops cannot change after creation, so this only bounds Redis memory.
     TRIP_ROUTE_CACHE_TTL_SECONDS: int = 86400
 
+    # Analytics chat (FP-295). Off unless both the switch is on and the chosen provider's key
+    # is set, so a teammate's machine never spends money by accident. AI_CHAT_PROVIDER is
+    # "gemini" or "anthropic"; AI_CHAT_MODEL must be that provider's and priced in
+    # app/integrations/ai_chat/pricing.py, or the chat stays off rather than spend blind.
+    AI_CHAT_ENABLED: bool = False
+    AI_CHAT_PROVIDER: str = "gemini"
+    AI_CHAT_MODEL: str = "gemini-3.8-flash"
+    GEMINI_API_KEY: str = ""
+    GEMINI_API_URL: str = "https://generativelanguage.googleapis.com/v1beta"
+    ANTHROPIC_API_KEY: str = ""
+    # Across every organisation, per SAST calendar month; the chat refuses new questions once
+    # reached. Keep the Anthropic console's spend limit at or a little above this.
+    AI_CHAT_MONTHLY_BUDGET_USD: float = 20.0
+
     GPS_TOLERANCE_METRES: int = 50
 
     # Driver-vs-truck proximity check:
@@ -122,6 +136,12 @@ class Settings(BaseSettings):
     # nothing partial is exposed; existing pending handovers, completed-chain reads, history
     # and recovery keep working when it is off.
     DRIVER_SUBSTITUTIONS_ENABLED: bool = False
+
+    # Gate for dispatchers attaching documents (a SAPS case slip, a client letter) to an
+    # incident. Off by default: it is a second write path into the evidence bucket, so an
+    # operator turns it on deliberately. When off, attaching is a 503 and the incident read
+    # says so, so the dispatcher hides the control; every other incident action still works.
+    INCIDENT_DOCUMENTS_ENABLED: bool = False
 
     # Sole gate for the dev panel: the demo deploy runs as production but still needs it.
     DEV_PANEL_ENABLED: bool = False
@@ -198,10 +218,10 @@ class Settings(BaseSettings):
             raise PydanticUseDefault()
         return value
 
-    @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", mode="before")
+    @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", "INCIDENT_DOCUMENTS_ENABLED", mode="before")
     @classmethod
     def _blank_substitutions_flag_is_false(cls, value: Any) -> Any:
-        # Field-local on purpose: .env.example ships this key empty, and a blank string would
+        # Field-local on purpose: .env.example ships these keys empty, and a blank string would
         # otherwise fail bool parsing at startup. Other boolean settings keep strict parsing.
         if isinstance(value, str) and not value.strip():
             return False

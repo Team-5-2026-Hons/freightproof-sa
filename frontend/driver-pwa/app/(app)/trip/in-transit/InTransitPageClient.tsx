@@ -72,7 +72,7 @@ export default function InTransitPageClient() {
   const router = useRouter()
   const goBack = useBack(ROUTES.activeTripDetail)
   const largeText = useAccessibilityTextSize()
-  const { trip, isLoading, exceptions, refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
+  const { trip, isLoading, exceptions, refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver } = useTrip()
   const { capturePosition } = useLocationTrail()
   const { capture } = useLocation()
   const { enqueuePhase } = useOfflineQueue()
@@ -223,6 +223,13 @@ export default function InTransitPageClient() {
         // the row unresolved again so the swipe can be offered a second time.
         clearPhaseSyncing(phaseEventId)
         notify({ kind: 'error', title: 'Could not record arrival', body: outcome.message })
+        return
+      }
+      case 'retained': {
+        // FP-83: custody moved on first. The arrival is kept for review, not recorded live.
+        clearPhaseSyncing(phaseEventId)
+        notify({ kind: 'error', title: 'Arrival not recorded on the trip', body: outcome.message })
+        if (outcome.handedOver && trip !== null) noteTripHandedOver(String(trip.id))
         return
       }
       default: {

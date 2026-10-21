@@ -14,6 +14,9 @@ export const FLEET_COPY = {
   controls: {
     viewBy: 'View by',
     period: 'Period',
+    // The page's notes sit behind this button rather than as loose lines above the charts.
+    information: 'Information',
+    informationTitle: 'About these figures',
     from: 'From',
     to: 'To',
     grainLabels: { week: 'Week', month: 'Month', year: 'Year' } satisfies Record<Grain, string>,

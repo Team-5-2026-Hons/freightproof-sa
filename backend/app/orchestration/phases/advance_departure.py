@@ -25,6 +25,35 @@ from app.schemas.phases import DepartureCompleteRequest
 from app.schemas.trips import TripDetailResponse
 
 
+def _departure_seal_mismatch(payload: DepartureCompleteRequest) -> str | None:
+    # Intra-request seal continuity — compared against THIS SAME
+    # request's seal_number, not a fetched prior row: the driver applies and
+    # photographs the seal, the exit guard independently re-enters what they
+    # physically see, in one submission.
+    #
+    # Three states, not two. `guard_verified_seal` is now Optional[bool] (see
+    # DepartureCompleteRequest) because the driver app no longer collects a guard's
+    # re-entry at all — guards have no accounts. The absence of an independent
+    # confirmation is the NORMAL case and must not be recorded as an anomaly: a
+    # falsy-check here would stamp a CRITICAL seal_mismatch exception on every
+    # single trip the current app submits, drowning the real mismatches this
+    # platform exists to surface. Only an explicit False (a guard who was asked and
+    # could not verify) or a real re-entered seal that fails to match is evidence of
+    # anything.
+    seal_mismatch_description: str | None = None
+    if payload.seal_number_confirmed is not None:
+        confirmed = _normalized_seal(payload.seal_number_confirmed)
+        if confirmed != _normalized_seal(payload.seal_number):
+            seal_mismatch_description = (
+                f"Seal at origin gate-out ('{confirmed}') does not match "
+                f"the seal applied at departure ('{payload.seal_number}')."
+            )
+    elif payload.guard_verified_seal is False:
+        seal_mismatch_description = "Exit-gate guard could not verify the seal at origin gate-out."
+
+    return seal_mismatch_description
+
+
 async def advance_departure(
     db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID, phase_event_id: uuid.UUID,
     payload: DepartureCompleteRequest,
@@ -61,30 +90,7 @@ async def advance_departure(
         payload.seal_number_source.value if payload.seal_number_source is not None else None
     )
 
-    # Intra-request seal continuity — compared against THIS SAME
-    # request's seal_number, not a fetched prior row: the driver applies and
-    # photographs the seal, the exit guard independently re-enters what they
-    # physically see, in one submission.
-    #
-    # Three states, not two. `guard_verified_seal` is now Optional[bool] (see
-    # DepartureCompleteRequest) because the driver app no longer collects a guard's
-    # re-entry at all — guards have no accounts. The absence of an independent
-    # confirmation is the NORMAL case and must not be recorded as an anomaly: a
-    # falsy-check here would stamp a CRITICAL seal_mismatch exception on every
-    # single trip the current app submits, drowning the real mismatches this
-    # platform exists to surface. Only an explicit False (a guard who was asked and
-    # could not verify) or a real re-entered seal that fails to match is evidence of
-    # anything.
-    seal_mismatch_description: str | None = None
-    if payload.seal_number_confirmed is not None:
-        confirmed = _normalized_seal(payload.seal_number_confirmed)
-        if confirmed != _normalized_seal(payload.seal_number):
-            seal_mismatch_description = (
-                f"Seal at origin gate-out ('{confirmed}') does not match "
-                f"the seal applied at departure ('{payload.seal_number}')."
-            )
-    elif payload.guard_verified_seal is False:
-        seal_mismatch_description = "Exit-gate guard could not verify the seal at origin gate-out."
+    seal_mismatch_description = _departure_seal_mismatch(payload)
 
     if seal_mismatch_description is not None:
         # Recorded as evidence, but the trip still departs — a departure

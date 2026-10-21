@@ -62,10 +62,21 @@ def _record(manifest: AuditPackManifest, exception: TripException):
     return next(e for e in manifest.exceptions if e.exception_id == exception.id)
 
 
-async def test_manifest_is_version_2(db_session, audit_trip):
+async def test_new_manifest_is_version_4(db_session, audit_trip):
     manifest = await _build(db_session, audit_trip)
 
-    assert manifest.manifest_version == 2
+    assert manifest.manifest_version == 4
+
+
+async def test_v3_manifest_without_investigations_still_validates(db_session, audit_trip):
+    stored = (await _build(db_session, audit_trip)).as_json_dict()
+    stored["manifest_version"] = 3
+    del stored["investigations"]
+    del stored["incident"]
+
+    reread = AuditPackManifest.model_validate(stored)
+
+    assert reread.manifest_version == 3 and reread.investigations == []
 
 
 async def test_two_photo_critical_exception_is_anchored_with_every_photo_tied_to_its_receipt(

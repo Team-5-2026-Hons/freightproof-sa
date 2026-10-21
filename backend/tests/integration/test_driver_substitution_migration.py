@@ -1,4 +1,4 @@
-"""The hand-written FP-83 C1 migration, run against the disposable TEST database.
+"""The hand-written FP-83 C1 migration plus v2, run on the disposable TEST database.
 
 CI never runs Alembic and autogenerate is unusable on this repo (CLAUDE.md), so this is the
 only proof the DDL and the legacy-data preflight work. Every step runs inside the test's
@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 from alembic.migration import MigrationContext
@@ -51,6 +52,19 @@ _ADDED_COLUMNS: dict[str, tuple[str, ...]] = {
     "exceptions": ("performed_by_driver_id", "custody_sequence"),
 }
 _SHAPE_TABLES = (*_NEW_TABLES, *_ADDED_COLUMNS)
+# Added to these tables by LATER revisions (tim_dsub_capture_findings and tim_dsub_anchor_index), so this
+# migration must not be judged on them: they are rewound with the legacy shape and left out of
+# both sides of the comparison. That revision has its own test.
+_LATER_COLUMNS: dict[str, tuple[str, ...]] = {
+    "driver_substitution_confirmations": ("action_location_assessment",),
+    "exceptions": ("substitution_confirmation_id",),
+}
+_LATER_NAMES = frozenset({
+    "action_location_assessment", "substitution_confirmation_id",
+    "uq_exceptions_substitution_separation", "uq_exceptions_substitution_seal",
+    "fk_exceptions_substitution_confirmation_id",
+    "ix_driver_substitutions_anchor_status_updated",  # tim_dsub_anchor_index (C5)
+})
 _T0 = datetime(2026, 10, 19, 8, 0, tzinfo=UTC)
 
 
@@ -66,6 +80,9 @@ def _load() -> ModuleType:
 
 def _rewind_to_legacy(conn: Connection) -> None:
     """Put the model-built schema back to what the deployed database looks like pre-migration."""
+    for table, columns in _LATER_COLUMNS.items():
+        for column in columns:
+            conn.execute(text(f"ALTER TABLE public.{table} DROP COLUMN IF EXISTS {column} CASCADE"))
     for table in _NEW_TABLES:
         conn.execute(text(f"DROP TABLE IF EXISTS public.{table} CASCADE"))
     for table, columns in _ADDED_COLUMNS.items():
@@ -75,8 +92,16 @@ def _rewind_to_legacy(conn: Connection) -> None:
 
 def _run(conn: Connection, step: str) -> None:
     module = _load()
+    v2 = importlib.import_module('migrations.versions.2026_10_20_ciaran_driver_transfer_v2')
     with Operations.context(MigrationContext.configure(conn)):
-        getattr(module, step)()
+        # Current ORM inserts/shape assertions include v2 fields. Replaying C1 alone
+        # leaves a deliberately historical schema that those models cannot write.
+        if step == 'upgrade':
+            module.upgrade()
+            v2.upgrade()
+        else:
+            v2.downgrade()
+            module.downgrade()
 
 
 def _shape(conn: Connection) -> dict[str, object]:
@@ -85,10 +110,15 @@ def _shape(conn: Connection) -> dict[str, object]:
         table: {
             "columns": sorted(
                 (c["name"], str(c["type"]), c["nullable"]) for c in inspector.get_columns(table)
+                if c["name"] not in _LATER_NAMES
             ),
             "uniques": sorted(str(u["name"]) for u in inspector.get_unique_constraints(table)),
-            "indexes": sorted(str(i["name"]) for i in inspector.get_indexes(table)),
-            "fks": sorted(str(f["name"]) for f in inspector.get_foreign_keys(table)),
+            "indexes": sorted(
+                str(i["name"]) for i in inspector.get_indexes(table) if i["name"] not in _LATER_NAMES
+            ),
+            "fks": sorted(
+                str(f["name"]) for f in inspector.get_foreign_keys(table) if f["name"] not in _LATER_NAMES
+            ),
             "checks": sorted(str(c["name"]) for c in inspector.get_check_constraints(table)),
         }
         for table in _SHAPE_TABLES
@@ -186,7 +216,8 @@ async def test_upgrade_matches_the_models_and_a_clean_downgrade_reverses_it(db_s
 # ── the pure legacy-chain ordering ───────────────────────────────────────────
 
 
-def _link(module: ModuleType, outgoing: uuid.UUID, incoming: uuid.UUID, at: datetime) -> object:
+def _link(module: ModuleType, outgoing: uuid.UUID, incoming: uuid.UUID, at: datetime) -> Any:
+    # Any: LegacyLink belongs to a migration module loaded by path, so it has no importable type.
     return module.LegacyLink(id=uuid.uuid4(), outgoing_driver_id=outgoing, incoming_driver_id=incoming, at=at)
 
 
@@ -289,7 +320,7 @@ async def test_legacy_tie_with_one_possible_chain_migrates(db_session: AsyncSess
 
     await _upgrade(db_session)
 
-    sequences = dict((await db_session.execute(select(DriverSubstitution.id, DriverSubstitution.sequence_number))).all())
+    sequences = dict((await db_session.execute(select(DriverSubstitution.id, DriverSubstitution.sequence_number))).tuples().all())
     assert (sequences[first], sequences[second]) == (1, 2)
 
 

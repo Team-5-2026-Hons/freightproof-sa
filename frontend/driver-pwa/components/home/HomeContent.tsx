@@ -9,6 +9,8 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { NowCard } from '@/components/home/NowCard'
 import { openDriverExceptions } from '@/lib/utils/trip-attention'
 import { DriverRecord } from '@/components/home/DriverRecord'
+import { DriverSubstitutionPanel } from '@/components/trip/DriverSubstitutionPanel'
+import { TripEndedByDispatchBanner } from '@/components/trip/TripEndedByDispatchBanner'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useMyTrips } from '@/lib/hooks/useMyTrips'
 import { driverRecord } from '@/lib/utils/driver-record'
@@ -58,6 +60,12 @@ export function HomeContent() {
     return (
       <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
         {header}
+        {/* Above "No trip assigned": an incoming collection is real work even before custody
+            transfers, and it must be the first thing a driver without a trip sees. */}
+        {/* First: the trip the driver was on just ended, and this says so rather than the
+            trip quietly turning into "No trip assigned". */}
+        <TripEndedByDispatchBanner />
+        <DriverSubstitutionPanel />
         <section aria-label="No trip" className="flex flex-col items-center rounded-[22px] bg-fill px-6 pb-6 pt-7 text-center">
           <span aria-hidden className="flex size-16 items-center justify-center rounded-full bg-surface">
             <Truck className="size-8 text-surface-on" strokeWidth={1.7} />
@@ -82,6 +90,8 @@ export function HomeContent() {
   return (
     <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
       {header}
+      <TripEndedByDispatchBanner />
+      <DriverSubstitutionPanel />
       {/* Hold, driving and next-phase rules live in NowCard — see its header comment. */}
       <NowCard
         trip={trip}

@@ -4,6 +4,7 @@ stored hash.
 """
 
 import hashlib
+import json
 import uuid
 
 from app.db.models.enums import PhaseStatus, PhaseType
@@ -12,6 +13,11 @@ from app.db.models.enums import PhaseStatus, PhaseType
 PHASE_PAYLOAD_VERSION_V2 = 2
 # Loading only: v2 plus the scanned linehaul PDF's hash. Every other phase stays on v2.
 PHASE_PAYLOAD_VERSION_V3 = 3
+# FP-83 C5: an envelope around any v2/v3 evidence payload that also commits to WHICH driver
+# performed the phase and in which custody period, so a phase captured by A cannot later be
+# relabelled as B's after a handover. Used only for driver-performed phases (the gate stamps
+# performed_by_driver_id); dispatcher overrides and every older receipt keep their versions.
+PHASE_PAYLOAD_VERSION_V4 = 4
 
 
 def compute_departure_canonical_payload_v1(
@@ -224,4 +230,28 @@ def compute_confirmation_canonical_payload_v2(
         "driver_visual_count": driver_visual_count,
         "pod_photo_sha256": pod_photo_sha256,
         "pod_signature_sha256": pod_signature_sha256,
+    }
+
+
+def driver_actor_sha256(driver_id: uuid.UUID) -> str:
+    """An opaque commitment to the performing driver (the evidence anchors' actor_sha256 shape,
+    for a driver rather than a dispatcher user)."""
+    canonical = json.dumps({"actor_type": "driver", "driver_id": str(driver_id)}, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_phase_actor_envelope_v4(
+    *, phase_event_id: uuid.UUID, evidence: dict[str, object], driver_id: uuid.UUID, custody_sequence: int,
+) -> dict[str, object]:
+    """The v4 phase payload: the unchanged versioned evidence payload, plus who and when-in-custody.
+
+    The inner payload is embedded verbatim (its own payload_version included), so verification
+    rebuilds it with the exact v1/v2/v3 rules it always used and only adds the actor check.
+    """
+    return {
+        "payload_version": PHASE_PAYLOAD_VERSION_V4,
+        "phase_event_id": str(phase_event_id),
+        "evidence": evidence,
+        "actor_sha256": driver_actor_sha256(driver_id),
+        "custody_sequence": custody_sequence,
     }

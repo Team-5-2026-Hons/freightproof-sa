@@ -6,9 +6,12 @@
 // optimistically advanced so Home does not re-offer it, and the submission settles in the
 // background (lib/submission/phase-submitter.ts) with its own reconcile / queue / rollback
 // paths.
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
+import { setCustodyContext } from '@/lib/session/custody-context'
+import { writeDraft } from '@/lib/offline/retained-drafts'
 import { ApiError } from '@/lib/api/client'
 import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
 import type { Trip } from '@shared/lib/types/trip'
@@ -209,6 +212,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  authenticateTestDriver(TRIP_ID, 2)
   Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
   // The submitter's in-flight registry, failure list and last-known-fix cache all live at
   // module scope (that is the point of it) — vitest's per-test isolation cannot reach them.
@@ -288,6 +292,32 @@ describe('type-mismatch guard', () => {
   })
 })
 
+describe('capture scope during location checks', () => {
+  it.each(['gps', 'preview'] as const)('does not submit an old-period capture when custody changes during %s', async stage => {
+    const loading = makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })
+    setTripState(makeTrip([loading]))
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
+    let complete!: () => void
+    if (stage === 'gps') mockLocationCapture.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(FRESH_LOCATION) }))
+    else mockPreviewPhaseLocation.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(PASSING_ASSESSMENT) }))
+    mockSubmitPhase.mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' })
+    const view = render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(stage === 'gps' ? mockLocationCapture : mockPreviewPhaseLocation).toHaveBeenCalledTimes(1))
+
+    setCustodyContext({ actorId: 'driver-1', tripId: TRIP_ID, custodySequence: 4 })
+    setTripState(makeTrip([loading], { custody_sequence: 4 }))
+    view.rerender(<PhaseStepPageClient />)
+    await act(async () => { complete(); await Promise.resolve() })
+
+    expect(mockSubmitPhase).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledTimes(1))
+    expect(mockSubmitPhase.mock.calls[0][8]).toBe(4)
+  })
+})
+
 describe('mid-phase step — advance only, no submit', () => {
   it('navigates to the next slug in the SAME phase recipe without calling submitPhase', () => {
     setTripState(makeTrip([makePhase({ phase_type: 'departure', sequence_number: 1, status: 'in_progress' })]))
@@ -362,7 +392,7 @@ describe('final step — hands the submission off and returns the driver Home', 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: null }), expect.any(String),
       { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
-      FRESH_LOCATION.capturedAt, null,
+      FRESH_LOCATION.capturedAt, null, 2,
     ))
     // The server's own plan replaces the optimistic guess, and the marker is dropped.
     await waitFor(() => expect(mockAdoptTrip).toHaveBeenCalledWith(freshTrip))
@@ -378,7 +408,7 @@ describe('final step — hands the submission off and returns the driver Home', 
   it('clears the draft only once the server confirms, never at hand-off', async () => {
     const trip = renderLoadingFinalStep()
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     let resolveSubmit: (value: unknown) => void = () => {}
     mockSubmitPhase.mockReturnValue(new Promise((resolve) => { resolveSubmit = resolve }))
 
@@ -428,7 +458,7 @@ describe('final step — hands the submission off and returns the driver Home', 
       TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
       expect.objectContaining({ lat: retryCapture.latitude, capturedAt: retryCapture.capturedAt }),
       retryCapture.capturedAt,
-      expect.objectContaining({ reason: 'Truck is at the gate.' }),
+      expect.objectContaining({ reason: 'Truck is at the gate.' }), 2,
     ))
   })
 })
@@ -508,7 +538,7 @@ describe('offline-queued submit', () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     mockSubmitPhase.mockRejectedValue(new TypeError('network down'))
 
     render(<PhaseStepPageClient />)
@@ -519,7 +549,7 @@ describe('offline-queued submit', () => {
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: '2026-01-01T00:00:00Z' }),
       { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
-      FRESH_LOCATION.capturedAt, null,
+      FRESH_LOCATION.capturedAt, null, { actorId: 'driver-1', custodySequence: 2 }, null, mockSubmitPhase.mock.calls[0][4],
     ))
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'success', body: expect.stringContaining('Stored on this device') }),
@@ -539,7 +569,7 @@ describe('terminal failure', () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     mockSubmitPhase.mockRejectedValue(new ApiError(422, 'visual count is required'))
 
     render(<PhaseStepPageClient />)

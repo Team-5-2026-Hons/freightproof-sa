@@ -28,6 +28,7 @@ export interface LocationState {
   status: LocationStatus
   errorReason: LocationErrorReason | null
   capture: () => Promise<LocationCoords | null>
+  captureResult: () => Promise<{ coords: LocationCoords | null; errorReason: LocationErrorReason | null }>
 }
 
 // Dev-only convenience fallback — Linbro Park, JHB (FedEx origin depot). This exists
@@ -49,6 +50,13 @@ const LINBRO_PARK: LocationCoords = {
 const GEOLOCATION_PERMISSION_DENIED = 1
 const GEOLOCATION_POSITION_UNAVAILABLE = 2
 const GEOLOCATION_TIMEOUT = 3
+
+function sampleTime(timestamp: number): string {
+  if (!Number.isFinite(timestamp) || Number.isNaN(new Date(timestamp).getTime())) {
+    throw new Error('Invalid device location timestamp')
+  }
+  return new Date(timestamp).toISOString()
+}
 
 // Browser rejections are a real GeolocationPositionError with a numeric `code`. Native
 // (Capacitor Android) rejections are plain Errors carrying only a message — the plugin's
@@ -89,12 +97,18 @@ function getBrowserPosition(): Promise<LocationCoords> {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          capturedAt: new Date().toISOString(),
-        })
+        // Browser callbacks run after the Promise executor; malformed samples must
+        // reject the capture rather than throw globally and leave it pending forever.
+        try {
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            capturedAt: sampleTime(pos.timestamp),
+          })
+        } catch (error: unknown) {
+          reject(error)
+        }
       },
       (err) => reject(err),
       { enableHighAccuracy: true, timeout: 10_000 },
@@ -107,7 +121,7 @@ export function useLocation(): LocationState {
   const [status, setStatus] = useState<LocationStatus>('idle')
   const [errorReason, setErrorReason] = useState<LocationErrorReason | null>(null)
 
-  const capture = useCallback(async (): Promise<LocationCoords | null> => {
+  const captureResult = useCallback(async (): Promise<{ coords: LocationCoords | null; errorReason: LocationErrorReason | null }> => {
     setStatus('capturing')
     setErrorReason(null)
     try {
@@ -121,7 +135,7 @@ export function useLocation(): LocationState {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
-          capturedAt: new Date().toISOString(),
+          capturedAt: sampleTime(pos.timestamp),
         }
       } else {
         try {
@@ -141,7 +155,7 @@ export function useLocation(): LocationState {
       }
       setCoords(result)
       setStatus('captured')
-      return result
+      return { coords: result, errorReason: null }
     } catch (err) {
       // Classify the failure so GpsCapture can show remediation instead of a bare
       // "Retry GPS" — e.g. retrying is pointless when permission is denied.
@@ -149,9 +163,10 @@ export function useLocation(): LocationState {
       console.error(`[useLocation] capture failed (${reason}):`, err)
       setErrorReason(reason)
       setStatus('error')
-      return null
+      return { coords: null, errorReason: reason }
     }
   }, [])
 
-  return { coords, status, errorReason, capture }
+  const capture = useCallback(async (): Promise<LocationCoords | null> => (await captureResult()).coords, [captureResult])
+  return { coords, status, errorReason, capture, captureResult }
 }

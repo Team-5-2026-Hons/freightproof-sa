@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
@@ -10,7 +10,12 @@ import { ManifestContent } from '@/components/domain/ManifestContent'
 import { CancelTripDialog } from '@/components/domain/CancelTripAction'
 import { IssueAuditPackDialog } from '@/components/domain/IssueAuditPackDialog'
 import { DeclareIncidentDialog } from '@/components/domain/DeclareIncidentDialog'
+import { ReportIncidentDialog } from '@/components/incidents/ReportIncidentDialog'
+import { TripIncidentsSection } from '@/components/incidents/TripIncidentsSection'
+import { useTripIncidents } from '@/lib/hooks/useIncidents'
 import { AuditPacksPanel } from './AuditPacksPanel'
+import { DriverSubstitutionPanel } from './DriverSubstitutionPanel'
+import { LateDriverEvidencePanel } from './LateDriverEvidencePanel'
 import { TripInformation } from './TripInformation'
 import { PrecinctModal } from './PrecinctModal'
 import { DEFAULT_EXCEPTION_RECORD_SORT, EXCEPTION_RECORD_SORT_KEYS, firstExceptionRecordDir, TripExceptionsPanel, type ExceptionDensity, type ExceptionFilter, type ExceptionGrouping } from './TripExceptionsPanel'
@@ -28,6 +33,17 @@ const PANEL_SCROLLER_SELECTOR = '[role="tabpanel"], dialog'
 const TITLES: Record<TripPanel, string> = { information: 'Trip information', manifest: 'Cargo', exceptions: 'Trip exceptions' }
 const HELP_TOPIC: Record<TripPanel, TripHelpTopic> = { information: 'info', manifest: 'cargo', exceptions: 'exceptions' }
 
+/** Every driver who has held this trip, by id, for labelling their own late evidence. */
+function participantNames(trip: Trip): Record<string, string> {
+  const names: Record<string, string> = {}
+  for (const driver of [trip.original_driver, trip.driver]) if (driver) names[driver.id] = driver.full_name
+  for (const request of trip.driver_substitutions ?? []) {
+    names[request.outgoing.id] = request.outgoing.full_name
+    names[request.incoming.id] = request.incoming.full_name
+  }
+  return names
+}
+
 interface Props {
   panel: TripPanel; trip: Trip; precincts: Precinct[]; filter: ExceptionFilter
   /** Resolves an exception's supporting photo in the exceptions tab. */
@@ -40,8 +56,10 @@ interface Props {
   onSelect: (panel: TripPanel) => void
   onClose: () => void; onFilter: (value: ExceptionFilter) => void; onClearPhaseFilter?: () => void; onClearExceptionSelection?: () => void
   onShowInTimeline?: (exceptionId: string, phaseId: string | null) => void; onChanged: () => void; returnTo: string
+  /** Where to go once an incident is reported (the page owns routing; this panel does not). */
+  onIncidentReported?: (incidentId: string) => void
 }
-export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById, selectedPhaseId, invalidPhaseId, selectedExceptionId, invalidExceptionId, overlayOpen, scrollToAuditPacks = false, onSelect, onClose, onFilter, onClearPhaseFilter, onClearExceptionSelection, onShowInTimeline, onChanged, returnTo }: Props): React.JSX.Element {
+export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById, selectedPhaseId, invalidPhaseId, selectedExceptionId, invalidExceptionId, overlayOpen, scrollToAuditPacks = false, onSelect, onClose, onFilter, onClearPhaseFilter, onClearExceptionSelection, onShowInTimeline, onChanged, returnTo, onIncidentReported }: Props): React.JSX.Element {
   const docked = useDocked()
   const auditSectionRef = useRef<HTMLElement>(null)
   const auditLandingTripRef = useRef<string | null>(null)
@@ -55,6 +73,12 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const [cancelOpen, setCancelOpen] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [declareOpen, setDeclareOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const tripIncidents = useTripIncidents(trip.id)
+  // An exception belongs to one investigation; the report dialog offers only the free ones.
+  const groupedExceptionIds = useMemo(
+    () => new Set(tripIncidents.data.flatMap(i => i.exception_ids)), [tripIncidents.data],
+  )
   // Re-key only the audit content: the trip information and its scroller stay put.
   const [packsVersion, setPacksVersion] = useState(0)
   // Held here, not in the exceptions panel, so these survive a visit to the Info or Cargo tab.
@@ -117,6 +141,9 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
       <div className="relative h-0"><TripHelp topic={HELP_TOPIC[panel]} className="absolute -top-[22px] -right-[5px]" /></div>
       {panel === TRIP_PANELS.information && <div className="space-y-6">
         <TripInformation trip={trip} precincts={precincts} onOpenPrecinct={setOpenPrecinct} onCancelTrip={() => setCancelOpen(true)} />
+        <DriverSubstitutionPanel trip={trip} onChanged={onChanged} />
+        <LateDriverEvidencePanel tripId={trip.id} driverNames={participantNames(trip)} />
+        <TripIncidentsSection incidents={tripIncidents.data} isLoading={tripIncidents.isLoading} returnTo={returnTo} onReport={() => setReportOpen(true)} />
         <section ref={auditSectionRef} id={TRIP_AUDIT_PACKS_SECTION_ID} aria-labelledby={AUDIT_HEADING_ID} style={{ minHeight: auditMinimumHeight || undefined }} className="border-t border-outline-v/30 pt-6">
           <AuditPacksPanel key={packsVersion} tripId={trip.id} tripReference={trip.trip_reference} headingId={AUDIT_HEADING_ID}
             onIssue={() => { rememberAuditTrigger(); setIssueOpen(true) }} onDeclare={() => { rememberAuditTrigger(); setDeclareOpen(true) }} />
@@ -129,5 +156,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
     <CancelTripDialog tripId={trip.id} status={trip.status} open={cancelOpen} onClose={() => setCancelOpen(false)} onCancelled={onChanged} />
     <IssueAuditPackDialog tripId={trip.id} consignments={trip.consignments} open={issueOpen} onClose={() => setIssueOpen(false)} onIssued={refreshAuditPacks} />
     <DeclareIncidentDialog tripId={trip.id} open={declareOpen} onClose={() => setDeclareOpen(false)} onDeclared={refreshAuditPacks} />
+    <ReportIncidentDialog trip={trip} open={reportOpen} takenExceptionIds={groupedExceptionIds} onClose={() => setReportOpen(false)}
+      onReported={incident => { setReportOpen(false); onChanged(); tripIncidents.refetchSilent(); onIncidentReported?.(incident.incident_id) }} />
   </>
 }

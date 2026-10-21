@@ -109,3 +109,12 @@ describe('TripSummary header help', () => {
     expect(screen.getByRole('region', { name: "About this trip's header" })).toHaveTextContent('What the header shows')
   })
 })
+
+it.each([false, true])('transfer_action_reuses_normal_or_compact_header_slot (compact=%s)', async (compact) => {
+  const open = vi.fn()
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()} compact={compact}
+    transferAction={{ label: 'Transfer driver', onClick: open }} />)
+  await userEvent.click(screen.getByRole('button', { name: 'Transfer driver' }))
+  expect(open).toHaveBeenCalledOnce()
+  expect(screen.getByRole('link', { name: mockDrivers[0]!.phone_number })).toHaveAttribute('href', `tel:${mockDrivers[0]!.phone_number}`)
+})

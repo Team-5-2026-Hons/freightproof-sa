@@ -155,4 +155,31 @@ describe('useTripAutoRefresh', () => {
     })
     expect(onRefresh).not.toHaveBeenCalled()
   })
+
+  // FP-83 T1: reconnect is when a driver who lost signal learns that a handover completed
+  // or was cancelled while they were offline — the interval may be far away or off entirely.
+  it('test_reconnect_refreshes_even_with_polling_off', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useTripAutoRefresh({ pollingEnabled: false, intervalMs: 1000, onRefresh }))
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await Promise.resolve()
+    })
+
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('test_reconnect_listener_is_removed_on_unmount', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined)
+    const { unmount } = renderHook(() => useTripAutoRefresh({ pollingEnabled: false, intervalMs: 1000, onRefresh }))
+
+    unmount()
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await Promise.resolve()
+    })
+
+    expect(onRefresh).not.toHaveBeenCalled()
+  })
 })

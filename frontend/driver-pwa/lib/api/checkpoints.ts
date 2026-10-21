@@ -3,6 +3,7 @@ import { api } from './client'
 import type { Checkpoint, CheckpointId } from '@shared/lib/types/checkpoint'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { uploadArtifact } from './artifacts'
+import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 
 export interface LogCheckpointBody {
   checkpoint_type: string
@@ -23,6 +24,8 @@ export interface LogCheckpointBody {
   cargo_photo_artifact_id?: string
   note?: string
   is_deviation?: boolean
+  // FP-83: the custody period the checkpoint was captured in. Omitted when unknown.
+  custody_sequence?: number
 }
 
 // Raw captured checkpoint evidence (data URLs, not yet-uploaded artifacts) — mirrors
@@ -48,6 +51,40 @@ export interface CheckpointEvidence {
   clientReportId?: string
   accuracyM?: number | null
   phaseEventId?: string
+  // FP-83: stamped with the rest of the capture (lib/session/custody-context.ts) so a replay
+  // after a handover still names the period it was taken in. Absent on older queued entries.
+  custodySequence?: number | null
+}
+
+export interface CheckpointArtifactIds {
+  cargoPhotoId: string
+  selfieId: string | null
+}
+
+// The wire body for a checkpoint whose photos are uploaded. Shared with the late-evidence
+// path (lib/offline/late-evidence-sync.ts), which embeds this same body unchanged — minus
+// the custody field, which late evidence carries at its own top level.
+export function checkpointRequestBody(evidence: CheckpointEvidence, ids: CheckpointArtifactIds): LogCheckpointBody {
+  return {
+    checkpoint_type: 'manual',
+    // Omitted, not nulled, when there is no fix — same reasoning as phases.ts's
+    // driverPosition(): a null must not overwrite a position a previous attempt stored.
+    ...(evidence.gpsLat !== null && evidence.gpsLng !== null
+      ? { driver_phone_lat: evidence.gpsLat, driver_phone_lng: evidence.gpsLng }
+      : {}),
+    // Already stamped at submit time onto the evidence object (see
+    // CheckpointPageClient.tsx), so replaying this from the offline queue sends the
+    // ORIGINAL submit instant, never the flush-time clock.
+    driver_captured_at: evidence.capturedAt,
+    ...(typeof evidence.accuracyM === 'number' ? { driver_accuracy_metres: evidence.accuracyM } : {}),
+    ...(evidence.clientReportId ? { client_report_id: evidence.clientReportId } : {}),
+    ...(evidence.phaseEventId ? { phase_event_id: evidence.phaseEventId } : {}),
+    // Omitted when there is none: the field is optional on the backend.
+    ...(ids.selfieId !== null ? { selfie_artifact_id: ids.selfieId } : {}),
+    cargo_photo_artifact_id: ids.cargoPhotoId,
+    note: evidence.note || undefined,
+    is_deviation: evidence.isDeviation,
+  }
 }
 
 // Raw endpoint call — only ever invoked from submitCheckpoint's real-backend branch
@@ -66,6 +103,7 @@ export const logCheckpoint = (tripId: string, body: LogCheckpointBody): Promise<
 // (tripId, evidence) stays unchanged so useOfflineQueue's retry path (which calls this
 // same function to replay a queued checkpoint) keeps working without modification.
 export async function submitCheckpoint(tripId: string, evidence: CheckpointEvidence): Promise<Checkpoint> {
+  const generation = actorGeneration()
   if (IS_DEMO_MODE) {
     await new Promise<void>((resolve) => setTimeout(resolve, 400))
     return {
@@ -86,31 +124,17 @@ export async function submitCheckpoint(tripId: string, evidence: CheckpointEvide
   }
 
   const selfieDataUrl = evidence.selfieDataUrl ?? null
+  const custodySequence = evidence.custodySequence ?? null
   const [cargoPhoto, selfie] = await Promise.all([
-    uploadArtifact({ tripId, artifactType: 'photo', dataUrl: evidence.cargoPhotoDataUrl, capturedAt: evidence.capturedAt }),
+    uploadArtifact({ tripId, artifactType: 'photo', dataUrl: evidence.cargoPhotoDataUrl, capturedAt: evidence.capturedAt, custodySequence }),
     selfieDataUrl === null
       ? Promise.resolve(null)
-      : uploadArtifact({ tripId, artifactType: 'photo', dataUrl: selfieDataUrl, capturedAt: evidence.capturedAt }),
+      : uploadArtifact({ tripId, artifactType: 'photo', dataUrl: selfieDataUrl, capturedAt: evidence.capturedAt, custodySequence }),
   ])
 
+  assertActorGeneration(generation)
   return logCheckpoint(tripId, {
-    checkpoint_type: 'manual',
-    // Omitted, not nulled, when there is no fix — same reasoning as phases.ts's
-    // driverPosition(): a null must not overwrite a position a previous attempt stored.
-    ...(evidence.gpsLat !== null && evidence.gpsLng !== null
-      ? { driver_phone_lat: evidence.gpsLat, driver_phone_lng: evidence.gpsLng }
-      : {}),
-    // Already stamped at submit time onto the evidence object (see
-    // CheckpointPageClient.tsx), so replaying this from the offline queue sends the
-    // ORIGINAL submit instant, never the flush-time clock.
-    driver_captured_at: evidence.capturedAt,
-    ...(typeof evidence.accuracyM === 'number' ? { driver_accuracy_metres: evidence.accuracyM } : {}),
-    ...(evidence.clientReportId ? { client_report_id: evidence.clientReportId } : {}),
-    ...(evidence.phaseEventId ? { phase_event_id: evidence.phaseEventId } : {}),
-    // Omitted when there is none: the field is optional on the backend.
-    ...(selfie !== null ? { selfie_artifact_id: selfie.id } : {}),
-    cargo_photo_artifact_id: cargoPhoto.id,
-    note: evidence.note || undefined,
-    is_deviation: evidence.isDeviation,
+    ...checkpointRequestBody(evidence, { cargoPhotoId: cargoPhoto.id, selfieId: selfie?.id ?? null }),
+    ...(custodySequence !== null ? { custody_sequence: custodySequence } : {}),
   })
 }

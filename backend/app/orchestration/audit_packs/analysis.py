@@ -19,8 +19,10 @@ from app.core.geo import haversine_metres
 from app.schemas.audit_pack import (
     AuditPackManifest,
     CoverageGap,
+    DriverSubstitutionRecord,
     ExceptionRecord,
     IncidentSummary,
+    InvestigationRecord,
     Observation,
     PhaseRecord,
     PositionFix,
@@ -51,6 +53,9 @@ CLIENT_NOTIFICATION_WINDOW = timedelta(hours=24)
 _UNFINISHED_STATUSES = frozenset({"pending", "in_progress"})
 _ANCHOR_OWED = frozenset({"pending", "failed"})
 _CRITICAL = "critical"
+_HIJACKING = "hijacking"
+_THEFT_REPORTED = "theft_reported"
+_REPORTED = "reported"
 _REVIEWED = "reviewed"
 
 
@@ -160,11 +165,9 @@ def last_fix_before(fixes: Iterable[PositionFix], instant: datetime) -> Position
     return latest[1] if latest is not None else None
 
 
-def summarise_incident(
-    exceptions: Sequence[ExceptionRecord], *, fixes: Iterable[PositionFix],
+def _summary_from_exceptions(
+    exceptions: Sequence[ExceptionRecord], fixes: Sequence[PositionFix],
 ) -> IncidentSummary | None:
-    """Key times for the incident page, anchored on the FIRST critical exception —
-    later ones are usually consequences of it (a panic, then a broken seal)."""
     critical = sorted((e for e in exceptions if e.severity == _CRITICAL), key=lambda e: e.raised_at)
     if not critical:
         return None
@@ -180,6 +183,41 @@ def summarise_incident(
         first_reviewed_at=first_review,
         minutes_to_first_review=_whole_minutes(first_review - first.raised_at) if first_review else None,
     )
+
+
+def _summary_from_investigation(
+    investigations: Sequence[InvestigationRecord], fixes: Sequence[PositionFix],
+) -> IncidentSummary | None:
+    hijackings = [i for i in investigations if i.incident_type == _HIJACKING]
+    if not hijackings:
+        return None
+    first = min(hijackings, key=lambda i: i.reported_occurred_at or i.received_at)
+    # When it reportedly happened, else when FreightProof was told: the honest anchor for a
+    # report, and the instant the "last known position" is read at.
+    at = first.reported_occurred_at or first.received_at
+    return IncidentSummary(
+        exception_ids=list(first.exception_ids), first_exception_type=_HIJACKING, first_raised_at=at,
+        position=None, last_known_position=last_fix_before(fixes, at),
+        first_reviewed_at=None, minutes_to_first_review=None, basis="investigation",
+    )
+
+
+def summarise_incident(
+    exceptions: Sequence[ExceptionRecord], *, fixes: Iterable[PositionFix],
+    investigations: Sequence[InvestigationRecord] = (),
+) -> IncidentSummary | None:
+    """Key times for the incident page, anchored on whichever came first: the FIRST critical
+    exception (later ones are usually consequences of it, a panic then a broken seal), or a
+    dispatcher-recorded hijacking. The second is what lets a hijacking reported by phone — the
+    driver's phone gone, so no panic was ever pressed — still produce an incident sheet."""
+    fixes = list(fixes)
+    candidates = [
+        summary for summary in (
+            _summary_from_exceptions(exceptions, fixes), _summary_from_investigation(investigations, fixes),
+        ) if summary is not None
+    ]
+    # Exception first on a tie: a captured event outranks a report of the same moment.
+    return min(candidates, key=lambda c: (c.first_raised_at, c.basis != "exception"), default=None)
 
 
 # ── Observations ──────────────────────────────────────────────────────────────
@@ -440,12 +478,31 @@ def _observe_exceptions(exceptions: Sequence[ExceptionRecord]) -> list[Observati
     return observations
 
 
+def _handover_facts(s: DriverSubstitutionRecord) -> str:
+    """The incoming driver's own identity and how completion happened, for one handover line.
+    Empty on a legacy amendment, which recorded neither (nothing is invented for it)."""
+    if s.sequence_number is None:
+        return ""
+    parts = [f"amendment {s.sequence_number}"]
+    if s.incoming_identity_status is not None:
+        identity = f"incoming driver identity {s.incoming_identity_status}"
+        if s.identity_attested_by_name:
+            identity += f", unavailable verification attested by {s.identity_attested_by_name}"
+        parts.append(identity)
+    if s.completion_mode == "dispatcher_attested":
+        parts.append("completed with a dispatcher attestation")
+    return "; " + "; ".join(parts)
+
+
 def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation]:
     driver = manifest.driver
+    # FP-83: the trip-level check is the ORIGINAL driver's, taken at the start of the journey; it
+    # says nothing about a later driver, whose own observed status is on their handover line.
+    scope = " (original driver, at the start of the trip)" if driver.substitutions else ""
     observations = [Observation(
         code="identity.driver",
         level="info" if driver.trip_idvs_status == "verified" else "attention",
-        text=f"Driver identity check for this trip: {driver.trip_idvs_status}.",
+        text=f"Driver identity check for this trip{scope}: {driver.trip_idvs_status}.",
         evidence_ids=[],
     )]
     observations.extend(
@@ -453,10 +510,21 @@ def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation
             code="identity.substitution", level="attention",
             text=(f"Driver changed from {s.original_driver_name} to {s.substituting_driver_name} "
                   f"at {s.exchange_location}, {format_sast(s.substitution_at)} "
-                  f"({'planned' if s.is_planned else 'unplanned'})."),
+                  f"({'planned' if s.is_planned else 'unplanned'}){_handover_facts(s)}."),
             evidence_ids=[s.substitution_id],
         )
         for s in driver.substitutions
+    )
+    observations.extend(
+        Observation(
+            code="custody.late_evidence", level="attention",
+            text=(f"{e.driver_name} submitted {e.kind} evidence after their custody period "
+                  f"{e.custody_sequence} ended (captured {format_sast(e.captured_at)}, received "
+                  f"{format_sast(e.received_at)}); it was retained for review and did not complete a phase "
+                  f"({'reviewed' if e.status == 'acknowledged' else 'awaiting review'})."),
+            evidence_ids=[e.evidence_id],
+        )
+        for e in manifest.late_evidence
     )
     observations.extend(
         Observation(
@@ -526,6 +594,67 @@ def _observe_notifications(manifest: AuditPackManifest) -> list[Observation]:
     return observations
 
 
+def _investigation_label(i: InvestigationRecord) -> str:
+    return f"{i.reference} ({i.incident_type.replace('_', ' ')})"
+
+
+def _has_cas(manifest: AuditPackManifest, incident_id: UUID) -> bool:
+    return any(d.saps_cas_number and d.incident_id in (incident_id, None) for d in manifest.declarations)
+
+
+def _observe_one_investigation(manifest: AuditPackManifest, i: InvestigationRecord) -> list[Observation]:
+    label, ids = _investigation_label(i), [i.incident_id]
+    unresolved = [p for p in i.parcels if p.latest_finding is None]
+    observations: list[Observation] = []
+    if i.trip_stopped_at is not None:
+        observations.append(Observation(
+            code="incident.trip_stopped", level="info",
+            text=f"Trip stopped by the operator from {label} at {format_sast(i.trip_stopped_at)}.", evidence_ids=ids,
+        ))
+    if i.confidence == _REPORTED:
+        # A phone call written down is still a phone call: say so, so no reader takes the
+        # incident for something FreightProof detected or confirmed.
+        observations.append(Observation(
+            code="incident.report_vs_system", level="info",
+            text=(f"{label} rests on a report from the {i.reporter_role.replace('_', ' ')} "
+                  f"({i.report_channel.replace('_', ' ')}); FreightProof has not corroborated it."),
+            evidence_ids=ids,
+        ))
+    if i.status != "closed":
+        observations.append(Observation(
+            code="incident.open", level="attention",
+            text=(f"{label} was still {i.status} when this pack was generated"
+                  + (f"; {len(unresolved)} affected parcel(s) have no finding yet." if unresolved else ".")),
+            evidence_ids=ids,
+        ))
+        return observations
+    outcome = (i.outcome or "").replace("_", " ")
+    when = format_sast(i.closed_at) if i.closed_at else "an unrecorded time"
+    observations.append(Observation(
+        code="incident.closed_outcome", level="info",
+        text=f"{label} closed as {outcome} at {when}: {i.closure_reason}", evidence_ids=ids,
+    ))
+    if unresolved:
+        observations.append(Observation(
+            code="incident.unresolved_parcels", level="attention",
+            text=f"{label} closed with {len(unresolved)} affected parcel(s) still unresolved.",
+            evidence_ids=[p.parcel_id for p in unresolved],
+        ))
+    if i.outcome == _THEFT_REPORTED and not _has_cas(manifest, i.incident_id):
+        observations.append(Observation(
+            code="incident.theft_reported_without_cas", level="attention",
+            text=f"{label} was closed as theft reported, but no SAPS case number has been declared.",
+            evidence_ids=ids,
+        ))
+    return observations
+
+
+def _observe_investigations(manifest: AuditPackManifest) -> list[Observation]:
+    """The operator's own investigations: whether each is open or closed, what it established,
+    and what it left unresolved — the questions an adjuster asks after the custody chain."""
+    return [o for i in manifest.investigations for o in _observe_one_investigation(manifest, i)]
+
+
 def derive_observations(manifest: AuditPackManifest) -> list[Observation]:
     """Every rule, in the order the pack prints them: custody first, because an
     adjuster's first question is whether the chain is whole."""
@@ -537,6 +666,7 @@ def derive_observations(manifest: AuditPackManifest) -> list[Observation]:
         *_observe_location_agreement(manifest.phases),
         *_observe_location_coverage(manifest),
         *_observe_exceptions(manifest.exceptions),
+        *_observe_investigations(manifest),
         *_observe_notifications(manifest),
         *_observe_people_and_records(manifest),
     ]

@@ -19,6 +19,8 @@ import { ROUTES } from '@/lib/constants/routes'
 import { ApiError } from '@/lib/api/client'
 import { submitCheckpoint, type CheckpointEvidence } from '@/lib/api/checkpoints'
 import { contextPhaseEventId } from '@/lib/phase/derive'
+import { captureCustody } from '@/lib/session/custody-context'
+import { classifyLiveWriteFailure, isCustodyConflict } from '@/lib/offline/live-write-conflict'
 import { markTransition } from '@/lib/navigation/transition-direction'
 import { useBack } from '@/lib/navigation/useBack'
 import { cn } from '@/lib/utils'
@@ -54,6 +56,8 @@ export default function CheckpointPageClient() {
     if (!isReady || !trip) return
     setSubmitting(true)
     setSubmitError(false)
+    // FP-83: the custody period at the tap, before the GPS wait, travelling with the evidence.
+    const custody = captureCustody(String(trip.id))
 
     const position = await capturePosition()
     const clientReportId = clientReportIdRef.current ?? crypto.randomUUID()
@@ -68,6 +72,7 @@ export default function CheckpointPageClient() {
       clientReportId,
       accuracyM: position?.accuracyM ?? null,
       phaseEventId: contextPhaseEventId(trip.phases) ?? undefined,
+      custodySequence: custody.custodySequence,
     }
 
     try {
@@ -89,6 +94,15 @@ export default function CheckpointPageClient() {
         })
         router.push(ROUTES.inTransit)
       } else {
+        // FP-83: a custody conflict is not a validation error the driver can fix here — the
+        // trip moved on. The checkpoint is kept for review (late evidence), not lost.
+        const failure = classifyLiveWriteFailure(err)
+        if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
+          enqueueCheckpoint(String(trip.id), evidence, failure.attention)
+          notify({ kind: 'error', title: 'Checkpoint not recorded on the trip', body: failure.attention.reason })
+          router.push(ROUTES.home)
+          return
+        }
         console.error('Failed to log checkpoint', err)
         setSubmitError(true)
       }

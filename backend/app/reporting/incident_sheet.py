@@ -19,6 +19,8 @@ _TEMPLATE_DIR = Path(__file__).parent / "templates"
 # A SUGGESTION printed as such: classifying a crime is the reporter's call, not ours.
 _TAPA_SUGGESTION: dict[str, str] = {
     "panic_button": "Hijacking / robbery (suspected)",
+    # A dispatcher-recorded hijacking with no earlier critical exception (summarise_incident).
+    "hijacking": "Hijacking / robbery (reported)",
     "seal_broken_in_transit": "Theft from vehicle (suspected)",
     "seal_mismatch": "Theft from vehicle (suspected)",
     "seal_compromised": "Theft from vehicle (suspected)",

@@ -31,6 +31,7 @@ CONFIRMATION_ROLES = ("outgoing", "incoming")
 NOTICE_KINDS = ("arranged", "cancelled", "completed")
 LATE_EVIDENCE_KINDS = ("phase", "checkpoint", "location", "exception")
 LATE_EVIDENCE_STATUSES = ("awaiting_review", "acknowledged")
+UPLOAD_PURPOSES = ("handover", "late_evidence")
 
 
 def _in_list(column: str, values: tuple[str, ...]) -> str:
@@ -55,6 +56,7 @@ class DriverSubstitutionRequest(Base):
         Index("ix_dsub_requests_trip_id", "trip_id"),
         CheckConstraint("version >= 1", name="ck_dsub_requests_version_positive"),
         CheckConstraint(_in_list("state", REQUEST_STATES), name="ck_dsub_requests_state"),
+        CheckConstraint("(request_format = 'planned_v1' AND reservation_start_at IS NULL AND num_nonnulls(exchange_label, exchange_latitude, exchange_longitude, exchange_instructions, expected_at, is_planned) = 6) OR (request_format = 'immediate_v2' AND reservation_start_at IS NOT NULL AND num_nonnulls(exchange_label, exchange_latitude, exchange_longitude, exchange_instructions, expected_at, is_planned) = 0)", name="ck_dsub_requests_format_shape"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -67,14 +69,16 @@ class DriverSubstitutionRequest(Base):
     incoming_driver_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_dsub_requests_incoming_driver_id"), nullable=False
     )
-    # The agreed exchange point, frozen with the request (a change is a replacement).
-    exchange_label: Mapped[str] = mapped_column(String(255), nullable=False)
-    exchange_latitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    exchange_longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
-    exchange_instructions: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
-    expected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_format: Mapped[str] = mapped_column(String(20), nullable=False, server_default="planned_v1")
+    reservation_start_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Legacy planning metadata stays intact; immediate requests explicitly have no plan.
+    exchange_label: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    exchange_latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    exchange_longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    exchange_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    expected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    is_planned: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_planned: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     arranged_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", name="fk_dsub_requests_arranged_by_user_id"), nullable=False
     )
@@ -122,6 +126,8 @@ class DriverSubstitutionConfirmation(Base):
     )
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    location_observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    location_unavailable_reason: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     accuracy_metres: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
@@ -129,6 +135,12 @@ class DriverSubstitutionConfirmation(Base):
     confirmed_vehicle_ids: Mapped[Any] = mapped_column(JSONB, nullable=False)
     seal_checks: Mapped[Any] = mapped_column(JSONB, nullable=False)
     discrepancy_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # FP-83 C3 CP4: this capture's phone-versus-tracker comparison, the same
+    # ActionLocationAssessment shape a checkpoint stores (built by
+    # evidence.action_location.build_capture_assessment, which needs no phase or precinct). A
+    # missing phone fix or tracker outage is recorded explicitly as proximity "unverified" with
+    # its reasons; NULL means the comparison itself could not be built (logged), never "fine".
+    action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
@@ -157,6 +169,54 @@ class DriverSubstitutionConfirmationArtifact(Base):
         UUID(as_uuid=True), ForeignKey("vehicles.id", name="fk_dsub_conf_art_vehicle_id"), nullable=False
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class DriverSubstitutionUpload(Base):
+    """Why a substitution-route photo was uploaded, by whom, and for what (FP-83 C4).
+
+    A handover photo is uploaded before its confirmation exists, and a late-evidence photo
+    before its receipt, so neither can borrow a phase attribution. This row records the purpose
+    explicitly instead: a handover upload belongs to one request and the uploader's role on it;
+    a late upload belongs to the custody period the uploader claimed. A confirmation or late
+    receipt may cite only its own driver's uploads of the matching purpose, which is what stops
+    one driver's photo from satisfying the other driver's independent capture. An unused upload
+    is kept (evidence is never deleted) but appears in no confirmation.
+    """
+
+    __tablename__ = "driver_substitution_uploads"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", name="uq_dsub_uploads_artifact"),
+        CheckConstraint(_in_list("purpose", UPLOAD_PURPOSES), name="ck_dsub_uploads_purpose"),
+        CheckConstraint(
+            "(purpose = 'handover') = (request_id IS NOT NULL AND role IS NOT NULL AND custody_sequence IS NULL)"
+            " AND (purpose = 'late_evidence') = (request_id IS NULL AND role IS NULL AND custody_sequence IS NOT NULL)",
+            name="ck_dsub_uploads_scope",
+        ),
+        CheckConstraint("role IS NULL OR " + _in_list("role", CONFIRMATION_ROLES), name="ck_dsub_uploads_role"),
+        Index("ix_dsub_uploads_request_id", "request_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    artifact_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("evidence_artifacts.id", name="fk_dsub_uploads_artifact_id"), nullable=False
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("trips.id", name="fk_dsub_uploads_trip_id"), nullable=False
+    )
+    driver_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_dsub_uploads_driver_id"), nullable=False
+    )
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)
+    request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("driver_substitution_requests.id", name="fk_dsub_uploads_request_id"),
+        nullable=True,
+    )
+    role: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

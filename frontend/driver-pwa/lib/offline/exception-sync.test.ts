@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { bindActorLease, invalidateActorLease, currentActorId } from '@/lib/session/custody-context'
 import { ApiError } from '@/lib/api/client'
 import { uploadArtifact } from '@/lib/api/artifacts'
 import {
@@ -30,6 +31,7 @@ function photo(overrides: Partial<ExceptionPhotoRecord> = {}): ExceptionPhotoRec
 function envelope(photos: ExceptionPhotoRecord[] = []): ExceptionEnvelope {
   const now = new Date().toISOString()
   return {
+    actorId: currentActorId(),
     clientReportId: crypto.randomUUID(),
     tripId: crypto.randomUUID(),
     body: { exception_type: 'mechanical', description: 'Flat tyre' },
@@ -48,6 +50,7 @@ function uploadsSucceedWith(...ids: string[]): void {
 }
 
 beforeEach(() => {
+  bindActorLease(crypto.randomUUID(), invalidateActorLease())
   __setIndexedDbForTests(createFakeIndexedDb())
   __resetExceptionSyncForTests()
   upload.mockReset()
@@ -358,5 +361,32 @@ describe('sendExceptionReport', () => {
     release?.()
 
     expect(outcome).toEqual({ kind: 'busy' })
+  })
+})
+
+describe('actor interruption', () => {
+  test.each([false, true])('stops_after_account_generation_changes (return=%s)', async (returns) => {
+    const { setCustodyContext } = await import('@/lib/session/custody-context')
+    const actorId = crypto.randomUUID()
+    const env = { ...envelope([photo(), photo()]), actorId }
+    bindActorLease(actorId, invalidateActorLease())
+    setCustodyContext({ actorId, tripId: env.tripId, custodySequence: 0 })
+    await saveExceptionEnvelope(env)
+    let release!: (value: { id: string; file_hash: string }) => void
+    upload.mockImplementationOnce(() => new Promise((resolve) => { release = resolve }))
+    const post = vi.fn()
+    const sending = sendExceptionReport(env, { durable: true, post })
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1))
+    bindActorLease(crypto.randomUUID(), invalidateActorLease())
+    if (returns) bindActorLease(actorId, invalidateActorLease())
+    release({ id: 'first-upload', file_hash: 'hash' })
+
+    expect((await sending).kind).toBe('not-yours')
+    expect(upload).toHaveBeenCalledTimes(1)
+    expect(post).not.toHaveBeenCalled()
+    const kept = await getExceptionEnvelope(env.clientReportId)
+    expect(kept?.photos[0].uploadedArtifactId).toBe('first-upload')
+    expect(kept?.photos[1].blob).not.toBeNull()
+    invalidateActorLease()
   })
 })

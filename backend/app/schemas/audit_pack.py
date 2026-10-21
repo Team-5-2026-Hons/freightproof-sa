@@ -26,7 +26,10 @@ from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 # v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
 # action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
 # still validates and reads as v1; the stored JSON itself is never rewritten.
-AUDIT_PACK_MANIFEST_VERSION = 2
+# v4: `investigations` (incidents a dispatcher ran over the trip, with their ledger and
+# affected parcels) and IncidentSummary.basis; both defaulted, so a stored v3 manifest still
+# validates and reads as v3.
+AUDIT_PACK_MANIFEST_VERSION = 4
 
 # anchored:     its hash is on Hedera (field-level where the anchored payload names it)
 # corroborated: independent sources agreed at capture time, but nothing is anchored
@@ -120,15 +123,87 @@ class VehicleRecord(_Frozen):
     tracker_device_id: str
 
 
+class HandoverDeclarationRecord(_Frozen):
+    """One driver's own capture at a handover (FP-83): what they declared, on their device."""
+
+    role: str
+    driver_name: str
+    captured_at: datetime
+    received_at: datetime
+    location_recorded: bool
+    seal_readings: list[str]
+    photo_sha256: list[str]
+    discrepancy_note: str | None
+    driver_id: UUID | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_metres: float | None = None
+    location_observed_at: datetime | None = None
+    location_unavailable_reason: str | None = None
+    location_observation_committed: bool = False
+
+
+class SubstitutionClarificationRecord(_Frozen):
+    id: UUID
+    recorded_by_user_id: UUID
+    recorded_by_name: str | None
+    recorded_at: datetime
+    reason: str
+    correction_note: str
+    event_hash: str | None
+    anchor_status: str | None
+    receipt_id: UUID | None
+
+
 class DriverSubstitutionRecord(_Frozen):
     substitution_id: UUID
     original_driver_name: str
     substituting_driver_name: str
-    exchange_location: str
-    is_planned: bool
+    exchange_location: str | None
+    is_planned: bool | None
     substitution_at: datetime
     anchor_receipt_id: UUID | None
     tier: EvidenceTier
+    # FP-83 custody facts. Defaulted so manifests issued before them still parse unchanged.
+    # Ordered by sequence_number, the chain's only order; None on genuine legacy rows.
+    sequence_number: int | None = None
+    completion_mode: str | None = None
+    # Distinct actors, never merged: who arranged it, and what triggered completion.
+    arranged_by_name: str | None = None
+    completed_by: Literal["driver", "dispatcher"] | None = None
+    missing_confirmation_reason: str | None = None
+    # The INCOMING driver's own identity as observed at completion; an admin attestation is a
+    # separate fact and never turns PENDING into verified.
+    incoming_identity_status: str | None = None
+    identity_attested_by_name: str | None = None
+    identity_attested_at: datetime | None = None
+    incoming_licence_expiry: str | None = None
+    commitment_sha256: str | None = None
+    declarations: list[HandoverDeclarationRecord] = []
+    request_format: str | None = None
+    confirmation_policy: str | None = None
+    required_confirmation_roles: list[str] | None = None
+    completed_by_driver_id: UUID | None = None
+    completed_by_user_id: UUID | None = None
+    completed_by_name: str | None = None
+    identity_attestation_reason: str | None = None
+    corrections: list[SubstitutionClarificationRecord] = []
+
+
+class LateEvidenceRecord(_Frozen):
+    """Evidence a driver captured in an earlier custody period, retained for review (FP-83).
+    It never completed a phase; `payload_sha256` is a local commitment, not a Hedera receipt."""
+
+    evidence_id: UUID
+    driver_name: str
+    custody_sequence: int
+    kind: str
+    captured_at: datetime
+    received_at: datetime
+    status: str
+    payload_sha256: str
+    photo_sha256: list[str]
+    reviewed_at: datetime | None
 
 
 class DriverRecord(_Frozen):
@@ -332,6 +407,8 @@ class IncidentDeclarationRecord(_Frozen):
 
     declaration_id: UUID
     exception_id: UUID | None
+    # Defaulted so a manifest stored before incidents existed still validates.
+    incident_id: UUID | None = None
     saps_station: str | None
     saps_cas_number: str | None
     saps_officer: str | None
@@ -359,6 +436,63 @@ class IncidentSummary(_Frozen):
     last_known_position: PositionFix | None
     first_reviewed_at: datetime | None
     minutes_to_first_review: int | None
+    # "exception": anchored on the first critical exception. "investigation": anchored on a
+    # dispatcher-recorded hijacking with no earlier critical exception (a phone call after the
+    # driver's phone was taken) — a report, so the sheet prints it as declared, not captured.
+    basis: Literal["exception", "investigation"] = "exception"
+
+
+class AffectedParcelRecord(_Frozen):
+    parcel_id: UUID
+    barcode: str
+    consignment_id: UUID
+    # Scan facts, never conclusions: see orchestration.incidents.queries.scan_state.
+    scan_state: Literal["scanned_in", "no_scan_in_recorded", "no_scan_recorded"]
+    latest_finding: str | None
+
+
+class InvestigationEntryRecord(_Frozen):
+    """One entry of an incident's append-only ledger, as recorded by a dispatcher."""
+
+    sequence: int
+    kind: str
+    note: str | None
+    from_value: str | None
+    to_value: str | None
+    parcel_id: UUID | None
+    exception_id: UUID | None
+    external_action: str | None
+    action_at: datetime | None
+    recorded_by_name: str | None
+    recorded_at: datetime
+
+
+class InvestigationRecord(_Frozen):
+    """An incident the operator investigated: who reported what and when, how sure, what was
+    affected, every follow-up, and what it established — or that it was still open. Declared
+    tier throughout: the operator recorded all of it; FreightProof captured none of it."""
+
+    incident_id: UUID
+    reference: str
+    incident_type: str
+    summary: str
+    reporter_role: str
+    report_channel: str
+    # No reporter name: the manifest is hashed and its hash anchored on Hedera, and a person's
+    # name never goes into an anchored record. The role and channel say what a claim needs.
+    reported_occurred_at: datetime | None
+    received_at: datetime
+    confidence: str
+    status: str
+    outcome: str | None
+    closure_reason: str | None
+    closed_at: datetime | None
+    trip_stopped_at: datetime | None
+    assigned_to_name: str | None
+    exception_ids: list[UUID]
+    parcels: list[AffectedParcelRecord]
+    entries: list[InvestigationEntryRecord]
+    tier: Literal["declared"] = "declared"
 
 
 class TripSummary(_Frozen):
@@ -398,6 +532,10 @@ class AuditPackManifest(_Frozen):
     incident: IncidentSummary | None = None
     # Defaulted so manifests issued before declarations existed still validate.
     declarations: list[IncidentDeclarationRecord] = []
+    # FP-83: retained late driver evidence; defaulted so earlier manifests still parse.
+    late_evidence: list[LateEvidenceRecord] = []
+    # v4: defaulted so earlier manifests still parse.
+    investigations: list[InvestigationRecord] = []
     observations: list[Observation]
     # Human-readable list of what was withheld, printed on the data-protection page so
     # a reader knows an absence is a redaction, not a missing record.
@@ -622,6 +760,8 @@ class IncidentDeclarationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     exception_id: UUID | None = None
+    # The investigation the declaration belongs to (the hijacking guide's SAPS step sets it).
+    incident_id: UUID | None = None
     saps_station: _Station | None = None
     saps_cas_number: _CasNumber | None = None
     saps_officer: _Officer | None = None

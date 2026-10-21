@@ -12,6 +12,7 @@ import {
   type PhaseSubmissionOutcome,
   type PhaseSubmissionRequest,
 } from '../phase-submitter'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { ApiError } from '@/lib/api/client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId, PhaseStatus } from '@shared/lib/types/phase'
@@ -132,6 +133,7 @@ function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
 beforeEach(() => {
   vi.clearAllMocks()
   __resetPhaseSubmitterForTests()
+  authenticateTestDriver(TRIP_ID, 2)
 })
 
 afterEach(() => {
@@ -148,7 +150,7 @@ describe('startPhaseSubmission — success paths', () => {
     const outcome = await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX, '2026-01-01T00:00:00Z', null,
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX, '2026-01-01T00:00:00Z', null, 2,
     )
     expect(outcome.kind).toBe('recorded')
     if (outcome.kind !== 'recorded') throw new Error('unreachable')
@@ -235,7 +237,7 @@ describe('startPhaseSubmission — failure paths', () => {
 
     expect((await h.outcome).kind).toBe('queued')
     expect(h.enqueuePhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null,
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null, { actorId: 'driver-1', custodySequence: 2 }, null, h.request.idempotencyKey,
     )
   })
 
@@ -308,7 +310,7 @@ describe('position budget', () => {
     await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null, 2,
     )
   })
 
@@ -324,7 +326,7 @@ describe('position budget', () => {
     await second.outcome
 
     expect(mockSubmitPhase).toHaveBeenLastCalledWith(
-      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX, expect.any(String), null,
+      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX, expect.any(String), null, 2,
     )
   })
 
@@ -339,7 +341,7 @@ describe('position budget', () => {
     await vi.advanceTimersByTimeAsync(12_000)
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null, 2,
     )
   })
 

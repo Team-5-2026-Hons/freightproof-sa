@@ -18,6 +18,7 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from app.db.models.enums import AnchorStatus, IdvsStatus, PhaseType, TripStatus, VehicleType
+from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.locations import LocationPingBatch
 from app.schemas.phases import PhaseCompleteRequest, _validate_seal_format
@@ -29,6 +30,11 @@ from app.schemas.trips import TripStopRead
 
 EXCHANGE_LABEL_MAX_LENGTH = 255
 SUBSTITUTION_TEXT_MAX_LENGTH = 1000
+PLANNED_V1 = "planned_v1"
+IMMEDIATE_V2 = "immediate_v2"
+RequestFormat = Literal["planned_v1", "immediate_v2"]
+ConfirmationPolicy = Literal["two_driver_v1", "incoming_acceptance_v2"]
+LocationUnavailableReason = Literal["permission_denied", "timeout", "position_unavailable", "unknown"]
 
 # Reasons, notes and the not-applicable explanation. min_length runs before cleaning, so
 # _require_content closes the gap for whitespace/invisible-only input.
@@ -262,6 +268,13 @@ class SubstitutionConfirmationDetail(ConfirmationSummary):
     confirmed_vehicle_ids: list[UUID]
     seal_checks: list[SealCheck]
     discrepancy_note: Optional[str] = None
+    latitude: float | None = None
+    longitude: float | None = None
+    accuracy_metres: float | None = None
+    location_observed_at: datetime | None = None
+    location_unavailable_reason: LocationUnavailableReason | None = None
+    action_location_assessment: ActionLocationAssessment | None = None
+    location_observation_committed: bool = False
 
 
 class SubstitutionCompletionRead(BaseModel):
@@ -294,9 +307,13 @@ class SubstitutionRequestRead(BaseModel):
     outgoing: DriverContact
     incoming: DriverContact
     vehicles: list[VehicleRef]
-    exchange: ExchangePoint
-    expected_at: datetime
-    is_planned: bool
+    exchange: ExchangePoint | None
+    expected_at: datetime | None
+    is_planned: bool | None
+    request_format: RequestFormat = "planned_v1"
+    confirmation_policy: ConfirmationPolicy = "two_driver_v1"
+    required_confirmation_roles: list[SubstitutionRole] = Field(default_factory=lambda: [SubstitutionRole.OUTGOING, SubstitutionRole.INCOMING])
+    reservation_start_at: datetime | None = None
     reason: str
     created_at: datetime
     confirmations: list[ConfirmationSummary]
@@ -382,6 +399,47 @@ class CustodyPeriodRead(BaseModel):
     started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     completion_mode: Optional[SubstitutionCompletionMode] = None
+
+
+class SubstitutionPhaseContext(BaseModel):
+    phase_event_id: UUID
+    phase_type: PhaseType
+
+
+class IdentityAttestationRead(BaseModel):
+    attested_by_user_id: UUID
+    reason: str
+    attested_at: datetime
+
+
+class CompletedSubstitutionSummary(BaseModel):
+    substitution_id: UUID
+    request_id: UUID | None
+    sequence_number: int
+    outgoing: DriverContact
+    incoming: DriverContact
+    effective_at: datetime
+    completion_mode: SubstitutionCompletionMode | None
+    anchor_status: AnchorStatus | None
+    receipt_id: UUID | None
+    phase_context: SubstitutionPhaseContext | None
+    request_format: RequestFormat | None
+    required_confirmation_roles: list[SubstitutionRole] | None
+    confirmation_policy: ConfirmationPolicy | None
+
+
+class CompletedSubstitutionDetail(CompletedSubstitutionSummary):
+    reason: str | None
+    confirmations: list[SubstitutionConfirmationDetail]
+    artifacts: list[EvidenceArtifactWithUrl]
+    corrections: list[SubstitutionCorrectionRead]
+    arranged_by_user_id: UUID | None
+    completion: SubstitutionCompletionRead | None
+    identity_attestation: IdentityAttestationRead | None
+    declared_exchange_at: datetime | None
+    missing_confirmation_reason: str | None
+    outgoing_notices: list[SubstitutionNoticeRead] = Field(default_factory=list)
+    custody_integrity: CustodyIntegrityRead
 
 
 class ParticipationActionRef(BaseModel):
@@ -490,6 +548,20 @@ class ArrangeSubstitutionRequest(_ArrangementFields):
     client_request_id: UUID
 
 
+class ArrangeImmediateSubstitutionRequest(BaseModel):
+    model_config = _request_config()
+
+    client_request_id: UUID
+    request_format: Literal["immediate_v2"]
+    incoming_driver_id: UUID
+    reason: SubstitutionText
+
+
+class ReplaceImmediateSubstitutionRequest(ArrangeImmediateSubstitutionRequest):
+    expected_version: int = Field(..., ge=1)
+    replacement_reason: SubstitutionText
+
+
 class CancelSubstitutionRequest(BaseModel):
     model_config = _request_config()
 
@@ -545,6 +617,26 @@ class ConfirmSubstitutionRequest(BaseModel):
         checked = [check.vehicle_id for check in self.seal_checks]
         if len(set(checked)) != len(checked):
             raise ValueError("seal_checks contains a duplicate vehicle: one check per vehicle")
+        return self
+
+
+class ConfirmSubstitutionObservationRequest(ConfirmSubstitutionRequest):
+    capture_format: Literal["observation_v2"]
+    location_observed_at: datetime | None
+    location_unavailable_reason: LocationUnavailableReason | None
+
+    @field_validator("location_observed_at")
+    @classmethod
+    def _observed_at_has_offset(cls, value: datetime | None) -> datetime | None:
+        return _require_timezone(value, "location_observed_at")
+
+    @model_validator(mode="after")
+    def _observation_is_consistent(self) -> "ConfirmSubstitutionObservationRequest":
+        if self.latitude is not None:
+            if self.location_observed_at is None or self.location_unavailable_reason is not None:
+                raise ValueError("A location needs its observed time and no unavailable reason")
+        elif self.location_observed_at is not None:
+            raise ValueError("An unavailable location cannot have an observation time")
         return self
 
 
@@ -612,3 +704,20 @@ class SubstitutionErrorDetail(BaseModel):
 
 class SubstitutionErrorResponse(BaseModel):
     detail: SubstitutionErrorDetail
+
+
+# The trip reads embed these types, but schemas/trips is imported by this module, so they are
+# forward references there, resolved here once both modules exist (FP-83 C6).
+def _resolve_trip_read_references() -> None:
+    from app.schemas import trips
+
+    namespace = {
+        "CustodyIntegrityRead": CustodyIntegrityRead, "DriverAccess": DriverAccess,
+        "DriverParticipation": DriverParticipation, "SubstitutionRequestRead": SubstitutionRequestRead,
+        "CompletedSubstitutionSummary": CompletedSubstitutionSummary,
+    }
+    trips.TripDetailResponse.model_rebuild(_types_namespace=namespace)
+    trips.DriverTripListItemResponse.model_rebuild(_types_namespace=namespace)
+
+
+_resolve_trip_read_references()

@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { AuthContext, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
 import { TripProvider } from '@/lib/context/TripContext'
 import { LocationProvider } from '@/lib/context/LocationContext'
+import { DriverSubstitutionProvider } from '@/lib/context/DriverSubstitutionContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { ROUTES } from '@/lib/constants/routes'
 import { isFullBleedRoute } from '@/lib/navigation/full-bleed'
@@ -56,11 +57,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // LocationProvider sits INSIDE TripProvider, not beside it: it only records a
     // position while a trip is open, which means it has to be able to read the current
     // trip. It wraps both branches so the trail covers full-bleed phase screens (where
-    // the real work happens) as well as the shell routes.
+    // the real work happens) as well as the shell routes. DriverSubstitutionProvider also
+    // sits inside TripProvider, so a completed handover can drop the working trip at once;
+    // it is mounted here, once, so every screen shares a single notice refresh timer.
     <TripProvider>
-      <LocationProvider>
-        {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}
-      </LocationProvider>
+      <DriverSubstitutionProvider>
+        <LocationProvider>
+          {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}
+        </LocationProvider>
+      </DriverSubstitutionProvider>
     </TripProvider>
   )
 }

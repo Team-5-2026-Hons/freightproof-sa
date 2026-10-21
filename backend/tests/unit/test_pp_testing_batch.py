@@ -74,6 +74,7 @@ def test_testing_batch_manifests_hold_only_their_own_waybills() -> None:
 
 def test_testing_batch_waybills_state_their_manifests_route() -> None:
     for waybill in TESTING_BATCH_WAYBILLS.values():
+        assert waybill.details.manifest is not None
         manifest = TESTING_BATCH_MANIFESTS[waybill.details.manifest]
 
         assert waybill.details.orig_town == manifest.origin.town

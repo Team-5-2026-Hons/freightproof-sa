@@ -179,6 +179,20 @@ describe('DriverAnalyticsSummary — populated', () => {
     )
   })
 
+  it('shows the shared-after-handover row and its note when there are shared trips', () => {
+    renderSummary({ rows: [makeDriver({ shared_trip_count: 2 })] })
+
+    expect(valueOf('Shared after a handover')).toBe('2')
+    expect(screen.getByText(/Not included in trips or the rates above/)).toBeInTheDocument()
+  })
+
+  it.each([[0], [undefined]])('hides the shared-after-handover row when the count is %s', count => {
+    renderSummary({ rows: [makeDriver({ shared_trip_count: count })] })
+
+    expect(screen.queryByText('Shared after a handover')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Not included in trips or the rates above/)).not.toBeInTheDocument()
+  })
+
   it('shows no score, rating or rank (decision 06)', () => {
     renderSummary()
 

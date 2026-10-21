@@ -1,70 +1,95 @@
 // frontend/driver-pwa/lib/hooks/usePhaseDraft.ts
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
+import { actorGeneration, captureCustody } from '@/lib/session/custody-context'
+import { draftKey, migrateLegacyDrafts, readDraft, removeDraft, writeDraft } from '@/lib/offline/retained-drafts'
 
-const storageKey = (tripId: string, phaseEventId: string): string =>
-  `fp_draft_${tripId}_${phaseEventId}`
-
-// Renamed from useHandshakeDraft, which keyed its storage on (tripId, handshakeType) —
-// a fixed 1-5 handshake enum where each type occurred at most once per trip. Under the
-// phase model a trip's plan LENGTH IS DATA and a phase_type can
-// recur: a three-stop cross-dock visits `unloading` up to three times. Keying by
-// phase_type alone, as the old hook did, would collide every occurrence of that type
-// onto the SAME localStorage key — a driver's seal entry at the first `unloading`
-// would silently leak into (or get clobbered by) the draft for the second. Keying on
-// phase_event_id — a real per-row UUID, unique even across repeated phase types —
-// is exactly what this rename exists to prevent that collision.
+// Phase IDs distinguish repeated phases; actor/period distinguish successive capturers of
+// the same pending phase. A mounted screen must apply the same boundary as a fresh mount.
 export function usePhaseDraft<T extends object>(
   tripId: string,
   phaseEventId: string,
   initial: T,
-): [draft: T, updateDraft: (patch: Partial<T>) => void, clearDraft: () => void] {
-  const key = storageKey(tripId, phaseEventId)
+): [draft: T, updateDraft: (patch: Partial<T>) => void, clearDraft: (acknowledgedDraft?: T) => void] {
+  const { actorId, custodySequence } = captureCustody(tripId)
+  const generation = actorGeneration()
+  const scope = useMemo(() => ({ tripId, phaseEventId, actorId, custodySequence, generation }),
+    [tripId, phaseEventId, actorId, custodySequence, generation])
+  const currentScope = useRef(scope)
+  currentScope.current = scope
+  const key = draftKey(tripId, phaseEventId)
+  const revision = useRef<string | null>(null)
 
-  const [draft, setDraft] = useState<T>(() => {
+  const load = (): T => {
     try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(key) : null
-      // Shallow-merge over `initial` rather than returning the parsed value raw —
-      // a draft saved under an older shape of T (e.g. before a field existed) would
-      // otherwise silently omit that field despite the return type claiming it exists.
-      return raw ? { ...initial, ...(JSON.parse(raw) as Partial<T>) } : initial
-    } catch {
+      migrateLegacyDrafts()
+      const stored = readDraft(tripId, phaseEventId, scope)
+      revision.current = localStorage.getItem(key)
+      return stored !== null ? { ...initial, ...stored } : initial
+    } catch (err) {
+      console.warn(`usePhaseDraft: could not read draft for key "${key}"`, err)
       return initial
     }
-  })
+  }
+  const [state, setState] = useState(() => ({ scope, draft: load() }))
+  let draft = state.draft
+  if (state.scope !== scope) {
+    // Adjust before children render: an effect would expose the old photo for one render.
+    draft = load()
+    setState({ scope, draft })
+  }
 
-  const updateDraft = useCallback(
-    (patch: Partial<T>) => {
-      setDraft((prev) => {
-        const next = { ...prev, ...patch }
-        try {
-          // Synchronous write here (inside the updater, not a useEffect keyed on `draft`)
-          // is load-bearing: every step component calls onUpdate(patch) then immediately
-          // calls onComplete()/navigates in the same tick. If this write moved to a
-          // useEffect, that call-then-navigate pattern would silently lose the last patch
-          // on fast navigation, since the effect wouldn't have flushed yet.
-          localStorage.setItem(key, JSON.stringify(next))
-        } catch {
-          // Quota exceeded, private browsing, or storage disabled — draft still
-          // updates in memory, but won't survive a refresh. Surface this since the
-          // hook's entire purpose is persistence across navigation/refresh.
-          console.warn(`usePhaseDraft: failed to persist draft for key "${key}"`)
+  const isCurrentScope = useCallback((): boolean => {
+    const live = captureCustody(tripId)
+    return currentScope.current === scope && actorGeneration() === scope.generation
+      && live.actorId === scope.actorId && live.custodySequence === scope.custodySequence
+  }, [tripId, scope])
+
+  const updateDraft = useCallback((patch: Partial<T>): void => {
+    if (!isCurrentScope()) return
+    setState(previous => {
+      if (previous.scope !== scope || !isCurrentScope()) return previous
+      const next = { ...previous.draft, ...patch }
+      try {
+        if (localStorage.getItem(key) !== revision.current) {
+          console.warn('usePhaseDraft: a newer draft is stored; preserving it instead of applying a stale edit')
+          return previous
         }
-        return next
-      })
-    },
-    [key],
-  )
+        // Persist in the updater: steps can update and navigate in the same event.
+        writeDraft(tripId, phaseEventId, scope, next)
+        revision.current = localStorage.getItem(key)
+      } catch (err) {
+        console.warn(`usePhaseDraft: failed to persist draft for key "${key}"`, err)
+      }
+      return { scope, draft: next }
+    })
+  }, [isCurrentScope, key, tripId, phaseEventId, scope])
 
-  const clearDraft = useCallback(() => {
+  const clearRevision = revision.current
+  const clearDraft = useCallback((acknowledgedDraft?: T): void => {
+    if (!isCurrentScope()) return
     try {
-      localStorage.removeItem(key)
-    } catch {
-      console.warn(`usePhaseDraft: failed to clear stored draft for key "${key}"`)
+      let expectedValue = clearRevision
+      if (acknowledgedDraft !== undefined) {
+        const raw = localStorage.getItem(key)
+        if (raw === null) return
+        const stored: unknown = JSON.parse(raw)
+        if (typeof stored !== 'object' || stored === null || !('draft' in stored)
+            || typeof stored.draft !== 'object' || stored.draft === null) return
+        // The submitted value may include defaults absent from a legacy stored shape.
+        // Compare evidence as submitted so a later edit in this same period survives.
+        if (JSON.stringify({ ...initial, ...stored.draft }) !== JSON.stringify({ ...initial, ...acknowledgedDraft })) return
+        expectedValue = raw
+      }
+      if (localStorage.getItem(key) !== expectedValue) return
+      removeDraft(tripId, phaseEventId, scope, expectedValue)
+      revision.current = localStorage.getItem(key)
+    } catch (err) {
+      console.warn(`usePhaseDraft: failed to clear stored draft for key "${key}"`, err)
     }
-    setDraft(initial)
-  }, [key, initial])
+    setState({ scope, draft: initial })
+  }, [isCurrentScope, key, tripId, phaseEventId, scope, initial, clearRevision])
 
   return [draft, updateDraft, clearDraft]
 }

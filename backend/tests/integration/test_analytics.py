@@ -69,6 +69,11 @@ _LIVE_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
 )
+# FP-83: the driver view recreated with handover-aware attribution. Always run after the live views.
+_SUBSTITUTION_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -90,6 +95,7 @@ def _load_migration(path: Path, name: str) -> ModuleType:
 _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
+_SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
 
 
 # ── Timeline building blocks ─────────────────────────────────────────────────
@@ -358,6 +364,7 @@ async def views(db_session: AsyncSession) -> None:
         *_MIGRATION.UPGRADE_STATEMENTS,
         *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
         *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
+        *_SUBSTITUTION_MIGRATION.UPGRADE_STATEMENTS,
     ):
         await db_session.execute(text(statement))
 

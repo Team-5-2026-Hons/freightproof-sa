@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useState, useEffect, useCallback } from 'react'
 import type { AuthState, DriverUser } from '@/lib/types/user'
 import type { OtpAuthPort } from '@shared/lib/auth/port'
 import { defaultOtpAuth, defaultProfileSource } from '@/lib/auth/defaults'
@@ -9,6 +9,7 @@ import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
 import { clearReturnPath, saveReturnPath } from '@shared/lib/session/return-path'
 import { ROUTES } from '@/lib/constants/routes'
+import { actorGeneration, bindActorLease, captureActorLease, invalidateActorLease, observeAuthSession } from '@/lib/session/custody-context'
 
 // Which backend proves identity and where the profile comes from is injected (see
 // AuthProviderProps): demo mode (default) wires a mock OTP flow and a fixture driver, real
@@ -55,39 +56,54 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   // Tracks the currently-loaded driver id outside React state so the
   // onAuthStateChange listener (subscribed once, see below) can compare
   // against it without needing `user` in its dependency array.
-  const userIdRef = useRef<string | null>(null)
-  useEffect(() => {
-    userIdRef.current = user ? String(user.id) : null
-  }, [user])
-
   const fetchProfile = useCallback(() => profiles.loadProfile(), [profiles])
 
   // On app load, restore a session if one exists (a page refresh, or a demo walkthrough
   // the tab already started) and keep following the port's session changes.
   useEffect(() => {
     let active = true
+    let revision = 0
+    let loadedSubject: string | null = null
 
-    port.getSession().then(async session => {
-      if (session) {
-        const profile = await fetchProfile()
-        if (active) setUser(profile)
+    const restore = async (session: { userId: string } | null): Promise<void> => {
+      const requestRevision = ++revision
+      const generation = observeAuthSession(session?.userId ?? null)
+      if (!session) {
+        // Also invalidates demo/injected ports, which have no Supabase listener.
+        invalidateActorLease()
+        loadedSubject = null
+        if (active) { setUser(null); setIsLoading(false) }
+        return
       }
+      if (loadedSubject === session.userId && captureActorLease() !== null) return
+      const profile = await fetchProfile()
+      if (!active || revision !== requestRevision || actorGeneration() !== generation) return
+      if (profile !== null && !bindActorLease(String(profile.id), generation)) return
+      loadedSubject = session.userId
+      setUser(profile)
+      setIsLoading(false)
+    }
+
+    const startRevision = revision
+    const startupGeneration = actorGeneration()
+    port.getSession().then(async session => {
+      if (active && revision === startRevision && actorGeneration() === startupGeneration) await restore(session)
+    }).catch((err: unknown) => {
+      console.error('AuthContext: session restore failed', err)
       if (active) setIsLoading(false)
     })
 
     const unsubscribe = port.onChange(async (_event, session) => {
-      if (!session) {
-        setUser(null)
-        return
-      }
       // The backend can re-fire SIGNED_IN/INITIAL_SESSION for a session that hasn't
       // actually changed (e.g. its own tab-visibility/multi-tab sync) — only refetch
       // the driver profile when the signed-in identity is actually different.
       // Otherwise this creates a new `user` object every time, which cascades into
       // every consumer keyed on it by reference (e.g. TripContext refetching the
       // active trip and toggling isLoading on a loop, blanking the page).
-      if (session.userId === userIdRef.current) return
-      setUser(await fetchProfile())
+      try { await restore(session) } catch (err: unknown) {
+        console.error('AuthContext: profile restore failed', err)
+        if (active) setIsLoading(false)
+      }
     })
 
     return () => {
@@ -118,7 +134,14 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
     // Start the idle clock at the sign-in itself — see the dispatcher's AuthContext for
     // why the first activity stamp cannot be left to the driver's next tap.
     recordActivity(window.localStorage)
-    setUser(await fetchProfile())
+    const sessionGeneration = actorGeneration()
+    const session = await port.getSession()
+    // A lookup started before sign-out/account change cannot restore its old subject.
+    if (actorGeneration() !== sessionGeneration) return
+    if (session === null) { setIsLoading(false); return }
+    const generation = observeAuthSession(session?.userId ?? null)
+    const profile = await fetchProfile()
+    if (profile !== null && bindActorLease(String(profile.id), generation)) setUser(profile)
     setIsLoading(false)
   }, [port, fetchProfile])
 
@@ -126,9 +149,11 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   // silent on the return path — callers decide that, since a manual sign-out and an idle
   // expiry want opposite outcomes for it.
   const performSignOut = useCallback(async () => {
+    invalidateActorLease()
     await port.signOut()
     clearActivity(window.localStorage)
     setUser(null)
+    setIsLoading(false)
   }, [port])
 
   // Manual sign-out (the profile panel's "Log Out"): clears any saved return path — a

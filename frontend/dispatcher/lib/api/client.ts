@@ -86,7 +86,8 @@ async function resolveToken(): Promise<string | null> {
 
 function buildHeaders(token: string | null, init: RequestInit): Record<string, string> {
   return {
-    'Content-Type': 'application/json',
+    // A multipart body sets its own Content-Type, boundary included; a JSON one would break it.
+    ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(init.headers as Record<string, string> | undefined ?? {}),
   }
@@ -214,7 +215,8 @@ async function request<T>(
 
 export const api = {
   // GETs are idempotent → retry once on a dropped connection.
-  get: <T>(path: string): Promise<T> => request<T>(path, {}, { retry: true }),
+  get: <T>(path: string, opts?: { timeoutMs?: number }): Promise<T> =>
+    request<T>(path, {}, { retry: true, timeoutMs: opts?.timeoutMs }),
   getBlob: (path: string, opts?: { timeoutMs?: number }): Promise<Blob> =>
     request<Blob>(path, {}, { retry: true, as: 'blob', timeoutMs: opts?.timeoutMs }),
   // Not retried by default (may have already mutated state); pass { idempotent: true }
@@ -226,6 +228,9 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) },
       { retry: opts?.idempotent ?? false, timeoutMs: opts?.timeoutMs },
     ),
+  // File uploads (incident documents). Never retried: an upload stores a file.
+  postForm: <T>(path: string, form: FormData, opts?: { timeoutMs?: number }): Promise<T> =>
+    request<T>(path, { method: 'POST', body: form }, { timeoutMs: opts?.timeoutMs }),
   patch: <T>(path: string, body: unknown): Promise<T> =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: <T>(path: string): Promise<T> => request<T>(path, { method: 'DELETE' }),

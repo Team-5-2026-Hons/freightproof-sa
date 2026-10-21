@@ -15,9 +15,14 @@ import type { ExceptionType, TripException } from './exception'
 import type { AnchorStatus, CoarseTripStatus, PhaseType, SealCondition } from './phase'
 import type { TripStop } from './trip'
 import type { VehicleType } from './vehicle'
+import type { ActionLocationAssessment } from './action-location'
 import type { IdvsStatus } from './driver'
 
 // ── Enumerations (string unions mirror the Python enums exactly) ────────────────
+
+export type RequestFormat = 'planned_v1' | 'immediate_v2'
+export type ConfirmationPolicy = 'two_driver_v1' | 'incoming_acceptance_v2'
+export type LocationUnavailableReason = 'permission_denied' | 'timeout' | 'position_unavailable' | 'unknown'
 
 export type SubstitutionState = 'pending' | 'completed' | 'cancelled'
 
@@ -157,6 +162,13 @@ export interface SubstitutionConfirmationDetail extends ConfirmationSummary {
   confirmed_vehicle_ids: string[]
   seal_checks: SealCheck[]
   discrepancy_note: string | null
+  latitude?: number | null
+  longitude?: number | null
+  accuracy_metres?: number | null
+  location_observed_at?: string | null
+  location_unavailable_reason?: LocationUnavailableReason | null
+  action_location_assessment?: ActionLocationAssessment | null
+  location_observation_committed?: boolean
 }
 
 // Who caused completion: exactly one actor, matching the trigger.
@@ -176,9 +188,13 @@ export interface SubstitutionRequestRead {
   outgoing: DriverContact
   incoming: DriverContact
   vehicles: VehicleRef[]
-  exchange: ExchangePoint
-  expected_at: string
-  is_planned: boolean
+  exchange: ExchangePoint | null
+  expected_at: string | null
+  is_planned: boolean | null
+  request_format?: RequestFormat
+  confirmation_policy?: ConfirmationPolicy
+  required_confirmation_roles?: SubstitutionRole[]
+  reservation_start_at?: string | null
   reason: string
   created_at: string
   confirmations: ConfirmationSummary[]
@@ -521,4 +537,64 @@ export interface SubstitutionErrorDetail {
 
 export interface SubstitutionErrorResponse {
   detail: SubstitutionErrorDetail
+}
+
+// New bodies are explicit versions; the original v1 models stay unchanged for exact retries.
+export interface ArrangeImmediateSubstitutionRequest {
+  client_request_id: string
+  request_format: 'immediate_v2'
+  incoming_driver_id: string
+  reason: string
+}
+
+export interface ReplaceImmediateSubstitutionRequest extends ArrangeImmediateSubstitutionRequest {
+  expected_version: number
+  replacement_reason: string
+}
+
+export interface ConfirmSubstitutionObservationRequest extends ConfirmSubstitutionRequest {
+  capture_format: 'observation_v2'
+  location_observed_at: string | null
+  location_unavailable_reason: LocationUnavailableReason | null
+}
+
+export interface SubstitutionPhaseContext {
+  phase_event_id: string
+  phase_type: PhaseType
+}
+
+export interface IdentityAttestationRead {
+  attested_by_user_id: string
+  reason: string
+  attested_at: string
+}
+
+export interface CompletedSubstitutionSummary {
+  substitution_id: string
+  request_id: string | null
+  sequence_number: number
+  outgoing: DriverContact
+  incoming: DriverContact
+  effective_at: string
+  completion_mode: SubstitutionCompletionMode | null
+  anchor_status: AnchorStatus | null
+  receipt_id: string | null
+  phase_context: SubstitutionPhaseContext | null
+  request_format: RequestFormat | null
+  required_confirmation_roles: SubstitutionRole[] | null
+  confirmation_policy: ConfirmationPolicy | null
+}
+
+export interface CompletedSubstitutionDetail extends CompletedSubstitutionSummary {
+  reason: string | null
+  confirmations: SubstitutionConfirmationDetail[]
+  artifacts: EvidenceArtifactWithUrl[]
+  corrections: SubstitutionCorrectionRead[]
+  arranged_by_user_id: string | null
+  completion: SubstitutionCompletionRead | null
+  identity_attestation: IdentityAttestationRead | null
+  declared_exchange_at: string | null
+  missing_confirmation_reason: string | null
+  outgoing_notices?: SubstitutionNoticeRead[]
+  custody_integrity: CustodyIntegrityRead
 }

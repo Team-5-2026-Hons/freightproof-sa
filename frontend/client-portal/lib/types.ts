@@ -68,8 +68,8 @@ export interface DriverSubstitutionRecord {
   substitution_id: string
   original_driver_name: string
   substituting_driver_name: string
-  exchange_location: string
-  is_planned: boolean
+  exchange_location: string | null
+  is_planned: boolean | null
   substitution_at: string
   anchor_receipt_id: string | null
   tier: EvidenceTier

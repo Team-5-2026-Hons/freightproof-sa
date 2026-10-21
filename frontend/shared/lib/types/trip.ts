@@ -8,7 +8,7 @@ import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
 import type { PPManifestRef } from './pp-manifest'
-import type { CustodyIntegrityRead, DriverAccess, SubstitutionRequestRead } from './driver-substitution'
+import type { CustodyIntegrityRead, DriverAccess, SubstitutionRequestRead, CompletedSubstitutionSummary } from './driver-substitution'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -179,6 +179,7 @@ export interface Trip {
   // defaults in the shared mocks: sequence 0, no amendments, flag off.
   original_driver?: Driver | null
   driver_substitutions?: SubstitutionRequestRead[]
+  completed_driver_substitutions?: CompletedSubstitutionSummary[]
   pending_driver_substitution?: SubstitutionRequestRead | null
   custody_sequence?: number
   // Dispatcher reads only.

@@ -45,6 +45,9 @@ def configure_evidence_publisher(publisher: EvidencePublisher | None) -> None:
 def dispatch_evidence_anchor(db: AsyncSession, *, event_id: uuid.UUID) -> None:
     """Queue this event's anchor for the worker, AFTER the outer transaction commits.
 
+    The commit-tracking itself is run_after_outer_commit, shared with the FP-83 custody
+    anchors (orchestration/substitutions/anchors.py) so its savepoint handling exists once.
+
     The worker opens its own session, so a task sent mid-transaction could look for an event
     row that is not committed yet. A rollback publishes nothing; the committed-but-never-sent
     case (crash, broker loss) is what the recovery sweep exists for.
@@ -56,6 +59,16 @@ def dispatch_evidence_anchor(db: AsyncSession, *, event_id: uuid.UUID) -> None:
     if THAT savepoint rolls back the row is gone, so the dispatch is dropped; if it is
     released, the row now belongs to the parent and the dispatch follows it. Everything is
     spent when the root transaction ends, committed or not.
+    """
+    run_after_outer_commit(db, lambda: _retain(asyncio.get_running_loop().create_task(_publish(event_id)), event_id))
+
+
+def run_after_outer_commit(db: AsyncSession, start: Callable[[], None]) -> None:
+    """Call `start` once, when the root transaction that owns the caller's new row commits.
+
+    Ignores savepoint releases, follows a released savepoint's rows into its parent, and drops
+    the call if the owning transaction rolls back (see dispatch_evidence_anchor). `start` runs
+    inside SQLAlchemy's after_commit hook, so it must only schedule work, never touch the session.
     """
     sync_session = db.sync_session
     # The innermost transaction at registration owns the event row. Events registered
@@ -79,7 +92,7 @@ def dispatch_evidence_anchor(db: AsyncSession, *, event_id: uuid.UUID) -> None:
         if spent:
             return
         spent = True
-        _retain(asyncio.get_running_loop().create_task(_publish(event_id)), event_id)
+        start()
 
     def _on_transaction_end(_session: Session, transaction: SessionTransaction) -> None:
         nonlocal owner, spent, owner_released

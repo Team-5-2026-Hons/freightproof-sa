@@ -269,7 +269,10 @@ def _shared_resources(
     if reservation is not None and reservation.incoming_driver_id != occupying.current_driver_id and (
         everything or reservation.incoming_driver_id == crew.driver_id
     ):
-        start, until = reservation_window(expected_at=reservation.expected_at, planned_end=held[2], now=now)
+        start, until = reservation_window(
+            expected_at=reservation.expected_at, planned_end=held[2], now=now,
+            request_format=reservation.request_format, reservation_start_at=reservation.reservation_start_at,
+        )
         yield CrewResourceType.DRIVER, reservation.incoming_driver_id, (start, until, held[2])
     if everything or trip.horse_id == crew.horse_id:
         yield CrewResourceType.HORSE, trip.horse_id, held
@@ -294,9 +297,9 @@ async def busy_crew_in_window(
         held = _occupied_window(occupied, now)
         if held is None:
             continue
-        for resource_type, resource_id, window in _shared_resources(occupied, crew, held, now):
-            if windows_overlap(window[0], window[1], start, end):
-                hits.append((resource_type, resource_id, occupied, *window))
+        for resource_type, resource_id, shared in _shared_resources(occupied, crew, held, now):
+            if windows_overlap(shared[0], shared[1], start, end):
+                hits.append((resource_type, resource_id, occupied, *shared))
     if not hits:
         return []
 

@@ -20,6 +20,8 @@ import { useSyncExternalStore } from 'react'
 import { submitPhase } from '@/lib/api/phases'
 import { ApiError } from '@/lib/api/client'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
+import { actorGeneration, captureCustody, isCurrentTripCustody, onCustodyActorChange, onTripCustodyChange, type CustodyStamp } from '@/lib/session/custody-context'
+import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
@@ -46,18 +48,20 @@ const POSITION_FALLBACK_MAX_AGE_MS = 60_000
 interface TimestampedFix {
   position: DriverPosition
   capturedAtMs: number
+  generation: number
 }
 
 // The most recent fix any submission managed to take. Module scope for the same reason
 // everything else here is: it has to survive the screen that captured it.
 let lastKnownFix: TimestampedFix | null = null
 
-function rememberFix(position: DriverPosition): void {
-  lastKnownFix = { position, capturedAtMs: Date.now() }
+function rememberFix(position: DriverPosition, generation: number): void {
+  if (actorGeneration() !== generation) return
+  lastKnownFix = { position, capturedAtMs: Date.now(), generation }
 }
 
-function recentFix(): DriverPosition | null {
-  if (lastKnownFix === null) return null
+function recentFix(generation: number): DriverPosition | null {
+  if (lastKnownFix === null || lastKnownFix.generation !== generation || actorGeneration() !== generation) return null
   return Date.now() - lastKnownFix.capturedAtMs <= POSITION_FALLBACK_MAX_AGE_MS
     ? lastKnownFix.position
     : null
@@ -65,7 +69,7 @@ function recentFix(): DriverPosition | null {
 
 // Resolves null rather than rejecting or hanging: a failed fix is normal (a warehouse
 // roof, a denied permission) and must never be the reason evidence goes unrecorded.
-async function resolvePosition(pending: Promise<DriverPosition | null>): Promise<DriverPosition | null> {
+async function resolvePosition(pending: Promise<DriverPosition | null>, generation: number): Promise<DriverPosition | null> {
   const captured = await new Promise<DriverPosition | null>((resolve) => {
     const timer = setTimeout(() => resolve(null), POSITION_CAPTURE_BUDGET_MS)
     void pending.then(
@@ -81,13 +85,13 @@ async function resolvePosition(pending: Promise<DriverPosition | null>): Promise
   })
 
   if (captured !== null) {
-    rememberFix(captured)
+    rememberFix(captured, generation)
     return captured
   }
   // A capture that lands AFTER the budget still tells the next submission where the
   // driver is, so the cache is fed even when this submission could not wait for it.
-  void pending.then((late) => { if (late !== null) rememberFix(late) }, () => {})
-  return recentFix()
+  void pending.then((late) => { if (late !== null) rememberFix(late, generation) }, () => {})
+  return recentFix(generation)
 }
 
 // ─── Outcomes ──────────────────────────────────────────────────────────────────
@@ -108,6 +112,13 @@ export type PhaseSubmissionOutcome =
   | { kind: 'conflict'; message: string }
   /** A terminal 4xx or a local validation throw. Retrying unchanged cannot help. */
   | { kind: 'failed'; message: string }
+  /**
+   * FP-83: the server refused this capture because custody moved on (TRIP_HANDED_OVER,
+   * CUSTODY_CONTEXT_CHANGED/REQUIRED). The evidence is kept for review in the offline queue
+   * (`persisted`), never discarded and never resent live. `handedOver` asks the caller to
+   * drop the trip as working context.
+   */
+  | { kind: 'retained'; message: string; persisted: boolean; handedOver: boolean }
 
 /** A terminal failure the driver has not yet acknowledged. Surfaced by OfflineBanner. */
 export interface PhaseSubmissionFailure {
@@ -131,7 +142,10 @@ type EnqueuePhase = (
   position: DriverPosition | null,
   driverCapturedAt: string,
   acknowledgement?: LocationWarningAcknowledgement | null,
-) => void
+  custody?: CustodyStamp,
+  attention?: RetainedAttention | null,
+  originalIdempotencyKey?: string,
+) => boolean
 
 export interface PhaseSubmissionRequest {
   tripId: string
@@ -162,6 +176,11 @@ export interface PhaseSubmissionRequest {
   driverCapturedAt: string
   /** Driver context from a reliable preview warning; never an assessment verdict. */
   acknowledgement?: LocationWarningAcknowledgement | null
+  /**
+   * FP-83: who swiped and in which custody period. Optional for callers; when absent it is
+   * taken synchronously in startPhaseSubmission, i.e. at the swipe, never at send time.
+   */
+  custody?: CustodyStamp
   /** The localStorage failure path (lib/hooks/useOfflineQueue.ts). */
   enqueuePhase: EnqueuePhase
   /** Used ONLY to resolve a 409 — did an earlier attempt of this phase already land? */
@@ -176,16 +195,39 @@ type StoreListener = () => void
 
 const listeners = new Set<StoreListener>()
 
-const EMPTY_STATE: PhaseSubmissionStoreState = { inFlight: [], failures: [] }
+interface SubmissionScope {
+  key: string
+  generation: number
+  tripId: string
+  phaseEventId: string
+  custody: CustodyStamp
+}
 
-let state: PhaseSubmissionStoreState = EMPTY_STATE
+interface ScopedSubmissionState {
+  inFlight: readonly SubmissionScope[]
+  failures: readonly { scope: SubmissionScope; failure: PhaseSubmissionFailure }[]
+}
+
+const EMPTY_STATE: PhaseSubmissionStoreState = { inFlight: [], failures: [] }
+let state: ScopedSubmissionState = { inFlight: [], failures: [] }
+let snapshot: PhaseSubmissionStoreState = EMPTY_STATE
+
+function isCurrentScope(scope: SubmissionScope): boolean {
+  return scope.generation === actorGeneration()
+    && isCurrentTripCustody(scope.tripId, scope.custody)
+}
 
 // Frozen constant so useSyncExternalStore's server/hydration snapshot is referentially
 // stable — same trick useOfflineQueue uses for its own store.
 const SERVER_SNAPSHOT: PhaseSubmissionStoreState = EMPTY_STATE
 
-function publish(next: PhaseSubmissionStoreState): void {
-  state = next
+function publish(next: ScopedSubmissionState): void {
+  state = {
+    // Keep other trips' attempts: switching the selected trip hides them, but
+    // returning must recover their markers while their requests are still running.
+    inFlight: next.inFlight.filter(scope => scope.generation === actorGeneration()),
+    failures: next.failures.filter(({ scope }) => scope.generation === actorGeneration()),
+  }
   listeners.forEach((listener) => listener())
 }
 
@@ -195,8 +237,25 @@ function subscribe(listener: StoreListener): () => void {
 }
 
 function getSnapshot(): PhaseSubmissionStoreState {
-  return state
+  const inFlight = state.inFlight.filter(isCurrentScope).map(scope => scope.phaseEventId)
+  const failures = state.failures.filter(({ scope }) => isCurrentScope(scope)).map(({ failure }) => failure)
+  // Custody can change without an account change. Filter on read, but keep the
+  // reference stable while the visible values are unchanged for useSyncExternalStore.
+  if (inFlight.length === 0 && failures.length === 0) snapshot = EMPTY_STATE
+  else if (inFlight.length !== snapshot.inFlight.length || failures.length !== snapshot.failures.length
+    || inFlight.some((id, index) => id !== snapshot.inFlight[index])
+    || failures.some((failure, index) => failure !== snapshot.failures[index])) {
+    snapshot = { inFlight, failures }
+  }
+  return snapshot
 }
+
+onCustodyActorChange(() => {
+  if (state.inFlight.some(scope => scope.generation !== actorGeneration())
+    || state.failures.some(({ scope }) => scope.generation !== actorGeneration())) publish(state)
+})
+
+onTripCustodyChange(() => { listeners.forEach(listener => listener()) })
 
 function getServerSnapshot(): PhaseSubmissionStoreState {
   return SERVER_SNAPSHOT
@@ -211,7 +270,7 @@ export function usePhaseSubmissions(): PhaseSubmissionStoreState {
 export function dismissPhaseSubmissionFailure(phaseEventId: string): void {
   publish({
     ...state,
-    failures: state.failures.filter((failure) => failure.phaseEventId !== phaseEventId),
+    failures: state.failures.filter(({ failure }) => failure.phaseEventId !== phaseEventId),
   })
 }
 
@@ -223,12 +282,12 @@ export function dismissPhaseSubmissionFailure(phaseEventId: string): void {
 export function __resetPhaseSubmitterForTests(): void {
   running.clear()
   lastKnownFix = null
-  publish(EMPTY_STATE)
+  publish({ inFlight: [], failures: [] })
 }
 
 // ─── Submission ────────────────────────────────────────────────────────────────
 
-// phase_event_ids currently running. Belt-and-braces against a double submit: the
+// Account/custody-scoped phase attempts currently running. Guard against a double submit: the
 // optimistic advance in TripContext already stops the driver re-entering a step whose
 // submission is in flight, but a stale tab or a deep link should not be able to fire a
 // second POST for the same ledger row either.
@@ -248,19 +307,54 @@ function addressedPhaseOf(trip: Trip | null, phaseEventId: string): PhaseDescrip
 const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry from the trip screen.'
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
 
-async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubmissionOutcome> {
+async function runSubmission(request: PhaseSubmissionRequest, generation: number): Promise<PhaseSubmissionOutcome> {
   const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt, acknowledgement = null } = request
-  const position = await resolvePosition(request.position)
+  const custody = request.custody ?? captureCustody(tripId)
+  const position = await resolvePosition(request.position, generation)
+  const retainAfterAccountChange = (): PhaseSubmissionOutcome => ({
+    kind: 'retained', message: 'Account changed; captured work is retained.', handedOver: false,
+    persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey),
+  })
+  // The GPS promise belongs to the account that swiped, including an A→B→A return.
+  if (actorGeneration() !== generation) return retainAfterAccountChange()
 
   try {
     const result = await submitPhase(
       tripId, phaseEventId, phaseType, evidence, idempotencyKey, position, driverCapturedAt, acknowledgement,
+      custody.custodySequence,
     )
+    if (actorGeneration() !== generation) return retainAfterAccountChange()
     if (result.trip !== null && result.trip.status === 'exception_hold') {
       return { kind: 'hold', trip: result.trip }
     }
     return { kind: 'recorded', trip: result.trip, addressedPhase: addressedPhaseOf(result.trip, phaseEventId) }
   } catch (err) {
+    if (actorGeneration() !== generation) return retainAfterAccountChange()
+    // FP-83 coded answers come first: they are decided by their code, not by "409 means
+    // maybe a duplicate". Uncoded 409s keep the existing refetch-and-read-the-plan check.
+    if (err instanceof ApiError && err.code !== undefined) {
+      const failure = classifyLiveWriteFailure(err)
+      if (failure.kind === 'duplicate') {
+        // A proven actor-bound replay of this exact submission. No trip comes back — a
+        // former driver is not shown current detail — so the phase is reported recorded.
+        return { kind: 'recorded', trip: null, addressedPhase: null }
+      }
+      if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
+        // Kept for review under its ORIGINAL custody period, so it can go as late
+        // evidence; never resent live and never lost with the rolled-back step.
+        const persisted = request.enqueuePhase(
+          tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement,
+          custody, failure.attention, idempotencyKey,
+        )
+        return {
+          kind: 'retained',
+          message: failure.attention.reason,
+          persisted,
+          handedOver: failure.attention.code === 'TRIP_HANDED_OVER',
+        }
+      }
+    }
+
     if (err instanceof ApiError && err.status === 409) {
       // No ordinal TripStatus left to compare against — `active` covers the whole
       // multi-stop middle. A duplicate submit of an already-resolved phase also 409s, so
@@ -270,12 +364,15 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
       try {
         fetched = await request.refetchTrip()
       } catch (refetchErr: unknown) {
+        if (actorGeneration() !== generation) return retainAfterAccountChange()
         // Offline right after a 409 — we cannot tell replay from conflict, and guessing
         // "already recorded" would tell a driver their evidence landed when it may not
         // have. Report the conflict so the notice stays up and the phase rolls back.
         console.error('phase-submitter: could not refetch the trip to resolve a 409', refetchErr)
         return { kind: 'conflict', message: err.message || DEFAULT_CONFLICT_MESSAGE }
       }
+
+      if (actorGeneration() !== generation) return retainAfterAccountChange()
 
       if (fetched !== null && fetched.status === 'exception_hold') {
         return { kind: 'hold', trip: fetched }
@@ -294,7 +391,7 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
       // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
       // the server recovers. The position and the capture instant go WITH the entry so a
       // replay hours later still reports where — and when — the driver actually swiped.
-      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement)
+      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey)
       return { kind: 'queued' }
     }
 
@@ -305,19 +402,19 @@ async function runSubmission(request: PhaseSubmissionRequest): Promise<PhaseSubm
   }
 }
 
-function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome): void {
-  running.delete(request.phaseEventId)
+function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome, scope: SubmissionScope): void {
+  running.delete(scope.key)
 
-  const inFlight = state.inFlight.filter((id) => id !== request.phaseEventId)
-  const isTerminal = outcome.kind === 'failed' || outcome.kind === 'conflict'
+  const inFlight = state.inFlight.filter((attempt) => attempt.key !== scope.key)
+  const isTerminal = outcome.kind === 'failed' || outcome.kind === 'conflict' || outcome.kind === 'retained'
   const failures = isTerminal
     ? [
-        // Replace any earlier notice for this same phase rather than stacking duplicates.
-        ...state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId),
-        { phaseEventId: request.phaseEventId, phaseType: request.phaseType, message: outcome.message },
+        ...state.failures.filter((entry) => entry.scope.key !== scope.key),
+        { scope, failure: { phaseEventId: request.phaseEventId, phaseType: request.phaseType, message: outcome.message } },
       ]
-    : state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId)
+    : state.failures.filter((entry) => entry.scope.key !== scope.key)
 
+  // A late period-0 completion owns only its attempt, never period 2's marker or notice.
   publish({ inFlight, failures })
 
   // Runs last, and outside the store update, so a throwing subscriber can never leave a
@@ -328,31 +425,37 @@ function settle(request: PhaseSubmissionRequest, outcome: PhaseSubmissionOutcome
 /**
  * Hand a phase submission to the background and return immediately.
  *
- * @returns false when a submission for this phase_event_id is already running, in which
+ * @returns false when a submission for this phase in the same account/custody period is already running, in which
  * case nothing new was started — the caller should still navigate, because the driver's
  * evidence is already on its way.
  */
 export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
+  const generation = actorGeneration()
+  const custody = request.custody ?? captureCustody(request.tripId)
   // Attached before the dedupe check so an ignored request can never leave an unhandled
   // rejection behind.
   const guardedRequest: PhaseSubmissionRequest = {
     ...request,
+    // Stamped HERE, synchronously at the swipe — not after the GPS wait — so the period
+    // recorded is the one the driver acted in.
+    custody,
     position: request.position.catch((err: unknown) => {
       console.error('phase-submitter: position capture rejected', err)
       return null
     }),
   }
 
-  if (running.has(request.phaseEventId)) return false
-  running.add(request.phaseEventId)
+  const runningKey = JSON.stringify([generation, request.tripId, custody.actorId, custody.custodySequence ?? 0, request.phaseEventId])
+  const scope: SubmissionScope = { key: runningKey, generation, tripId: request.tripId, phaseEventId: request.phaseEventId, custody }
+  if (running.has(runningKey)) return false
+  running.add(runningKey)
   publish({
-    inFlight: [...state.inFlight, request.phaseEventId],
-    // A fresh attempt supersedes the previous notice for the same phase.
-    failures: state.failures.filter((failure) => failure.phaseEventId !== request.phaseEventId),
+    inFlight: [...state.inFlight, scope],
+    failures: state.failures.filter((entry) => entry.scope.key !== runningKey),
   })
 
-  void runSubmission(guardedRequest).then(
-    (outcome) => settle(guardedRequest, outcome),
+  void runSubmission(guardedRequest, generation).then(
+    (outcome) => settle(guardedRequest, outcome, scope),
     (err: unknown) => {
       // runSubmission catches everything it expects; reaching here means a defect in
       // this module rather than a submission failure. Never swallow it, and never leave
@@ -361,7 +464,7 @@ export function startPhaseSubmission(request: PhaseSubmissionRequest): boolean {
       settle(guardedRequest, {
         kind: 'failed',
         message: err instanceof Error ? err.message : DEFAULT_TERMINAL_MESSAGE,
-      })
+      }, scope)
     },
   )
 
