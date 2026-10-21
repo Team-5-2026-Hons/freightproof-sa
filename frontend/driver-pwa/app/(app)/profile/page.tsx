@@ -57,8 +57,10 @@ function Tile({ label, value, detail }: { label: string; value: ReactNode; detai
   return (
     <div className="min-w-0 rounded-xl bg-fill p-3.5">
       <p className="text-footnote text-surface-on-variant">{label}</p>
-      <p className="truncate text-headline tabular-nums text-surface-on">{value}</p>
-      <p className="truncate text-footnote text-surface-on-variant">{detail}</p>
+      {/* break-words, not truncate: a licence or plate cut to "DL-7…" is useless, and at
+          accessibility text sizes the tile is narrower than the value. It wraps instead. */}
+      <p className="break-words text-headline tabular-nums text-surface-on">{value}</p>
+      <p className="break-words text-footnote text-surface-on-variant">{detail}</p>
     </div>
   )
 }
@@ -134,7 +136,9 @@ export default function ProfilePage() {
             type="button"
             onClick={choosePhoto}
             aria-label={photo === null ? 'Add photo' : 'Change photo'}
-            className="absolute -bottom-0.5 -right-0.5 flex size-11 items-center justify-center rounded-full border-[3px] border-surface bg-primary text-primary-on transition-transform duration-100 active:scale-95"
+            // size-[44px], not size-11: the avatar beside it is fixed px artwork, and a rem
+            // badge grew to 77px at accessibility text sizes and covered the initials.
+            className="absolute -bottom-0.5 -right-0.5 flex size-[44px] items-center justify-center rounded-full border-[3px] border-surface bg-primary text-primary-on transition-transform duration-100 active:scale-95"
           >
             <Camera className="size-[18px]" strokeWidth={2.25} aria-hidden />
           </button>

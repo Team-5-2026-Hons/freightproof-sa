@@ -309,6 +309,46 @@ describe('DriverMap — theme and handoff', () => {
   })
 })
 
+describe('DriverMap extra action', () => {
+  const navigate = <a href="https://maps.example/dir">Navigate</a>
+
+  // Regression: the caller used to float its own Navigate chip over the map slot, which on a
+  // 360x740 phone sat on top of the card's full-width "Open in Maps" button. On a fallback
+  // card the action has to join the card's flow, after the hand-off button, so the two can
+  // never overlap whatever the card's text does.
+  it('test_sets_the_action_in_the_coordinates_card_flow_after_open_in_maps', () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} extraAction={navigate} extraActionClassName="bottom-12 right-4" />)
+
+    const openInMaps = screen.getByRole('link', { name: /open in maps/i })
+    const action = screen.getByRole('link', { name: 'Navigate' })
+    expect(openInMaps.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // In the flow, not floated: no absolute ancestor between the action and the card.
+    expect(action.closest('.absolute')).toBeNull()
+  })
+
+  it('test_keeps_the_action_available_when_there_is_no_fix', () => {
+    render(<DriverMap position={null} capturedAt={null} extraAction={navigate} />)
+
+    expect(screen.getByRole('link', { name: 'Navigate' })).toBeInTheDocument()
+  })
+
+  it('test_floats_the_action_over_a_live_map_where_the_caller_places_it', async () => {
+    mockApiKey = 'a-real-key'
+
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} extraAction={navigate} extraActionClassName="bottom-12 right-4" />)
+
+    await screen.findByRole('link', { name: /open in maps/i })
+    const floated = screen.getByRole('link', { name: 'Navigate' }).parentElement
+    expect(floated).toHaveClass('absolute', 'bottom-12', 'right-4')
+  })
+
+  it('test_renders_nothing_extra_when_no_action_is_given', () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    expect(screen.queryByRole('link', { name: 'Navigate' })).not.toBeInTheDocument()
+  })
+})
+
 describe('DriverMap planned route line', () => {
   const polylineCtor = vi.fn()
   const polylineSetMap = vi.fn()

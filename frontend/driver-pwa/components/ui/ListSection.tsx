@@ -74,17 +74,21 @@ export function ListRow({ icon, label, value, detail, trailing, href, onClick, c
           {icon}
         </span>
       )}
-      <span className="min-w-0 flex-1">
+      {/* basis-24 + the row's flex-wrap: the text column keeps room for a word or two, and a
+          trailing value that cannot fit beside it drops onto its own line instead of
+          overprinting the label. break-words: an unbreakable string (an email address) wraps
+          inside the column rather than running on into the chevron. */}
+      <span className="min-w-0 flex-1 basis-24 break-words">
         {label !== undefined && <span className="block text-subhead text-surface-on-variant">{label}</span>}
         <span className="block text-body text-surface-on">{value}</span>
         {detail !== undefined && <span className="block text-footnote text-surface-on-variant">{detail}</span>}
       </span>
-      {trailing !== undefined && <span className="shrink-0 text-body text-surface-on-variant">{trailing}</span>}
+      {trailing !== undefined && <span className="ml-auto shrink-0 text-body text-surface-on-variant">{trailing}</span>}
       {showChevron && <ChevronRight aria-hidden className="size-4 shrink-0 text-outline" strokeWidth={2.25} />}
     </>
   )
   const layout = cn(
-    'flex min-h-[56px] w-full items-center gap-4 px-5 py-3 text-left',
+    'flex min-h-[56px] w-full flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 text-left',
     (href !== undefined || onClick !== undefined) && 'transition-colors duration-100 active:bg-fill',
     className,
   )
