@@ -2,6 +2,10 @@
 
 Date: 21 October 2026. Review of the pending FP-299 implementation on `Chiko`.
 
+**Historical review:** the user subsequently authorized a local feature commit and dev
+merge. The blockers below are the pre-fix findings. See
+[integration fixes and verification](fp-299-integration-fixes.md) for the current state.
+
 The Jira outcome was checked against [FP-299](https://inf4027team5.atlassian.net/browse/FP-299):
 a small repeatable load test on a non-shared environment, with latency/error/pool evidence
 showing bounded failure and recovery. The report correctly keeps deployment calibration

@@ -176,9 +176,6 @@ async def list_trips_for_driver(
         .all()
     }
 
-    def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
-        return None if precinct_id is None else precinct_names.get(precinct_id)
-
     # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
     # but the driver has no review action at all (see FP-146 follow-on): a count of
     # routine warnings they can neither act on nor clear is noise on their trip card.
@@ -199,28 +196,42 @@ async def list_trips_for_driver(
     }
 
     return [
-        DriverTripListItemResponse(
-            id=t.id,
-            trip_reference=t.trip_reference,
-            status=t.status,
-            trip_type=t.trip_type,
-            origin_precinct_id=t.origin_precinct_id,
-            destination_precinct_id=t.destination_precinct_id,
-            origin_precinct_name=precinct_name(t.origin_precinct_id),
-            destination_precinct_name=precinct_name(t.destination_precinct_id),
-            planned_departure_at=t.planned_departure_at,
-            actual_departure_at=t.actual_departure_at,
-            planned_arrival_at=t.planned_arrival_at,
-            actual_arrival_at=t.actual_arrival_at,
-            needs_review_count=exc_counts.get(t.id, 0),
-            participation=participation[t.id][0],
-            last_participation_ended_at=participation[t.id][1],
-            custody_sequence=participation[t.id][2],
-            created_at=t.created_at,
-            updated_at=t.updated_at,
+        _driver_list_item(
+            t, precinct_names=precinct_names, needs_review_count=exc_counts.get(t.id, 0),
+            participation=participation[t.id],
         )
         for t in trips
     ]
+
+
+def _driver_list_item(
+    trip: Trip, *, precinct_names: dict[uuid.UUID, str], needs_review_count: int,
+    participation: tuple[DriverParticipation, datetime | None, int],
+) -> DriverTripListItemResponse:
+    """Build a card from the batched reads; rendering a row must never issue another query."""
+    def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
+        return None if precinct_id is None else precinct_names.get(precinct_id)
+
+    return DriverTripListItemResponse(
+        id=trip.id,
+        trip_reference=trip.trip_reference,
+        status=trip.status,
+        trip_type=trip.trip_type,
+        origin_precinct_id=trip.origin_precinct_id,
+        destination_precinct_id=trip.destination_precinct_id,
+        origin_precinct_name=precinct_name(trip.origin_precinct_id),
+        destination_precinct_name=precinct_name(trip.destination_precinct_id),
+        planned_departure_at=trip.planned_departure_at,
+        actual_departure_at=trip.actual_departure_at,
+        planned_arrival_at=trip.planned_arrival_at,
+        actual_arrival_at=trip.actual_arrival_at,
+        needs_review_count=needs_review_count,
+        participation=participation[0],
+        last_participation_ended_at=participation[1],
+        custody_sequence=participation[2],
+        created_at=trip.created_at,
+        updated_at=trip.updated_at,
+    )
 
 
 def _participation(

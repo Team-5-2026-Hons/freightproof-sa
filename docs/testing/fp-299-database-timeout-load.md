@@ -1,5 +1,10 @@
 # FP-299 — Database timeouts under concurrent load
 
+This report retains the original smoke/default-budget measurements at source digest
+`f56105b2…`. Subsequent dev integration and CI stabilization are documented in
+[integration fixes and verification](fp-299-integration-fixes.md); the original JSON
+files remain historical evidence for their recorded source, not the later merged tree.
+
 ## Summary
 
 FP-299 asks for "a documented run showing requests fail fast and recover rather than
@@ -69,6 +74,21 @@ from load timing.
 | API pool | 2 retained connections + 1 overflow (the code default), pre-ping enabled |
 | Smoke budgets | Connect 0.5 s; pool wait 0.5 s; command 1 s; cleanup 0.5 s |
 | Evidence budgets | Code defaults: connect 10 s; pool wait 20 s; command 30 s; cleanup 5 s |
+
+### CI profile added after integration review
+
+`--profile ci` uses connect **2 s**, pool wait **3 s**, command **2 s**, cleanup **1 s**.
+The standalone pytest integration test uses this profile: the original smoke profile's
+500 ms pool wait sometimes expired while twelve healthy recovery reads queued behind
+three slots on a busy host. The CI budgets apply throughout each fault and recovery;
+success still requires all recovery reads, a separately verified committed write, zero
+checked-out connections and settled tasks. There are no recovery retries or swallowed
+failures. Request watchdogs remain derived from the recorded budgets; pytest also caps
+the complete subprocess at 180 seconds.
+
+The original `smoke` and `evidence` profiles and application defaults are unchanged.
+Run the CI matrix with the same Compose invocation below, replacing `--profile smoke`
+with `--profile ci` and choosing a fresh output filename.
 
 The dedicated Compose project has an internal network and no published ports, and
 PostgreSQL keeps its data on tmpfs. Each run creates, and finally drops, only its own

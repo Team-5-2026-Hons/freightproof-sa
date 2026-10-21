@@ -1,7 +1,9 @@
 # FP-299 — Database timeout load-test plan
 
-**Status:** Implemented; evidence recorded. Smoke and default-budget profiles pass 39/39
-cycles each on the final code; see the [execution report](../../testing/fp-299-database-timeout-load.md).
+**Status:** Implemented; original smoke and default-budget evidence records 39/39 cycles
+each at digest `f56105b2…`; see the [execution report](../../testing/fp-299-database-timeout-load.md).
+Later integration fixes and the dedicated CI profile are tracked in the
+[integration verification](../../testing/fp-299-integration-fixes.md).
 Jira FP-299 stays In Progress until review and merge.
 **Owner:** Chiko. **Jira:** [FP-299](https://inf4027team5.atlassian.net/browse/FP-299).
 **Prepared:** 20 October 2026, after incorporating the latest `dev` into local `Chiko`.

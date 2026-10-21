@@ -28,7 +28,7 @@ POOL_CAPACITY = POOL_SIZE + MAX_OVERFLOW
 # Four times the pool's capacity, so every fault wave has requests queued behind it.
 FAULT_CONCURRENCY = 12
 
-PROFILES = ("smoke", "evidence")
+PROFILES = ("smoke", "ci", "evidence")
 HEALTHY = "healthy"
 FAULT_SCENARIOS = (
     "pool", "connect", "command", "half_open_command", "idle_ping",
@@ -175,11 +175,17 @@ class Budgets:
 
 # Short fault-test budgets so the whole matrix runs in about a minute. Not deployment values.
 SMOKE_BUDGETS = Budgets(connect=0.5, pool=0.5, command=1.0, cleanup=0.5)
+# Shared CI hosts need room for twelve healthy reads through three pool slots. Keep
+# the same budgets during faults AND recovery, and still require bounded failures:
+# no recovery retries, timeout overrides mid-cycle, or accepted recovery 503s.
+CI_BUDGETS = Budgets(connect=2.0, pool=3.0, command=2.0, cleanup=1.0)
 
 
 def budgets_for(profile: str) -> Budgets:
     if profile == "smoke":
         return SMOKE_BUDGETS
+    if profile == "ci":
+        return CI_BUDGETS
     if profile != "evidence":
         raise ValueError("Unknown load profile")
     # Read code defaults, rather than accidentally measuring a developer's overrides.

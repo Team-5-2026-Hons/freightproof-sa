@@ -3,6 +3,7 @@ from what was recorded. Pure — no DB, plain facts in, step states out.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from app.db.models.enums import IncidentExternalAction, TripStatus
@@ -24,9 +25,15 @@ def _declaration(**facts) -> IncidentDeclarationRecord:
     )
 
 
-def _facts(**overrides) -> GuideFacts:
-    base = {"trip_stopped_at": None, "trip_status": TripStatus.ACTIVE, "actions": [], "declarations": [], "pack_issued_at": None}
-    return GuideFacts(**{**base, **overrides})
+def _facts(
+    *, trip_stopped_at: datetime | None = None, trip_status: TripStatus = TripStatus.ACTIVE,
+    actions: Sequence[tuple[IncidentExternalAction, datetime]] = (),
+    declarations: Sequence[IncidentDeclarationRecord] = (), pack_issued_at: datetime | None = None,
+) -> GuideFacts:
+    return GuideFacts(
+        trip_stopped_at=trip_stopped_at, trip_status=trip_status, actions=actions,
+        declarations=declarations, pack_issued_at=pack_issued_at,
+    )
 
 
 def _states(facts: GuideFacts) -> dict[str, str]:

@@ -19232,8 +19232,15 @@
             "type": "string"
           },
           "order_number": {
-            "title": "Order Number",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Number"
           },
           "planned_arrival_at": {
             "anyOf": [

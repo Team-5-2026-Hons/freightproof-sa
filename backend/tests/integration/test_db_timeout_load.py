@@ -14,7 +14,7 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from scripts.db_timeout_load.config import (
-    FAULT_CONCURRENCY, POOL_SIZE, WATCHDOG_MARGIN_SECONDS, database_target, redis_target,
+    CI_BUDGETS, FAULT_CONCURRENCY, POOL_SIZE, WATCHDOG_MARGIN_SECONDS, database_target, redis_target,
 )
 from scripts.db_timeout_load.world import SCHEMA_PREFIX
 
@@ -26,9 +26,9 @@ EXPECTED_REASONS = {
     "half_open_command": "command_timeout", "idle_ping": "checkout_timeout",
 }
 REPETITIONS = 3
-# One subprocess pays the app import and source hash once (a passing run takes about 30 s).
-# The bound fails a hung run instead of stalling CI.
-SUBPROCESS_TIMEOUT_SECONDS = 120
+# Three minutes covers app import, twelve CI-budget fault/recovery cycles and teardown.
+# Individual requests retain their tighter watchdogs; a stuck subprocess still fails CI.
+SUBPROCESS_TIMEOUT_SECONDS = 180
 # Deliberately the local default, never a developer's .env value; CI sets REDIS_URL.
 LOCAL_REDIS_URL = "redis://localhost:6379/0"
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -41,7 +41,7 @@ async def load_schemas(engine: AsyncEngine) -> list[str]:
 
 
 def run_load(output: Path, database: str, redis: str) -> subprocess.CompletedProcess[str]:
-    command = [sys.executable, "-m", "scripts.load_db_timeouts", "--profile", "smoke",
+    command = [sys.executable, "-m", "scripts.load_db_timeouts", "--profile", "ci",
                "--repetitions", str(REPETITIONS), "--output", str(output), "--revision", "pytest-subprocess"]
     for scenario in EXPECTED_REASONS:
         command += ["--scenario", scenario]
@@ -74,6 +74,8 @@ async def test_standalone_load_records_failure_recovery_and_removes_its_schema(t
         report = json.loads(output.read_text())
         assert result.returncode == 0, ([cycle["failures"] for cycle in report.get("results", [])], result.stderr)
         assert report["passed"] is True
+        assert report["profile"] == "ci"
+        assert report["budgets_seconds"] == CI_BUDGETS.settings()
         assert [cycle["scenario"] for cycle in report["results"]] == [
             scenario for scenario in EXPECTED_REASONS for _ in range(REPETITIONS)
         ]
