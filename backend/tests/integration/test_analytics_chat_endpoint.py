@@ -126,8 +126,9 @@ async def test_chat_answers_from_the_same_figures_as_the_on_time_tab(
         _ON_TIME, params={"start": basis["start"], "end": basis["end"], "grain": "week"}, headers=headers(operator),
     )
     sent = json.loads(sent_results.results[0].content)
-    # The tab's figures exactly, with the server's totals block in front (B37).
-    assert {key: value for key, value in sent.items() if key != "totals"} == page.json()
+    # The tab's figures exactly, with the page's own lines (B43) and the server's totals (B37) in front.
+    assert {key: value for key, value in sent.items() if key not in {"about", "totals"}} == page.json()
+    assert list(sent)[:2] == ["about", "totals"]
     assert sent["totals"]["arrivals_with_plan"] == len(_RECENT_DAYS)
     # ...and holds this operator's 3 trips only, not the other operator's 3.
     assert sum(bucket["arrivals_with_plan"] for bucket in page.json()["punctuality"]) == len(_RECENT_DAYS)
