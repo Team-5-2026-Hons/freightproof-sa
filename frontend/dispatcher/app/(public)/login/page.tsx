@@ -13,8 +13,10 @@ import { landingHref, readPreferences } from '@/lib/preferences'
 import { cn } from '@shared/lib/utils/cn'
 import { takeReturnPath } from '@shared/lib/session/return-path'
 
-// Kept in step with AuthContext's own list.
-const AUTH_ROUTE_PREFIXES = [ROUTES.login]
+// Kept in step with AuthContext's own list, plus the developer tooling pages: a session that expired
+// while one was open must not sign the dispatcher back in onto it. Checked here, where the saved path
+// is read, so a path saved earlier is refused too.
+const NON_RETURNABLE_PREFIXES = [ROUTES.login, ROUTES.dev]
 
 // Shown for a rejected email/password and for a submit with a field left blank — from
 // the form's point of view both are "these details are not usable", and naming which
@@ -58,7 +60,7 @@ export default function LoginPage() {
       // Send the dispatcher back to whatever guarded screen they were bounced from (idle
       // expiry or a silently-expired token) when there is one; otherwise the landing page
       // they chose in Settings (the Dashboard unless changed).
-      const returnTo = takeReturnPath(window.localStorage, AUTH_ROUTE_PREFIXES)
+      const returnTo = takeReturnPath(window.localStorage, NON_RETURNABLE_PREFIXES)
       router.push(returnTo ?? landingHref(readPreferences().landingPage))
     } catch (err) {
       setError(err instanceof ProfileUnavailableError ? err.message : INVALID_CREDENTIALS)

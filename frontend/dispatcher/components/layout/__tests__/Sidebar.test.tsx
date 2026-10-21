@@ -113,6 +113,30 @@ describe('Sidebar active state', () => {
   })
 })
 
+describe('Sidebar Active Trips item', () => {
+  it('links to the active trips list, above Trip History', () => {
+    renderSidebar()
+
+    const links = within(screen.getByRole('navigation', { name: 'Primary' })).getAllByRole('link').map(l => l.getAttribute('aria-label'))
+    expect(screen.getByRole('link', { name: 'Active Trips' })).toHaveAttribute('href', ROUTES.trips)
+    expect(links.indexOf('Active Trips')).toBeLessThan(links.indexOf('Trip History'))
+  })
+
+  it('is current on /trips', () => {
+    mockUsePathname.mockReturnValue(ROUTES.trips)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Active Trips' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each([ROUTES.tripNew, ROUTES.tripDetail('abc')])('is not current on %s', (path) => {
+    mockUsePathname.mockReturnValue(path)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Active Trips' })).not.toHaveAttribute('aria-current')
+  })
+})
+
 describe('Sidebar profile footer', () => {
   it('shows initials, name and role, with the live status on its own element', () => {
     renderSidebar()

@@ -1,0 +1,306 @@
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import ActiveTripsPage from './page'
+import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
+import { usePrecincts } from '@/lib/hooks/usePrecincts'
+import { useTrips } from '@/lib/hooks/useTrips'
+import type { UseTripsResult } from '@/lib/hooks/useTrips'
+import type { TripSummary } from '@shared/lib/types/trip'
+
+vi.mock('@/lib/supabase/client', () => ({
+  supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
+  getAccessToken: vi.fn(),
+}))
+
+vi.mock('@/lib/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { id: 'me', role: 'admin_dispatcher' } }),
+}))
+
+const notify = vi.fn()
+vi.mock('@/lib/hooks/useToast', () => ({
+  useToast: () => ({ notify }),
+}))
+
+const push = vi.fn()
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, back: vi.fn() }),
+}))
+
+vi.mock('@/lib/hooks/usePrecincts', () => ({ usePrecincts: vi.fn() }))
+vi.mock('@/lib/hooks/useTrips', () => ({ useTrips: vi.fn() }))
+
+const mockedUseTrips = vi.mocked(useTrips)
+const mockedUsePrecincts = vi.mocked(usePrecincts)
+
+// The list only reads the name; the rest of a full Driver is irrelevant to these tests.
+const driverNamed = (name: string): TripSummary['driver'] => ({ full_name: name }) as TripSummary['driver']
+
+function makeTrip(id: string, overrides: Partial<TripSummary> = {}): TripSummary {
+  return {
+    id: id as TripSummary['id'],
+    trip_reference: `FP-${id}`,
+    pp_manifest: null,
+    trip_type: 'standard',
+    status: 'active',
+    driver: driverNamed('Sipho Dlamini'),
+    horse: { registration: 'GP 12-34 ZX' },
+    origin_precinct_id: 'origin-1',
+    destination_precinct_id: 'destination-1',
+    needs_review_count: 0,
+    created_at: '2026-10-01T08:00:00Z',
+    current_phase: 'loading',
+    current_stop: 0,
+    phase_total: 7,
+    phase_completed: 2,
+    ...overrides,
+  } as unknown as TripSummary
+}
+
+// Flagged: unreviewed exceptions, so it qualifies for the dashboard's Needs action panel.
+const flagged = (id: string, overrides: Partial<TripSummary> = {}): TripSummary =>
+  makeTrip(id, { needs_review_count: 1, attention: { critical: 0, warning: 1, info: 0, claimed: 0 }, ...overrides })
+
+function tripsState(overrides: Partial<UseTripsResult> = {}): UseTripsResult {
+  return { trips: [], isLoading: false, error: null, refetch: vi.fn(), ...overrides }
+}
+
+// Row order as the dispatcher sees it: the trip references in the order the rows appear.
+const rowRefs = (): string[] =>
+  screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link').getAttribute('aria-label')?.split(' · ')[1] ?? '')
+
+beforeEach(() => {
+  push.mockReset()
+  notify.mockReset()
+  mockedUseTrips.mockReset().mockReturnValue(tripsState())
+  mockedUsePrecincts.mockReset().mockReturnValue({
+    precincts: [
+      { id: 'origin-1', name: 'Cape Town — Depot' },
+      { id: 'destination-1', name: 'Johannesburg — Depot' },
+    ] as never,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  })
+})
+
+function renderPage() {
+  return render(<ForensicModeProvider><ActiveTripsPage /></ForensicModeProvider>)
+}
+
+const tabNamed = (name: RegExp) => screen.getByRole('tab', { name })
+
+describe('Active Trips list', () => {
+  it('renders every column and links each row to its trip', () => {
+    mockedUseTrips.mockReturnValue(tripsState({ trips: [makeTrip('t1')] }))
+
+    renderPage()
+
+    for (const name of ['Created', 'Trip ID', 'Driver / horse', 'Route', 'Exceptions', 'Status']) {
+      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('link', { name: 'Sipho Dlamini · FP-t1' })).toHaveAttribute('href', '/trips/t1')
+    // 08:00Z is 10:00 SAST.
+    expect(screen.getByText('01 Oct 2026')).toBeInTheDocument()
+    expect(screen.getByText('10:00 SAST')).toBeInTheDocument()
+  })
+
+  it('shows only active trips', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [makeTrip('open'), makeTrip('done', { status: 'closed' }), makeTrip('gone', { status: 'cancelled' })],
+    }))
+
+    renderPage()
+
+    expect(rowRefs()).toEqual(['FP-open'])
+  })
+
+  it('opens in attention order, most urgent first, with Exceptions marked as the sort', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [
+        makeTrip('quiet'),
+        makeTrip('warning', { needs_review_count: 2, attention: { critical: 0, warning: 2, info: 0, claimed: 0 } }),
+        makeTrip('critical', { needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+      ],
+    }))
+
+    renderPage()
+
+    expect(rowRefs()).toEqual(['FP-critical', 'FP-warning', 'FP-quiet'])
+    expect(screen.getByRole('columnheader', { name: /exceptions/i })).toHaveAttribute('aria-sort', 'ascending')
+  })
+
+  it('lets a header click replace attention order, and Exceptions bring it back', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [
+        makeTrip('a', { driver: driverNamed('Aisha') }),
+        makeTrip('z', { driver: driverNamed('Zane'), needs_review_count: 1, attention: { critical: 1, warning: 0, info: 0, claimed: 0 } }),
+      ],
+    }))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /driver/i }))
+
+    expect(rowRefs()).toEqual(['FP-a', 'FP-z'])
+
+    fireEvent.click(screen.getByRole('button', { name: /exceptions/i }))
+
+    expect(rowRefs()).toEqual(['FP-z', 'FP-a'])
+  })
+
+  it('sorts by a header, reverses on a second click, and marks the sorted column', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [makeTrip('b', { driver: driverNamed('Zane') }), makeTrip('a', { driver: driverNamed('Aisha') })],
+    }))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /driver/i }))
+
+    expect(rowRefs()).toEqual(['FP-a', 'FP-b'])
+    expect(screen.getByRole('columnheader', { name: /driver/i })).toHaveAttribute('aria-sort', 'ascending')
+
+    fireEvent.click(screen.getByRole('button', { name: /driver/i }))
+
+    expect(rowRefs()).toEqual(['FP-b', 'FP-a'])
+    expect(screen.getByRole('columnheader', { name: /driver/i })).toHaveAttribute('aria-sort', 'descending')
+  })
+
+  it('opens the date column newest first', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [makeTrip('old', { created_at: '2026-09-01T08:00:00Z' }), makeTrip('new', { created_at: '2026-10-03T08:00:00Z' })],
+    }))
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /created/i }))
+
+    expect(rowRefs()).toEqual(['FP-new', 'FP-old'])
+  })
+
+  it('filters by trip reference or driver as you type', () => {
+    mockedUseTrips.mockReturnValue(tripsState({
+      trips: [makeTrip('a', { driver: driverNamed('Aisha') }), makeTrip('b', { driver: driverNamed('Zane') })],
+    }))
+
+    renderPage()
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: 'zane' } })
+
+    expect(rowRefs()).toEqual(['FP-b'])
+  })
+
+  it('shows placeholder rows on the first load and keeps rows during a live refetch', () => {
+    mockedUseTrips.mockReturnValue(tripsState({ isLoading: true }))
+    const { unmount } = renderPage()
+    expect(screen.getByText('Loading active trips')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true')
+    unmount()
+
+    mockedUseTrips.mockReturnValue(tripsState({ isLoading: true, trips: [makeTrip('t1')] }))
+    renderPage()
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false')
+    expect(rowRefs()).toEqual(['FP-t1'])
+  })
+
+  it('shows the error with a retry, and toasts it', () => {
+    const refetch = vi.fn()
+    mockedUseTrips.mockReturnValue(tripsState({ error: 'Network unreachable', refetch }))
+
+    renderPage()
+
+    expect(screen.getByText('Failed to load trips')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Failed to load trips' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('tells "no active trips" apart from "no results" for a search', () => {
+    const { unmount } = renderPage()
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByText('No active trips')).toBeInTheDocument()
+    unmount()
+
+    mockedUseTrips.mockReturnValue(tripsState({ trips: [makeTrip('t1')] }))
+    renderPage()
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: 'nobody' } })
+
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByText('No results')).toBeInTheDocument()
+  })
+
+  it('offers one New Trip button, in the page header, that opens the new-trip form', () => {
+    renderPage()
+
+    const buttons = screen.getAllByRole('button', { name: 'New Trip' })
+    expect(buttons).toHaveLength(1)
+    fireEvent.click(buttons[0])
+
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push).toHaveBeenCalledWith('/trips/new')
+  })
+})
+
+describe('Active Trips tabs', () => {
+  const mixed = () => tripsState({
+    trips: [
+      makeTrip('sched1', { status: 'created' }),
+      makeTrip('sched2', { status: 'created' }),
+      makeTrip('run1'),
+      makeTrip('held', { status: 'exception_hold' }),
+      makeTrip('done', { status: 'closed' }),
+    ],
+  })
+
+  it('counts each tab from the active list, leaving closed trips out', () => {
+    mockedUseTrips.mockReturnValue(mixed())
+
+    renderPage()
+
+    expect(tabNamed(/^All/)).toHaveTextContent('4')
+    expect(tabNamed(/^Scheduled/)).toHaveTextContent('2')
+    expect(tabNamed(/^In progress/)).toHaveTextContent('1')
+  })
+
+  it('filters the rows to the chosen tab, and All brings the held trip back', () => {
+    mockedUseTrips.mockReturnValue(mixed())
+    renderPage()
+
+    fireEvent.click(tabNamed(/^Scheduled/))
+    expect(rowRefs().sort()).toEqual(['FP-sched1', 'FP-sched2'])
+
+    fireEvent.click(tabNamed(/^In progress/))
+    expect(rowRefs()).toEqual(['FP-run1'])
+
+    fireEvent.click(tabNamed(/^All/))
+    expect(rowRefs()).toHaveLength(4)
+  })
+
+  it('keeps the counts steady while a search narrows the rows', () => {
+    mockedUseTrips.mockReturnValue(mixed())
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: 'sched1' } })
+
+    expect(rowRefs()).toEqual(['FP-sched1'])
+    expect(tabNamed(/^All/)).toHaveTextContent('4')
+  })
+
+  it('says so when the chosen tab is empty, apart from the page having no trips', () => {
+    mockedUseTrips.mockReturnValue(tripsState({ trips: [makeTrip('run1')] }))
+    renderPage()
+
+    fireEvent.click(tabNamed(/^Scheduled/))
+
+    expect(screen.getByText('No scheduled trips')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+})
+
+describe('Active Trips toasts', () => {
+  it('toasts a precinct failure, since route names would otherwise fall back to a dash unexplained', () => {
+    mockedUsePrecincts.mockReturnValue({ precincts: [], isLoading: false, error: 'Down', refetch: vi.fn() })
+
+    renderPage()
+
+    expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Failed to load precincts' }))
+  })
+})

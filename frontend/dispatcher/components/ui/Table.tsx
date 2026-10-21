@@ -67,7 +67,10 @@ interface TableProps<T> {
 const DEFAULT_SKELETON_ROWS = 6
 // Ceiling on measured filler, so an absurdly tall or mis-measured area cannot render thousands of rows.
 const MAX_SKELETON_ROWS = 100
-const HEADER_CELL = 'sticky top-0 z-[1] bg-surf-low text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
+// z-20, above any cell content: a cell may lift part of itself (z-10) over its row's click overlay, and
+// that must still scroll underneath the sticky header rather than paint over it.
+// border-t: a faint rule between whatever sits above the table (a SecHead title) and the column headers.
+const HEADER_CELL = 'sticky top-0 z-20 bg-surf-low border-t border-t-outline-v/15 text-left text-[10px] font-[700] uppercase tracking-[0.1em] text-on-surf-v border-b border-outline-v/10'
 const BODY_CELL = 'break-words border-b border-outline-v/10'
 // A line between neighbouring columns, header and body alike. Padding is symmetric, so it sits
 // centred between the text either side. On the cell, not the row: a <tr> takes no border in a

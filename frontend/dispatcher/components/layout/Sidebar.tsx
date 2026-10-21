@@ -20,6 +20,9 @@ interface NavItem {
   icon: IconName
   activePatterns: string[]
   adminOnly?: boolean
+  /** Lit only on the exact path. `/trips` is a prefix of `/trips/new` and `/trips/[id]`, which
+   *  belong to Create Trip and to whichever list the trip was opened from. */
+  exact?: boolean
 }
 
 interface NavGroup {
@@ -48,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Trips',
     items: [
+      { label: 'Active Trips', href: ROUTES.trips, icon: 'truck', activePatterns: [ROUTES.trips], exact: true },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
       { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
       // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
@@ -81,9 +85,9 @@ const SETTINGS_ITEM: NavItem = {
   activePatterns: ['/settings'],
 }
 
-function isActive(pathname: string, patterns: string[]): boolean {
+function isActive(pathname: string, patterns: string[], exact = false): boolean {
   return patterns.some(p => {
-    if (p === '/') return pathname === '/'
+    if (p === '/' || exact) return pathname === p
     return pathname.startsWith(p)
   })
 }
@@ -121,7 +125,7 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
   /** Status pill at the row's end; becomes a dot on the icon in the collapsed rail. */
   badge?: NavBadge
 }) {
-  const active = isActive(pathname, item.activePatterns)
+  const active = isActive(pathname, item.activePatterns, item.exact)
   const label = badge && collapsed ? badge.collapsedLabel : item.label
   return (
     <div className="relative">

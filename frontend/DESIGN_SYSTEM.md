@@ -104,7 +104,7 @@ Four levels — soft, low-blur, near-black. Never offset shadows; never harsh.
 | 0 | none | Surfaces touching surface |
 | 1 | `0 1px 0 rgba(27,27,28,0.06)` or `0 1px 0 var(--outline-v)33` | Top bar, mobile head, stepper bottom edge |
 | 2 | `0 2px 8px rgba(27,27,28,0.04)` | Sidebar trip-info card, cargo card |
-| 3 | `0 2px 12px rgba(27,27,28,0.06)` | All main cards: stat cards, exception card, table panel, SLA charts |
+| 3 | `0 0 20px rgba(27,27,28,0.17)` (dispatcher) | All main cards: stat cards, exception card, table panel, SLA charts |
 | 4 | `0 2px 16px rgba(27,27,28,0.08)` | Driver "Active Trip" home card |
 | 5 | `0 8px 32px rgba(27,27,28,0.18)` | Floating dark summary panels (Trip Summary, Export Report sidebar) |
 | 6 | `0 16px 64px rgba(0,0,0,0.5)` | App-shell dispatcher panel on `#0a0a0c` chrome |
