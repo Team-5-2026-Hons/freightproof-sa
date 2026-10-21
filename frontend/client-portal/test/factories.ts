@@ -1,12 +1,19 @@
 // Minimal manifest builders for component and helper tests. Defaults describe a closed,
 // uneventful trip; each test overrides only what it is about.
 import type {
+  AnchoredRecord,
   AuditPackManifest,
   ExceptionRecord,
+  IncidentSummary,
+  InvestigationRecord,
+  LateEvidenceRecord,
   PhaseRecord,
   PublicAuditPackView,
+  PublicPackSeal,
   CheckpointRecord,
+  StopRecord,
 } from '@/lib/types'
+import { sha256Hex } from '@/lib/verify'
 
 export const T0 = '2026-09-12T06:00:00Z'
 
@@ -74,5 +81,71 @@ export function makeView(manifest: AuditPackManifest = makeManifest()): PublicAu
     },
     recipient_name: 'Jane Adjuster', recipient_organization: 'Santam Claims', purpose: 'insurance_claim',
     external_reference: 'CLM-88123', manifest,
+  }
+}
+
+export function makeStop(sequence: number, overrides: Partial<StopRecord> = {}): StopRecord {
+  return {
+    trip_stop_id: `stop-${sequence}`, sequence, precinct_id: `precinct-${sequence}`, precinct_name: `Depot ${sequence}`,
+    address: null, lat: -26.2 - sequence * 0.1, lng: 28.0 + sequence * 0.1, geofence_radius_metres: 300, slot_time: null,
+    ...overrides,
+  }
+}
+
+export function makeIncident(overrides: Partial<IncidentSummary> = {}): IncidentSummary {
+  return {
+    exception_ids: ['exc-panic_button'], first_exception_type: 'panic_button', first_raised_at: '2026-09-12T11:00:00Z',
+    position: null, last_known_position: null, first_reviewed_at: null, minutes_to_first_review: null, ...overrides,
+  }
+}
+
+export function makeInvestigation(overrides: Partial<InvestigationRecord> = {}): InvestigationRecord {
+  return {
+    incident_id: 'inc-1', reference: 'INC-1', incident_type: 'hijacking', summary: 'Reported by phone',
+    reporter_role: 'driver', report_channel: 'phone', reported_occurred_at: null, received_at: '2026-09-12T11:05:00Z',
+    confidence: 'high', status: 'open', outcome: null, closure_reason: null, closed_at: null, trip_stopped_at: null,
+    assigned_to_name: null, exception_ids: [], parcels: [], entries: [], tier: 'declared', ...overrides,
+  }
+}
+
+export function makeLateEvidence(overrides: Partial<LateEvidenceRecord> = {}): LateEvidenceRecord {
+  return {
+    evidence_id: 'late-1', driver_name: 'Sipho Driver', custody_sequence: 1, kind: 'handover_photo',
+    captured_at: '2026-09-12T08:00:00Z', received_at: '2026-09-12T09:00:00Z', status: 'retained',
+    payload_sha256: 'ef'.repeat(32), photo_sha256: [], reviewed_at: null, ...overrides,
+  }
+}
+
+/** An anchored record whose payload really hashes to its data_hash, so the browser check can verify it. */
+export async function makeAnchoredRecord(sequence: number, overrides: Partial<AnchoredRecord> = {}): Promise<AnchoredRecord> {
+  const payload = JSON.stringify({ receipt: sequence })
+  return {
+    receipt_id: `r-${sequence}`, subject_type: 'phase_event', subject_id: `s-${sequence}`, receipt_type: 'pickup',
+    canonical_payload: payload, data_hash: await sha256Hex(payload), hedera_topic_id: '0.0.2002',
+    hedera_sequence_number: sequence, hedera_tx_id: `0.0.1@${sequence}`, hedera_consensus_at: null,
+    payload_matches_hash: true, ...overrides,
+  }
+}
+
+/**
+ * A pack seal that really commits to the view's own fingerprints. `payload` overrides fields of the
+ * sealed JSON (to model a seal that disagrees with the page); `overrides` change the PublicPackSeal itself.
+ */
+export async function makeSealedSeal(
+  payload: Record<string, unknown> = {},
+  overrides: Partial<PublicPackSeal> = {},
+): Promise<PublicPackSeal> {
+  const base = makeView().seal
+  const canonical = JSON.stringify({
+    payload_version: 1, pack_id: base.pack_id, trip_id: 'trip-1', pack_version: 1,
+    manifest_sha256: base.manifest_sha256, pdf_sha256: base.pdf_sha256, issued_at: base.issued_at, ...payload,
+  })
+  return {
+    ...base,
+    seal: {
+      canonical_payload: canonical, data_hash: await sha256Hex(canonical), hedera_topic_id: '0.0.2002',
+      hedera_sequence_number: 900, hedera_tx_id: '0.0.1@900', hedera_consensus_at: null,
+    },
+    ...overrides,
   }
 }

@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import { formatCoord, formatRand, formatSast, humanise } from '@/lib/format'
-import { mirrorMessageUrl } from '@/lib/verify'
+import { useMemo, useState } from 'react'
+import { formatCoord, formatRand, formatSast, humanise, pluralise } from '@/lib/format'
+import { mirrorMessageUrl, trustedMirrorBase } from '@/lib/verify'
 import { notAnchoredReason } from '@/lib/anchors'
+import { readSealPayload, sealedString, type SealPayloadRead } from '@/lib/seal'
 import type { AuditPackManifest, ExceptionRecord, PublicPackSeal } from '@/lib/types'
 import { Card, Field } from './Card'
 import { DownloadButton } from './DownloadButton'
@@ -44,6 +45,9 @@ export function Incident({ token, manifest, onSelect }: { token: string; manifes
   const incident = manifest.incident
   if (!incident) return null
   const declarations = manifest.declarations ?? []
+  // A hijacking recorded by the dispatcher (a phone call, say) has no critical exception behind it:
+  // it is the operator's report, so it is labelled as one and has nothing to jump to or to review.
+  const declaredByOperator = incident.basis === 'investigation'
   return (
     <Card
       title="Incident summary"
@@ -53,17 +57,25 @@ export function Incident({ token, manifest, onSelect }: { token: string; manifes
           token={token}
           file="incident-sheet.pdf"
           filename={`${manifest.trip.trip_reference}-incident-sheet.pdf`}
-          className="text-[12px] font-semibold text-sec underline disabled:opacity-60"
+          className="min-h-11 text-[12px] font-semibold text-sec underline disabled:opacity-60"
         >
           Download incident fact sheet
         </DownloadButton>
       }
     >
       <dl>
-        <Field label="First critical event">
-          <button type="button" className="font-semibold text-sec underline" onClick={() => onSelect(incident.exception_ids[0])}>
-            {humanise(incident.first_exception_type)}
-          </button>{' '}
+        <Field label={declaredByOperator ? 'Reported hijacking (declared by the operator)' : 'First critical event'}>
+          {incident.exception_ids.length > 0 ? (
+            <button
+              type="button"
+              className="inline-flex min-h-11 items-center font-semibold text-sec underline"
+              onClick={() => onSelect(incident.exception_ids[0])}
+            >
+              {humanise(incident.first_exception_type)}
+            </button>
+          ) : (
+            <span className="font-semibold">{humanise(incident.first_exception_type)}</span>
+          )}{' '}
           <span className="num">{formatSast(incident.first_raised_at)}</span>
         </Field>
         <Field label="Where it was raised"><span className="num">{formatCoord(incident.position)}</span></Field>
@@ -73,11 +85,13 @@ export function Incident({ token, manifest, onSelect }: { token: string; manifes
             <span className="text-muted"> · {humanise(incident.last_known_position.source)} · {formatSast(incident.last_known_position.recorded_at)}</span>
           )}
         </Field>
-        <Field label="First dispatcher review">
-          {incident.first_reviewed_at
-            ? <span className="num">{formatSast(incident.first_reviewed_at)} ({incident.minutes_to_first_review} min after)</span>
-            : <span className="font-semibold text-err">No review recorded</span>}
-        </Field>
+        {(incident.first_reviewed_at || !declaredByOperator) && (
+          <Field label="First dispatcher review">
+            {incident.first_reviewed_at
+              ? <span className="num">{formatSast(incident.first_reviewed_at)} ({incident.minutes_to_first_review} min after)</span>
+              : <span className="font-semibold text-err">No review recorded</span>}
+          </Field>
+        )}
       </dl>
       <h3 className="mb-1 mt-4 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">
         Police report and notifications <TierBadge tier="declared" />
@@ -153,7 +167,7 @@ export function Parties({ manifest }: { manifest: AuditPackManifest }) {
         <Field label="Identity check for this trip">{humanise(driver.trip_idvs_status)}</Field>
         {driver.substitutions.map((s) => (
           <Field key={s.substitution_id} label="Driver substitution">
-            {s.original_driver_name} → {s.substituting_driver_name} at {s.exchange_location}, {formatSast(s.substitution_at)} <TierBadge tier={s.tier} />
+            {s.original_driver_name} → {s.substituting_driver_name}{s.exchange_location ? ` at ${s.exchange_location}` : ''}, {formatSast(s.substitution_at)} <TierBadge tier={s.tier} />
           </Field>
         ))}
       </dl>
@@ -161,8 +175,9 @@ export function Parties({ manifest }: { manifest: AuditPackManifest }) {
         <>
           <h3 className="mb-1 mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">Record changes during the trip</h3>
           <ul className="space-y-1 text-[13px]">
-            {manifest.record_changes.map((c) => (
-              <li key={`${c.subject_id}-${c.changed_at}`}>
+            {manifest.record_changes.map((c, i) => (
+              // Index in the key: one record edited twice in the same instant would otherwise collide.
+              <li key={`${c.subject_id}-${c.changed_at}-${i}`}>
                 {humanise(c.subject)} · {c.changed_fields.join(', ') || humanise(c.event_type)} · <span className="num">{formatSast(c.changed_at)}</span> <TierBadge tier={c.tier} />
               </li>
             ))}
@@ -218,7 +233,7 @@ export function Exceptions({ exceptions, onSelect }: { exceptions: ExceptionReco
       <ul className="space-y-2">
         {exceptions.map((e, i) => (
           <li key={e.exception_id} className="rounded-md bg-surf-low px-3 py-2 text-[13px]">
-            <button type="button" onClick={() => onSelect(e.exception_id)} className="text-left font-semibold text-sec underline">
+            <button type="button" onClick={() => onSelect(e.exception_id)} className="min-h-11 text-left font-semibold text-sec underline">
               E{i + 1} · {humanise(e.exception_type)}
             </button>
             <span className={`ml-2 text-[11px] font-bold uppercase ${e.severity === 'critical' ? 'text-err' : 'text-muted'}`}>{e.severity}</span>
@@ -281,11 +296,62 @@ export function Coverage({ manifest }: { manifest: AuditPackManifest }) {
   )
 }
 
+function ConsistencyRow({ label, read, field, viewValue }: { label: string; read: SealPayloadRead; field: 'manifest_sha256' | 'pdf_sha256'; viewValue: string }) {
+  const sealed = sealedString(read, field)
+  const outcome = read.state !== 'ok'
+    ? { text: 'cannot be compared', tone: 'text-warn' }
+    : sealed === null
+      ? { text: 'missing from the seal payload', tone: 'font-semibold text-err' }
+      : sealed.toLowerCase() === viewValue.toLowerCase()
+        ? { text: 'matches', tone: 'font-semibold text-ok' }
+        : { text: 'DIFFERS', tone: 'font-semibold text-err' }
+  return (
+    <Field label={label}>
+      <span className={outcome.tone}>{outcome.text}</span>
+    </Field>
+  )
+}
+
+// Compares the fingerprints the ledger-anchored seal commits to with the ones this page was served,
+// so a page whose figures were swapped after sealing shows up even before anyone re-hashes anything.
+function SealSummary({ seal, read }: { seal: PublicPackSeal; read: SealPayloadRead }) {
+  if (!seal.seal) {
+    return <p className="text-[13px] text-warn">This pack was not sealed on Hedera (status: {humanise(seal.anchor_status)}).</p>
+  }
+  return (
+    <>
+      <dl>
+        <Field label="Manifest fingerprint"><span className="num break-all">{seal.manifest_sha256}</span></Field>
+        <Field label="PDF fingerprint"><span className="num break-all">{seal.pdf_sha256}</span></Field>
+        <Field label="Hedera topic"><span className="num">{seal.seal.hedera_topic_id ?? '—'}</span></Field>
+        <Field label="Sequence number"><span className="num">{seal.seal.hedera_sequence_number ?? '—'}</span></Field>
+        <Field label="Transaction"><span className="num break-all">{seal.seal.hedera_tx_id ?? '—'}</span></Field>
+        <ConsistencyRow label="Seal payload: manifest fingerprint" read={read} field="manifest_sha256" viewValue={seal.manifest_sha256} />
+        <ConsistencyRow label="Seal payload: PDF fingerprint" read={read} field="pdf_sha256" viewValue={seal.pdf_sha256} />
+      </dl>
+      {read.state === 'unreadable' && <p className="text-[12px] text-warn">The seal payload could not be read as JSON.</p>}
+      <p className="mt-1 text-[12px] text-muted">
+        These compare fingerprints only. The manifest&apos;s own canonical text is not published with the pack, so it cannot be re-hashed here.
+      </p>
+    </>
+  )
+}
+
 export function Integrity({ manifest, seal }: { manifest: AuditPackManifest; seal: PublicPackSeal }) {
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copyState, setCopyState] = useState<{ id: string; copied: boolean } | null>(null)
+  // Memoised: a malformed payload logs a warning, which must not repeat on every render.
+  const sealRead = useMemo(() => readSealPayload(seal), [seal])
+  // The reader's own link goes to a known public mirror, never to whatever address the server named.
+  const mirror = trustedMirrorBase(seal.hedera_network, seal.mirror_base_url)
   async function copy(id: string, text: string) {
-    await navigator.clipboard.writeText(text)
-    setCopied(id)
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopyState({ id, copied: true })
+    } catch (error) {
+      // Clipboard access needs a secure page and, on some browsers, a permission.
+      console.warn('Could not copy to the clipboard', error)
+      setCopyState({ id, copied: false })
+    }
   }
   return (
     <Card title="Integrity appendix" id="integrity">
@@ -293,27 +359,55 @@ export function Integrity({ manifest, seal }: { manifest: AuditPackManifest; sea
         To check a record without this page: SHA-256 the canonical payload exactly as shown (UTF-8), compare it with the data
         hash, then read the Hedera mirror-node address, base64-decode its <code>message</code>, and compare again.
       </p>
-      <ul className="mt-3 space-y-3">
+      <h3 className="mb-1 mt-3 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">Pack seal</h3>
+      <SealSummary seal={seal} read={sealRead} />
+      <h3 className="mb-1 mt-4 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">Anchored records</h3>
+      <ul className="space-y-3">
         {manifest.anchored_records.map((r) => (
           <li key={r.receipt_id} className="rounded-md bg-surf-low p-3 text-[12px]">
             <p className="font-semibold">{humanise(r.receipt_type)} · {humanise(r.subject_type)}</p>
             <p className="num break-all">Data hash {r.data_hash}</p>
-            {r.hedera_topic_id && r.hedera_sequence_number != null && (
+            <p className="num break-all">
+              Topic {r.hedera_topic_id ?? '—'} · sequence {r.hedera_sequence_number ?? '—'}
+              {r.hedera_tx_id && ` · transaction ${r.hedera_tx_id}`}
+            </p>
+            {mirror && r.hedera_topic_id && r.hedera_sequence_number != null && (
               <a
                 className="num break-all text-sec underline"
-                href={mirrorMessageUrl(seal.mirror_base_url, r.hedera_topic_id, r.hedera_sequence_number)}
+                href={mirrorMessageUrl(mirror, r.hedera_topic_id, r.hedera_sequence_number)}
                 target="_blank" rel="noreferrer noopener"
               >
-                {mirrorMessageUrl(seal.mirror_base_url, r.hedera_topic_id, r.hedera_sequence_number)}
+                {mirrorMessageUrl(mirror, r.hedera_topic_id, r.hedera_sequence_number)}
               </a>
             )}
             <pre className="num mt-2 whitespace-pre-wrap break-all rounded-sm bg-surf-lowest p-2 text-[11px]">{r.canonical_payload}</pre>
-            <button type="button" onClick={() => void copy(r.receipt_id, r.canonical_payload)} className="no-print mt-1 text-[12px] font-semibold text-sec">
-              {copied === r.receipt_id ? 'Copied' : 'Copy payload'}
+            <button type="button" onClick={() => void copy(r.receipt_id, r.canonical_payload)} className="no-print mt-1 min-h-11 text-[12px] font-semibold text-sec">
+              {copyState?.id !== r.receipt_id ? 'Copy payload' : copyState.copied ? 'Copied' : 'Could not copy'}
             </button>
+            {copyState?.id === r.receipt_id && !copyState.copied && (
+              <span role="status" className="ml-2 text-[12px] text-warn">Select the payload above and copy it by hand.</span>
+            )}
           </li>
         ))}
       </ul>
+    </Card>
+  )
+}
+
+/** Counts only: this viewer cannot render these records yet, and silence would read as "none". */
+export function NotShownHere({ manifest }: { manifest: AuditPackManifest }) {
+  const investigations = manifest.investigations?.length ?? 0
+  const lateEvidence = manifest.late_evidence?.length ?? 0
+  if (investigations === 0 && lateEvidence === 0) return null
+  const parts = [
+    investigations > 0 ? pluralise(investigations, 'investigation record') : null,
+    lateEvidence > 0 ? pluralise(lateEvidence, 'late-evidence item') : null,
+  ].filter((part): part is string => part !== null)
+  return (
+    <Card title="Not shown in this viewer" id="not-shown">
+      <p className="text-[13px]">
+        This pack also contains {parts.join(' and ')} that this web view does not display yet. They are included in the PDF.
+      </p>
     </Card>
   )
 }

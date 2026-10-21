@@ -11,7 +11,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-export const viewport: Viewport = { width: 'device-width', initialScale: 1 }
+// Light only: the design tokens are paper surfaces on ink text, and a browser or extension that
+// force-darkens form controls and scrollbars against them produces unreadable combinations.
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, colorScheme: 'light' }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
