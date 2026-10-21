@@ -5,6 +5,7 @@ import { makePhase } from '@/components/domain/__tests__/testFixtures'
 import {
   BOUNDARY_NEARBY_METRES,
   FIX_LABELS,
+  PROXIMITY_REASON_LABELS,
   TRACKER_CAPTURE_NOTE,
   VERDICT_LABELS,
   boundaryInDefaultFrame,
@@ -493,5 +494,15 @@ describe('outline boundaries', () => {
 
     expect(boundary?.provenance).toBe('current_reference_only')
     expect(boundary?.polygon).toEqual(BOX)
+  })
+})
+
+describe('PROXIMITY_REASON_LABELS', () => {
+  it('test_every_reason_reads_as_a_sentence_fragment_never_a_code', () => {
+    const labels = Object.values(PROXIMITY_REASON_LABELS)
+
+    expect(labels).toHaveLength(8)
+    for (const label of labels) expect(label).toMatch(/^[a-z]/)
+    for (const label of labels) expect(label).not.toMatch(/_/)
   })
 })

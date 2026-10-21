@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback } from 'react'
-import { getIncident, getIncidentEvidence, listIncidents, listTripIncidents } from '@/lib/api/incidents'
+import { getIncident, getIncidentEvidence, listIncidents } from '@/lib/api/incidents'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import type { RealtimeKind } from '@/lib/realtime/types'
 import type { IncidentDetail, IncidentEvidence, IncidentListFilters, IncidentSummary } from '@/lib/types/incident'
 import { useAsyncData, type AsyncState } from './useAsyncData'
+import { useTripResource } from './useTripResource'
 
 // An incident changes on its own events; a stop also closes the trip, and a new exception or
 // review changes the evidence and the review counts an incident shows.
@@ -22,12 +23,12 @@ export function useIncidents(filters: IncidentListFilters): AsyncState<IncidentS
   return state
 }
 
-/** One trip's incidents, for its detail panel and its exceptions. */
+const NO_INCIDENTS: IncidentSummary[] = []
+
+/** One trip's incidents, for its timeline, detail panel and exceptions. Held in the trip cache beside the
+ *  trip itself, so coming back from an incident's page shows them at once and re-reads them behind. */
 export function useTripIncidents(tripId: string): AsyncState<IncidentSummary[]> {
-  const fetchList = useCallback(() => listTripIncidents(tripId), [tripId])
-  const state = useAsyncData<IncidentSummary[]>(fetchList, [])
-  useLiveResource('trip', tripId, state.refetchSilent, { kinds: INCIDENT_KINDS })
-  return state
+  return useTripResource<IncidentSummary[]>(tripId, '/incidents', NO_INCIDENTS, INCIDENT_KINDS)
 }
 
 /** One incident in full. `tripId` scopes the live subscription once the incident is loaded. */

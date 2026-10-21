@@ -2555,6 +2555,17 @@
               }
             ]
           },
+          "arranged_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arranged By Name"
+          },
           "arranged_by_user_id": {
             "anyOf": [
               {
@@ -8430,6 +8441,17 @@
             "format": "date-time",
             "title": "Attested At",
             "type": "string"
+          },
+          "attested_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attested By Name"
           },
           "attested_by_user_id": {
             "format": "uuid",
@@ -16265,6 +16287,17 @@
             ],
             "title": "Completed By Driver Id"
           },
+          "completed_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed By Name"
+          },
           "completed_by_user_id": {
             "anyOf": [
               {
@@ -16472,6 +16505,17 @@
             "format": "date-time",
             "title": "Recorded At",
             "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
           },
           "recorded_by_user_id": {
             "format": "uuid",
@@ -19202,8 +19246,15 @@
             "type": "string"
           },
           "order_number": {
-            "title": "Order Number",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Number"
           },
           "planned_arrival_at": {
             "anyOf": [

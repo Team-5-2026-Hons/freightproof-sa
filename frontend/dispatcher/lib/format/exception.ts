@@ -24,6 +24,8 @@ const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
   trailer_separated_in_transit: 'Trailer separated on the road',
   moved_before_departure: 'Moved before departure',
   tracker_silent: 'Tracker silent',
+  // Raised only for a completed driver transfer that carries a problem; a clean transfer raises nothing.
+  driver_substitution: 'Driver transfer needs review',
 }
 
 /** "waybill_count_mismatch" -> "Waybill Count Mismatch"; "receiver_id_mismatch" ->
@@ -32,6 +34,25 @@ const EXCEPTION_TYPE_LABELS: Partial<Record<string, string>> = {
 export function fmtExceptionType(type: string): string {
   return EXCEPTION_TYPE_LABELS[type]
     ?? type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID')
+}
+
+// Mirrors the prefix the backend writes when a dispatcher cancels a trip (orchestration
+// trips/administration.py). The backend keeps the raw user id so the line stays machine-findable;
+// the dispatcher UI swaps it for the name. UUIDs are 36 characters: 32 hex plus four hyphens.
+const CANCEL_NOTE_PREFIX = /^Cancelled by user [0-9a-f-]{36}: /i
+const CANCEL_NOTE_PREFIX_LABEL = 'Cancelled by '
+const UNNAMED_DISPATCHER = 'a dispatcher'
+
+/** The description to show a person. A dispatcher's cancellation note carries the cancelling
+ *  user's id; the cancelling dispatcher is recorded as the reviewer, so the reviewer's name
+ *  replaces it. Every other description is returned untouched. */
+export function exceptionDescriptionText(
+  exception: { exception_type: string; description: string; reviewed_by_name?: string | null },
+): string {
+  if (exception.exception_type !== 'dispatcher_note') return exception.description
+  const match = CANCEL_NOTE_PREFIX.exec(exception.description)
+  if (!match) return exception.description
+  return `${CANCEL_NOTE_PREFIX_LABEL}${exception.reviewed_by_name ?? UNNAMED_DISPATCHER}: ${exception.description.slice(match[0].length)}`
 }
 
 /** A breakdown's Vehicle row: "Trailer · TRL 222 GP". "Not recorded" when no vehicle was

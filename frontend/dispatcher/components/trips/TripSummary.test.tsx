@@ -118,3 +118,30 @@ it.each([false, true])('transfer_action_reuses_normal_or_compact_header_slot (co
   expect(open).toHaveBeenCalledOnce()
   expect(screen.getByRole('link', { name: mockDrivers[0]!.phone_number })).toHaveAttribute('href', `tel:${mockDrivers[0]!.phone_number}`)
 })
+
+it('transfer_action_sits_beside_the_driver_name_and_keeps_its_label_when_not_compact', () => {
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()}
+    transferAction={{ label: 'Transfer driver', onClick: vi.fn() }} />)
+
+  const action = screen.getByRole('button', { name: 'Transfer driver' })
+  const name = screen.getByRole('button', { name: new RegExp(facts.driverName) })
+
+  // Same row as the name, not the label row above it.
+  expect(action.parentElement).toBe(name.parentElement)
+  expect(action).toHaveTextContent('Transfer driver')
+})
+
+it('lets_the_driver_row_wrap_so_the_transfer_button_never_squeezes_the_name', () => {
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()}
+    transferAction={{ label: 'Transfer driver', onClick: vi.fn() }} />)
+
+  const name = screen.getByRole('button', { name: new RegExp(facts.driverName) })
+  const action = screen.getByRole('button', { name: 'Transfer driver' })
+
+  // Both render, in a row that wraps. The name's only cap is the cell's own width, and nothing
+  // about it depends on the button being there.
+  expect(name.parentElement).toHaveClass('flex-wrap')
+  expect(name).toHaveClass('min-w-0', 'max-w-full', 'truncate')
+  expect(name.className).not.toMatch(/\b(w|max-w)-\[|\bmax-w-(xs|sm|md|\d)/)
+  expect(action).toHaveClass('shrink-0')
+})

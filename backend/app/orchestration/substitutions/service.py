@@ -51,6 +51,7 @@ from app.orchestration.substitutions import anchors, canonical, capture_assessme
 from app.orchestration.substitutions.access import get_current_custody, lock_trip, lock_trip_statement
 from app.orchestration.substitutions.eligibility import ArrangementTiming, first_completion_blocker, require_arrangeable
 from app.orchestration.substitutions.notices import notify_parties
+from app.orchestration.substitutions.transfer_review import raise_transfer_review
 from app.orchestration.substitutions.seal_comparison import record_seal_findings, record_incoming_seal_findings
 from app.orchestration.substitutions.capture_validation import validate_capture as _validate_capture
 from app.orchestration.substitutions.termination import cancel_request
@@ -442,6 +443,9 @@ async def _complete(
     # after the outer commit. Anchoring never conditions the transfer itself.
     await anchors.freeze_substitution(db, row)
     await notify_parties(db, request=request, kind=SubstitutionNoticeKind.COMPLETED)
+    # A transfer with a problem (unverified identity, a missing confirmation, an uncomparable location)
+    # is surfaced for review. Fail-open: a finding is evidence and never conditions custody.
+    await raise_transfer_review(db, trip=trip, row=row)
     return row
 
 

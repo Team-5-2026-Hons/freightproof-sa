@@ -21,20 +21,18 @@ const trip = mockTrips[0]!
 // the positive cancel-trigger test below needs a still-cancellable status.
 const activeTrip = { ...trip, status: 'active' as const }
 
-function renderInformation(overrides: Partial<{ trip: Trip; onOpenPrecinct: () => void; onCancelTrip: () => void }> = {}) {
+function renderInformation(overrides: Partial<{ trip: Trip; onOpenPrecinct: () => void }> = {}) {
   const onOpenPrecinct = overrides.onOpenPrecinct ?? vi.fn()
-  const onCancelTrip = overrides.onCancelTrip ?? vi.fn()
   render(
     <ToastProvider>
       <TripInformation
         trip={overrides.trip ?? trip}
         precincts={mockPrecincts}
-        onCancelTrip={onCancelTrip}
         onOpenPrecinct={onOpenPrecinct}
       />
     </ToastProvider>,
   )
-  return { onOpenPrecinct, onCancelTrip }
+  return { onOpenPrecinct }
 }
 
 describe('TripInformation stop previews', () => {
@@ -55,10 +53,10 @@ describe('TripInformation stop previews', () => {
 })
 
 describe('TripInformation route list', () => {
-  it('ends the last stop without a divider, so the audit section below is separated by one rule, not two', () => {
+  it('ends the last stop without a divider, so the section divider below is the only rule', () => {
     renderInformation()
 
-    const rows = [...screen.getByRole('heading', { name: 'Route' }).parentElement!.querySelectorAll(':scope > div')]
+    const rows = [...document.querySelectorAll('[data-route-stops] > div')]
 
     expect(rows.length).toBeGreaterThan(1)
     expect(rows.every(row => row.classList.contains('border-b'))).toBe(true)
@@ -69,22 +67,27 @@ describe('TripInformation route list', () => {
   })
 })
 
-describe('TripInformation cancel trigger', () => {
-  it('calls onCancelTrip rather than opening its own cancellation dialog', async () => {
-    // Same reasoning as the precinct preview above: below the dock width this panel
-    // renders inside DetailPanel's own overlay <dialog>, so the caller must own where
-    // the cancellation dialog renders instead of TripInformation opening one itself.
-    const { onCancelTrip } = renderInformation({ trip: activeTrip })
+describe('TripInformation sections', () => {
+  it('opens Schedule & seal and folds Route away, each with a summary line', () => {
+    renderInformation({ trip: activeTrip })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel trip' }))
+    const schedule = screen.getByRole('heading', { name: 'Schedule & seal' }).closest('details')!
+    const route = screen.getByRole('heading', { name: 'Route' }).closest('details')!
 
-    expect(onCancelTrip).toHaveBeenCalledTimes(1)
-    expect(screen.queryByRole('dialog', { name: 'Cancel this trip?' })).not.toBeInTheDocument()
+    expect(schedule.open).toBe(true)
+    expect(route.open).toBe(false)
+    expect(route).toHaveTextContent(/\d+ stops? · .+ → .+/)
   })
 
-  it.each(['closed', 'cancelled'] as const)('hides the trigger once the trip is %s', (status) => {
-    const terminalTrip: Trip = { ...trip, status }
-    renderInformation({ trip: terminalTrip })
+  it('holds the last departure seal with the schedule, and has no Custody section of its own', () => {
+    renderInformation()
+
+    expect(screen.getByRole('heading', { name: 'Schedule & seal' }).closest('details')).toHaveTextContent('Last departure seal')
+    expect(screen.queryByRole('heading', { name: 'Custody' })).not.toBeInTheDocument()
+  })
+
+  it('no longer carries the Cancel trip button: the panel owns it under Trip actions', () => {
+    renderInformation({ trip: activeTrip })
 
     expect(screen.queryByRole('button', { name: 'Cancel trip' })).not.toBeInTheDocument()
   })

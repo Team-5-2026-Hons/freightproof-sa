@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '@/lib/context/ToastContext'
 import { ApiError } from '@/lib/api/client'
-import { incidentSheetPdf, listAuditPackAccessEvents, listAuditPacks, listIncidentDeclarations, revokeAuditPack } from '@/lib/api/auditPacks'
+import { listAuditPackAccessEvents, listAuditPacks, revokeAuditPack } from '@/lib/api/auditPacks'
 import type { AuditPack } from '@/lib/types/auditPack'
 import { AuditPacksPanel } from './AuditPacksPanel'
 
@@ -18,7 +18,7 @@ vi.mock('@/lib/api/auditPacks', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/auditPacks')>('@/lib/api/auditPacks')
   return {
     ...actual, listAuditPacks: vi.fn(), revokeAuditPack: vi.fn(), listAuditPackAccessEvents: vi.fn(),
-    downloadIssuedPdf: vi.fn(), previewAuditPdf: vi.fn(), listIncidentDeclarations: vi.fn(), incidentSheetPdf: vi.fn(),
+    downloadIssuedPdf: vi.fn(), previewAuditPdf: vi.fn(),
   }
 })
 
@@ -34,17 +34,15 @@ function pack(overrides: Partial<AuditPack> = {}): AuditPack {
   }
 }
 
-function renderPanel(onIssue = vi.fn(), onDeclare = vi.fn()) {
-  render(<ToastProvider><AuditPacksPanel tripId="trip-1" tripReference="TRP-0042" headingId="audit-heading" onIssue={onIssue} onDeclare={onDeclare} /></ToastProvider>)
-  return { onIssue, onDeclare }
+function renderPanel(onIssue = vi.fn()) {
+  render(<ToastProvider><AuditPacksPanel tripId="trip-1" tripReference="TRP-0042" onIssue={onIssue} /></ToastProvider>)
+  return { onIssue }
 }
 
 beforeEach(() => {
   vi.mocked(listAuditPacks).mockReset()
   vi.mocked(revokeAuditPack).mockReset()
   vi.mocked(listAuditPackAccessEvents).mockReset()
-  vi.mocked(listIncidentDeclarations).mockReset().mockResolvedValue([])
-  vi.mocked(incidentSheetPdf).mockReset()
 })
 
 describe('AuditPacksPanel', () => {
@@ -62,15 +60,23 @@ describe('AuditPacksPanel', () => {
     expect(screen.getByText(/Opened 2×/)).toBeInTheDocument()
   })
 
-  it('heads the section with its own actions and keeps the label legend behind a disclosure', async () => {
+  it('opens with its own actions, carries no heading (the section supplies it) and no explainer', async () => {
     vi.mocked(listAuditPacks).mockResolvedValue([])
     renderPanel()
 
-    const heading = await screen.findByRole('heading', { name: 'Audit packs' })
-    expect(heading).toHaveAttribute('id', 'audit-heading')
+    await screen.findByText('No audit packs issued for this trip yet.')
+    expect(screen.queryByRole('heading', { name: 'Audit packs' })).not.toBeInTheDocument()
     // The loud black primary is gone: issuing is a secondary action next to the heading.
     expect(screen.getByRole('button', { name: 'Issue audit pack' })).toHaveClass('bg-surf-high')
-    expect(screen.getByText('How facts are labelled').closest('details')).not.toHaveAttribute('open')
+    // The explanation of fact labels lives in the Info tab's help, not as clutter in the section.
+    expect(screen.queryByText('How facts are labelled')).not.toBeInTheDocument()
+  })
+
+  it('shows skeleton rows, not a sentence, while packs load', () => {
+    vi.mocked(listAuditPacks).mockReturnValue(new Promise(() => {}))
+    renderPanel()
+
+    expect(screen.getByRole('status', { name: 'Loading audit packs' })).toBeInTheDocument()
   })
 
   it('says when no packs exist yet', async () => {
@@ -155,53 +161,14 @@ describe('AuditPacksPanel', () => {
 })
 
 
-describe('AuditPacksPanel — police & notifications', () => {
-  it('lists declared police details', async () => {
-    // Arrange
-    vi.mocked(listAuditPacks).mockResolvedValue([])
-    vi.mocked(listIncidentDeclarations).mockResolvedValue([{
-      declaration_id: 'd-1', exception_id: null, saps_station: 'Harrismith SAPS', saps_cas_number: '123/09/2026',
-      saps_officer: null, reported_to_saps_at: null, tracking_company_notified_at: null, insurer_notified_at: null,
-      client_notified_at: null, insurer_claim_reference: null, note: null, declared_by_name: 'Ops Desk',
-      declared_at: '2026-09-13T06:00:00Z', tier: 'declared',
-    }])
-
-    // Act
-    renderPanel()
-
-    // Assert
-    const section = await screen.findByRole('region', { name: 'Police and notifications' })
-    expect(await within(section).findByText('CAS 123/09/2026')).toBeInTheDocument()
-    expect(within(section).getByText(/Harrismith SAPS/)).toBeInTheDocument()
-  })
-
-  it('shows the missing case number as a row, not a nested card', async () => {
+describe('AuditPacksPanel — police details moved', () => {
+  it('no longer renders police & notifications or asks for declarations', async () => {
     vi.mocked(listAuditPacks).mockResolvedValue([])
     renderPanel()
 
-    const section = await screen.findByRole('region', { name: 'Police and notifications' })
-    expect(within(section).getByText('SAPS case no.')).toBeInTheDocument()
-    expect(within(section).getByText('Not recorded')).toBeInTheDocument()
-    expect(within(section).getByText(/Insurers will ask/)).toBeInTheDocument()
-  })
-
-  it('opens the declaration dialog through its callback', async () => {
-    vi.mocked(listAuditPacks).mockResolvedValue([])
-    const { onDeclare } = renderPanel()
-    await userEvent.click(await screen.findByRole('button', { name: 'Record police details' }))
-    expect(onDeclare).toHaveBeenCalledOnce()
-  })
-
-  it('explains a trip with no incident when the fact sheet is refused', async () => {
-    // Arrange
-    vi.mocked(listAuditPacks).mockResolvedValue([])
-    vi.mocked(incidentSheetPdf).mockRejectedValue(new ApiError(409, 'This trip has no critical incident to report.'))
-    renderPanel()
-
-    // Act
-    await userEvent.click(await screen.findByRole('button', { name: 'Incident fact sheet' }))
-
-    // Assert
-    expect(await screen.findByText('This trip has no critical incident to report.')).toBeInTheDocument()
+    await screen.findByText('No audit packs issued for this trip yet.')
+    expect(screen.queryByRole('region', { name: 'Police and notifications' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Record police details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Incident fact sheet' })).not.toBeInTheDocument()
   })
 })

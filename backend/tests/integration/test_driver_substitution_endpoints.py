@@ -379,3 +379,74 @@ async def test_completed_detail_is_dispatcher_org_scoped(client: AsyncClient, db
     assert driver.status_code == 403
     assert foreign.status_code == 404
     assert anonymous.status_code in (401, 403)
+
+
+async def attested_completion(client: AsyncClient, db: AsyncSession) -> tuple[SubWorld, dict[str, object], User, User]:
+    """A transfer completed over a PENDING identity by an admin who is not the dispatcher who arranged it."""
+    w, pending = await arranged(client, db)
+    arranger = await get_row(db, User, w.user_id)
+    arranger.full_name = "Anna Arranger"
+    attester = User(id=uuid.uuid4(), organization_id=arranger.organization_id, email=f"{uuid.uuid4()}@test.co.za", full_name="Bongani Attester")
+    db.add(attester)
+    await set_identity(db, w.b, IdvsStatus.PENDING)
+    await client.post(confirm_url(w, pending["id"]), json=capture(w, 1), headers=driver_headers(w.a))
+    await client.post(confirm_url(w, pending["id"]), json=capture(w, 2), headers=driver_headers(w.b))
+    done = await client.post(f"{BASE}/{w.trip_id}/driver-substitutions/{pending['id']}/complete", json={
+        "client_request_id": str(uuid.uuid4()), "expected_version": 3, "identity_unavailable_reason": "IDVS down",
+    }, headers=dispatcher(w, admin=True, user_id=attester.id))
+    assert done.status_code == 200, done.text
+    return w, done.json(), arranger, attester
+
+
+async def test_completed_detail_names_the_people_instead_of_their_ids(client: AsyncClient, db_session: AsyncSession):
+    w, done, arranger, attester = await attested_completion(client, db_session)
+    url = f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}"
+    clarification = await client.post(f"{url}/corrections", json={
+        "client_request_id": str(uuid.uuid4()), "reason": "Depot name", "correction_note": "Gate 3, not 2",
+    }, headers=dispatcher(w))
+
+    detail = await client.get(url, headers=dispatcher(w))
+
+    assert clarification.status_code == 201, clarification.text
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["arranged_by_name"] == arranger.full_name
+    assert body["completion"]["completed_by_name"] == attester.full_name
+    assert body["identity_attestation"]["attested_by_name"] == attester.full_name
+    assert [c["recorded_by_name"] for c in body["corrections"]] == [arranger.full_name]
+    # The ids stay beside the labels: a name is a display aid, never the identity of the actor.
+    assert body["arranged_by_user_id"] == str(arranger.id)
+    assert body["completion"]["completed_by_user_id"] == str(attester.id)
+
+
+async def test_a_driver_completed_transfer_names_the_completing_driver(client: AsyncClient, db_session: AsyncSession):
+    w, done = await completed(client, db_session)
+    detail = await client.get(f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}", headers=dispatcher(w))
+
+    body = detail.json()
+    assert body["completion"]["completed_by_driver_id"] == str(w.b)
+    assert body["completion"]["completed_by_name"] == body["incoming"]["full_name"]
+    assert body["identity_attestation"] is None
+
+
+async def test_a_missing_name_is_null_not_an_error(client: AsyncClient, db_session: AsyncSession):
+    w, done, arranger, _ = await attested_completion(client, db_session)
+    # A label that cannot be resolved must never fail the read: park the arranger in another organisation.
+    arranger.organization_id = w.other_org_id
+    await db_session.flush()
+    url = f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}"
+    attester_id = uuid.UUID(done["completion"]["completed_by_user_id"])
+
+    detail = await client.get(url, headers=dispatcher(w, admin=True, user_id=attester_id))
+
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["arranged_by_name"] is None
+    assert detail.json()["arranged_by_user_id"] == str(arranger.id)
+
+
+async def test_an_unknown_completed_transfer_is_404(client: AsyncClient, db_session: AsyncSession):
+    w, _ = await completed(client, db_session)
+
+    missing = await client.get(f"{BASE}/{w.trip_id}/driver-substitutions/completed/{uuid.uuid4()}", headers=dispatcher(w))
+
+    assert missing.status_code == 404

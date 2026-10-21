@@ -783,6 +783,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "app/orchestration/phases/findings.py": 4,
         "app/orchestration/phases/override.py": 2,
         "app/orchestration/substitutions/seal_comparison.py": 1,
+        "app/orchestration/substitutions/transfer_review.py": 1,
         "app/orchestration/trips/administration.py": 1,
     }
     assert actual == expected_sites, (

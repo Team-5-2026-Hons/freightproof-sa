@@ -283,6 +283,8 @@ class SubstitutionCompletionRead(BaseModel):
     trigger: SubstitutionCompletionTrigger
     completed_by_driver_id: Optional[UUID] = None
     completed_by_user_id: Optional[UUID] = None
+    # A display label read alongside the completed-transfer detail; every other read of a completion leaves it None.
+    completed_by_name: Optional[str] = None
 
     @model_validator(mode="after")
     def _exactly_one_actor_matching_the_trigger(self) -> "SubstitutionCompletionRead":
@@ -392,6 +394,8 @@ class SubstitutionCorrectionRead(BaseModel):
     correction_note: str
     anchor_status: AnchorStatus
     receipt_id: Optional[UUID] = None
+    # The recorder's display label, filled by the completed-transfer detail read only.
+    recorded_by_name: Optional[str] = None
 
 
 class CustodyPeriodRead(BaseModel):
@@ -410,6 +414,7 @@ class IdentityAttestationRead(BaseModel):
     attested_by_user_id: UUID
     reason: str
     attested_at: datetime
+    attested_by_name: Optional[str] = None
 
 
 class CompletedSubstitutionSummary(BaseModel):
@@ -434,6 +439,7 @@ class CompletedSubstitutionDetail(CompletedSubstitutionSummary):
     artifacts: list[EvidenceArtifactWithUrl]
     corrections: list[SubstitutionCorrectionRead]
     arranged_by_user_id: UUID | None
+    arranged_by_name: str | None = None
     completion: SubstitutionCompletionRead | None
     identity_attestation: IdentityAttestationRead | None
     declared_exchange_at: datetime | None

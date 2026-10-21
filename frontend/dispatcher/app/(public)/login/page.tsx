@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { FreightProofLogo } from '@/components/brand/FreightProofLogo'
+import { LogoMark } from '@/components/landing/Logo'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -83,7 +83,14 @@ export default function LoginPage() {
           className="-z-10 object-cover object-[50%_62%] lg:object-[22%_72%]" />
         <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-primary/60 via-primary/10 to-primary/80" />
         <div>
-          <FreightProofLogo tone="on-dark" size="lg" />
+          {/* Not the landing `Logo` lockup: its wordmark is dark ink and would vanish on the
+              photo. The ink shield sits on a paper tile for the same reason, with a white wordmark beside it. */}
+          <span className="inline-flex items-center gap-2.5">
+            <span className="flex size-[52px] shrink-0 items-center justify-center rounded-lg bg-surf">
+              <LogoMark size={36} />
+            </span>
+            <span className="text-[28px] font-[800] leading-none tracking-[-0.035em] text-white">FreightProof</span>
+          </span>
           <p className="mt-2 text-[11px] font-[700] uppercase tracking-[0.18em] text-white/75">Dispatcher portal</p>
         </div>
         <div className="hidden lg:block">
@@ -124,7 +131,7 @@ export default function LoginPage() {
               {error && !isCredentialError && (
                 <p role="alert" className="text-xs text-error font-medium">{error}</p>
               )}
-              <Button type="submit" variant="brand" loading={isLoading} full className="mt-2">
+              <Button type="submit" variant="primary" loading={isLoading} full className="mt-2">
                 Sign in
               </Button>
             </form>

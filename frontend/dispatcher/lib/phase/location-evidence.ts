@@ -12,7 +12,7 @@ import { haversineMetres, separationMetres, toCoords, type Coords } from './geo'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { LatLngPair, Precinct } from '@shared/lib/types/precinct'
 import { MIN_OUTLINE_CORNERS, enclosingRadiusMetres } from '@/lib/map/polygon'
-import type { ActionLocationAssessment, ProximityVerdict } from '@shared/lib/types/action-location'
+import type { ActionLocationAssessment, ProximityReason, ProximityVerdict } from '@shared/lib/types/action-location'
 
 export type FixSource = 'driver_phone' | 'horse_tracker'
 
@@ -86,6 +86,18 @@ export const PROXIMITY_LABELS: Record<ProximityVerdict, string> = {
   within_limit: 'Within limit',
   separated: 'Outside limit',
   unverified: 'Unable to compare',
+}
+
+// Why a proximity check could not compare the two fixes, in the words a dispatcher would use.
+export const PROXIMITY_REASON_LABELS: Record<ProximityReason, string> = {
+  missing_phone: 'the driver’s phone location was not available',
+  missing_tracker: 'the truck tracker location was not available',
+  missing_time: 'a capture time was missing',
+  missing_accuracy: 'the phone did not report how accurate its location was',
+  poor_accuracy: 'the phone location was too imprecise',
+  stale_fix: 'a location reading was too old',
+  time_skew: 'the phone and tracker readings were too far apart in time',
+  future_fix: 'a location reading was dated in the future',
 }
 
 // The backend only ever persists a tracker fix that already passed its skew gate

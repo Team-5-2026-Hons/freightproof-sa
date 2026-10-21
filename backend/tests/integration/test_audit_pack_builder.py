@@ -270,6 +270,19 @@ async def test_build_audit_manifest_unfinished_trip_is_buildable(db_session, aud
     assert manifest.location_coverage.window_end == T0 + timedelta(days=1)
 
 
+async def test_build_audit_manifest_trip_without_order_number_is_buildable(db_session, audit_trip):
+    # Arrange: trips imported from a Parcel Perfect manifest carry no order number.
+    audit_trip.trip.order_number = None
+    await db_session.flush()
+
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    assert manifest.trip.order_number is None
+    assert manifest.trip.trip_reference == "FP-AUDIT"
+
+
 async def test_build_audit_manifest_summarises_the_critical_incident(db_session, audit_trip):
     # Act
     manifest = await _build(db_session, audit_trip)

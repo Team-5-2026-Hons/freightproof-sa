@@ -44,8 +44,8 @@ export function LateDriverEvidencePanel({ tripId, driverNames }: Props) {
 
   if (isLoading || (items.length === 0 && !error)) return null
   return (
-    <section aria-labelledby="late-evidence-heading" className="flex flex-col gap-2 border-t border-outline-v/30 pt-6">
-      <h3 id="late-evidence-heading" className="text-sm font-bold text-on-surf">Late driver evidence</h3>
+    <section aria-labelledby="late-evidence-heading" className="mt-4 flex flex-col gap-2 border-t border-outline-v/30 pt-4">
+      <h4 id="late-evidence-heading" className="text-[13px] font-bold text-on-surf">Late driver evidence</h4>
       <p className="text-[12px] text-on-surf-v">
         Captured before a handover and received afterwards. Kept for review; it did not complete any phase.
       </p>

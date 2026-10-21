@@ -25,7 +25,7 @@
 
   <table class="kv">
     <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td></tr>
-    <tr><th>Order number</th><td>{{ m.trip.order_number }}</td></tr>
+    <tr><th>Order number</th><td>{{ m.trip.order_number or 'Not recorded' }}</td></tr>
     <tr><th>Operator</th><td>{{ m.trip.operator_name }}</td></tr>
     <tr><th>Client(s)</th><td>{{ m.trip.client_names|join(', ') or '—' }}</td></tr>
     <tr><th>Scope</th><td>{% if m.options.scope_consignment_id %}Single consignment: {{ m.consignments[0].parcel_perfect_reference if m.consignments else '—' }}{% else %}Whole trip{% endif %}</td></tr>

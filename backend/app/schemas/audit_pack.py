@@ -498,7 +498,8 @@ class InvestigationRecord(_Frozen):
 class TripSummary(_Frozen):
     trip_id: UUID
     trip_reference: str
-    order_number: str
+    # Nullable like Trip.order_number: a trip imported from a Parcel Perfect manifest has none.
+    order_number: str | None
     trip_type: str
     status: str
     operator_name: str

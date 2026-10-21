@@ -2,7 +2,7 @@
 
 import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 import { Button } from '@/components/ui/Button'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtExceptionType } from '@/lib/format/exception'
 import type { IncidentEvidence } from '@/lib/types/incident'
 
 interface Props {
@@ -106,7 +106,7 @@ export function IncidentEvidencePanel({ evidence, incidentId, closed, onLinkExce
               <li key={e.exception_id} className="flex flex-wrap items-center justify-between gap-3 py-2">
                 <div className="min-w-0 text-sm">
                   <p className="font-semibold">{fmtExceptionType(e.exception_type)} <span className="font-normal text-on-surf-v">· {e.severity} · {fmtSastDateTime(e.raised_at)}</span></p>
-                  <p className="text-on-surf-v">{e.description}</p>
+                  <p className="text-on-surf-v">{exceptionDescriptionText(e)}</p>
                 </div>
                 {e.incident_id === incidentId ? <span className="text-xs font-semibold text-ok">Grouped here</span>
                   : e.incident_id ? <span className="text-xs text-on-surf-v">In another incident</span>

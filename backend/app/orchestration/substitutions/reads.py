@@ -28,7 +28,7 @@ from app.db.models.driver_substitutions import (
     DriverSubstitutionUpload, LateDriverEvidence, LateDriverEvidenceArtifact, DriverSubstitutionCorrection, DriverSubstitutionNotice,
 )
 from app.db.models.enums import ExceptionReviewStatus, PhaseType, TripStatus, PhaseStatus
-from app.db.models.people import Driver
+from app.db.models.people import Driver, User
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
@@ -381,6 +381,28 @@ async def list_completed_substitutions(
     return result
 
 
+async def _display_names(
+    db: AsyncSession, *, organization_id: uuid.UUID, summary: CompletedSubstitutionSummary,
+    driver_ids: set[uuid.UUID | None], user_ids: set[uuid.UUID | None],
+) -> dict[uuid.UUID, str]:
+    """Display labels for the ids a completed-transfer detail names, so the dispatcher reads people, not UUIDs.
+
+    One query per kind, scoped to the dispatcher's organisation so a name never crosses tenants. The two
+    drivers of the transfer are already on `summary` and cost nothing. An id that resolves to nothing is
+    simply absent: the read never fails because a label is missing.
+    """
+    names: dict[uuid.UUID, str] = {summary.outgoing.id: summary.outgoing.full_name, summary.incoming.id: summary.incoming.full_name}
+    wanted_drivers = {driver_id for driver_id in driver_ids if driver_id is not None and driver_id not in names}
+    wanted_users = {user_id for user_id in user_ids if user_id is not None}
+    if wanted_drivers:
+        names.update((await db.execute(select(Driver.id, Driver.full_name).where(
+            Driver.id.in_(wanted_drivers), Driver.organization_id == organization_id))).tuples().all())
+    if wanted_users:
+        names.update((await db.execute(select(User.id, User.full_name).where(
+            User.id.in_(wanted_users), User.organization_id == organization_id))).tuples().all())
+    return names
+
+
 async def get_completed_substitution(
     db: AsyncSession, *, trip_id: uuid.UUID, substitution_id: uuid.UUID, actor: UserRead,
 ) -> CompletedSubstitutionDetail:
@@ -399,11 +421,18 @@ async def get_completed_substitution(
     corrections = list((await db.execute(select(DriverSubstitutionCorrection)
         .where(DriverSubstitutionCorrection.substitution_id == row.id)
         .order_by(DriverSubstitutionCorrection.created_at, DriverSubstitutionCorrection.id))).scalars())
+    names = await _display_names(
+        db, organization_id=actor.organization_id, summary=summary, driver_ids={row.completed_by_driver_id},
+        user_ids={request.arranged_by_user_id if request else None, row.completed_by_user_id, row.identity_attested_by_user_id,
+                  *(c.recorded_by_user_id for c in corrections)},
+    )
     completion = None if row.completed_by_driver_id is None and row.completed_by_user_id is None else SubstitutionCompletionRead(
         trigger=SubstitutionCompletionTrigger.DRIVER_CONFIRMATION if row.completed_by_driver_id else SubstitutionCompletionTrigger.DISPATCHER_ACTION,
-        completed_by_driver_id=row.completed_by_driver_id, completed_by_user_id=row.completed_by_user_id)
+        completed_by_driver_id=row.completed_by_driver_id, completed_by_user_id=row.completed_by_user_id,
+        completed_by_name=names.get(row.completed_by_driver_id or row.completed_by_user_id))
     identity = None if row.identity_attested_by_user_id is None else IdentityAttestationRead(
-        attested_by_user_id=row.identity_attested_by_user_id, reason=row.identity_attestation_reason, attested_at=row.identity_attested_at)
+        attested_by_user_id=row.identity_attested_by_user_id, reason=row.identity_attestation_reason, attested_at=row.identity_attested_at,
+        attested_by_name=names.get(row.identity_attested_by_user_id))
     notices = list((await db.execute(select(DriverSubstitutionNotice).join(DriverSubstitutionRequest,
         DriverSubstitutionRequest.id == DriverSubstitutionNotice.request_id).where(
         DriverSubstitutionNotice.request_id == request.id, DriverSubstitutionRequest.trip_id == trip_id,
@@ -414,8 +443,9 @@ async def get_completed_substitution(
         'artifacts': await _signed(photos), 'corrections': [SubstitutionCorrectionRead(
             id=c.id, substitution_id=c.substitution_id, recorded_by_user_id=c.recorded_by_user_id,
             recorded_at=c.created_at, reason=c.reason, correction_note=c.correction_note, anchor_status=c.anchor_status,
-            receipt_id=c.receipt_id) for c in corrections],
-        'arranged_by_user_id': request.arranged_by_user_id if request else None, 'completion': completion,
+            receipt_id=c.receipt_id, recorded_by_name=names.get(c.recorded_by_user_id)) for c in corrections],
+        'arranged_by_user_id': request.arranged_by_user_id if request else None,
+        'arranged_by_name': names.get(request.arranged_by_user_id) if request else None, 'completion': completion,
         'identity_attestation': identity, 'declared_exchange_at': row.declared_exchange_at,
         'missing_confirmation_reason': row.missing_confirmation_reason,
         'outgoing_notices': [SubstitutionNoticeRead(id=notice.id, request_id=notice.request_id, trip_id=trip_id,

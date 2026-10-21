@@ -11,6 +11,8 @@ import type { ArtifactId, EvidenceArtifactWithUrl } from '@shared/lib/types/evid
 import type { TripException } from '@shared/lib/types/exception'
 import { listAuditPacks, listIncidentDeclarations, recordIncidentDeclaration } from '@/lib/api/auditPacks'
 import { ApiError } from '@/lib/api/client'
+import type { AsyncState } from '@/lib/hooks/useAsyncData'
+import type { IncidentSummary } from '@/lib/types/incident'
 
 // CancelTripDialog's cancelTrip call reaches the API client, which builds a Supabase
 // client at import time — same reason TripExceptionsPanel.test.tsx mocks this module.
@@ -64,13 +66,21 @@ function renderPanel(onChanged = vi.fn(), tripOverride = trip, extra: Partial<Re
         onFilter={vi.fn()}
         onChanged={onChanged}
         returnTo="/trips/trip-1"
+        incidents={incidentState}
         {...extra}
       />
     </ToastProvider>,
   ) }
 }
 
+// The page reads the trip's incidents once and hands them down; each test says what it hands.
+let incidentState: AsyncState<IncidentSummary[]>
+function incidents(data: IncidentSummary[], isLoading = false) {
+  incidentState = { data, isLoading, error: null, refetch: vi.fn(), refetchSilent: vi.fn() }
+}
+
 beforeEach(() => {
+  incidents([])
   mockedCancelTrip.mockReset()
   vi.mocked(listAuditPacks).mockReset().mockResolvedValue([])
   vi.mocked(listIncidentDeclarations).mockReset().mockResolvedValue([])
@@ -81,7 +91,7 @@ describe('TripDetailPanel Info audit section', () => {
   it('places audit packs after trip information, inside the same surface', async () => {
     renderPanel()
 
-    const info = screen.getByRole('heading', { name: 'Custody' })
+    const info = screen.getByRole('heading', { name: 'Schedule & seal' })
     const audit = screen.getByRole('region', { name: 'Audit packs' })
     expect(audit).toHaveAttribute('id', 'trip-audit-packs')
     expect(info.compareDocumentPosition(audit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -112,7 +122,7 @@ describe('TripDetailPanel Info audit section', () => {
     vi.mocked(listAuditPacks).mockReturnValue(new Promise(() => {}))
     renderPanel(vi.fn(), activeTrip)
 
-    expect(screen.getByText('Loading audit packs…')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Loading audit packs' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Cancel trip' }))
     expect(screen.getByRole('dialog', { name: 'Cancel this trip?' })).toBeInTheDocument()
   })
@@ -125,7 +135,7 @@ describe('TripDetailPanel Info audit section', () => {
     renderPanel()
 
     expect(await screen.findByText(String(message))).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Custody' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Schedule & seal' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Route' })).toBeInTheDocument()
   })
 
@@ -139,7 +149,8 @@ describe('TripDetailPanel Info audit section', () => {
     await waitFor(() => expect(trigger).toHaveFocus())
   })
 
-  it('refreshes declarations without remounting Info or resetting the panel scroll, then focuses the new trigger', async () => {
+  it('refreshes police details without remounting Info or resetting the panel scroll, then returns focus to the trigger', async () => {
+    incidents([{ incident_id: 'i1', status: 'open', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary])
     vi.mocked(recordIncidentDeclaration).mockResolvedValue({
       declaration_id: 'declaration-new', exception_id: null, saps_station: 'Test SAPS', saps_cas_number: null,
       saps_officer: null, reported_to_saps_at: null, tracking_company_notified_at: null, insurer_notified_at: null,
@@ -154,14 +165,8 @@ describe('TripDetailPanel Info audit section', () => {
     }])
     renderPanel()
     await screen.findByText('No audit packs issued for this trip yet.')
-    const info = screen.getByRole('heading', { name: 'Custody' })
+    const info = screen.getByRole('heading', { name: 'Schedule & seal' })
     const surface = screen.getByRole('dialog', { name: 'Trip information' })
-    const audit = screen.getByRole('region', { name: 'Audit packs' })
-    vi.spyOn(audit, 'getBoundingClientRect').mockReturnValue({
-      top: 300, left: 0, bottom: 1100, right: 400, height: 800, width: 400, x: 0, y: 300, toJSON: () => ({}),
-    })
-    // Native browsers clamp scrollTop if a keyed reload temporarily shortens the list.
-    vi.mocked(listAuditPacks).mockReturnValue(new Promise(() => {}))
     surface.scrollTop = 240
     const oldTrigger = screen.getByRole('button', { name: 'Record police details' })
     await userEvent.click(oldTrigger)
@@ -170,12 +175,12 @@ describe('TripDetailPanel Info audit section', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save details' }))
 
     expect(await screen.findByText('CAS TEST/2026')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Custody' })).toBe(info)
-    expect(audit).toHaveStyle({ minHeight: '800px' })
-    expect(screen.getByText('Loading audit packs…')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Schedule & seal' })).toBe(info)
     expect(surface.scrollTop).toBe(240)
-    expect(oldTrigger).not.toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Record police details' })).toHaveFocus())
+    // Police details are read again in place: the audit list is not reloaded and the button is the same element.
+    expect(listAuditPacks).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Record police details' })).toBe(oldTrigger)
+    await waitFor(() => expect(oldTrigger).toHaveFocus())
   })
 })
 
@@ -265,7 +270,7 @@ describe('TripDetailPanel exceptions tab', () => {
       <ToastProvider>
         <TripDetailPanel panel="exceptions" trip={{ ...activeTrip, exceptions: [withPhoto] }} precincts={mockPrecincts} filter="all"
           artifactsById={new Map([['art-panel', photo]])} overlayOpen onSelect={vi.fn()} onClose={vi.fn()} onFilter={vi.fn()}
-          onChanged={vi.fn()} returnTo="/trips/trip-1" {...extra} />
+          onChanged={vi.fn()} returnTo="/trips/trip-1" incidents={incidentState} {...extra} />
       </ToastProvider>,
     )
   }
@@ -292,7 +297,7 @@ describe('TripDetailPanel exceptions tab', () => {
       <ToastProvider>
         <TripDetailPanel panel={panel} trip={{ ...activeTrip, exceptions: [withPhoto] }} precincts={mockPrecincts} filter="all"
           artifactsById={new Map([['art-panel', photo]])} overlayOpen onSelect={vi.fn()} onClose={vi.fn()} onFilter={vi.fn()}
-          onChanged={vi.fn()} returnTo="/trips/trip-1" />
+          onChanged={vi.fn()} returnTo="/trips/trip-1" incidents={incidentState} />
       </ToastProvider>,
     )
 
@@ -348,5 +353,242 @@ describe('TripDetailPanel tab help', () => {
     expect(anchor.className).toContain('-top-[22px]')
     // The 14px glyph sits 5px inside its 24px button, so the button overhangs the padding by that much to put the glyph on the content's right edge.
     expect(anchor.className).toContain('-right-[5px]')
+  })
+})
+
+describe('TripDetailPanel Info sections', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('shows five collapsible sections in order, then Trip actions on a live trip', async () => {
+    renderPanel(vi.fn(), activeTrip)
+    await screen.findByText('No audit packs issued for this trip yet.')
+
+    const titles = ['Schedule & seal', 'Route', 'Driver & custody', 'Incidents', 'Audit packs'].map(name => screen.getByRole('heading', { name }))
+    titles.slice(1).forEach((heading, i) => expect(titles[i]!.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy())
+    const actions = screen.getByRole('heading', { name: 'Trip actions' })
+    expect(titles.at(-1)!.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Custody' })).not.toBeInTheDocument()
+  })
+
+  it('puts a small Cancel trip button, not a full-width one, at the bottom', async () => {
+    renderPanel(vi.fn(), activeTrip)
+
+    const cancel = screen.getByRole('button', { name: 'Cancel trip' })
+
+    expect(cancel).not.toHaveClass('w-full')
+    expect(screen.getByRole('region', { name: 'Trip actions' })).toContainElement(cancel)
+  })
+
+  it.each(['closed', 'cancelled'] as const)('has no Trip actions on a %s trip', status => {
+    renderPanel(vi.fn(), { ...trip, status })
+
+    expect(screen.queryByRole('heading', { name: 'Trip actions' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Cancel trip' })).not.toBeInTheDocument()
+  })
+
+  it('opens only Schedule & seal when nothing needs attention, each section with a summary line', () => {
+    renderPanel(vi.fn(), { ...activeTrip, pending_driver_substitution: null })
+
+    const open = (name: string) => (screen.getByRole('heading', { name }).closest('details') as HTMLDetailsElement).open
+    expect(open('Schedule & seal')).toBe(true)
+    for (const name of ['Route', 'Driver & custody', 'Incidents', 'Audit packs']) expect(open(name)).toBe(false)
+    expect(screen.getByRole('heading', { name: 'Incidents' }).closest('details')).toHaveTextContent('None')
+    expect(screen.getByRole('heading', { name: 'Audit packs' }).closest('details')).toHaveTextContent('For insurers, clients and SAPS')
+    // Grey text, not a chip, while all is quiet.
+    expect(within(screen.getByRole('heading', { name: 'Incidents' }).closest('details')!).queryByText('None')!.className).not.toMatch(/bg-/)
+  })
+
+  it.each(['open', 'investigating'] as const)('opens Incidents and puts a chip in the summary while an incident is %s', status => {
+    incidents([{ incident_id: 'i1', status, reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary])
+    renderPanel()
+
+    const section = screen.getByRole('heading', { name: 'Incidents' }).closest('details') as HTMLDetailsElement
+    expect(section.open).toBe(true)
+    // The chip wears the incident's own status colour (amber for open, blue for investigating), never a third.
+    expect(within(section).getByText(`1 ${status}`).className).toMatch(status === 'open' ? /bg-warn-c/ : /bg-sec-c/)
+  })
+
+  it('leaves Incidents folded, with plain text, when every incident is closed', () => {
+    incidents([{ incident_id: 'i1', status: 'closed', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary])
+    renderPanel()
+
+    const section = screen.getByRole('heading', { name: 'Incidents' }).closest('details') as HTMLDetailsElement
+    expect(section.open).toBe(false)
+    expect(within(section).getByText('1 closed').className).not.toMatch(/bg-/)
+  })
+
+  it('shows the chip even when the reader folded Incidents away on another trip', () => {
+    localStorage.setItem('fp.tripInfo.section.incidents', '0')
+    incidents([{ incident_id: 'i1', status: 'investigating', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary])
+    renderPanel()
+
+    const section = screen.getByRole('heading', { name: 'Incidents' }).closest('details') as HTMLDetailsElement
+    expect(section.open).toBe(false)
+    expect(within(section).getByText('1 investigating').className).toMatch(/bg-/)
+  })
+
+  it('opens Driver & custody and chips "Transfer pending" while a transfer is pending', () => {
+    const pending = { id: 'p', state: 'pending', outgoing: { full_name: 'A' }, incoming: { full_name: 'B' } } as unknown as NonNullable<typeof activeTrip.pending_driver_substitution>
+    renderPanel(vi.fn(), { ...activeTrip, pending_driver_substitution: pending })
+
+    const custody = screen.getByRole('heading', { name: 'Driver & custody' }).closest('details') as HTMLDetailsElement
+    expect(custody.open).toBe(true)
+    expect(within(custody).getByText('Transfer pending', { selector: 'span' }).className).toMatch(/bg-/)
+  })
+
+  it('keeps police details under Incidents, not under Audit packs', async () => {
+    incidents([{ incident_id: 'i1', status: 'open', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary])
+    renderPanel()
+
+    const police = await screen.findByRole('region', { name: 'Police and notifications' })
+
+    expect(screen.getByRole('heading', { name: 'Incidents' }).closest('details')).toContainElement(police)
+    expect(screen.getByRole('heading', { name: 'Audit packs' }).closest('details')).not.toContainElement(police)
+  })
+
+  it('remembers a section the dispatcher opens across a remount', async () => {
+    const first = renderPanel()
+    await userEvent.click(screen.getByRole('heading', { name: 'Route' }))
+    expect((screen.getByRole('heading', { name: 'Route' }).closest('details') as HTMLDetailsElement).open).toBe(true)
+    first.unmount()
+
+    renderPanel()
+
+    expect((screen.getByRole('heading', { name: 'Route' }).closest('details') as HTMLDetailsElement).open).toBe(true)
+  })
+
+  it('opens Audit packs for a legacy audit landing, however it was left', () => {
+    localStorage.setItem('fp.tripInfo.section.audit', '0')
+
+    renderPanel(vi.fn(), trip, { scrollToAuditPacks: true })
+
+    expect((screen.getByRole('heading', { name: 'Audit packs' }).closest('details') as HTMLDetailsElement).open).toBe(true)
+  })
+
+  it('lets the reader fold Audit packs away after a legacy landing, with no space left behind', async () => {
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(500)
+    try {
+      renderPanel(vi.fn(), trip, { scrollToAuditPacks: true })
+      const section = screen.getByRole('region', { name: 'Audit packs' })
+      const details = section.querySelector('details') as HTMLDetailsElement
+      expect(details.open).toBe(true)
+
+      // The space reserved so the scroll can land is released once it has.
+      await waitFor(() => expect(section.style.minHeight).toBe(''))
+      await userEvent.click(screen.getByRole('heading', { name: 'Audit packs' }))
+
+      expect(details.open).toBe(false)
+      expect(section.style.minHeight).toBe('')
+    } finally { height.mockRestore() }
+  })
+
+  it('does not force Audit packs open again after the reader folded it, while the landing URL stays', async () => {
+    const { rerender, onChanged } = renderPanel(vi.fn(), trip, { scrollToAuditPacks: true })
+    await userEvent.click(screen.getByRole('heading', { name: 'Audit packs' }))
+    const details = screen.getByRole('region', { name: 'Audit packs' }).querySelector('details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+
+    rerender(<ToastProvider><TripDetailPanel panel="information" trip={trip} precincts={mockPrecincts} filter="needs_review" artifactsById={NO_ARTIFACTS}
+      overlayOpen scrollToAuditPacks onSelect={vi.fn()} onClose={vi.fn()} onFilter={vi.fn()} onChanged={onChanged} returnTo="/trips/trip-1" incidents={incidentState} /></ToastProvider>)
+
+    expect(details.open).toBe(false)
+  })
+
+  it('hands a completed handover row to the page, which owns the evidence modal', async () => {
+    const { substitutionFixturePack } = await import('@shared/lib/mocks/driver-substitutions')
+    const onOpenTransfer = vi.fn()
+    renderPanel(vi.fn(), { ...activeTrip, pending_driver_substitution: null, driver_substitutions: [substitutionFixturePack.normalCompleted] }, { onOpenTransfer })
+
+    await userEvent.click(screen.getByRole('button', { name: /View evidence/ }))
+
+    expect(onOpenTransfer).toHaveBeenCalledExactlyOnceWith(substitutionFixturePack.normalCompleted.completed_substitution_id)
+  })
+
+  it('shows no police block on a trip with no incident', async () => {
+    renderPanel()
+    await screen.findByText('No audit packs issued for this trip yet.')
+
+    expect(screen.queryByRole('region', { name: 'Police and notifications' })).not.toBeInTheDocument()
+  })
+
+  describe('police details and the fact sheet', () => {
+    const withSeverity = (severity: TripException['severity'] | null) => ({
+      ...activeTrip,
+      exceptions: severity ? [{ ...activeTrip.exceptions[0]!, severity }] : [],
+    })
+    const OPEN_INCIDENT = { incident_id: 'i1', status: 'open', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary
+
+    it('shows the section and the fact sheet for a critical exception with no incident record', async () => {
+      renderPanel(vi.fn(), withSeverity('critical'))
+
+      expect(await screen.findByRole('region', { name: 'Police and notifications' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Incident fact sheet' })).toBeInTheDocument()
+    })
+
+    it('offers the fact sheet for a recorded hijacking without a critical exception', async () => {
+      // A hijacking reported by phone never raised a panic; the server still builds its sheet.
+      incidents([OPEN_INCIDENT])
+      renderPanel(vi.fn(), withSeverity('warning'))
+
+      expect(await screen.findByRole('button', { name: 'Incident fact sheet' })).toBeInTheDocument()
+    })
+
+    it('hides the fact sheet for a shortage record without a critical exception', async () => {
+      incidents([{ ...OPEN_INCIDENT, incident_type: 'parcel_shortage' } as IncidentSummary])
+      renderPanel(vi.fn(), withSeverity('warning'))
+
+      expect(await screen.findByRole('button', { name: 'Record police details' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Incident fact sheet' })).not.toBeInTheDocument()
+    })
+
+    it('hides the whole section with neither an incident nor a critical exception', async () => {
+      renderPanel(vi.fn(), withSeverity('warning'))
+      await screen.findByText('No audit packs issued for this trip yet.')
+
+      expect(screen.queryByRole('region', { name: 'Police and notifications' })).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe('TripDetailPanel incidents summary chip', () => {
+  const incidentWith = (status: string) => ({ incident_id: 'i1', status, reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary)
+
+  it.each([['investigating', 'bg-sec-c'], ['open', 'bg-warn-c']])('colours_the_%s_summary_like_its_own_status_chip', (status, fill) => {
+    window.localStorage.setItem('fp.tripInfo.section.incidents', '0')
+    incidents([incidentWith(status)])
+    try {
+      renderPanel(vi.fn(), activeTrip)
+
+      expect(screen.getByText(new RegExp(`1 ${status}`))).toHaveClass(fill)
+    } finally { window.localStorage.removeItem('fp.tripInfo.section.incidents') }
+  })
+})
+
+describe('TripDetailPanel incident focus', () => {
+  const CLOSED_INCIDENT = { incident_id: 'i1', status: 'closed', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary
+
+  it('opens_the_folded_incidents_section_and_lands_on_the_incident_the_timeline_named', async () => {
+    window.localStorage.setItem('fp.tripInfo.section.incidents', '0')
+    incidents([CLOSED_INCIDENT])
+    try {
+      renderPanel(vi.fn(), activeTrip, { focusIncident: { incidentId: 'i1', requestId: 1 } })
+
+      const row = await waitFor(() => {
+        const found = document.querySelector<HTMLElement>('[data-incident-row="i1"]')
+        expect(found).not.toBeNull()
+        expect(found).toHaveFocus()
+        return found!
+      })
+      expect(row.closest('details')).toHaveAttribute('open')
+      expect(row).toHaveClass('ring-2')
+      expect(within(row).getByRole('link', { name: 'View incident INC1' })).toBeInTheDocument()
+    } finally { window.localStorage.removeItem('fp.tripInfo.section.incidents') }
+  })
+
+  it('does_nothing_when_no_incident_was_asked_for', () => {
+    incidents([CLOSED_INCIDENT])
+    renderPanel(vi.fn(), activeTrip)
+
+    expect(document.querySelector('[data-incident-row="i1"]')).not.toHaveFocus()
   })
 })

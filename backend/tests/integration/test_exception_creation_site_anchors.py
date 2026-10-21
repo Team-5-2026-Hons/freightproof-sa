@@ -47,6 +47,7 @@ HOOKED_SITES = {
     "orchestration/phases/findings.py": 2,
     "orchestration/phases/override.py": 1,   # the authored note; its seal warning is below
     "orchestration/substitutions/seal_comparison.py": 1,
+    "orchestration/substitutions/transfer_review.py": 1,
     "orchestration/trips/administration.py": 1,
 }
 # Built by the driver-facing creation service, which anchors via prepare_exception_anchors.

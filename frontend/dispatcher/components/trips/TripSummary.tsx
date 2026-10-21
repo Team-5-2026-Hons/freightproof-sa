@@ -66,17 +66,26 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
       </div>
       {/* `display: none` through the class, not the `hidden` attribute: the grid utility would override the attribute. */}
       <div className={compact ? 'hidden' : 'mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4'}>
-        <SummaryCell label="Driver" action={!compact && transferAction ? <TransferAction action={transferAction} /> : undefined}>
+        <SummaryCell label="Driver">
           {driver
             ? <>
-                <button type="button" onClick={() => setDriverOpen(true)} className={`${RECORD_AFFORDANCE} max-w-full truncate`} title={facts.driverName}>
-                  {facts.driverName}<Ic n="chev" s={12} aria-hidden />
-                </button>
+                {/* The action sits beside the name, not in the label row: it acts on this driver. */}
+                {/* Wraps: the name keeps its full width and the button drops to its own line when the
+                    cell is too narrow, rather than squeezing the name. */}
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <button type="button" onClick={() => setDriverOpen(true)} className={`${RECORD_AFFORDANCE} min-w-0 max-w-full truncate`} title={facts.driverName}>
+                    {facts.driverName}<Ic n="chev" s={12} aria-hidden />
+                  </button>
+                  {!compact && transferAction && <TransferAction action={transferAction} />}
+                </div>
                 {/* Always visible: reaching the driver is the most common reason to open
                     this modal, so the number should not need a click of its own. */}
                 <a href={`tel:${driver.phone_number}`} className="block text-xs tabular-nums text-on-surf-v hover:text-on-surf">{driver.phone_number}</a>
               </>
-            : <p className="mt-1 break-words font-semibold text-on-surf">{facts.driverName}</p>}
+            : <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="mt-1 min-w-0 max-w-full break-words font-semibold text-on-surf">{facts.driverName}</p>
+                {!compact && transferAction && <TransferAction action={transferAction} />}
+              </div>}
         </SummaryCell>
         <SummaryCell label="Vehicle">
           {facts.vehicle
@@ -115,14 +124,14 @@ export function TripSummary({ facts, precincts, driver, returnTo, onBack, onPane
 }
 
 function TransferAction({ action }: { action: NonNullable<Props['transferAction']> }): React.JSX.Element {
-  return <button type="button" onClick={action.onClick} aria-label={action.label} title={action.label}
-    className="inline-flex shrink-0 items-center gap-1 rounded text-xs text-sec hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
-    <ArrowRightLeft size={12} aria-hidden /><span className="hidden sm:inline">{action.label}</span>
-  </button>
+  return <Button type="button" variant="secondary" size="sm" onClick={action.onClick} aria-label={action.label} title={action.label}
+    iconLeft={<ArrowRightLeft size={12} aria-hidden />} className="shrink-0">
+    <span className="hidden sm:inline">{action.label}</span>
+  </Button>
 }
 
-function SummaryCell({ label, children, action }: { label: string; children: React.ReactNode; action?: React.ReactNode }) {
-  return <div className="min-w-0 border-l-2 border-outline-v/30 pl-3"><div className="flex items-center justify-between gap-1"><p className="text-xs text-on-surf-v">{label}</p>{action}</div>{children}</div>
+function SummaryCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0 border-l-2 border-outline-v/30 pl-3"><p className="text-xs text-on-surf-v">{label}</p>{children}</div>
 }
 
 /** Registrations alone do not say which is the truck and which is towed. */

@@ -2,8 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { X, Shield, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
+import { LogoMark } from '@/components/landing/Logo'
 import { ProfileMenu } from '@/components/layout/ProfileMenu'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
@@ -53,7 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
       // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
       // route too, so the entry stays lit while a dispatcher works one exception.
       { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
-      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'shield', activePatterns: ['/incidents'] },
+      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'siren', activePatterns: ['/incidents'] },
     ],
   },
   {
@@ -257,9 +258,10 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
       {/* Header — logo mark + wordmark, with the collapse control on the right */}
       {/* px-3 lines the logo and collapse control up with the Create Trip button's edges below. */}
       <div className={cn('flex items-center gap-3 h-16', collapsed ? 'justify-center' : 'px-3')}>
-        {/* The tile needs its own fill: it sits on the same surface as the sidebar. */}
-        <div className="w-9 h-9 rounded-lg bg-white/10 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-          <Shield className="w-4 h-4 text-white" />
+        {/* A paper tile, not a translucent one: the mark is an ink shield, which would
+            vanish on the dark sidebar without a light surface behind it. */}
+        <div className="w-9 h-9 rounded-lg bg-surf flex items-center justify-center shrink-0">
+          <LogoMark size={22} />
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">

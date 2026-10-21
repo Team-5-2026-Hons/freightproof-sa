@@ -5,9 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  // `brand`: the logo blue (sec) as a solid fill. Login only, where the brand meets the
-  // dispatcher before the app's own ink primary takes over (Tim, 21 Oct 2026).
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'brand'
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'success'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
   full?: boolean
@@ -57,7 +55,6 @@ export function Button({
         variant === 'ghost'     && 'bg-transparent text-sec',
         variant === 'danger'    && 'bg-err text-white',
         variant === 'success'   && 'bg-ok text-white',
-        variant === 'brand'     && 'bg-sec text-sec-on',
         sizeClasses[size],
         full && 'w-full',
         className,

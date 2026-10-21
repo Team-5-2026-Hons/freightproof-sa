@@ -14,7 +14,7 @@ import { reportIncident } from '@/lib/api/incidents'
 import { useManifest } from '@/lib/hooks/useManifest'
 import { useToast } from '@/lib/hooks/useToast'
 import { sastInputToIso } from '@/lib/format/sast'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtExceptionType } from '@/lib/format/exception'
 import {
   CONFIDENCE_HELP,
   CONFIDENCE_LABELS,
@@ -184,7 +184,7 @@ function ReportIncidentForm({ trip, takenExceptionIds, prefill, onClose, onRepor
             {groupable.map(e => (
               <li key={e.id}><label className="flex items-start gap-2 py-1">
                 <input type="checkbox" className="mt-1" checked={exceptionIds.includes(e.id)} onChange={() => setExceptionIds(ids => toggle(ids, e.id))} />
-                <span><strong className="font-semibold">{fmtExceptionType(e.exception_type)}</strong> <span className="text-on-surf-v">{e.description}</span></span>
+                <span><strong className="font-semibold">{fmtExceptionType(e.exception_type)}</strong> <span className="text-on-surf-v">{exceptionDescriptionText(e)}</span></span>
               </label></li>
             ))}
           </ul>

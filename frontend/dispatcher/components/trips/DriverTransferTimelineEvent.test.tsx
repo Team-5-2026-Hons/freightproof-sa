@@ -30,6 +30,24 @@ it('keeps_legacy_unknown_facts_and_equal_times_explicit', () => {
   render(<DriverTransferTimelineEvent event={event} onOpen={vi.fn()} sameRecordedTime />)
 
   expect(screen.getByText('Same recorded time')).toBeInTheDocument()
-  expect(screen.getByText('Completion mode not recorded · Anchor: not recorded')).toBeInTheDocument()
-  expect(screen.getByText(/Effective/).getAttribute('dateTime')).toBe(event.effective_at)
+  expect(screen.getByText('Not recorded · Not recorded')).toBeInTheDocument()
+  // The time sits top right, in the phase cards' own clock, not in a line of its own.
+  const clock = screen.getByLabelText(/^Effective /)
+  expect(clock.tagName).toBe('TIME')
+  expect(clock.getAttribute('dateTime')).toBe(event.effective_at)
+})
+
+it('writes_the_mode_and_seal_in_plain_english', () => {
+  render(<DriverTransferTimelineEvent event={{ ...event, completion_mode: 'dispatcher_attested', anchor_status: 'anchored' }} onOpen={vi.fn()} />)
+
+  expect(screen.getByText('Completed by dispatcher · Sealed on Hedera')).toBeInTheDocument()
+  expect(screen.queryByText(/dispatcher_attested|dispatcher attested|Anchor:/)).toBeNull()
+})
+
+it('tells_a_legacy_two_confirmation_transfer_from_an_incoming_only_acceptance', () => {
+  const { rerender } = render(<DriverTransferTimelineEvent event={{ ...event, completion_mode: 'normal', anchor_status: 'anchored', request_format: 'planned_v1' }} onOpen={vi.fn()} />)
+  expect(screen.getByText('Both drivers confirmed · Sealed on Hedera')).toBeInTheDocument()
+
+  rerender(<DriverTransferTimelineEvent event={{ ...event, completion_mode: 'normal', anchor_status: 'anchored', request_format: 'immediate_v2' }} onOpen={vi.fn()} />)
+  expect(screen.getByText('Driver accepted · Sealed on Hedera')).toBeInTheDocument()
 })
