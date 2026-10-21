@@ -3,11 +3,14 @@
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { peekTransition, resetTransition, type TransitionDirection } from '@/lib/navigation/transition-direction'
+import { markTransition, peekTransition, resetTransition, type TransitionDirection } from '@/lib/navigation/transition-direction'
 import { recordScreen } from '@/lib/navigation/back-stack'
 import { useEdgeSwipeBack } from '@/lib/navigation/useEdgeSwipeBack'
+import { consumeColdStart, forgetScreen, isResumableRoute, rememberScreen, takeResumeScreen } from '@/lib/navigation/resume'
+import { currentActorId } from '@/lib/session/custody-context'
+import { ROUTES } from '@/lib/constants/routes'
 
 const ENTER_CLASS: Record<TransitionDirection, string | null> = {
   forward: 'animate-push-in',
@@ -18,6 +21,7 @@ const ENTER_CLASS: Record<TransitionDirection, string | null> = {
 // One instance per screen: keyed on the pathname by the template below, so it mounts —
 // and reads the pending direction — once for every navigation.
 function ScreenFrame({ pathname, children }: { pathname: string; children: ReactNode }) {
+  const router = useRouter()
   // Read once, as this screen mounts: the direction belongs to the navigation that
   // brought us here, not to anything that happens while we're on screen. Cleared when the
   // slide finishes, so the classes below exist only for those 320ms.
@@ -30,6 +34,23 @@ function ScreenFrame({ pathname, children }: { pathname: string; children: React
     // when the URL already shows this screen, so a late history update can't mislabel it.
     const url = window.location.pathname === pathname ? pathname + window.location.search : pathname
     recordScreen(pathname, url, direction)
+
+    // Android recreates the WebView after the scanner or camera whenever it needs the
+    // memory, and the app then starts on Home with the driver's step gone. If this is the
+    // first screen of the session and it is Home, put them back on the screen they were
+    // mid-task on; the step's own ledger guard still redirects if the trip has moved on.
+    if (consumeColdStart() && pathname === ROUTES.home) {
+      const resumeTo = takeResumeScreen(currentActorId())
+      if (resumeTo !== null) {
+        markTransition('none')
+        router.replace(resumeTo)
+        return
+      }
+    }
+    if (isResumableRoute(pathname)) rememberScreen(url, currentActorId())
+    // A tab root is a deliberate exit from the workflow. Anything else (trip pages, lists)
+    // leaves the record alone: a driver glancing at the trip page mid-step is still mid-step.
+    else if (direction === 'none') forgetScreen()
     // Mount-only: direction is this screen's arrival, read once (see useState above).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

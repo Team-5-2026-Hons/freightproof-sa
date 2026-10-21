@@ -1,7 +1,7 @@
 // frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
@@ -54,28 +54,17 @@ export function Linehaul({
   // swipes straight after the scan still submits the PDF; a stale build never clears it.
   const [pdfBuilding, setPdfBuilding] = useState(false)
 
-  // Upload starts the moment the scan exists, not when the driver swipes — the walk
-  // between the two is dead time otherwise. Same pattern as departure/CaptureSeal.tsx.
-  //
-  // This is now the ONLY capture of the linehaul document (as a scan, plus its PDF).
-  // departure's '3-waybill' step photographed the same sheet a second time and was removed
-  // (2026-08-10), so a failure here is no longer covered by a later duplicate — which is
-  // exactly why the data URL is kept as lib/api/phases.ts's submit-time fallback.
-  //
+  // The scan a PDF build has been started for, so the resume effect below never starts a
+  // second build for a capture handleCapture is already building.
+  const pdfStartedFor = useRef<string | null>(null)
+
   // The PDF is built from the very scan stored as linehaul_photo, and both go up under
   // their own roles; loading anchors both hashes (payload v3). A PDF that fails to build
   // is logged and dropped: the scan image is the evidence, the PDF the readable copy.
-  function handleCapture(dataUrl: string) {
+  function buildPdf(dataUrl: string, capturedAt: string) {
     latestCapture.current += 1
     const capture = latestCapture.current
-    const capturedAt = new Date().toISOString()
-    onUpdate({
-      linehaulPhotoDataUrl: dataUrl, linehaulPhotoArtifactId: null,
-      linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt,
-    })
-    void uploadNow(dataUrl, 'photo', capturedAt, 'linehaul_photo').then((artifactId) => {
-      if (artifactId !== null) onUpdate({ linehaulPhotoArtifactId: artifactId })
-    })
+    pdfStartedFor.current = dataUrl
     setPdfBuilding(true)
     void buildLinehaulPdf(dataUrl)
       .then(async (pdf): Promise<string | null> => {
@@ -94,6 +83,39 @@ export function Linehaul({
         console.warn('Linehaul PDF could not be built — submitting the scan alone', err)
       })
   }
+
+  // Upload starts the moment the scan exists, not when the driver swipes — the walk
+  // between the two is dead time otherwise. Same pattern as departure/CaptureSeal.tsx.
+  //
+  // This is now the ONLY capture of the linehaul document (as a scan, plus its PDF).
+  // departure's '3-waybill' step photographed the same sheet a second time and was removed
+  // (2026-08-10), so a failure here is no longer covered by a later duplicate — which is
+  // exactly why the data URL is kept as lib/api/phases.ts's submit-time fallback.
+  function handleCapture(dataUrl: string) {
+    const capturedAt = new Date().toISOString()
+    onUpdate({
+      linehaulPhotoDataUrl: dataUrl, linehaulPhotoArtifactId: null,
+      linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt,
+    })
+    void uploadNow(dataUrl, 'photo', capturedAt, 'linehaul_photo').then((artifactId) => {
+      if (artifactId !== null) onUpdate({ linehaulPhotoArtifactId: artifactId })
+    })
+    buildPdf(dataUrl, capturedAt)
+  }
+
+  // A scan whose PDF never landed: the app was killed between the scan and the build (the
+  // Android WebView does not survive the document scanner on a low-memory phone), or the
+  // build failed last time. The draft kept the scan, so the readable copy is rebuilt from
+  // it on return rather than the loading being submitted without one.
+  const photoDataUrl = draft.linehaulPhotoDataUrl
+  const pdfMissing = photoDataUrl !== null && !draft.linehaulPdfDataUrl && !draft.linehaulPdfArtifactId
+  const draftCapturedAt = draft.capturedAt
+  useEffect(() => {
+    if (!pdfMissing || photoDataUrl === null || pdfStartedFor.current === photoDataUrl) return
+    buildPdf(photoDataUrl, draftCapturedAt ?? new Date().toISOString())
+    // buildPdf closes over the latest onUpdate/uploadNow; only the scan identity decides a rebuild.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfMissing, photoDataUrl, draftCapturedAt])
 
   const hasPhoto = Boolean(draft.linehaulPhotoDataUrl)
 
