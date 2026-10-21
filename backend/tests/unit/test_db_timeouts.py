@@ -3,6 +3,7 @@
 import asyncio
 import socket
 from collections.abc import AsyncGenerator
+from importlib.metadata import version
 from unittest.mock import AsyncMock
 
 import pytest
@@ -37,6 +38,16 @@ TIMEOUT_FIELDS = (
 )
 SHORT_TIMEOUT = 0.05
 WATCHDOG = 2.0
+# requirements.txt's floor. Below it, closing a half-open connection can wait forever.
+MINIMUM_ASYNCPG = (0, 32)
+
+
+def test_installed_asyncpg_bounds_discarded_connection_close() -> None:
+    # The engine has no discard listener of its own (see create_db_engine), so an
+    # environment that still has an older asyncpg must be reinstalled, not silently used.
+    installed = tuple(int(part) for part in version("asyncpg").split(".")[:2])
+
+    assert installed >= MINIMUM_ASYNCPG, "Reinstall backend/requirements.txt: asyncpg 0.32+ is required"
 
 
 @pytest.mark.parametrize("field", TIMEOUT_FIELDS)
