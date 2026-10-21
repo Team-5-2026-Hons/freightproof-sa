@@ -454,7 +454,7 @@ def test_every_realtime_kind_names_a_change_not_a_loudness():
     assert {k.value for k in RealtimeKind} == {
         "trip_created", "phase_completed", "exception_raised", "exception_reviewed", "exception_claimed",
         "trip_closed", "evidence_uploaded", "driver_substitution_changed",
-        "late_driver_evidence_changed",
+        "late_driver_evidence_changed", "incident_changed",
     }
 
 

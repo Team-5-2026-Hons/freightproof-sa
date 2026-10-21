@@ -16,6 +16,7 @@ import { ExceptionDetailEvidence } from '@/components/exceptions/ExceptionDetail
 import { ExceptionHederaLinks } from '@/components/exceptions/ExceptionHederaLinks'
 import { ExceptionRef } from '@/components/domain/ExceptionRef'
 import { ExceptionDetailSkeleton } from '@/components/exceptions/ExceptionDetailSkeleton'
+import { ExceptionIncidentPanel } from '@/components/incidents/ExceptionIncidentPanel'
 import { GPS_MISMATCH_TRIGGER } from '@/components/domain/PositionDisagreement'
 import { ApiError, claimException, releaseException, reviewException } from '@/lib/api/client'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -311,9 +312,9 @@ export default function ExceptionDetailPage() {
             <Button variant="ghost" size="sm" className="ml-auto xl:hidden" onClick={() => assessmentHeading.current?.focus()}>Jump to assessment</Button>
           </div>
           {/* One grid so the assessment can span the full height of the left column. Stacked
-              (narrow) the DOM order is context, incident, assessment, evidence, so the task
+              (narrow) the DOM order is context, incident, investigation, assessment, evidence, so the task
               always comes before the long evidence; from xl it sits top-right beside all three. */}
-          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[auto_auto_1fr] xl:gap-x-6">
+          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-[auto_auto_auto_1fr] xl:gap-x-6">
           {/* Context facts sit on the page rather than in another bordered card, so the
               incident and the assessment are the two blocks that read as containers. */}
           <section aria-label="Trip context" className="xl:col-start-1 min-w-0">
@@ -337,9 +338,14 @@ export default function ExceptionDetailPage() {
             <p className="text-sm leading-relaxed text-on-surf break-words">{exception.description}</p>
             {exception.exception_type === BREAKDOWN_TYPE && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span className="text-xs text-on-surf-v">Vehicle</span><span>{fmtBreakdownVehicle(exception)}</span></div>}
           </section>
+          {/* Below the observation, before the assessment in narrow layouts: where its follow-up lives. */}
+          <div className="xl:col-start-1 min-w-0">
+            <ExceptionIncidentPanel exceptionId={exception.id} tripId={exception.trip_id} exceptionType={exception.exception_type}
+              description={exception.description} onNavigate={navigate} />
+          </div>
             {/* The one panel with a header strip, a firmer outline and a shadow: it is the task
                 the page exists for. The strip reuses SecHead's label treatment. */}
-            <section ref={assessmentPanel} className={`min-w-0 overflow-hidden rounded-md xl:col-start-2 xl:row-start-1 xl:row-span-3 border border-outline-v/60 bg-surf-lowest shadow-level-1 ${assessmentFits ? 'xl:sticky xl:top-4' : ''}`} aria-label="Assessment">
+            <section ref={assessmentPanel} className={`min-w-0 overflow-hidden rounded-md xl:col-start-2 xl:row-start-1 xl:row-span-4 border border-outline-v/60 bg-surf-lowest shadow-level-1 ${assessmentFits ? 'xl:sticky xl:top-4' : ''}`} aria-label="Assessment">
               <div className="border-b border-outline-v/30 bg-surf-low px-4 py-[10px] sm:px-6">
                 <h2 ref={assessmentHeading} tabIndex={-1} className="scroll-mt-4 text-[11px] font-[700] uppercase tracking-[0.1em] text-on-surf-v focus-visible:outline-sec">Assessment</h2>
               </div>

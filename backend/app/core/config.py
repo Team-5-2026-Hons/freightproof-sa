@@ -126,6 +126,12 @@ class Settings(BaseSettings):
     # and recovery keep working when it is off.
     DRIVER_SUBSTITUTIONS_ENABLED: bool = False
 
+    # Gate for dispatchers attaching documents (a SAPS case slip, a client letter) to an
+    # incident. Off by default: it is a second write path into the evidence bucket, so an
+    # operator turns it on deliberately. When off, attaching is a 503 and the incident read
+    # says so, so the dispatcher hides the control; every other incident action still works.
+    INCIDENT_DOCUMENTS_ENABLED: bool = False
+
     # Sole gate for the dev panel: the demo deploy runs as production but still needs it.
     DEV_PANEL_ENABLED: bool = False
 
@@ -189,10 +195,10 @@ class Settings(BaseSettings):
         "http://localhost:3001",
     ]
 
-    @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", mode="before")
+    @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", "INCIDENT_DOCUMENTS_ENABLED", mode="before")
     @classmethod
     def _blank_substitutions_flag_is_false(cls, value: Any) -> Any:
-        # Field-local on purpose: .env.example ships this key empty, and a blank string would
+        # Field-local on purpose: .env.example ships these keys empty, and a blank string would
         # otherwise fail bool parsing at startup. Other boolean settings keep strict parsing.
         if isinstance(value, str) and not value.strip():
             return False

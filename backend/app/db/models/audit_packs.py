@@ -150,6 +150,11 @@ class IncidentDeclaration(Base):
     exception_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("exceptions.id"), nullable=True
     )
+    # The investigation this declaration belongs to. Nullable: declarations made before
+    # incidents existed stay trip-scoped, exactly as they were declared.
+    incident_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("incidents.id"), nullable=True
+    )
     saps_station: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     saps_cas_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     saps_officer: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)

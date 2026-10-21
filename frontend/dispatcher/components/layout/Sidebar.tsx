@@ -53,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
       // route too, so the entry stays lit while a dispatcher works one exception.
       { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
+      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'shield', activePatterns: ['/incidents'] },
     ],
   },
   {

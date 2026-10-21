@@ -41,6 +41,8 @@ from app.orchestration.audit_packs.custody import (
 )
 from app.orchestration.audit_packs.anchor_tiers import ExceptionAnchors, assess_exception_anchors
 from app.orchestration.audit_packs.incident_declarations import load_declarations
+from app.orchestration.incidents.manifest import SCOPE_REDACTION as INVESTIGATION_SCOPE_REDACTION
+from app.orchestration.incidents.manifest import load_investigations
 from app.orchestration.evidence_anchors.reads import load_photos_by_exception
 from app.orchestration.audit_packs.analysis import (
     derive_observations,
@@ -857,6 +859,14 @@ async def build_audit_manifest(
         if d.exception_id is None or d.exception_id in included_exception_ids
     ]
 
+    consignment_records = _consignment_records(graph)
+    investigations, investigations_cut = await load_investigations(
+        db, trip_id=trip.id, visible_consignment_ids={c.consignment_id for c in consignment_records},
+        included_exception_ids=included_exception_ids, scoped=options.scope_consignment_id is not None,
+    )
+    if investigations_cut:
+        redactions.append(INVESTIGATION_SCOPE_REDACTION)
+
     manifest = AuditPackManifest(
         generated_at=generated_at,
         options=options,
@@ -867,7 +877,7 @@ async def build_audit_manifest(
             *(_vehicle_record(t, "trailer", trip_date) for t in graph.trailers),
         ],
         driver=_driver_record(graph, include_full_id=options.include_full_driver_id, trip_date=trip_date),
-        consignments=_consignment_records(graph),
+        consignments=consignment_records,
         phases=phase_records,
         checkpoints=checkpoint_records,
         exceptions=exception_records,
@@ -877,8 +887,9 @@ async def build_audit_manifest(
         anchored_records=[_anchored_record(r) for r in graph.receipts],
         # From every fix, trail included or not: the last known position is the one
         # location fact a claim form and a SAPS docket cannot do without.
-        incident=summarise_incident(exception_records, fixes=all_fixes),
+        incident=summarise_incident(exception_records, fixes=all_fixes, investigations=investigations),
         declarations=declarations,
+        investigations=investigations,
         late_evidence=late_evidence_records(graph.custody, graph.drivers),
         observations=[],
         redactions=redactions,
