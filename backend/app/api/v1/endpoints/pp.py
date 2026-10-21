@@ -11,6 +11,7 @@ from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import WaybillNotFoundError
 from app.core.limits import PP_LOOKUP
 from app.core.rate_limit import rate_limit
+from app.db.cleanup import rollback_after_error
 from app.db.session import get_db
 from app.orchestration.consignments import sync as consignment_service
 from app.orchestration.consignments import waybill_lookup as pp_lookup_service
@@ -70,7 +71,8 @@ async def get_waybill_endpoint(
         logger.warning("Already-assigned check failed for waybill %s: %s", waybill_number, exc)
         # get_db() commits on a normal return; a failed SELECT leaves the session's
         # transaction unusable until rolled back, so this must happen before returning.
-        await db.rollback()
+        if not await rollback_after_error(db):
+            raise
         summary.already_assigned_to_trip = None
 
     return summary

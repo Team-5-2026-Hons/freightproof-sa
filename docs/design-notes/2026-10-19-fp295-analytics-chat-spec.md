@@ -895,6 +895,43 @@ recorded on 19 Oct; trips added since will move them) and fill in this table and
   `check_structure` currently fail only in teammates' files from the dev merge (`phase_payloads.py`, `advance_*.py`,
   `trips/listing.py`, `schemas/trips.py`, `test_precinct_polygon_assessment.py`, `test_fp290_incident_chain.py`,
   `test_phase_schemas.py`); none is an FP-295 file.
+- **B43 (Tom, 21 Oct, after the merge to dev): the chat gets the page's own explanation of every figure.** Tom asked
+  "Are there any planned or live trips for today?". The figures were right (4 live trips, 1 critical problem waiting
+  6 days 13 hours, 0 closed trips today: checked against the database), but the chat said "the Analytics page does
+  not track upcoming planned trips". Wrong: the Live trips tile counts trips that are **created, underway or on hold**
+  (the tile's own sub-line), and 2 of the 4 were created trips that hadn't departed. Root cause, a class: the model got
+  each tab's numbers but never the page's lines explaining them, so it guessed. An audit found 12 such gaps; in 3 the
+  tool description said the opposite of the page (live trips; cancellations are dated when cancelled, not by
+  departure; busy patterns count trips of any status, while the shared scope line said "closed trips only").
+  Fix:
+  1. New `orchestration/analytics_chat/definitions.py`: for each tool, the page's own lines (every "Source", tab
+     note, chart note, tile sub-line and caption, and the page-level data note), **word for word** from
+     `frontend/dispatcher/components/analytics/fleet/copy.ts` and `costCopy.ts`. `run_tool` puts them first in every
+     result as `about`, so they arrive only with the tab that ran (≈150–450 extra tokens per tool result; about
+     +$0.001–0.003 a question on gemini-3.8-flash, against ≈$0.011 before).
+  2. The shared scope line now says "unless the result's `about` lines say otherwise", so it no longer contradicts
+     the cancellations, busy-patterns and review charts. The `right_now` description says live trips include planned
+     trips not yet departed, gives the unused-vehicle window (30 days) and the last expiry band (180 days), and says
+     there is no trip-by-trip detail: the Live trips tile opens the Dispatcher Dashboard, whose Active Trips list shows
+     each trip (the chat had pointed to a made-up "live operations view").
+  3. Instruction rule: "Each result's `about` block is what the page itself says each chart or tile counts … never
+     contradict them … Never describe what a figure covers from general knowledge."
+  4. **Drift guard** `tests/unit/test_analytics_chat_definitions.py` reads the two copy files: every line the chat is
+     given must still be on the page, and every explanatory line on the page (44 found) must be given to the chat or
+     listed as left out with a reason (4: the general scope rule, the incident map's source, and two how-to-read-the-
+     drawing notes). Checked by hand that a reworded line and a dropped line each fail it. A teammate who changes a
+     page explanation therefore gets a failing backend test until `definitions.py` matches.
+  +9 tests (6 new, 3 updated for `about`). Backend **4118 pass**; ruff, mypy, check_structure, lint-imports (17 kept),
+  import cycles (311) all clean. No schema, API or frontend change; no snapshot change. Not re-evaluated (costs money).
+- **B44 (Tom, 21 Oct, readability): answers are shown as paragraphs and lists, with no em dashes.** The panel used to show
+  an answer as one block of text, so a model's "- " list lines appeared as plain hyphens. Now `answerFormat.ts` reads the
+  answer's shape (blank lines, "- " / "* " / "•" and "1." / "1)" lines, `**bold**`) and the panel renders real paragraphs and
+  lists; every piece is still React text, never HTML. The instructions ask for "- " list lines and **no em dashes**, and
+  the rule is kept by code too (`punctuation.py`, applied in `service._final` before any check): an em dash between two
+  numbers becomes the range dash ("1–15"), one at a line's start a list dash, any other a comma. Also (UI only): "Based
+  on" lines are small chips, the waiting line is three dots pulsing in turn (still under reduced motion), the header has a
+  full-strength line under it, and a new answer is scrolled to its start rather than its end, within the conversation only.
+  +10 backend tests (punctuation, service, prompt), +11 frontend. Backend **4128 pass**, dispatcher **3012 pass**.
 - **Seen in Stage 1:** a test hook that runs the unit suite at the end of a turn can overlap a full pytest run and break
   both (shared test DB, rule 9). Stage 1's own full run was unaffected and the unit suite passes when run alone.
 

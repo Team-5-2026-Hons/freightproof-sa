@@ -10,7 +10,12 @@ import type {
   SubstitutionSealCondition,
   VehicleRef,
 } from '@shared/lib/types/driver-substitution'
-import { useSubstitutionCapture, type CaptureSendOutcome } from '@/lib/hooks/useSubstitutionCapture'
+import {
+  sealExpectation,
+  useSubstitutionCapture,
+  type CaptureSendOutcome,
+  type SealExpectation,
+} from '@/lib/hooks/useSubstitutionCapture'
 import { useDriverSubstitutions } from '@/lib/hooks/useDriverSubstitutions'
 import { TripContext } from '@/lib/context/TripContext'
 import { tripDetailHref } from '@/lib/navigation/trip-href'
@@ -36,18 +41,40 @@ export interface DriverSubstitutionFlowProps {
   actorId: string
 }
 
-const CONDITION_OPTIONS: ReadonlyArray<{ value: SubstitutionSealCondition; label: string }> = [
-  { value: 'intact', label: 'Intact' },
-  { value: 'damaged', label: 'Damaged' },
-  { value: 'missing', label: 'Missing' },
-  { value: 'not_applicable', label: 'No seal (empty leg)' },
-]
+// "Not applicable" is the same wire answer whatever the reason, but the words must match
+// what the ledger says: before departure there is no seal YET; after it, only an empty leg
+// has none. Calling a pre-departure takeover an "empty leg" is wrong on a loaded trip.
+function notApplicableLabel(expectation: SealExpectation): string {
+  return expectation === 'none-yet' || expectation === 'possible' ? 'No seal yet' : 'No seal (empty leg)'
+}
 
+function conditionOptions(expectation: SealExpectation): ReadonlyArray<{ value: SubstitutionSealCondition; label: string }> {
+  return [
+    { value: 'intact', label: 'Intact' },
+    { value: 'damaged', label: 'Damaged' },
+    { value: 'missing', label: 'Missing' },
+    { value: 'not_applicable', label: notApplicableLabel(expectation) },
+  ]
+}
+
+// A recorded declaration always carries its own not-applicable reason, so the summary label
+// does not guess why.
 const SEAL_LABEL: Record<SubstitutionSealCondition, string> = {
   intact: 'Seal intact',
   damaged: 'Seal damaged',
   missing: 'Seal missing',
-  not_applicable: 'No seal (empty leg)',
+  not_applicable: 'No seal',
+}
+
+const SEAL_EXPECTATION_NOTICE: Partial<Record<SealExpectation, { title: string; body: string }>> = {
+  'none-yet': {
+    title: 'No seal to check yet',
+    body: 'This trip has not departed, so no seal has been applied. Each vehicle is recorded as having no seal yet. If you do find one, record it instead.',
+  },
+  possible: {
+    title: 'Departure is still open',
+    body: 'The seal is applied during departure. Record the seal if one is already on; otherwise choose “No seal yet”.',
+  },
 }
 
 function roleNoun(role: SubstitutionRole): string {
@@ -93,20 +120,24 @@ function DeclarationSummary({
 interface SealCheckFieldsProps {
   check: CaptureSealCheck
   registration: string
+  expectation: SealExpectation
   disabled: boolean
   onChange: (patch: Partial<Omit<CaptureSealCheck, 'vehicleId' | 'photos'>>) => void
   onAddPhoto: (dataUrl: string) => void
   onRemovePhoto: (photoId: string) => void
 }
 
-function SealCheckFields({ check, registration, disabled, onChange, onAddPhoto, onRemovePhoto }: SealCheckFieldsProps) {
+function SealCheckFields({ check, registration, expectation, disabled, onChange, onAddPhoto, onRemovePhoto }: SealCheckFieldsProps) {
   const needsNumber = check.condition === 'intact' || check.condition === 'damaged'
   const photoLabel = check.condition === 'missing' ? `Where the seal should be on ${registration}` : `Seal on ${registration}`
+  const noSealHint = expectation === 'none-yet' || expectation === 'possible'
+    ? 'Optional: no seal has been applied yet.'
+    : 'Optional for an empty leg.'
   return (
     <fieldset className="flex flex-col gap-3 rounded-[22px] bg-fill px-4 py-3" disabled={disabled}>
       <legend className="text-headline text-surface-on">{registration}</legend>
       <div role="radiogroup" aria-label={`Seal on ${registration}`} className="flex flex-wrap gap-2">
-        {CONDITION_OPTIONS.map((option) => (
+        {conditionOptions(expectation).map((option) => (
           <button
             key={option.value}
             type="button"
@@ -167,7 +198,7 @@ function SealCheckFields({ check, registration, disabled, onChange, onAddPhoto, 
             <CameraCapture
               label={photoLabel}
               actionLabel={check.photos.length === 0 ? 'Take photo' : 'Add another photo'}
-              hint={check.condition === 'not_applicable' ? 'Optional for an empty leg.' : undefined}
+              hint={check.condition === 'not_applicable' ? noSealHint : undefined}
               variant={check.photos.length === 0 ? 'tile' : 'row'}
               dataUrl={null}
               onCapture={onAddPhoto}
@@ -191,6 +222,10 @@ function CaptureForm({
   state: ReturnType<typeof useSubstitutionCapture>
 }) {
   const locked = capture.status !== 'draft' || state.isSending
+  // Read from the ledger position the server sent, never from how far the previous driver
+  // "should" have got.
+  const expectation = sealExpectation(context)
+  const sealNotice = SEAL_EXPECTATION_NOTICE[expectation]
   const toggleVehicle = (vehicleId: string) => {
     const ids = capture.confirmedVehicleIds
     state.update({ confirmedVehicleIds: ids.includes(vehicleId) ? ids.filter((id) => id !== vehicleId) : [...ids, vehicleId] })
@@ -222,12 +257,16 @@ function CaptureForm({
 
       <section aria-labelledby="substitution-seals" className="flex flex-col gap-3">
         <SectionHeading id="substitution-seals" title="Seals" />
+        {sealNotice !== undefined && (
+          <StatusBanner tone="neutral" title={sealNotice.title} className="mx-4">{sealNotice.body}</StatusBanner>
+        )}
         <div className="flex flex-col gap-3 px-4">
           {capture.sealChecks.map((check) => (
             <SealCheckFields
               key={check.vehicleId}
               check={check}
               registration={registrationOf(context.vehicles, check.vehicleId)}
+              expectation={expectation}
               disabled={locked}
               onChange={(patch) => state.updateSealCheck(check.vehicleId, patch)}
               onAddPhoto={(dataUrl) => state.addPhoto(check.vehicleId, dataUrl)}

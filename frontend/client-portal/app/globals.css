@@ -11,5 +11,19 @@
 }
 
 @media print {
-  .no-print { display: none !important; }
+  /* Controls and the map's own buttons mean nothing on paper. */
+  .no-print, .leaflet-control { display: none !important; }
+
+  /* The dark header would print as a solid block of ink; print it as dark text on white instead. */
+  .bg-ink { background-color: theme('colors.surf.lowest') !important; }
+  .bg-ink, .bg-ink * { color: theme('colors.ink.DEFAULT') !important; }
+
+  /* Cards break between sections, not through the middle of one. */
+  section { break-inside: avoid; }
+
+  /* Tier badges are the page's evidence legend: browsers drop background colours when printing unless told not to. */
+  .tier-badge {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button'
 import { TruckLoader } from '@/components/ui/TruckLoader'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
+import { TabSubpage } from '@/components/layout/TabSubpage'
 import { DriverParticipationHistory } from '@/components/trip/DriverParticipationHistory'
 import { DriverSubstitutionCard } from '@/components/trip/DriverSubstitutionCard'
 import { AuthContext } from '@/lib/context/AuthContext'
@@ -27,6 +28,11 @@ import { activationBlock, activationBlockMessage } from '@/lib/utils/activation-
 import type { ActivationCandidate } from '@/lib/utils/activation-gate'
 import { markTransition } from '@/lib/navigation/transition-direction'
 import { useBack } from '@/lib/navigation/useBack'
+
+// The header title while there is no trip to name — the loaded states title themselves
+// "Current trip" / "Upcoming trip" / "Trip record" from the trip's status, which a failed
+// load does not have.
+const TRIP_ERROR_TITLE = 'Trip'
 
 // Route to the first step of the selected phase's own recipe.
 function firstStepRoute(phase: PhaseDescriptor): string {
@@ -123,18 +129,24 @@ export default function TripDetailByIdPageClient() {
   }
 
   if (loadError !== null || trip === null) {
+    // The same TabSubpage the loaded trip renders in, so a failed load keeps the header,
+    // the back control and the tab bar. The bare <main className="h-full …"> this replaces
+    // had no height to centre in (its parent is auto-height), so the message hugged the top
+    // edge with no way back except the button below it. flex-1 fills TabSubpage's column.
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 p-6">
-        <p className="text-center text-sm text-surface-on-variant">
-          {loadError ?? 'Trip not found.'}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={load}>Try Again</Button>
-          <Button variant="secondary" size="sm" onClick={() => { markTransition('back'); router.push(ROUTES.trips) }}>
-            Back to Trips
-          </Button>
+      <TabSubpage title={TRIP_ERROR_TITLE} backLabel="Trips" onBack={goBack}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6">
+          <p className="text-center text-sm text-surface-on-variant">
+            {loadError ?? 'Trip not found.'}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={load}>Try Again</Button>
+            <Button variant="secondary" size="sm" onClick={() => { markTransition('back'); router.push(ROUTES.trips) }}>
+              Back to Trips
+            </Button>
+          </div>
         </div>
-      </main>
+      </TabSubpage>
     )
   }
 

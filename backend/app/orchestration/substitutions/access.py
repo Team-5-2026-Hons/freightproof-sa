@@ -133,6 +133,38 @@ async def completed_links(db: AsyncSession, *, trip_id: uuid.UUID) -> list[Compl
     return await _completed_links(db, trip_id=trip_id)
 
 
+async def completed_links_by_trip(
+    db: AsyncSession, *, trip_ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, list[CompletedCustodyLink]]:
+    """completed_links for many trips in one statement, for list views that would otherwise query
+    once per trip. Every requested trip gets an entry, empty when it has no handovers; each list is
+    in sequence order and unvalidated, exactly as completed_links returns it."""
+    by_trip: dict[uuid.UUID, list[CompletedCustodyLink]] = {trip_id: [] for trip_id in trip_ids}
+    rows = await db.execute(
+        select(
+            DriverSubstitution.trip_id,
+            DriverSubstitution.id,
+            DriverSubstitution.sequence_number,
+            DriverSubstitution.previous_substitution_id,
+            DriverSubstitution.original_driver_id,
+            DriverSubstitution.substituting_driver_id,
+            DriverSubstitution.substitution_at,
+        )
+        .where(DriverSubstitution.trip_id.in_(by_trip))
+        .order_by(DriverSubstitution.trip_id, DriverSubstitution.sequence_number)
+    )
+    for row in rows:
+        by_trip[row.trip_id].append(CompletedCustodyLink(
+            id=row.id,
+            sequence_number=row.sequence_number,
+            previous_substitution_id=row.previous_substitution_id,
+            outgoing_driver_id=row.original_driver_id,
+            incoming_driver_id=row.substituting_driver_id,
+            effective_at=row.substitution_at,
+        ))
+    return by_trip
+
+
 async def get_current_custody(db: AsyncSession, *, trip: Trip) -> CurrentCustody:
     """Current custody of `trip`, read fresh from the completed chain."""
     return derive_custody(trip.driver_id, await _completed_links(db, trip_id=trip.id))
@@ -191,9 +223,16 @@ async def custody_holders(db: AsyncSession, *, trip: Trip) -> dict[int, uuid.UUI
     """Who held each custody period: sequence 0 is the original driver, sequence k the incoming
     driver of the k-th completed handover. Validated through derive_custody first, so a broken
     chain raises rather than attributing evidence to a guessed holder (FP-83 C4 late evidence)."""
-    links = await _completed_links(db, trip_id=trip.id)
-    derive_custody(trip.driver_id, links)
-    holders = {ORIGINAL_CUSTODY_SEQUENCE: trip.driver_id}
+    return custody_holders_from_links(trip.driver_id, await _completed_links(db, trip_id=trip.id))
+
+
+def custody_holders_from_links(
+    original_driver_id: uuid.UUID, links: Sequence[CompletedCustodyLink],
+) -> dict[int, uuid.UUID]:
+    """custody_holders for links already loaded (e.g. by completed_links_by_trip), so a list view
+    applies the same validated rule without a query per trip."""
+    derive_custody(original_driver_id, links)
+    holders = {ORIGINAL_CUSTODY_SEQUENCE: original_driver_id}
     holders.update({link.sequence_number: link.incoming_driver_id for link in links})
     return holders
 

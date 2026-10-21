@@ -62,6 +62,20 @@ const POSITION_REFRESH_MS = 15_000
 // panic button on screen no matter how many exceptions a bad leg has accumulated.
 const EXCEPTION_LIST_MAX_HEIGHT = 'max-h-36'
 
+// At accessibility text sizes the rem-based sheet alone is taller than the screen's lower
+// two thirds and, being shrink-0 inside an overflow-hidden column, it squeezed the map slot
+// to nothing and hid whatever the map slot held. Capping it and letting it scroll inside
+// itself keeps a real share of the screen for the map, the same way the exceptions list is
+// capped above. Panic is not in the sheet, so this never puts it behind a scroll.
+const LARGE_TEXT_SHEET_MAX_HEIGHT = 'max-h-[60dvh] overflow-y-auto overscroll-contain'
+
+// The fallback cards (no key, tiles unreachable, no fix) are centred columns inside a
+// scroll box. `justify-center` on a box that can overflow clips the top of the content with
+// no way to scroll up to it, which put the card's heading under the Back and Panic buttons
+// on short or large-text screens. Auto margins on the first and last child centre the
+// content when it fits and collapse to a plain top-anchored scroll when it does not.
+const FALLBACK_SAFE_CENTRE = 'justify-start [&>:first-child]:mt-auto [&>:last-child]:mb-auto'
+
 interface DriverFix {
   position: DriverPosition
   /** When this fix was taken, so a stale one can be labelled as last known. */
@@ -383,23 +397,30 @@ export default function InTransitPageClient() {
           handoffClassName={cn('left-4 top-auto bottom-12', largeText && 'hidden')}
           // The fallback cards carry text and a button; they start below the floating
           // controls and scroll inside the map's slot on a short phone.
-          fallbackClassName="h-[calc(100%-1.75rem)] w-full overflow-y-auto rounded-none px-4 pt-[calc(env(safe-area-inset-top)+4.5rem)]"
+          fallbackClassName={cn(
+            'h-[calc(100%-1.75rem)] w-full overflow-y-auto rounded-none px-4 pt-[calc(env(safe-area-inset-top)+4.5rem)]',
+            FALLBACK_SAFE_CENTRE,
+          )}
+          // Navigate rides on the map rather than beside it: over the live map it floats
+          // bottom right, 3rem above the map's own bottom edge — the same height as the Open
+          // in Maps chip, clear of Google's attribution — and on a fallback card DriverMap
+          // sets it in the card's flow. Floated over the card instead, it covered the right
+          // end of the card's own "Open in Maps" button on a 360x740 phone.
+          extraAction={navigateUrl !== null && !largeText ? (
+            // A real anchor: a WebView hands maps:/google.navigation: schemes to the OS only
+            // from a link, and this is a hand-off to the driver's own navigation app.
+            <a
+              href={navigateUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-11 items-center gap-1.5 rounded-full bg-surface px-3.5 text-subhead font-semibold text-surface-on shadow-ambient-sm active:scale-95"
+            >
+              <Navigation className="size-4" strokeWidth={2.2} aria-hidden />
+              Navigate
+            </a>
+          ) : undefined}
+          extraActionClassName="bottom-12 right-4"
         />
-        {navigateUrl !== null && !largeText && (
-          // A real anchor: a WebView hands maps:/google.navigation: schemes to the OS only
-          // from a link, and this is a hand-off to the driver's own navigation app.
-          <a
-            href={navigateUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            // 3rem above the map's own bottom edge (which sits 1.75rem up the section), the
-            // same height as the map's Open in Maps chip, clear of Google's attribution.
-            className="absolute bottom-[4.75rem] right-4 inline-flex h-11 items-center gap-1.5 rounded-full bg-surface px-3.5 text-subhead font-semibold text-surface-on shadow-ambient-sm active:scale-95"
-          >
-            <Navigation className="size-4" strokeWidth={2.2} aria-hidden />
-            Navigate
-          </a>
-        )}
       </section>
 
       {/* Floating over the map, under the status bar: the way back on the left, and
@@ -424,7 +445,10 @@ export default function InTransitPageClient() {
       </div>
 
       {/* Everything the driver can do, on a sheet that never scrolls away. */}
-      <div className="relative z-10 shrink-0 rounded-t-[28px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-5 shadow-[0_-6px_24px_rgb(0_0_0/0.10)]">
+      <div className={cn(
+        'relative z-10 shrink-0 rounded-t-[28px] bg-surface px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-5 shadow-[0_-6px_24px_rgb(0_0_0/0.10)]',
+        largeText && LARGE_TEXT_SHEET_MAX_HEIGHT,
+      )}>
         <HeadingTo trip={trip} phase={arrivalPhase} estimate={estimate} />
 
         {openExceptions.length > 0 && (

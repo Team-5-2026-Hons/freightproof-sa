@@ -20,6 +20,7 @@ import type {
   SubstitutionSealCondition,
   VehicleRef,
 } from '@shared/lib/types/driver-substitution'
+import type { PhaseType } from '@shared/lib/types/phase'
 import {
   confirmDriverSubstitution,
   fetchDriverSubstitutionContext,
@@ -60,8 +61,40 @@ export function sealApplicableVehicles(vehicles: readonly VehicleRef[]): Vehicle
   return trailers.length > 0 ? trailers : vehicles.filter((vehicle) => vehicle.vehicle_type === 'horse')
 }
 
+/**
+ * What a seal check can find, read off the trip's LEDGER position rather than assumed.
+ * - `none-yet`: the ledger has not reached departure, so no seal has been applied — a
+ *   takeover before activation or during loading finds nothing to read.
+ * - `possible`: the departure phase is open; its first step applies the seal, its second
+ *   confirms departure, so the seal may or may not be on.
+ * - `expected`: the trip has departed; a seal is on every applicable vehicle.
+ * - `unknown`: the context carried no position (the server sends one only while the
+ *   request is pending), so nothing is assumed either way.
+ */
+export type SealExpectation = 'none-yet' | 'possible' | 'expected' | 'unknown'
+
+// The seal is applied by the departure phase's `2-capture-seal` step (phase-meta STEP_SLUGS),
+// so every phase before departure runs with no seal on the load.
+const PHASES_BEFORE_SEAL: readonly PhaseType[] = ['trip_creation', 'activation', 'loading']
+const SEAL_APPLYING_PHASE: PhaseType = 'departure'
+
+export function sealExpectation(context: Pick<DriverSubstitutionContextRead, 'current_phase'>): SealExpectation {
+  if (context.current_phase === null) return 'unknown'
+  if (PHASES_BEFORE_SEAL.includes(context.current_phase)) return 'none-yet'
+  return context.current_phase === SEAL_APPLYING_PHASE ? 'possible' : 'expected'
+}
+
+/** The recorded reason when the ledger says no seal exists yet; the driver may still edit it. */
+export const NO_SEAL_YET_REASON = 'No seal applied yet: the trip has not departed'
+
 function emptySealCheck(vehicleId: string): CaptureSealCheck {
   return { vehicleId, condition: null, sealNumber: '', notApplicableReason: '', photos: [] }
+}
+
+// Pre-filled from the ledger, never from trip_type: a loaded trip taken over before departure
+// genuinely has no seal, and asking the driver to read one invites an invented number.
+function noSealYetCheck(vehicleId: string): CaptureSealCheck {
+  return { ...emptySealCheck(vehicleId), condition: 'not_applicable', notApplicableReason: NO_SEAL_YET_REASON }
 }
 
 export function newCapture(
@@ -82,7 +115,9 @@ export function newCapture(
     submittedBody: null,
     captureFormat: 'observation_v2', locationObservedAt: null, locationUnavailableReason: null,
     confirmedVehicleIds: [],
-    sealChecks: sealApplicableVehicles(context.vehicles).map((vehicle) => emptySealCheck(vehicle.id)),
+    sealChecks: sealApplicableVehicles(context.vehicles).map((vehicle) => (
+      sealExpectation(context) === 'none-yet' ? noSealYetCheck(vehicle.id) : emptySealCheck(vehicle.id)
+    )),
     discrepancyNote: '',
     capturedAt: null,
     position: null,

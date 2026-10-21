@@ -166,7 +166,7 @@ describe('Linehaul', () => {
     expect(screen.getByRole('button', { name: /scan the sheet/i })).toBeInTheDocument()
   })
 
-  it('disables the swipe until a photo exists', () => {
+  it('disables the swipe until a photo exists', async () => {
     // SwipeToConfirm renders role="slider" (a draggable track), not a <button>, unless
     // the tap-to-confirm preference is on — mirrors the pattern in
     // departure/__tests__/CaptureSeal.test.tsx.
@@ -196,7 +196,9 @@ describe('Linehaul', () => {
       />,
     )
 
-    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'false')
+    // A draft that arrives with a scan but no PDF rebuilds the PDF first (the swipe says
+    // "Preparing the PDF…" meanwhile), so the enabled state is awaited, not immediate.
+    await waitFor(() => expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'false'))
   })
 })
 

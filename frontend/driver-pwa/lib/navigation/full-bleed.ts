@@ -5,11 +5,14 @@
 // bare full-bleed surface) — stacking AppShell's own sticky chrome on top produces a
 // double header or, on panic, viewport overflow. Any route whose page renders
 // <SubpageHeader> must have its prefix listed here or it doubles up with AppShell's bar.
+import { ROUTES } from '@/lib/constants/routes'
+
 const FULL_BLEED_ROUTE_PREFIXES = [
   '/panic',           // bare full-bleed emergency surface — no shell chrome at all
   '/trip/phase/',     // phase steps render their own sticky StepHeader
   '/trip/in-transit', // in-transit hub, checkpoint, and exception screens render SubpageHeader
   '/trips/',          // /trips/active and /trips/[id] render SubpageHeader
+  ROUTES.retainedEvidence, // "Kept on this phone" renders a TabSubpage (SubpageHeader + its own tab bar)
 ] as const
 
 export function isFullBleedRoute(pathname: string): boolean {

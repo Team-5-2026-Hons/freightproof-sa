@@ -15236,6 +15236,36 @@
         "title": "PunctualityBucket",
         "type": "object"
       },
+      "PushPlatform": {
+        "description": "The native shell a push token came from; the sender picks the FCM/APNs path by it.",
+        "enum": [
+          "android",
+          "ios"
+        ],
+        "title": "PushPlatform",
+        "type": "string"
+      },
+      "PushTokenRegistration": {
+        "additionalProperties": false,
+        "description": "What the driver app sends after the OS hands it a token (Capacitor `registration`).",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/PushPlatform"
+          },
+          "token": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "title": "PushTokenRegistration",
+        "type": "object"
+      },
       "QueueBucket": {
         "description": "Chart 4.2: critical problems still waiting at the end of the bucket (or now, if sooner).",
         "properties": {
@@ -22190,6 +22220,46 @@
           }
         ],
         "summary": "Get My Driver Profile",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
+    "/api/v1/drivers/me/push-tokens": {
+      "post": {
+        "description": "Idempotent: the app calls this on every launch, and a repeat only refreshes the row.",
+        "operationId": "register_my_push_token_api_v1_drivers_me_push_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register this device's push token for the authenticated driver",
         "tags": [
           "drivers"
         ]

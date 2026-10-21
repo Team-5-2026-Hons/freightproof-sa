@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import (
     ExceptionSeverity,
     ExceptionSource,
@@ -241,8 +242,8 @@ async def raise_verification_exception(
     (INFO). Never CRITICAL — reserved for findings that stop a trip, and
     verification never gates a delivery.
 
-    Broad except: the receiver has already confirmed, and a paperwork failure
-    must not unwind a delivery that happened.
+    Optional paperwork failures are fail-open; DB outages propagate as the
+    transaction cannot persist the confirmation either.
     """
     if verdict.exception_type is None:
         return
@@ -282,6 +283,8 @@ async def raise_verification_exception(
                 severity=event_severity(severity),
             ),
         )
+    except DatabaseUnavailableError:
+        raise
     except Exception:
         logger.exception(
             "Could not record a receiver verification exception for trip=%s phase_event=%s "

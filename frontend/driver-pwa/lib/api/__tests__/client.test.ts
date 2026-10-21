@@ -11,13 +11,13 @@ const mockRefreshSession = vi.fn()
 const mockSignOut = vi.fn()
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: {
+  getSupabase: () => ({
     auth: {
       getSession: (...args: unknown[]) => mockGetSession(...args),
       refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
       signOut: (...args: unknown[]) => mockSignOut(...args),
     },
-  },
+  }),
   getAccessToken: () => mockGetAccessToken(),
 }))
 

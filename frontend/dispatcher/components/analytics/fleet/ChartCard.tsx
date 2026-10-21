@@ -76,12 +76,14 @@ export function ChartCard({
   const isLowSample = sampleSize !== undefined && sampleSize > 0 && sampleSize < LOW_SAMPLE_TRIPS
 
   // The ready view, shared by the card and its zoom modal so the two can never show different
-  // things: the warnings, then the chart or its table, whichever the card is showing.
+  // things: the warnings, then the chart or its table, whichever the card is showing. The chart
+  // takes whatever height the card has left, so when a taller card beside it stretches the
+  // grid row, the chart grows to fill it rather than leaving the bottom of the card empty.
   const view = (
     <>
       {isLowSample && <p className="mb-2 text-[12px] font-[600] text-warn">{COPY.lowSample(sampleSize)}</p>}
       {caveat !== undefined && <p className="mb-2 text-[12px] text-on-surf-v">{caveat}</p>}
-      {showTable ? table : children}
+      <div className="min-h-0 flex-1">{showTable ? table : children}</div>
     </>
   )
 
@@ -139,7 +141,7 @@ export function ChartCard({
       <div
         id={bodyId}
         aria-busy={isLoading || isRefreshing}
-        className={cn('transition-opacity duration-150', isRefreshing && 'opacity-50')}
+        className={cn('flex min-h-0 flex-1 flex-col transition-opacity duration-150', isRefreshing && 'opacity-50')}
       >
         {content}
       </div>

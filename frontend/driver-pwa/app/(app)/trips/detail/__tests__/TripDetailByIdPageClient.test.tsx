@@ -4,7 +4,7 @@
 // activated it (so a 'created' trip opens with an Activation CTA, not as an active trip),
 // the phase flow must be pointed at THIS trip before navigating into it, and a trip that
 // the server would refuse to activate says so BEFORE the driver captures any evidence.
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { mockTrips, TRIP_0041_ID } from '@shared/lib/mocks/trips'
 import type { Trip } from '@shared/lib/types/trip'
@@ -275,6 +275,22 @@ describe('trips/detail TripDetailByIdPageClient', () => {
     render(<TripDetailByIdPageClient />)
 
     expect(await screen.findByText(/Could not load this trip/i)).toBeInTheDocument()
+    consoleError.mockRestore()
+  })
+
+  it('keeps the header and a back control when the trip fails to load', async () => {
+    // The bare error <main> had neither: the message hugged the top edge and the only
+    // way off the screen was the button inside it.
+    mockFetchMyTrip.mockRejectedValue(new Error('offline'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(<TripDetailByIdPageClient />)
+
+    expect(await screen.findByText(/Could not load this trip/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Trip' })).toBeInTheDocument()
+    const header = document.querySelector('header')
+    expect(header).not.toBeNull()
+    expect(within(header as HTMLElement).getByRole('button', { name: /back to trips/i })).toBeInTheDocument()
     consoleError.mockRestore()
   })
 

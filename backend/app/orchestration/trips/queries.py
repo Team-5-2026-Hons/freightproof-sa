@@ -16,7 +16,8 @@ from app.db.models.organisations import Precinct
 from app.db.models.transit import TripException
 from app.db.models.trips import DriverSubstitution, Trip
 from app.orchestration.substitutions.access import (
-    completed_links, current_driver_id_expression, custody_holders, require_current_driver,
+    CompletedCustodyLink, completed_links_by_trip, current_driver_id_expression, custody_holders,
+    custody_holders_from_links, require_current_driver,
 )
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.driver_substitutions import DriverAccess, DriverParticipation
@@ -150,9 +151,13 @@ async def list_trips_for_driver(
     )
     if not trips:
         return []
-    participation = {t.id: await _participation(db, t, driver_id) for t in trips}
 
     trip_ids = [t.id for t in trips]
+
+    # One query for every trip's handover chain, not two per trip: this list is a driver's whole
+    # history, and each query is a network round trip to the database.
+    links_by_trip = await completed_links_by_trip(db, trip_ids=trip_ids)
+    participation = {t.id: _participation(t, links_by_trip[t.id], driver_id) for t in trips}
 
     # Batched, not per-row: same N+1 guard as trips.listing.list_trips().
     # Both FKs are nullable on Trip, so Nones are dropped before the IN clause.
@@ -218,13 +223,12 @@ async def list_trips_for_driver(
     ]
 
 
-async def _participation(
-    db: AsyncSession, trip: Trip, driver_id: uuid.UUID,
+def _participation(
+    trip: Trip, links: list[CompletedCustodyLink], driver_id: uuid.UUID,
 ) -> tuple[DriverParticipation, datetime | None, int]:
     """(current or former, when the caller's last period ended, the sequence to show). A current
     holder sees the live sequence; a former one sees their own last period, never a later one's."""
-    links = await completed_links(db, trip_id=trip.id)
-    holders = await custody_holders(db, trip=trip)
+    holders = custody_holders_from_links(trip.driver_id, links)
     current_sequence = max(holders)
     if holders[current_sequence] == driver_id:
         return DriverParticipation.CURRENT, None, current_sequence

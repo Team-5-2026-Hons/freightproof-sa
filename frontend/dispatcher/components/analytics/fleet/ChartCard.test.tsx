@@ -279,4 +279,12 @@ describe('ChartCard info popover', () => {
     expect(text.indexOf('Top-right')).toBeLessThan(text.indexOf('Source:'))
     expect(text.indexOf('Source:')).toBeLessThan(text.indexOf('Faded:'))
   })
+
+  it('gives the chart the spare height of its card, so a short chart fills a card stretched by its neighbour', () => {
+    renderCard()
+
+    const slot = screen.getByText('the chart').parentElement
+    expect(slot).toHaveClass('flex-1')
+    expect(body()).toHaveClass('flex', 'flex-1', 'flex-col')
+  })
 })

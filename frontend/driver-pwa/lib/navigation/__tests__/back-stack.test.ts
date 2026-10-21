@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { backTarget, recordScreen, resetBackStack } from '@/lib/navigation/back-stack'
+import { backTarget, previousScreen, recordScreen, resetBackStack } from '@/lib/navigation/back-stack'
 
 const FALLBACK = '/fallback'
 
@@ -78,5 +78,16 @@ describe('back stack', () => {
     visit('/trip/in-transit')
 
     expect(backTarget(FALLBACK)).toBe('/trips/detail?id=abc')
+  })
+
+  // The hardware back button needs to tell "nowhere earlier" apart from a real screen,
+  // which backTarget's fallback hides.
+  it('test_previous_screen_is_null_on_a_root_and_the_earlier_screen_otherwise', () => {
+    visit('/', 'none')
+    expect(previousScreen()).toBeNull()
+
+    visit('/trips/active')
+
+    expect(previousScreen()).toBe('/')
   })
 })

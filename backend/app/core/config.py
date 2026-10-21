@@ -2,7 +2,8 @@
 
 from typing import Any, List
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
+from pydantic_core import PydanticUseDefault
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,16 @@ class Settings(BaseSettings):
     # Supabase's pooler caps the project at 15 clients; kept small so four devs fit.
     DB_POOL_SIZE: int = 2
     DB_MAX_OVERFLOW: int = 1
+
+    # Provisional per-operation budgets, not an end-to-end request deadline. Tune from
+    # deployment measurements; FP-299 supplies the separate under-load evidence.
+    DB_CONNECT_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0, allow_inf_nan=False)
+    # Must outlast the longest normal connection hold, or a healthy DB returns 503: trip
+    # creation and audit-pack issue keep their connection through a Hedera submit
+    # (HEDERA_SUBMIT_TIMEOUT_SECONDS) or a Parcel Perfect call, both up to 15 s.
+    DB_POOL_TIMEOUT_SECONDS: float = Field(default=20.0, gt=0, allow_inf_nan=False)
+    DB_COMMAND_TIMEOUT_SECONDS: float = Field(default=30.0, gt=0, allow_inf_nan=False)
+    DB_CLEANUP_TIMEOUT_SECONDS: float = Field(default=5.0, gt=0, allow_inf_nan=False)
 
     # Empty skips integration tests.
     TEST_DATABASE_URL: str = ""
@@ -194,6 +205,18 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3001",
     ]
+
+    @field_validator(
+        "DB_CONNECT_TIMEOUT_SECONDS", "DB_POOL_TIMEOUT_SECONDS",
+        "DB_COMMAND_TIMEOUT_SECONDS", "DB_CLEANUP_TIMEOUT_SECONDS", mode="before",
+    )
+    @classmethod
+    def _blank_database_timeout_uses_default(cls, value: object) -> object:
+        # The example config documents optional keys with empty values. Only these
+        # timeout fields treat blank as unset; malformed non-empty values still fail.
+        if isinstance(value, str) and not value.strip():
+            raise PydanticUseDefault()
+        return value
 
     @field_validator("DRIVER_SUBSTITUTIONS_ENABLED", "INCIDENT_DOCUMENTS_ENABLED", mode="before")
     @classmethod

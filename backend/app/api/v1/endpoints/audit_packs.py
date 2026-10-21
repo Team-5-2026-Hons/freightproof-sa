@@ -16,6 +16,7 @@ from app.auth.dependencies import get_current_dispatcher, require_admin_dispatch
 from app.core.exceptions import FileStorageUnavailableError, ResourceNotFoundError, StoredFileMismatchError
 from app.core.limits import AUDIT_PACK_BUILD, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import enum_text
 from app.db.session import get_db
 from app.orchestration.audit_packs.builder import build_audit_manifest
@@ -97,6 +98,8 @@ async def preview_audit_trail(
         )
     except ResourceNotFoundError as exc:
         raise _not_found(exc) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error building audit trail preview for trip_id=%s", trip_id)
         raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED) from exc
@@ -121,6 +124,8 @@ async def preview_audit_trail_pdf(
         )
     except ResourceNotFoundError as exc:
         raise _not_found(exc) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error rendering audit trail PDF for trip_id=%s", trip_id)
         raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED) from exc
@@ -175,6 +180,8 @@ async def issue_audit_pack_endpoint(
             status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="The pack could not be stored, so nothing was issued. Please try again.",
         ) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error issuing audit pack for trip_id=%s", trip_id)
         raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED) from exc

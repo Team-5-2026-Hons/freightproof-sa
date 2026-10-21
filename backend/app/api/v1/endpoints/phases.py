@@ -29,6 +29,7 @@ from app.core.exceptions import (
 )
 from app.core.limits import EVIDENCE_WRITE
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.trips import TripStop
 from app.db.session import get_db
 from app.orchestration.phases.blocking import blocked_on_by_stop
@@ -174,6 +175,8 @@ async def complete_phase_endpoint(
         # A cited artifact contradicts its field: a request fault, unlike the sequence
         # conflicts above, so 422. Raised before any evidence is written.
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         # Matches trips.py's create_trip_endpoint exactly — same status constant,
         # same generic detail string, same logger.exception (not .error) so the

@@ -12,3 +12,9 @@ if (typeof Blob.prototype.arrayBuffer !== 'function') {
     })
   }
 }
+
+// jsdom has no object URLs either; evidence photos build one per downloaded file.
+if (typeof URL.createObjectURL !== 'function') {
+  URL.createObjectURL = () => `blob:test/${Math.random().toString(36).slice(2)}`
+  URL.revokeObjectURL = () => undefined
+}

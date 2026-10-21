@@ -40,10 +40,14 @@ if (typeof window.ResizeObserver === 'undefined') {
 if (typeof window.PointerEvent === 'undefined') {
   class PointerEventPolyfill extends MouseEvent {
     readonly pointerId: number
+    // Swipe.tsx ignores any pointer that is not primary (a second finger). Defaults to
+    // false when not given, like the real constructor.
+    readonly isPrimary: boolean
 
     constructor(type: string, params: PointerEventInit = {}) {
       super(type, params)
       this.pointerId = params.pointerId ?? 0
+      this.isPrimary = params.isPrimary ?? false
     }
   }
   window.PointerEvent = PointerEventPolyfill as unknown as typeof PointerEvent

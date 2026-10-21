@@ -364,6 +364,17 @@ describe('Analytics page', () => {
       expect(screen.queryByRole('button', { name: 'Ask about these figures' })).not.toBeInTheDocument()
     })
 
+    it('starts the button with a sparkle that screen readers skip, so its name stays the words', async () => {
+      chatStatus = ON
+      renderPage()
+
+      const button = await screen.findByRole('button', { name: 'Ask about these figures' })
+
+      const sparkle = within(button).getByTestId('chat-sparkle')
+      expect(sparkle).toHaveAttribute('aria-hidden', 'true')
+      expect(button.firstElementChild).toBe(sparkle)
+    })
+
     it('opens the panel beside the tabs, which keep working, and closes it again', async () => {
       chatStatus = ON
       renderPage()
