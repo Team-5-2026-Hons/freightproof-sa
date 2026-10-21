@@ -7,6 +7,7 @@
 // with "See all" — instead of three tabs; the grouping it protects is unchanged.
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { __resetMyTripsStoreForTests } from '@/lib/hooks/useMyTrips'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import type { TripId } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
@@ -81,6 +82,9 @@ function section(name: string): HTMLElement {
 describe('trips page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // useMyTrips now caches the list in a module-level store (one GET /trips/me per
+    // driver, shared by every reader); each test starts from an empty store.
+    __resetMyTripsStoreForTests()
     mockPendingHandovers = []
   })
 
