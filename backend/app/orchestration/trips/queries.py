@@ -179,24 +179,7 @@ async def list_trips_for_driver(
     def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
         return None if precinct_id is None else precinct_names.get(precinct_id)
 
-    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
-    # but the driver has no review action at all (see FP-146 follow-on): a count of
-    # routine warnings they can neither act on nor clear is noise on their trip card.
-    # The dispatcher-facing counts deliberately include every severity.
-    exc_counts: dict[uuid.UUID, int] = {
-        row[0]: row[1]
-        for row in (
-            await db.execute(
-                select(TripException.trip_id, func.count(TripException.id))
-                .where(
-                    TripException.trip_id.in_(trip_ids),
-                    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
-                    TripException.severity == ExceptionSeverity.CRITICAL,
-                )
-                .group_by(TripException.trip_id)
-            )
-        ).all()
-    }
+    exc_counts = await _critical_exception_counts(db, trip_ids)
 
     return [
         DriverTripListItemResponse(
@@ -221,6 +204,28 @@ async def list_trips_for_driver(
         )
         for t in trips
     ]
+
+
+async def _critical_exception_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Unreviewed critical exceptions per trip, for the driver's trip cards."""
+    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
+    # but the driver has no review action at all (see FP-146 follow-on): a count of
+    # routine warnings they can neither act on nor clear is noise on their trip card.
+    # The dispatcher-facing counts deliberately include every severity.
+    return {
+        row[0]: row[1]
+        for row in (
+            await db.execute(
+                select(TripException.trip_id, func.count(TripException.id))
+                .where(
+                    TripException.trip_id.in_(trip_ids),
+                    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+                    TripException.severity == ExceptionSeverity.CRITICAL,
+                )
+                .group_by(TripException.trip_id)
+            )
+        ).all()
+    }
 
 
 def _participation(

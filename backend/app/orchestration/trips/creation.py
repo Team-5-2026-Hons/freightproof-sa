@@ -371,6 +371,49 @@ def _journey_lock_payload(
     )
 
 
+async def _sync_consignments(
+    db: AsyncSession, new_trip: NewTrip, trip: Trip, operator_org_id: uuid.UUID,
+) -> list["ConsignmentSyncResult"]:
+    """Sync every consignment the trip names, from its manifest and from its bare references."""
+    cargo = new_trip.manifest
+    # Sync every consignment. Local import kept from before the split; no module-load
+    # cycle exists today (consignments.sync → parcel_perfect never imports back here).
+    consignment_results: list["ConsignmentSyncResult"] = []
+    if cargo is not None or new_trip.consignment_refs:
+        from app.orchestration.consignments.sync import (
+            fetch_and_sync_consignment,
+            sync_consignment_from_waybill,
+        )
+
+        if cargo is not None:
+            # Scan ingestion locks this same bytewise waybill order. Sort even if
+            # PP returns a different order, so multi-waybill scans cannot deadlock.
+            for waybill in sorted(cargo.waybills, key=lambda w: w.details.waybill):
+                consignment_results.append(await _sync_cargo_entry(
+                    db, waybill.details.waybill,
+                    sync_consignment_from_waybill(
+                        db, waybill, trip_id=trip.id,
+                        origin_precinct_id=trip.origin_precinct_id,
+                        destination_precinct_id=trip.destination_precinct_id,
+                    ),
+                    operator_org_id,
+                ))
+        for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
+            consignment_results.append(await _sync_cargo_entry(
+                db, entry.pp_reference,
+                fetch_and_sync_consignment(
+                    db,
+                    pp_reference=entry.pp_reference,
+                    trip_id=trip.id,
+                    unit_count_expected=entry.unit_count_expected,
+                    origin_precinct_id=trip.origin_precinct_id,
+                    destination_precinct_id=trip.destination_precinct_id,
+                ),
+                operator_org_id,
+            ))
+    return consignment_results
+
+
 async def persist_trip(
     db: AsyncSession,
     new_trip: NewTrip,
@@ -469,41 +512,7 @@ async def persist_trip(
     for stop in trip_stops:
         await db.refresh(stop)
 
-    # Sync every consignment. Local import kept from before the split; no module-load
-    # cycle exists today (consignments.sync → parcel_perfect never imports back here).
-    consignment_results: list["ConsignmentSyncResult"] = []
-    if cargo is not None or new_trip.consignment_refs:
-        from app.orchestration.consignments.sync import (
-            fetch_and_sync_consignment,
-            sync_consignment_from_waybill,
-        )
-
-        if cargo is not None:
-            # Scan ingestion locks this same bytewise waybill order. Sort even if
-            # PP returns a different order, so multi-waybill scans cannot deadlock.
-            for waybill in sorted(cargo.waybills, key=lambda w: w.details.waybill):
-                consignment_results.append(await _sync_cargo_entry(
-                    db, waybill.details.waybill,
-                    sync_consignment_from_waybill(
-                        db, waybill, trip_id=trip.id,
-                        origin_precinct_id=trip.origin_precinct_id,
-                        destination_precinct_id=trip.destination_precinct_id,
-                    ),
-                    current_user.organization_id,
-                ))
-        for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
-            consignment_results.append(await _sync_cargo_entry(
-                db, entry.pp_reference,
-                fetch_and_sync_consignment(
-                    db,
-                    pp_reference=entry.pp_reference,
-                    trip_id=trip.id,
-                    unit_count_expected=entry.unit_count_expected,
-                    origin_precinct_id=trip.origin_precinct_id,
-                    destination_precinct_id=trip.destination_precinct_id,
-                ),
-                current_user.organization_id,
-            ))
+    consignment_results = await _sync_consignments(db, new_trip, trip, current_user.organization_id)
 
     # Stamp the route onto every synced consignment: stop-0 pickup, stop-last
     # delivery. TripConsignmentInput (schemas/trips.py) carries no per-consignment
