@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
 from app.db.models.audit_packs import IncidentDeclaration
+from app.db.models.incidents import Incident
 from app.db.models.people import User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
@@ -45,6 +46,13 @@ async def record_declaration(
         )).scalar_one_or_none()
         if on_trip is None:
             raise ResourceNotFoundError("Exception", str(request.exception_id))
+    if request.incident_id is not None:
+        # Same reason: an incident on another trip would carry this declaration into the wrong pack.
+        incident_on_trip = (await db.execute(
+            select(Incident.id).where(Incident.id == request.incident_id, Incident.trip_id == trip_id)
+        )).scalar_one_or_none()
+        if incident_on_trip is None:
+            raise ResourceNotFoundError("Incident", str(request.incident_id))
 
     row = IncidentDeclaration(
         id=uuid.uuid4(), trip_id=trip_id, declared_by_user_id=user_id,
@@ -58,7 +66,8 @@ async def record_declaration(
 def to_records(rows: Sequence[tuple[IncidentDeclaration, str | None]]) -> list[IncidentDeclarationRecord]:
     return [
         IncidentDeclarationRecord(
-            declaration_id=row.id, exception_id=row.exception_id, saps_station=row.saps_station,
+            declaration_id=row.id, exception_id=row.exception_id, incident_id=row.incident_id,
+            saps_station=row.saps_station,
             saps_cas_number=row.saps_cas_number, saps_officer=row.saps_officer,
             reported_to_saps_at=row.reported_to_saps_at, tracking_company_notified_at=row.tracking_company_notified_at,
             insurer_notified_at=row.insurer_notified_at, client_notified_at=row.client_notified_at,

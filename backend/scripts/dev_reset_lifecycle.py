@@ -52,6 +52,12 @@ _DELETE_ORDER = [
     "audit_pack_email_codes",
     "audit_packs",
     "incident_declarations",
+    # Incidents after their declarations, and before the exceptions, parcels, phase events
+    # and artifacts their ledger entries cite.
+    "incident_updates",
+    "incident_exceptions",
+    "incident_parcels",
+    "incidents",
     "receiver_identity_verifications",
     "handover_token_attempts",
     "handover_confirmations",

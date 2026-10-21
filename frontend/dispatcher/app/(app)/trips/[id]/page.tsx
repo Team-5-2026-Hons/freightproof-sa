@@ -24,7 +24,7 @@ import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/trip-detail'
 import { getTripSeed } from '@/lib/trips/tripSeed'
 import { ROUTES } from '@/lib/constants/routes'
-import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
+import { RETURN_TO_PARAM, safeReturnTo, withReturnTo } from '@/lib/navigation/returnTo'
 import { buildTripPanelQuery } from '@/lib/trips/panel-query'
 import { firstUnreviewedException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exception-rows'
 import { exceptionEventTime } from '@/lib/phase/acts'
@@ -267,7 +267,7 @@ function TripDetail({ tripId }: { tripId: string }) {
         // Picking a filter is leaving the single-record view, so the selection goes.
         onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId, null)}
         onClearPhaseFilter={() => setPanel('exceptions', undefined, null, null)} onClearExceptionSelection={() => setPanel('exceptions', undefined, undefined, null)} onShowInTimeline={showInTimeline}
-        onChanged={refetchSilent} returnTo={returnTo} />
+        onChanged={refetchSilent} returnTo={returnTo} onIncidentReported={id => router.push(withReturnTo(ROUTES.incidentDetail(id), returnTo))} />
     </div>
   </div>
 }

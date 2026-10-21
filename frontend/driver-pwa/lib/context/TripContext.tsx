@@ -143,6 +143,24 @@ export interface TripState {
   // trip as working context and asks the server what this driver is on now.
   noteTripHandedOver: (tripId: string) => void
   dismissHandedOver: () => void
+  // The trip dispatch ended while this driver was on it (cancelled, or stopped from an
+  // incident). Only a dispatcher ever cancels a trip, so a cancelled working trip always
+  // means "dispatch ended it". Deliberately carries no reason: after a hijacking this phone
+  // may not be in the driver's hands, so it must never learn an incident was reported.
+  endedByDispatch: EndedByDispatch | null
+  dismissEndedByDispatch: () => void
+}
+
+export interface EndedByDispatch {
+  tripId: string
+  tripReference: string
+  endedAt: string | null
+}
+
+const ENDED_BY_DISPATCH_STATUS: Trip['status'] = 'cancelled'
+
+function endedRecord(trip: Trip): EndedByDispatch {
+  return { tripId: String(trip.id), tripReference: trip.trip_reference, endedAt: trip.closed_at }
 }
 
 export const TripContext = createContext<TripState | null>(null)
@@ -188,6 +206,10 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   // the first paint is the spinner either way.
   const [selectedTripId, setSelectedTripId] = useState<string | null>(() => readSelectedTripId())
   const [handedOverTripId, setHandedOverTripId] = useState<string | null>(null)
+  const [endedByDispatch, setEndedByDispatch] = useState<EndedByDispatch | null>(null)
+  // The last trip the server handed this phone as its working trip. When the server's own
+  // pick stops returning it, this is the one to ask about: was it ended by dispatch?
+  const workingTripIdRef = useRef<string | null>(null)
 
   // FP-83: publish who is signed in and which custody period the SERVER says this trip is
   // in, so every capture can stamp both at the moment it happens. Read from serverTrip, not
@@ -210,6 +232,21 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     setSelectedTripId(tripId)
   }, [])
 
+  // The server's own pick no longer returns the trip this phone was working: ask once
+  // whether dispatch ended it. A failed probe (offline, a handover's coded 409) is not
+  // evidence of anything, so it says nothing and the next load starts fresh.
+  const noticeEndedWorkingTrip = useCallback(async (active: Trip | null): Promise<void> => {
+    const previous = workingTripIdRef.current
+    workingTripIdRef.current = active !== null ? String(active.id) : null
+    if (previous === null || (active !== null && String(active.id) === previous)) return
+    try {
+      const former = await fetchMyTrip(previous)
+      if (isCurrentAccount() && former.status === ENDED_BY_DISPATCH_STATUS) setEndedByDispatch(endedRecord(former))
+    } catch (err) {
+      console.warn('Could not check how the previous trip ended', err)
+    }
+  }, [isCurrentAccount])
+
   // Which trip the flow is on: an explicit selection wins, otherwise the server's own
   // pick (GET /trips/me/active). Single resolver so refetchTrip and the mount effect can
   // never disagree about it.
@@ -221,7 +258,13 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
         if (!isCurrentAccount()) return null
         if (!TERMINAL_STATUSES.includes(selected.status)) return selected
         // A finished trip is no longer "the trip I'm on" — drop the pin so the driver
-        // isn't stranded on a closed trip, and let the server choose what's next.
+        // isn't stranded on a closed trip, and let the server choose what's next. A trip
+        // dispatch ended is said so, rather than vanishing from under the driver.
+        if (selected.status === ENDED_BY_DISPATCH_STATUS) {
+          setEndedByDispatch(endedRecord(selected))
+          // Noticed here, so the active-trip fallback below does not ask about it again.
+          workingTripIdRef.current = null
+        }
         persistSelection(null)
       } catch (err) {
         if (!isCurrentAccount()) return null
@@ -238,8 +281,10 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
         } else throw err
       }
     }
-    return fetchMyActiveTrip()
-  }, [selectedTripId, persistSelection, isCurrentAccount])
+    const active = await fetchMyActiveTrip()
+    await noticeEndedWorkingTrip(active)
+    return active
+  }, [selectedTripId, persistSelection, isCurrentAccount, noticeEndedWorkingTrip])
 
   // refetchTrip is exposed for manual re-fetching after a handshake submission. It's
   // deliberately not called directly inside the useEffect below — calling a setState-
@@ -370,6 +415,13 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   }, [selectedTripId, serverTrip, persistSelection, refreshQuietly, isCurrentAccount])
 
   const dismissHandedOver = useCallback(() => setHandedOverTripId(null), [])
+  const dismissEndedByDispatch = useCallback(() => setEndedByDispatch(null), [])
+
+  // Every path that adopts a trip (selection, adoption after a submit, a refresh) names the
+  // working trip here, so the next load can tell when the server stops returning it.
+  useEffect(() => {
+    if (serverTrip !== null) workingTripIdRef.current = String(serverTrip.id)
+  }, [serverTrip])
 
   // Derived fresh every render from `trip` (never cached) — the whole point is that this
   // must flip false the instant the server's own recomputation says so.
@@ -580,6 +632,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
         syncingPhaseIds, markPhaseSyncing, clearPhaseSyncing,
         refreshQuietly, isRefreshing, lastRefreshedAt,
         handedOverTripId, noteTripHandedOver, dismissHandedOver,
+        endedByDispatch, dismissEndedByDispatch,
       }}
     >
       {children}

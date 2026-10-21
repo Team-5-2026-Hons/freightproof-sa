@@ -9,6 +9,8 @@ export const ROUTES = {
   history:         '/history',
   exceptions:      '/exceptions',
   exceptionDetail: (id: string) => `/exceptions/${id}`,
+  incidents:       '/incidents',
+  incidentDetail:  (id: string) => `/incidents/${id}`,
   sla:             '/sla',
   fleetVehicles:   '/fleet/vehicles',
   fleetVehicleDetail: (id: string) => `/fleet/vehicles/${id}`,

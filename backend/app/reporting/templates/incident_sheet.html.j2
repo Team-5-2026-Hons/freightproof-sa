@@ -29,7 +29,12 @@
 <table class="kv">
   {# The report's own tier: anchored only when its raise receipt is intact and matches. #}
   {% set first_report = m.exceptions|selectattr('exception_id', 'equalto', inc.exception_ids[0])|first %}
+  {% if inc.basis == 'investigation' %}
+  {#- No critical exception came first: the incident rests on what someone reported. -#}
+  <tr><th>Reported event</th><td><strong>{{ inc.first_exception_type|humanise }}</strong> at {{ inc.first_raised_at|sast }} {{ tier('declared') }}</td></tr>
+  {% else %}
   <tr><th>First critical event</th><td><strong>{{ inc.first_exception_type|humanise }}</strong> at {{ inc.first_raised_at|sast }} {{ tier(first_report.tier if first_report else 'recorded') }}</td></tr>
+  {% endif %}
   <tr><th>Where it was raised</th><td>{{ fix(inc.position) }}</td></tr>
   <tr><th>Last known position</th><td>{{ fix(inc.last_known_position) }}{% if inc.last_known_position %} · {{ inc.last_known_position.source|humanise }} · {{ inc.last_known_position.recorded_at|sast }}{% endif %}</td></tr>
   <tr><th>Operator first reviewed</th><td>{% if inc.first_reviewed_at %}{{ inc.first_reviewed_at|sast }} ({{ inc.minutes_to_first_review }} min after){% else %}No review recorded{% endif %}</td></tr>
@@ -47,6 +52,18 @@
 <p class="small muted">A matching receipt shows the report and photos were not changed after anchoring; it does not prove the
   incident happened as described, where it happened, or who is liable.</p>
 {% endif %}
+
+{% for i in m.investigations if i.incident_type == 'hijacking' %}
+<h2>Operator's incident record {{ tier('declared') }}</h2>
+<table class="kv">
+  <tr><th>Incident</th><td><strong>{{ i.reference }}</strong> · {{ i.confidence|humanise }}</td></tr>
+  <tr><th>Reported by</th><td>{{ i.reporter_role|humanise }} via {{ i.report_channel|humanise }}</td></tr>
+  <tr><th>Reportedly happened / received</th><td>{{ i.reported_occurred_at|sast if i.reported_occurred_at else 'time not stated' }} / {{ i.received_at|sast }}</td></tr>
+  <tr><th>What was reported</th><td>{{ i.summary }}</td></tr>
+  {% if i.trip_stopped_at %}<tr><th>Trip stopped by operator</th><td>{{ i.trip_stopped_at|sast }}</td></tr>{% endif %}
+  <tr><th>Affected parcels</th><td>{{ i.parcels|length }}{% for p in i.parcels[:20] %}{% if loop.first %}: {% endif %}<span class="mono">{{ p.barcode }}</span>{% if not loop.last %}, {% endif %}{% endfor %}{% if i.parcels|length > 20 %} … (full list in the audit pack){% endif %}</td></tr>
+</table>
+{% endfor %}
 
 <h2>Vehicles and tracking</h2>
 <table>
