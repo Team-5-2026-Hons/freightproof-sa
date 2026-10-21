@@ -201,6 +201,28 @@ class ConsignmentScannedOnCancelledTripError(ConsignmentAlreadyAssignedError):
         )
 
 
+class ConsignmentCitedByIncidentError(ConsignmentAlreadyAssignedError):
+    """A waybill's parcels are named in an incident on a cancelled trip, so it cannot move to a
+    new one. Moving it would delete the parcel rows, and the incident's ledger and affected-cargo
+    list point at them: that record must stay intact. A subclass, so every existing 409 handler
+    covers it unchanged."""
+
+    def __init__(
+        self, pp_reference: str, trip_reference: str | None, incident_references: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(pp_reference, trip_reference)
+        self.incident_references = incident_references
+        holder = f"cancelled trip {trip_reference}" if trip_reference is not None else "another cancelled trip"
+        # An empty tuple is the foreign-operator case (the caller blanks the trip identity), so
+        # the incident references are withheld along with it.
+        cited = f"incident {', '.join(incident_references)}" if incident_references else "an incident"
+        self.args = (
+            f"Waybill {pp_reference!r} cannot be used on a new trip: its parcels are cited by {cited} "
+            f"on {holder}, and that incident record must stay intact. "
+            "Use a different waybill, or resolve the incident's cargo outside FreightProof first.",
+        )
+
+
 class HederaServiceError(Exception):
     """Base exception for Hedera service failures."""
 
