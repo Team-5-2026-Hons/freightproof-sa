@@ -7,6 +7,13 @@
       "rate_limit:fleet_mutation"
     ]
   },
+  "GET /api/v1/analytics/chat/status": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/analytics/cost-profile": {
     "access": "dispatcher",
     "dependencies": [
@@ -212,6 +219,34 @@
     "access": "receiver-capability-token",
     "dependencies": [
       "rate_limit:handover_public"
+    ]
+  },
+  "GET /api/v1/incidents": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/incidents/{incident_id}": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/incidents/{incident_id}/documents/{artifact_id}/url": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
+  "GET /api/v1/incidents/{incident_id}/evidence": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
     ]
   },
   "GET /api/v1/parcels/lookup": {
@@ -462,6 +497,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "GET /api/v1/trips/{trip_id}/incidents": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "GET /api/v1/trips/{trip_id}/late-evidence": {
     "access": "dispatcher",
     "dependencies": [
@@ -576,6 +618,14 @@
       "rate_limit:fleet_mutation"
     ]
   },
+  "POST /api/v1/analytics/chat": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:analytics_chat"
+    ]
+  },
   "POST /api/v1/artifacts": {
     "access": "driver",
     "dependencies": [
@@ -654,6 +704,46 @@
     "access": "receiver-capability-token",
     "dependencies": [
       "rate_limit:handover_public"
+    ]
+  },
+  "POST /api/v1/incidents/{incident_id}/close": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/incidents/{incident_id}/documents": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:artifact_upload"
+    ]
+  },
+  "POST /api/v1/incidents/{incident_id}/reopen": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/incidents/{incident_id}/stop-trip": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/incidents/{incident_id}/updates": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
     ]
   },
   "POST /api/v1/precincts": {
@@ -815,6 +905,14 @@
     ]
   },
   "POST /api/v1/trips/{trip_id}/incident-declarations": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:fleet_mutation"
+    ]
+  },
+  "POST /api/v1/trips/{trip_id}/incidents": {
     "access": "dispatcher",
     "dependencies": [
       "app.auth.dependencies.get_current_dispatcher",

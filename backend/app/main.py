@@ -37,6 +37,8 @@ from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
 from app.api.v1.endpoints.parcels import router as parcels_router
 from app.api.v1.endpoints.handover import public_router as handover_public_router
+from app.api.v1.endpoints.incidents import router as incidents_router
+from app.api.v1.endpoints.incidents import trip_incidents_router
 from app.api.v1.endpoints.handover import router as handover_router
 from app.api.v1.endpoints.phases import router as phases_router
 from app.api.v1.endpoints.pp import router as pp_router
@@ -135,6 +137,8 @@ app.include_router(audit_packs_router, prefix="/api/v1")
 app.include_router(trip_audit_packs_router, prefix="/api/v1")
 app.include_router(audit_packs_by_id_router, prefix="/api/v1")
 app.include_router(incident_declarations_router, prefix="/api/v1")
+app.include_router(trip_incidents_router, prefix="/api/v1")
+app.include_router(incidents_router, prefix="/api/v1")
 app.include_router(audit_packs_public_router, prefix="/api/v1")
 
 # Dev trigger panel. Gated on DEV_PANEL_ENABLED only, not _IS_PRODUCTION —

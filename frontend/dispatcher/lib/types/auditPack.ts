@@ -75,6 +75,8 @@ export interface AuditPackAccessEvent {
 // packs under the Declared tier — FreightProof never captured them itself.
 export interface IncidentDeclarationCreate {
   exception_id: string | null
+  // The investigation it belongs to; absent on declarations made outside an incident.
+  incident_id?: string | null
   saps_station: string | null
   saps_cas_number: string | null
   saps_officer: string | null

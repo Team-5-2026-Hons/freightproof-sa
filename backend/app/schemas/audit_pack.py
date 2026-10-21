@@ -26,7 +26,10 @@ from app.schemas.text import REFERENCE_MAX_LENGTH, FreeText, clean_text
 # v2 (FP-290): an exception carries every photo (`photos`) and the anchor state of each
 # action taken on it (`anchors`). Every v2 addition is defaulted, so a stored v1 manifest
 # still validates and reads as v1; the stored JSON itself is never rewritten.
-AUDIT_PACK_MANIFEST_VERSION = 3
+# v4: `investigations` (incidents a dispatcher ran over the trip, with their ledger and
+# affected parcels) and IncidentSummary.basis; both defaulted, so a stored v3 manifest still
+# validates and reads as v3.
+AUDIT_PACK_MANIFEST_VERSION = 4
 
 # anchored:     its hash is on Hedera (field-level where the anchored payload names it)
 # corroborated: independent sources agreed at capture time, but nothing is anchored
@@ -404,6 +407,8 @@ class IncidentDeclarationRecord(_Frozen):
 
     declaration_id: UUID
     exception_id: UUID | None
+    # Defaulted so a manifest stored before incidents existed still validates.
+    incident_id: UUID | None = None
     saps_station: str | None
     saps_cas_number: str | None
     saps_officer: str | None
@@ -431,6 +436,63 @@ class IncidentSummary(_Frozen):
     last_known_position: PositionFix | None
     first_reviewed_at: datetime | None
     minutes_to_first_review: int | None
+    # "exception": anchored on the first critical exception. "investigation": anchored on a
+    # dispatcher-recorded hijacking with no earlier critical exception (a phone call after the
+    # driver's phone was taken) — a report, so the sheet prints it as declared, not captured.
+    basis: Literal["exception", "investigation"] = "exception"
+
+
+class AffectedParcelRecord(_Frozen):
+    parcel_id: UUID
+    barcode: str
+    consignment_id: UUID
+    # Scan facts, never conclusions: see orchestration.incidents.queries.scan_state.
+    scan_state: Literal["scanned_in", "no_scan_in_recorded", "no_scan_recorded"]
+    latest_finding: str | None
+
+
+class InvestigationEntryRecord(_Frozen):
+    """One entry of an incident's append-only ledger, as recorded by a dispatcher."""
+
+    sequence: int
+    kind: str
+    note: str | None
+    from_value: str | None
+    to_value: str | None
+    parcel_id: UUID | None
+    exception_id: UUID | None
+    external_action: str | None
+    action_at: datetime | None
+    recorded_by_name: str | None
+    recorded_at: datetime
+
+
+class InvestigationRecord(_Frozen):
+    """An incident the operator investigated: who reported what and when, how sure, what was
+    affected, every follow-up, and what it established — or that it was still open. Declared
+    tier throughout: the operator recorded all of it; FreightProof captured none of it."""
+
+    incident_id: UUID
+    reference: str
+    incident_type: str
+    summary: str
+    reporter_role: str
+    report_channel: str
+    # No reporter name: the manifest is hashed and its hash anchored on Hedera, and a person's
+    # name never goes into an anchored record. The role and channel say what a claim needs.
+    reported_occurred_at: datetime | None
+    received_at: datetime
+    confidence: str
+    status: str
+    outcome: str | None
+    closure_reason: str | None
+    closed_at: datetime | None
+    trip_stopped_at: datetime | None
+    assigned_to_name: str | None
+    exception_ids: list[UUID]
+    parcels: list[AffectedParcelRecord]
+    entries: list[InvestigationEntryRecord]
+    tier: Literal["declared"] = "declared"
 
 
 class TripSummary(_Frozen):
@@ -472,6 +534,8 @@ class AuditPackManifest(_Frozen):
     declarations: list[IncidentDeclarationRecord] = []
     # FP-83: retained late driver evidence; defaulted so earlier manifests still parse.
     late_evidence: list[LateEvidenceRecord] = []
+    # v4: defaulted so earlier manifests still parse.
+    investigations: list[InvestigationRecord] = []
     observations: list[Observation]
     # Human-readable list of what was withheld, printed on the data-protection page so
     # a reader knows an absence is a redaction, not a missing record.
@@ -696,6 +760,8 @@ class IncidentDeclarationCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     exception_id: UUID | None = None
+    # The investigation the declaration belongs to (the hijacking guide's SAPS step sets it).
+    incident_id: UUID | None = None
     saps_station: _Station | None = None
     saps_cas_number: _CasNumber | None = None
     saps_officer: _Officer | None = None

@@ -10,6 +10,7 @@ import {
 import type { Grain } from '@shared/lib/types/fleet-analytics'
 import { FLEET_COPY } from '../copy'
 import { GrainToggle } from './GrainToggle'
+import { InformationButton } from './InformationButton'
 import { PeriodControl } from './PeriodControl'
 
 /** What the dispatcher chose for one tab; kept per tab for the visit so switching tabs and
@@ -28,12 +29,14 @@ interface ControlRowProps {
   showGrain: boolean
   today: string
   allTimeStart: string | null
+  /** How this tab's figures are counted, shown behind the Information button. */
+  notes: readonly string[]
 }
 
 /** One row of controls above a tab's charts. The Period only offers presets that suit the
  *  View by; when a period has too many bars for the chosen grain, the row switches to a
  *  coarser one and says why, keeping the original choice so a shorter period restores it. */
-export function ControlRow({ controls, query, onChange, showGrain, today, allTimeStart }: ControlRowProps) {
+export function ControlRow({ controls, query, onChange, showGrain, today, allTimeStart, notes }: ControlRowProps) {
   const presets = showGrain ? PRESETS_BY_GRAIN[controls.grain] : GENERAL_PRESETS
 
   return (
@@ -53,6 +56,7 @@ export function ControlRow({ controls, query, onChange, showGrain, today, allTim
           allTimeStart={allTimeStart}
           presets={presets}
         />
+        <InformationButton notes={notes} />
       </div>
       {showGrain && query.grainAdjusted && (
         <p role="status" className="text-[12px] text-on-surf-v">

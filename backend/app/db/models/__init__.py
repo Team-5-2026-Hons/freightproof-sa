@@ -43,6 +43,12 @@ from app.db.models.receiver_verification import (  # noqa: E402,F401
     IdvsQuotaLedger,
     ReceiverIdentityVerification,
 )
+from app.db.models.incidents import (  # noqa: E402,F401
+    Incident,
+    IncidentException,
+    IncidentParcel,
+    IncidentUpdate,
+)
 from app.db.models.audit_packs import (  # noqa: E402,F401
     AuditPack,
     AuditPackAccessEvent,
