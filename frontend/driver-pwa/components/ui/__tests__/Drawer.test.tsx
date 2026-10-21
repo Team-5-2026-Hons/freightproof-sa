@@ -198,3 +198,122 @@ describe('Drawer as a bottom sheet (audit H9)', () => {
     expect(scrim).toHaveClass('opacity-0', 'pointer-events-none')
   })
 })
+
+// Regressions found by driving the real app (Playwright, Oct 2026): the X inside the
+// drag strip never closed a sheet, and the "scroll lock" wrote overflow:hidden onto
+// <body>, which locked nothing on the trip page and was left behind on a stuck sheet.
+describe('Drawer close button and scroll lock (profile scroll bug)', () => {
+  beforeEach(() => {
+    // @ts-expect-error — installing a polyfill onto the jsdom window
+    window.PointerEvent = PointerEventPolyfill
+    HTMLElement.prototype.setPointerCapture = vi.fn()
+    HTMLElement.prototype.releasePointerCapture = vi.fn()
+    HTMLElement.prototype.hasPointerCapture = vi.fn(() => true)
+  })
+
+  it('test_tapping_the_close_button_does_not_start_a_drag_and_closes_the_sheet', () => {
+    // Arrange
+    const onClose = vi.fn()
+    render(<Drawer open onClose={onClose} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+    const close = screen.getByRole('button', { name: 'Close drawer' })
+
+    // Act — the sequence a finger produces on the X: pointerdown bubbles through the drag
+    // strip, then the click lands on the button.
+    fireEvent.pointerDown(close, { clientY: 120, pointerId: 1 })
+    fireEvent.pointerUp(close, { clientY: 120, pointerId: 1 })
+    fireEvent.click(close)
+
+    // Assert — no pointer capture (which would have re-targeted the click to the strip).
+    expect(HTMLElement.prototype.setPointerCapture).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('test_a_drag_that_starts_on_the_grabber_still_captures_the_pointer', () => {
+    render(<Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+    const strip = screen.getByRole('heading', { name: 'Appearance' }).parentElement!.parentElement!
+
+    fireEvent.pointerDown(strip, { clientY: 120, pointerId: 1 })
+
+    expect(HTMLElement.prototype.setPointerCapture).toHaveBeenCalledWith(1)
+  })
+
+  it('test_an_open_sheet_never_writes_overflow_onto_body', () => {
+    const { rerender } = render(<Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+
+    expect(document.body.style.overflow).toBe('')
+
+    rerender(<Drawer open={false} onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('test_a_touch_moving_on_a_short_sheet_never_scrolls_the_page_behind_it', () => {
+    // jsdom lays nothing out, so the panel reads as not overflowing — exactly the short
+    // sheet whose gesture the browser would otherwise hand to the page.
+    render(<Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+    const move = new Event('touchmove', { bubbles: true, cancelable: true })
+
+    screen.getByText('Panel body').dispatchEvent(move)
+
+    expect(move.defaultPrevented).toBe(true)
+  })
+
+  it('test_the_scrim_refuses_touch_scrolling_and_the_panel_contains_overscroll', () => {
+    const { container } = render(<Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>)
+
+    expect(container.firstElementChild).toHaveClass('touch-none')
+    expect(screen.getByRole('dialog')).toHaveClass('overscroll-contain')
+  })
+})
+
+describe('Drawer focus management', () => {
+  it('test_focus_moves_to_the_close_button_on_open_and_returns_on_close', () => {
+    // Arrange — the row that opened the sheet holds focus.
+    const { rerender } = render(
+      <>
+        <button type="button">Appearance row</button>
+        <Drawer open={false} onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>
+      </>,
+    )
+    const opener = screen.getByRole('button', { name: 'Appearance row' })
+    opener.focus()
+
+    // Act
+    rerender(
+      <>
+        <button type="button">Appearance row</button>
+        <Drawer open onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>
+      </>,
+    )
+
+    // Assert
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close drawer' }))
+
+    rerender(
+      <>
+        <button type="button">Appearance row</button>
+        <Drawer open={false} onClose={vi.fn()} side="bottom" title="Appearance"><p>Panel body</p></Drawer>
+      </>,
+    )
+
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('test_tab_wraps_inside_the_open_sheet', () => {
+    render(
+      <Drawer open onClose={vi.fn()} side="bottom" title="Sign out?">
+        <button type="button">Sign Out</button>
+        <button type="button">Cancel</button>
+      </Drawer>,
+    )
+    const close = screen.getByRole('button', { name: 'Close drawer' })
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+
+    cancel.focus()
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel)
+  })
+})
