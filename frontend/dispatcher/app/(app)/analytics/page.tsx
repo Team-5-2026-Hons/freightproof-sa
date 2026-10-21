@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Sparkles } from 'lucide-react'
 
 import { AnalyticsChatPanel } from '@/components/analytics/chat/AnalyticsChatPanel'
 import { CHAT_COPY } from '@/components/analytics/chat/chatCopy'
@@ -57,6 +58,8 @@ type TabId = (typeof TABS)[number]['id']
 const DEFAULT_TAB: TabId = 'activity'
 const PANEL_ID = 'fleet-analytics-panel'
 const CHAT_BUTTON_ID = 'analytics-chat-open'
+// The design system's size for a button's leading icon (DESIGN_SYSTEM.md §6).
+const CHAT_ICON_SIZE = 13
 const CHAT_PANEL_ID = 'analytics-chat-panel'
 
 // Routes & sites shows distributions over the whole period, never a time axis.
@@ -184,6 +187,9 @@ function FleetAnalytics() {
             id={CHAT_BUTTON_ID}
             variant="secondary"
             size="sm"
+            // The sparkle is the common mark for an AI feature, so the button says what it opens
+            // at a glance. Decorative: the words already name the button for screen readers.
+            iconLeft={<Sparkles aria-hidden="true" data-testid="chat-sparkle" fill="currentColor" size={CHAT_ICON_SIZE} />}
             aria-expanded={chatOpen}
             aria-controls={chatOpen ? CHAT_PANEL_ID : undefined}
             onClick={() => {

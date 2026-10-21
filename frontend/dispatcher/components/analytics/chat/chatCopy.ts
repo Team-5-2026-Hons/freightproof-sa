@@ -17,6 +17,9 @@ export const CHAT_COPY = {
   ],
   inputLabel: 'Your question',
   placeholder: 'Ask a question about the fleet figures',
+  /** The counter in the box's corner, e.g. "123/500"; read aloud as charCountSpoken. */
+  charCount: (used: number, max: number): string => `${used}/${max}`,
+  charCountSpoken: (used: number, max: number): string => `${used} of ${max} characters`,
   send: 'Ask',
   close: 'Close',
   waiting: 'Looking up the figures…',

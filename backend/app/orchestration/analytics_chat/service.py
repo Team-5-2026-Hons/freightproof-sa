@@ -25,7 +25,12 @@ from app.analytics.fleet.periods import today_sast
 from app.core.config import settings
 from app.integrations.ai_chat.anthropic_client import AnthropicProvider
 from app.integrations.ai_chat.gemini_client import GeminiProvider
-from app.integrations.ai_chat.pricing import ModelPrice, UnknownModelError, cost_micro_usd, price_for
+from app.integrations.ai_chat.pricing import (
+    ModelPrice,
+    UnknownModelError,
+    cost_micro_usd,
+    price_for,
+)
 from app.integrations.ai_chat.provider import (
     AiCreditError,
     AiProviderError,
@@ -55,6 +60,7 @@ from app.orchestration.analytics_chat.prompt import (
     TOOL_CAP_MESSAGE,
     context_for,
 )
+from app.orchestration.analytics_chat.punctuation import without_em_dashes
 from app.orchestration.analytics_chat.tools import TOOLS, run_tool
 from app.schemas.analytics_chat import Basis, ChatAnswer, ChatRequest, ChatStatus
 from app.schemas.people import UserRead
@@ -256,7 +262,8 @@ def _unsourced_figures(question: _Question, progress: _Progress, text: str) -> l
 
 def _final(question: _Question, progress: _Progress, reply: ModelReply) -> tuple[str, AnswerKind] | None:
     """The answer for a reply with no tool calls, or None to send the model back once to fix it."""
-    text = reply.text.strip() or CUT_OFF_MESSAGE
+    # Em dashes are taken out here, before any check, so what is checked is what is shown (B44).
+    text = without_em_dashes(reply.text.strip()) or CUT_OFF_MESSAGE
     invented = _unsourced_figures(question, progress, text)
     if invented and not progress.corrected:
         # "No tool, no figures": enforced here, not only asked for in the prompt.

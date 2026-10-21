@@ -923,6 +923,15 @@ recorded on 19 Oct; trips added since will move them) and fill in this table and
      page explanation therefore gets a failing backend test until `definitions.py` matches.
   +9 tests (6 new, 3 updated for `about`). Backend **4118 pass**; ruff, mypy, check_structure, lint-imports (17 kept),
   import cycles (311) all clean. No schema, API or frontend change; no snapshot change. Not re-evaluated (costs money).
+- **B44 (Tom, 21 Oct, readability): answers are shown as paragraphs and lists, with no em dashes.** The panel used to show
+  an answer as one block of text, so a model's "- " list lines appeared as plain hyphens. Now `answerFormat.ts` reads the
+  answer's shape (blank lines, "- " / "* " / "•" and "1." / "1)" lines, `**bold**`) and the panel renders real paragraphs and
+  lists; every piece is still React text, never HTML. The instructions ask for "- " list lines and **no em dashes**, and
+  the rule is kept by code too (`punctuation.py`, applied in `service._final` before any check): an em dash between two
+  numbers becomes the range dash ("1–15"), one at a line's start a list dash, any other a comma. Also (UI only): "Based
+  on" lines are small chips, the waiting line is three dots pulsing in turn (still under reduced motion), the header has a
+  full-strength line under it, and a new answer is scrolled to its start rather than its end, within the conversation only.
+  +10 backend tests (punctuation, service, prompt), +11 frontend. Backend **4128 pass**, dispatcher **3012 pass**.
 - **Seen in Stage 1:** a test hook that runs the unit suite at the end of a turn can overlap a full pytest run and break
   both (shared test DB, rule 9). Stage 1's own full run was unaffected and the unit suite passes when run alone.
 
