@@ -36,6 +36,7 @@ from app.core.exceptions import (
 )
 from app.core.limits import ARTIFACT_UPLOAD, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import IncidentStatus, IncidentType
 from app.db.session import get_db
 from app.orchestration.incidents.creation import report_incident, stop_trip_from_incident
@@ -91,6 +92,8 @@ async def _call(action: str, work: Awaitable[T]) -> T:
     except (ResourceNotFoundError, ExceptionAlreadyInIncidentError, IncidentStateError, TripStateError,
             IncidentInvalidError, IncidentDocumentsDisabledError) as exc:
         _raise_http(exc)
+    except DatabaseUnavailableError:
+        raise  # The shared availability handler returns 503, not this endpoint's 500.
     except SQLAlchemyError as exc:
         logger.exception("Database error while trying to %s", action)
         raise HTTPException(

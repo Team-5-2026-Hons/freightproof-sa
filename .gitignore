@@ -143,6 +143,8 @@ frontend/**/.env.*.local
 .envrc
 .venv
 .venv/
+# Versioned/local variants such as .venv312 and .venv313.
+.venv*/
 env/
 venv/
 ENV/

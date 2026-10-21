@@ -99,6 +99,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import PhaseType
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent, TrailerGpsSnapshot
@@ -277,7 +278,7 @@ async def record_phase_corroboration(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent,
     driver_captured_at: Optional[datetime] = None,
 ) -> Optional[PulsitFix]:
-    """Corroborate one phase handshake against Pulsit. NEVER raises.
+    """Corroborate a handshake; optional failures are fail-open, DB outages propagate.
 
     Returns the raw horse `PulsitFix` this call obtained — whether or not it turned
     out timely enough to be written anywhere — or `None` if no fix could be obtained
@@ -305,10 +306,8 @@ async def record_phase_corroboration(
     deliberate and not a bare except: it is logged with a full traceback and
     returns, per the project's error rules.
 
-    Catching a database error here does not make a broken session worse: the
-    caller's own flush in _finish_phase would fail on the same session moments
-    later, so this cannot mask a DB fault, only decline to be the thing that
-    reports it.
+    A database outage cannot be treated as missing telemetry: the transaction is
+    unusable and a later flush would replace the original availability error.
 
     Writes only when it has something real. A None never overwrites a position
     stored by an earlier attempt, matching _record_driver_position's rule for the
@@ -420,6 +419,8 @@ async def record_phase_corroboration(
 
         return horse_fix
 
+    except DatabaseUnavailableError:
+        raise
     except Exception:
         # Fail-open, mirroring _anchor_or_fail_open's stance on Hedera: the
         # handshake is evidence that already physically happened, and no external
@@ -436,7 +437,7 @@ async def record_checkpoint_corroboration(
     db: AsyncSession, *, trip: Trip, checkpoint: Checkpoint,
     driver_captured_at: Optional[datetime] = None,
 ) -> Optional[PulsitFix]:
-    """Corroborate an in-transit checkpoint against Pulsit. NEVER raises.
+    """Corroborate a checkpoint; optional failures are fail-open, DB outages propagate.
 
     Scope note for review: FP-143 as written covers phase handshakes only. This
     entry point extends the same treatment to checkpoints by an explicit decision
@@ -502,6 +503,8 @@ async def record_checkpoint_corroboration(
         checkpoint.horse_gps_lng = fix.lng
         return fix
 
+    except DatabaseUnavailableError:
+        raise
     except Exception:
         logger.exception(
             "Pulsit corroboration failed for %s — checkpoint continues, corroboration "

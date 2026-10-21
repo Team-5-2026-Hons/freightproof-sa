@@ -42,6 +42,7 @@ from app.core.constants import PG_INTEGER_MAX
 from app.core.limits import PP_LOOKUP, TRIP_CREATE
 from app.core.pagination import CursorPosition, decode_cursor
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
@@ -138,6 +139,8 @@ def _trip_http_error(exc: Exception) -> HTTPException | None:
     if isinstance(exc, HederaServiceError):
         logger.error("Hedera anchoring failed during trip creation: %s", exc)
         return HTTPException(status_code=http_status.HTTP_502_BAD_GATEWAY, detail=_HEDERA_UNAVAILABLE_DETAIL)
+    if isinstance(exc, DatabaseUnavailableError):
+        return None  # Let the shared availability handler return 503.
     if isinstance(exc, SQLAlchemyError):
         logger.exception("Database error on a trip endpoint")
         return HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED_DETAIL)

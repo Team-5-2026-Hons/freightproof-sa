@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
@@ -75,7 +76,7 @@ async def _finish_phase(
     # Fail-open, for exactly the reason record_phase_corroboration is: the driver has
     # already physically performed this handshake, and the assessment is a derived
     # comparison of telemetry, not the evidence itself. If assembling or recording it
-    # fails for any reason, the column stays NULL — which the schema defines as "not
+    # fails outside the database, the column stays NULL — the schema's "not
     # assessed" — the traceback is logged, and the completion still lands. A 500 here
     # would roll back a swipe the offline queue could then only ever replay into the
     # same failure. The separation finding uses its own SAVEPOINT for its insert, so
@@ -100,6 +101,8 @@ async def _finish_phase(
             db, trip=trip, phase_event_id=event.id, assessment=assessment,
             driver_reason=event.location_warning_reason,
         )
+    except DatabaseUnavailableError:
+        raise  # The transaction cannot finish; preserve the availability verdict.
     except Exception:
         logger.exception(
             "Action-location assessment failed for phase_event_id=%s — handshake continues, "

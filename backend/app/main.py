@@ -55,6 +55,7 @@ from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 from app.core.config_validation import enforce_production_config
 from app.core.realtime import register_realtime_hook
+from app.db.errors import DATABASE_UNAVAILABLE_DETAIL, DatabaseUnavailableError
 from app.db.session import get_read_only_db
 from app.tasks.driver_substitutions import register_custody_publisher
 from app.tasks.evidence_anchors import register_evidence_publisher
@@ -166,6 +167,24 @@ register_realtime_hook()
 register_evidence_publisher()
 # The same for FP-83 custody anchors (orchestration/substitutions/anchors.py).
 register_custody_publisher()
+
+
+@app.exception_handler(DatabaseUnavailableError)
+async def database_unavailable_handler(request: Request, exc: DatabaseUnavailableError) -> JSONResponse:
+    # Route templates, never raw URLs: public handover/audit links carry secrets in
+    # the path. Driver exception messages can also contain connection/SQL parameters.
+    route = getattr(request.scope.get("route"), "path", "<unmatched>")
+    logger.warning(
+        "Database unavailable reason=%s operation=%s route=%s "
+        "pool_size=%s max_overflow=%s connect_timeout=%s pool_timeout=%s command_timeout=%s cleanup_timeout=%s",
+        exc.reason, exc.operation, route, settings.DB_POOL_SIZE, settings.DB_MAX_OVERFLOW,
+        settings.DB_CONNECT_TIMEOUT_SECONDS, settings.DB_POOL_TIMEOUT_SECONDS,
+        settings.DB_COMMAND_TIMEOUT_SECONDS, settings.DB_CLEANUP_TIMEOUT_SECONDS,
+    )
+    return JSONResponse(
+        status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": DATABASE_UNAVAILABLE_DETAIL},
+    )
 
 
 @app.exception_handler(Exception)

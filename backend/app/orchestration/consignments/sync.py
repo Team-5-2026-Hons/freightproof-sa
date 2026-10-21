@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConsignmentAlreadyAssignedError, ConsignmentScannedOnCancelledTripError
+from app.db.cleanup import rollback_after_error
 from app.db.models.enums import ParcelStatus, TripStatus
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
@@ -255,9 +256,9 @@ async def sync_consignment_from_waybill(
     except IntegrityError as exc:
         if not is_unique_violation(exc):
             raise
-        # Safe to roll back here: every caller already abandons its whole unit of
-        # work when the waybill is refused, so a second rollback there is a no-op.
-        await db.rollback()
+        # Only read the winner after a successful rollback of the rejected unit of work.
+        if not await rollback_after_error(db):
+            raise
         owner_reference = await get_assigned_trip_reference(db, pp_reference)
         if owner_reference is None:
             # Not "already assigned to another trip" — the row exists on no trip,

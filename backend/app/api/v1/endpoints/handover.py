@@ -39,6 +39,8 @@ from app.core.exceptions import (
 )
 from app.core.limits import HANDOVER_ISSUE, HANDOVER_PUBLIC, IDVS_VERIFY, IDVS_WEBHOOK
 from app.core.rate_limit import rate_limit
+from app.db.cleanup import rollback_after_error
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import (
     ReceiverVerificationTier,
     ReceiverVerificationUnverifiedReason,
@@ -149,19 +151,19 @@ async def issue_handover_token_endpoint(
         await ensure_handover_open(db, target=target)
     except HandoverAlreadyConfirmedError:
         raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT,
-            detail="This delivery has already been confirmed by the receiver.",
+            status_code=http_status.HTTP_409_CONFLICT, detail="This delivery has already been confirmed by the receiver.",
         ) from None
 
     try:
         rotation = await rotate_next_token(db, target=target, force=query.force)
         await db.commit()
+    except DatabaseUnavailableError:
+        raise  # get_db cleans up; the shared handler returns 503.
     except SQLAlchemyError:
-        await db.rollback()
+        await rollback_after_error(db)
         logger.exception("Failed to issue a handover token for phase_event=%s", phase_event_id)
         raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not issue a handover code.",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not issue a handover code.",
         ) from None
 
     return HandoverTokenResponse(
@@ -231,9 +233,7 @@ async def scan_handover_endpoint(
             samesite="strict",  # confirm POST is same-site from the page we just served
             secure=settings.ENVIRONMENT != "development",  # plain HTTP locally would silently drop it
             path=_COOKIE_PATH,
-            # Covers the token's LONGEST possible life: a verification extends the token
-            # by IDVS_TOKEN_EXTENSION_MINUTES, and a dead cookie fails the binding check
-            # the same way a forged link does.
+            # Cover the verification extension too: an expired cookie fails the binding check.
             max_age=(
                 settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES
             ) * 60,
@@ -266,8 +266,7 @@ async def confirm_handover_endpoint(
 ) -> HandoverConfirmResponse:
     token = await _live_token(db, raw_token)
 
-    # Both halves, or nothing. Checked BEFORE redemption so a wrong-browser attempt
-    # doesn't burn a token the real receiver is still holding.
+    # Check both halves before redemption so a wrong browser cannot burn the receiver's token.
     if not session_secret_matches(token, fp_handover_session):
         logger.warning(
             "Handover confirm rejected: session secret mismatch for token=%s", token.id,
@@ -277,8 +276,7 @@ async def confirm_handover_endpoint(
     try:
         result = await redeem_token(db, token=token, raw_token=raw_token)
     except HandoverLinkInvalidError:
-        # Already logged by the service with its true reason. Committed, not rolled
-        # back — the attempt row IS the evidence.
+        # The service logged the reason; commit the attempt row because it IS evidence.
         await db.commit()
         raise _not_found() from None
 
@@ -303,12 +301,13 @@ async def confirm_handover_endpoint(
             ),
         )
         await db.commit()
+    except DatabaseUnavailableError:
+        raise  # get_db cleans up; the shared handler returns 503.
     except SQLAlchemyError:
-        await db.rollback()
+        await rollback_after_error(db)
         logger.exception("Failed to record a handover confirmation for token=%s", result.token_id)
         raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not record the confirmation.",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not record the confirmation.",
         ) from None
 
     return HandoverConfirmResponse(
@@ -341,12 +340,13 @@ async def handover_consent_endpoint(
 
     try:
         await db.commit()
+    except DatabaseUnavailableError:
+        raise  # get_db cleans up; the shared handler returns 503.
     except SQLAlchemyError:
-        await db.rollback()
+        await rollback_after_error(db)
         logger.exception("Failed to record handover consent for token")
         raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not record consent.",
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not record consent.",
         ) from None
 
     return _verification_state(outcome.verification)

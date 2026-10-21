@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.geo import format_distance, haversine_metres
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
+from app.db.errors import DatabaseUnavailableError
 from app.db.models.enums import (
     ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType, PhaseStatus,
 )
@@ -78,9 +79,8 @@ async def _raise_position_disagreement_if_unrecorded(
     NOT filtered on `resolved` — a dispatcher who has already actioned this finding
     must not have a duplicate reappear when the driver app flushes its queue again.
 
-    Never raises. A handshake is evidence that already physically happened; a fault
-    while annotating it must not undo it. Same fail-open stance as
-    _anchor_or_fail_open and record_phase_corroboration.
+    Optional annotation failures are fail-open. Database outages must propagate:
+    the transaction cannot persist the handshake, and its caller needs the 503.
     """
     if event.pulsit_geofence_confirmed is not False:
         return
@@ -162,10 +162,10 @@ async def _raise_position_disagreement_if_unrecorded(
             ),
         )
 
+    except DatabaseUnavailableError:
+        raise
     except Exception:
-        # Deliberate broad catch, logged with a traceback per the project's error
-        # rules, not a silent swallow. The driver is standing at a gate and has
-        # already done the thing being recorded.
+        # Optional annotation failures keep the handshake's existing fail-open policy.
         logger.exception(
             "Could not record a position disagreement for phase_event_id=%s — the "
             "handshake stands and the corroboration columns still carry the finding",
@@ -192,8 +192,7 @@ async def _raise_trailer_decoupling_if_unrecorded(
     be hundreds of metres from it. What is left is a trailer that is not where its horse
     is: uncoupled, one of the strongest theft signals the system can see.
 
-    Same stance as _raise_position_disagreement_if_unrecorded: NULL never raises,
-    idempotent per phase event, and never raises out of here.
+    Same policy as the position finding: NULL is not a mismatch; DB outages propagate.
     """
     if event.pulsit_geofence_confirmed is not True:
         return
@@ -256,9 +255,10 @@ async def _raise_trailer_decoupling_if_unrecorded(
             ),
         )
 
+    except DatabaseUnavailableError:
+        raise
     except Exception:
-        # Same deliberate, logged broad catch as the GPS_MISMATCH check above: the
-        # snapshots still carry every verdict, so nothing recorded is lost.
+        # As above, optional annotation failures retain their fail-open policy.
         logger.exception(
             "Could not record a trailer decoupling for phase_event_id=%s — the handshake "
             "stands and the trailer snapshots still carry their verdicts",
