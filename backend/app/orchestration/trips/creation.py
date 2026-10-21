@@ -37,7 +37,7 @@ from app.db.models.enums import (
 from app.db.models.phases import PhaseEvent
 from app.db.models.people import Driver
 from app.db.models.trips import (
-    PP_MANIFEST_INDEX, Trip, TripStop, TripTrailer,
+    PP_MANIFEST_INDEX, Consignment, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
 from app.orchestration.integrity import is_unique_violation, violated_constraint
@@ -235,6 +235,7 @@ async def _manifest_conflict(
 
 async def _sync_cargo_entry(
     db: AsyncSession, pp_reference: str, sync: Awaitable["ConsignmentSyncResult"],
+    operator_org_id: uuid.UUID,
 ) -> "ConsignmentSyncResult":
     """Run one consignment sync with trip creation's fail-closed error mapping: any
     failure rolls back the whole trip, because a trip whose cargo plan couldn't be
@@ -246,10 +247,22 @@ async def _sync_cargo_entry(
         # handler keeps its DB-specific semantics instead of a misleading 422.
         await rollback_after_error(db)
         raise
-    except ConsignmentAlreadyAssignedError:
+    except ConsignmentAlreadyAssignedError as exc:
         # Nor is this a PP fault: the waybill is real and the conflict is ours, so it
         # must not be relabelled as a PP sync failure. Re-raised for the endpoint's 409.
-        await rollback_after_error(db)
+        # Conflict detection is global, but a foreign holder's trip and incident
+        # references are tenant-private. Resolved after the rollback because the
+        # holder can change while this trip was being created; if the rollback
+        # failed the holder can't be looked up, so fail closed to the private form.
+        if not await rollback_after_error(db):
+            raise type(exc)(exc.pp_reference, None) from exc
+        owner_id = (await db.execute(
+            select(Trip.operator_organization_id)
+            .join(Consignment, Consignment.trip_id == Trip.id)
+            .where(Consignment.parcel_perfect_reference == exc.pp_reference)
+        )).scalar_one_or_none()
+        if owner_id != operator_org_id:
+            raise type(exc)(exc.pp_reference, None) from exc
         raise
     except Exception as exc:
         # Explicit rollback keeps the guarantee independent of the session implementation
@@ -476,6 +489,7 @@ async def persist_trip(
                         origin_precinct_id=trip.origin_precinct_id,
                         destination_precinct_id=trip.destination_precinct_id,
                     ),
+                    current_user.organization_id,
                 ))
         for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
             consignment_results.append(await _sync_cargo_entry(
@@ -488,6 +502,7 @@ async def persist_trip(
                     origin_precinct_id=trip.origin_precinct_id,
                     destination_precinct_id=trip.destination_precinct_id,
                 ),
+                current_user.organization_id,
             ))
 
     # Stamp the route onto every synced consignment: stop-0 pickup, stop-last

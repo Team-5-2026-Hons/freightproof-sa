@@ -124,10 +124,14 @@ async def test_cargo_failure_keeps_its_error_mapping_when_rollback_fails(primary
 
     expected = PPSyncError if isinstance(primary, ValueError) else type(primary)
     with pytest.raises(expected) as caught:
-        await _sync_cargo_entry(db, "test-waybill", failed_sync())
+        await _sync_cargo_entry(db, "test-waybill", failed_sync(), uuid4())
 
     if isinstance(primary, ValueError):
         assert caught.value.__cause__ is primary
+    elif isinstance(primary, ConsignmentAlreadyAssignedError):
+        # The holder can't be checked without a working session, so it is withheld.
+        assert caught.value.__cause__ is primary
+        assert caught.value.trip_reference is None
     else:
         assert caught.value is primary
     db.rollback.assert_awaited_once()

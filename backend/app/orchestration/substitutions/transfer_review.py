@@ -21,7 +21,6 @@ import logging
 import uuid
 
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.realtime import RealtimeKind, TripEvent, enqueue_event, event_severity
@@ -102,8 +101,9 @@ async def raise_transfer_review(db: AsyncSession, *, trip: Trip, row: DriverSubs
                 ),
             ))
             await db.flush()
-    except SQLAlchemyError:
+    except Exception:
         # A finding must never condition custody: the transfer is already recorded and stands.
+        # Broad on purpose: any failure here, not only a DB one, would otherwise fail the handover.
         logger.exception("Driver transfer review exception not recorded for substitution=%s", row.id)
         return None
     enqueue_event(db, trip.operator_organization_id, TripEvent(

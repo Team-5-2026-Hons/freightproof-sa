@@ -150,3 +150,21 @@ async def test_the_transfer_still_completes_when_the_exception_cannot_be_written
     assert len(await chain(db_session, w.trip_id)) == 1
     assert await review_exceptions(db_session, w.trip_id) == []
     assert "review exception not recorded" in caplog.text
+
+
+async def test_the_transfer_still_completes_when_the_review_fails_outside_the_database(
+    db_session: AsyncSession, staged: dict[str, PulsitFix], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+):
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise ValueError("unexpected description input")
+
+    monkeypatch.setattr(transfer_review, "transfer_review_description", broken)
+    staged["fix"] = tracker(None)
+    w, pending = await armed(db_session)
+
+    done = await both_confirm(db_session, w, pending)
+
+    assert done.state is SubstitutionState.COMPLETED
+    assert len(await chain(db_session, w.trip_id)) == 1
+    assert await review_exceptions(db_session, w.trip_id) == []
+    assert "review exception not recorded" in caplog.text

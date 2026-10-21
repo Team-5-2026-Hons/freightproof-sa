@@ -40,7 +40,7 @@ export function openIncidents(incidents: readonly IncidentSummary[]): IncidentSu
 
 /** Active trips in the Active Trips page's attention order: trips with unreviewed exceptions first,
  *  worst first, then the rest by progress. Uncapped, so the panel can state the true total; it
- *  slices to NEEDS_ACTION_TRIP_LIMIT itself. */
+ *  slices to DASHBOARD_TRIP_LIMIT itself. */
 export function activeTripsByAttention(trips: readonly TripSummary[], precincts: readonly Precinct[]): TripSummary[] {
   return sortTrips(trips.filter(isActiveTrip), TRIP_ATTENTION_SORT, precincts)
 }

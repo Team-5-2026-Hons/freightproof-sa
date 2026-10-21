@@ -261,9 +261,12 @@ async def test_service_conflict_survives_real_stalled_rollback(
         proxy.silence_open_connections()
         async with asyncio.timeout(WATCHDOG):
             with pytest.raises(ConsignmentAlreadyAssignedError) as caught:
-                await _sync_cargo_entry(session, "test-waybill", rejected_sync())
+                await _sync_cargo_entry(session, "test-waybill", rejected_sync(), uuid4())
 
-    assert caught.value is primary
+    # Still the 409, but with the holder withheld: ownership can't be checked on a dead connection.
+    assert type(caught.value) is ConsignmentAlreadyAssignedError
+    assert caught.value.__cause__ is primary
+    assert caught.value.trip_reference is None
     assert "Database rollback failed error_type=DatabaseUnavailableError" in caplog.text
     assert isinstance(engine.pool, AvailabilityPool)
     assert engine.pool.checkedout() == 0

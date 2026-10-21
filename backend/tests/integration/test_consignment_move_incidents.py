@@ -5,6 +5,7 @@ say which incident, on which trip, so the dispatcher knows why the manifest is u
 import copy
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -31,6 +32,8 @@ from tests.integration._pp_manifest_world import (
 )
 
 _WAYBILL = "MFTWB8102"
+# Long enough to clear the minimum trip duration; the exact length is irrelevant here.
+_TRIP_LENGTH = timedelta(hours=10)
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -160,3 +163,45 @@ async def test_another_operators_incident_stays_private(client: AsyncClient, db_
     assert response.status_code == 409, response.text
     for text in (str(warning), response.text):
         assert "INC1" not in text and not any(identity in text for identity in private)
+
+
+def _waybill_list_body(world: ManifestWorld) -> dict:
+    """A POST /trips body that names the waybill directly instead of importing a manifest."""
+    departure = datetime.now(UTC)
+    return {
+        "driver_id": str(world.driver.id),
+        "horse_id": str(world.horse.id),
+        "trailer_ids": [str(world.trailer.id)],
+        "origin_precinct_id": str(world.cape_town.id),
+        "destination_precinct_id": str(world.johannesburg.id),
+        "planned_departure_at": departure.isoformat(),
+        "planned_arrival_at": (departure + _TRIP_LENGTH).isoformat(),
+        "consignments": [{"pp_reference": _WAYBILL, "unit_count_expected": 1}],
+    }
+
+
+async def test_waybill_list_create_names_own_incident(client: AsyncClient, db_session: AsyncSession) -> None:
+    world = await build_manifest_world(db_session)
+    hijacked, _ = await _hijacked_trip(db_session, world)
+    hijacked_reference = hijacked.trip_reference
+
+    response = await client.post("/api/v1/trips", json=_waybill_list_body(world), headers=world.headers())
+
+    assert response.status_code == 409, response.text
+    for expected in (_WAYBILL, "INC1", hijacked_reference):
+        assert expected in response.json()["detail"]
+
+
+async def test_waybill_list_create_keeps_another_operators_incident_private(
+    client: AsyncClient, db_session: AsyncSession,
+) -> None:
+    world = await build_manifest_world(db_session)
+    foreign = await build_manifest_world(db_session, client_account="OTHER1")
+    holder, _ = await _hijacked_trip(db_session, foreign)
+    private = (holder.trip_reference, str(holder.id))
+
+    response = await client.post("/api/v1/trips", json=_waybill_list_body(world), headers=world.headers())
+
+    assert response.status_code == 409, response.text
+    assert _WAYBILL in response.text
+    assert "INC1" not in response.text and not any(identity in response.text for identity in private)
