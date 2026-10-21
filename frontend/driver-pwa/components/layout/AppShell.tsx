@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { OfflineBanner } from './OfflineBanner'
@@ -46,6 +46,7 @@ export function AppShell({ children }: AppShellProps) {
   const headerRef = useRef<HTMLElement | null>(null)
   const titleRef = useRef<HTMLHeadingElement | null>(null)
   const barRowRef = useRef<HTMLDivElement | null>(null)
+  const scrollportRef = useRef<HTMLDivElement | null>(null)
   const pathname = usePathname()
   const title = ROUTE_TITLES[pathname] ?? 'FreightProof'
   const largeTitleHidden = HIDDEN_LARGE_TITLE.has(pathname)
@@ -66,8 +67,32 @@ export function AppShell({ children }: AppShellProps) {
     // The collapsed bar's bottom edge: the header's own height (status bar + banner) plus
     // the small-title row laid over the content beneath it.
     const barBottom = headerEl.offsetHeight + (barRowRef.current?.offsetHeight ?? 0)
-    setCollapsed(event.currentTarget.scrollTop > titleMidline - barBottom)
+    // Floored at 0: at rest the title already sits under the inline row, so the raw
+    // difference is negative and a scroll event at the very top (a tab switch clamping
+    // the scrollport back to 0 fires one) would collapse the bar over the title.
+    setCollapsed(event.currentTarget.scrollTop > Math.max(0, titleMidline - barBottom))
   }, [largeTitleHidden])
+
+  // This shell, its scrollport and the collapsed flag outlive every tab switch, so each
+  // tab would otherwise open at the previous tab's offset — and Next.js then scrolls the
+  // new page's top edge to the scrollport's top, under the sticky bar. Layout effect, so
+  // the reset lands before paint and after Next's own scroll handling (children first).
+  useLayoutEffect(() => {
+    setCollapsed(false)
+    const scrollport = scrollportRef.current
+    if (!scrollport) return
+    // iOS ignores a scrollTop write while a fling is still decelerating — the "scroll down,
+    // tap a tab at once" case. Turning scrolling off for a frame stops the fling first.
+    scrollport.style.overflowY = 'hidden'
+    scrollport.scrollTop = 0
+    const frame = window.requestAnimationFrame(() => {
+      scrollport.style.overflowY = ''
+    })
+    return () => {
+      window.cancelAnimationFrame(frame)
+      scrollport.style.overflowY = ''
+    }
+  }, [pathname])
 
   return (
     <>
@@ -77,6 +102,7 @@ export function AppShell({ children }: AppShellProps) {
           something when there is something behind it. pb-32 lets the last row scroll
           clear of the floating tab pill, which overlays rather than taking up space. */}
       <div
+        ref={scrollportRef}
         onScroll={handleScroll}
         className={cn('h-dvh overflow-y-auto overscroll-contain', fitToScreen && 'flex flex-col')}
       >
