@@ -57,7 +57,8 @@ describe('PackViewer', () => {
     render(<PackViewer token="tok" />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'FP-AUDIT-AP1' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
+    expect(screen.getByText('FP-AUDIT-AP1')).toBeInTheDocument()
     expect(screen.getByText(/issued to Jane Adjuster, Santam Claims/)).toBeInTheDocument()
     expect(screen.getByText('Seal SEAL-001 applied at departure matched.')).toBeInTheDocument()
     expect(fetchPack).toHaveBeenCalledWith('tok')
@@ -144,7 +145,7 @@ describe('PackViewer emailed code (FP-291)', () => {
 
     // Assert
     expect(verifyEmailCode).toHaveBeenCalledWith('tok', '048213')
-    expect(await screen.findByRole('heading', { name: 'FP-AUDIT-AP1' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
     expect(fetchPack).toHaveBeenCalledTimes(2)
   })
 })
@@ -164,7 +165,7 @@ describe('PackViewer — load failures', () => {
       await user.click(await screen.findByRole('button', { name: 'Try again' }))
 
       // Assert
-      expect(await screen.findByRole('heading', { name: 'FP-AUDIT-AP1' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
       expect(fetchPack).toHaveBeenCalledTimes(2)
     },
   )
@@ -209,7 +210,7 @@ describe('PackViewer — seal and PDF check', () => {
     render(<PackViewer token="tok" />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Pack not sealed · 1 of 1 record verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Pack not sealed · 1 of 1 record verified in your browser')).toBeInTheDocument()
     expect(screen.getByText('Pack seal · FP-AUDIT-AP1').closest('section')).not.toHaveClass('border-ok')
   })
 
@@ -227,7 +228,7 @@ describe('PackViewer — seal and PDF check', () => {
     render(<PackViewer token="tok" />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Seal verified · 1 of 1 record verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Seal verified · 1 of 1 record verified in your browser')).toBeInTheDocument()
     expect(screen.getByText('Pack seal · FP-AUDIT-AP1').closest('section')).toHaveClass('border-ok')
   })
 
@@ -238,7 +239,7 @@ describe('PackViewer — seal and PDF check', () => {
     mirror(() => new Response(JSON.stringify({ message: btoa(view.seal.seal!.data_hash) }), { status: 200 }))
     fetchPack.mockResolvedValue(view)
     render(<PackViewer token="tok" />)
-    await screen.findByRole('heading', { name: /Seal verified/ })
+    await screen.findByText(/Seal verified/)
 
     // Act
     await user.upload(screen.getByLabelText(/Check a PDF copy/), new File(['%PDF-issued'], 'pack.pdf', { type: 'application/pdf' }))
@@ -254,7 +255,7 @@ describe('PackViewer — seal and PDF check', () => {
     mirror(() => new Response('busy', { status: 503 }))
     fetchPack.mockResolvedValue(view)
     render(<PackViewer token="tok" />)
-    await screen.findByRole('heading', { name: /Seal not confirmed/ })
+    await screen.findByText(/Seal not confirmed/)
 
     // Act
     await user.upload(screen.getByLabelText(/Check a PDF copy/), new File(['%PDF-issued'], 'pack.pdf', { type: 'application/pdf' }))
@@ -277,7 +278,7 @@ describe('PackViewer — layout behaviour', () => {
 
   it('scrolls to the Evidence card on a small screen, smoothly', async () => {
     // Arrange
-    stubMatchMedia(['max-width: 1023px'])
+    stubMatchMedia(['max-width: 1279px'])
 
     // Act
     await pickEvent()
@@ -288,7 +289,7 @@ describe('PackViewer — layout behaviour', () => {
 
   it('scrolls without animation when the reader prefers reduced motion', async () => {
     // Arrange
-    stubMatchMedia(['max-width: 1023px', 'prefers-reduced-motion'])
+    stubMatchMedia(['max-width: 1279px', 'prefers-reduced-motion'])
 
     // Act
     await pickEvent()
@@ -324,6 +325,27 @@ describe('PackViewer — layout behaviour', () => {
   })
 })
 
+describe('PackViewer — sections', () => {
+  it('numbers its six sections the way the PDF does and lists them in the contents', async () => {
+    // Arrange
+    fetchPack.mockResolvedValue(makeView(makeManifest()))
+
+    // Act
+    render(<PackViewer token="tok" />)
+
+    // Assert
+    const nav = await screen.findByRole('navigation', { name: 'Sections' })
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      '#ch-summary', '#ch-journey', '#ch-exceptions', '#ch-details', '#ch-verification', '#ch-data-protection',
+    ])
+    for (const title of ['Summary and findings', 'Journey and custody', 'Exceptions and response', 'Verification']) {
+      expect(screen.getByRole('region', { name: title })).toBeInTheDocument()
+    }
+    expect(links[0]).toHaveAttribute('aria-current', 'location')
+  })
+})
+
 describe('PackViewer — notices', () => {
   it('tells the reader when the browser blocks site storage', async () => {
     // Arrange
@@ -345,19 +367,21 @@ describe('PackViewer — notices', () => {
     render(<PackViewer token="tok" />)
 
     // Assert
-    await screen.findByRole('heading', { name: 'FP-AUDIT-AP1' })
+    await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })
     expect(screen.queryByText(/blocks site storage/)).not.toBeInTheDocument()
   })
 
-  it('counts investigations it cannot display, instead of silently dropping them', async () => {
+  it('shows investigations in the exceptions section instead of only counting them', async () => {
     // Arrange
-    fetchPack.mockResolvedValue(makeView(makeManifest({ investigations: [makeInvestigation()] })))
+    fetchPack.mockResolvedValue(makeView(makeManifest({ investigations: [makeInvestigation({ summary: 'Reported by phone' })] })))
 
     // Act
     render(<PackViewer token="tok" />)
 
     // Assert
-    expect(await screen.findByRole('region', { name: 'Not shown in this viewer' })).toHaveTextContent('1 investigation record')
+    const section = await screen.findByRole('region', { name: 'Exceptions and response' })
+    expect(within(section).getByRole('region', { name: 'Investigations' })).toHaveTextContent('Reported by phone')
+    expect(screen.queryByRole('region', { name: 'Not shown in this viewer' })).not.toBeInTheDocument()
   })
 
   it('gives the PDF download a 44 px tap target', async () => {

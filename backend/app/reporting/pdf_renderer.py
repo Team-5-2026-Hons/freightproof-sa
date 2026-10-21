@@ -30,6 +30,34 @@ TIER_LABELS: dict[EvidenceTier, tuple[str, str]] = {
     "declared": ("Declared", "Entered by the operator after the event."),
 }
 
+# What each receipt type commits to, in a claims handler's words rather than the system's. Keys are
+# BlockchainReceiptType values; the web viewer prints the same phrases (client-portal lib/receipt-labels.ts).
+RECEIPT_LABELS: dict[str, str] = {
+    "journey_lock": "Trip plan locked when the trip was created",
+    "activation": "Driver started the trip",
+    "loading": "Loading completed",
+    "pickup": "Departure handover: seal and waybill",
+    "transit_arrival": "Arrival at a stop",
+    "arrival_inspection": "Arrival inspection of the seal",
+    "unloading": "Unloading completed",
+    "delivery": "Delivery confirmed",
+    "phase_override": "Dispatcher override of a phase",
+    "checkpoint_batch": "Checkpoints on the road",
+    "exception_batch": "Exceptions raised",
+    "exception_raised": "Exception reported",
+    "exception_reviewed": "Exception reviewed by a dispatcher",
+    "trip_cancelled": "Trip cancelled",
+    "driver_substitution": "Driver handover",
+    "driver_substitution_corrected": "Correction to a driver handover",
+    "vehicle_created": "Vehicle record created",
+    "vehicle_updated": "Vehicle record changed",
+    "driver_created": "Driver record created",
+    "driver_updated": "Driver record changed",
+    "precinct_created": "Depot boundary created",
+    "precinct_updated": "Depot boundary changed",
+    "audit_pack_issued": "This pack's seal",
+}
+
 PURPOSE_LABELS: dict[str, str] = {
     "insurance_claim": "Insurance claim",
     "delivery_dispute": "Delivery dispute",
@@ -49,6 +77,11 @@ def _humanise(value: str | None) -> str:
     return value.replace("_", " ").capitalize() if value else "—"
 
 
+def receipt_label(receipt_type: str, subject_type: str) -> str:
+    """A plain name for a receipt; a type added after RECEIPT_LABELS falls back to the system's wording."""
+    return RECEIPT_LABELS.get(receipt_type) or f"{_humanise(receipt_type)} · {_humanise(subject_type)}"
+
+
 def environment() -> Environment:
     """The shared Jinja environment — autoescaping and the SAST/label filters every
     audit-pack document uses."""
@@ -64,6 +97,7 @@ def _build_environment() -> Environment:
     )
     env.filters["sast"] = _sast
     env.filters["humanise"] = _humanise
+    env.globals["receipt_label"] = receipt_label
     return env
 
 

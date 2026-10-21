@@ -33,7 +33,7 @@ afterEach(() => {
 })
 
 function section(): HTMLElement {
-  return screen.getByRole('heading', { level: 2 }).closest('section')!
+  return screen.getByRole('heading', { level: 3 }).closest('section')!
 }
 
 describe('VerificationPanel — the seal row', () => {
@@ -49,7 +49,8 @@ describe('VerificationPanel — the seal row', () => {
     const rows = await screen.findAllByRole('listitem')
     expect(within(rows[0]).getByText('Pack seal · FP-AUDIT-AP1')).toBeInTheDocument()
     expect(within(rows[0]).getByText('This pack was not sealed on Hedera (status: Anchored)')).toHaveClass('text-warn')
-    expect(await screen.findByRole('heading', { name: 'Pack not sealed · 2 of 2 records verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Pack not sealed · 2 of 2 records verified in your browser')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'This pack was not sealed on the public ledger' })).toBeInTheDocument()
   })
 
   it('is NOT green when the seal is missing, even though every record verified', async () => {
@@ -79,7 +80,8 @@ describe('VerificationPanel — the seal row', () => {
     render(<VerificationPanel token="tok" seal={seal} records={records} />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Seal verified · 3 of 3 records verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Seal verified · 3 of 3 records verified in your browser')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Unchanged since it was issued' })).toBeInTheDocument()
     expect(section()).toHaveClass('border-ok')
     expect(section()).not.toHaveClass('border-err')
   })
@@ -97,7 +99,8 @@ describe('VerificationPanel — the seal row', () => {
     render(<VerificationPanel token="tok" seal={seal} records={records} />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Seal verified · 1 of 2 records verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Seal verified · 1 of 2 records verified in your browser')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Not confirmed against the public ledger yet' })).toBeInTheDocument()
     expect(section()).not.toHaveClass('border-ok')
   })
 
@@ -137,7 +140,8 @@ describe('VerificationPanel — failures and states', () => {
     render(<VerificationPanel token="tok" seal={makeView().seal} records={records} />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Pack not sealed · 1 record failed verification' })).toBeInTheDocument()
+    expect(await screen.findByText('Pack not sealed · 1 record failed verification')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Something in this pack does not match the public ledger' })).toBeInTheDocument()
     expect(screen.getByText(/Hedera holds a different hash/)).toBeInTheDocument()
     expect(section()).toHaveClass('border-err')
   })
@@ -221,7 +225,7 @@ describe('VerificationPanel — failures and states', () => {
     render(<VerificationPanel token="tok" seal={makeView().seal} records={[]} />)
 
     // Assert
-    expect(await screen.findByRole('heading', { level: 2 })).toHaveAttribute('aria-live', 'polite')
+    expect(await screen.findByRole('heading', { level: 3 })).toHaveAttribute('aria-live', 'polite')
   })
 })
 
@@ -243,7 +247,7 @@ describe('VerificationPanel — running the checks', () => {
     render(<VerificationPanel token="tok" seal={makeView().seal} records={records} />)
 
     // Assert
-    expect(await screen.findByRole('heading', { name: /8 of 8 records verified/ })).toBeInTheDocument()
+    expect(await screen.findByText(/8 of 8 records verified/)).toBeInTheDocument()
     expect(peak).toBe(4)
   })
 
@@ -257,14 +261,14 @@ describe('VerificationPanel — running the checks', () => {
       return mirrorMessage(records[sequence - 1].data_hash, sequence)
     })
     render(<VerificationPanel token="tok" seal={makeView().seal} records={records} />)
-    await screen.findByRole('heading', { name: 'Pack not sealed · 1 of 2 records verified in your browser' })
+    await screen.findByText('Pack not sealed · 1 of 2 records verified in your browser')
     fetchStub.mockClear()
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Re-run browser check' }))
 
     // Assert
-    expect(await screen.findByRole('heading', { name: 'Pack not sealed · 2 of 2 records verified in your browser' })).toBeInTheDocument()
+    expect(await screen.findByText('Pack not sealed · 2 of 2 records verified in your browser')).toBeInTheDocument()
     expect(fetchStub.mock.calls.map(([url]) => String(url).split('/').pop())).toEqual(['2'])
   })
 
@@ -285,12 +289,12 @@ describe('VerificationPanel — running the checks', () => {
 
     // Act
     await user.click(screen.getByRole('button', { name: 'Re-run browser check' }))
-    await screen.findByRole('heading', { name: 'Pack not sealed · 1 of 1 record verified in your browser' })
+    await screen.findByText('Pack not sealed · 1 of 1 record verified in your browser')
     releaseStale(mirrorMessage('ff'.repeat(32), 1))
     await new Promise((resolve) => setTimeout(resolve, 20))
 
     // Assert
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('1 of 1 record verified')
+    expect(screen.getByText(/1 of 1 record verified/)).toBeInTheDocument()
     expect(screen.queryByText(/Hedera holds a different hash/)).not.toBeInTheDocument()
   })
 
@@ -303,7 +307,7 @@ describe('VerificationPanel — running the checks', () => {
     render(<VerificationPanel token="tok" seal={seal} records={[]} />)
 
     // Assert
-    await screen.findByRole('heading', { name: 'Seal verified · no other anchored records' })
+    await screen.findByText('Seal verified · no other anchored records')
     expect(screen.getByRole('button', { name: 'Re-run browser check' })).toBeDisabled()
   })
 

@@ -166,6 +166,18 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
       ? 'no other anchored records'
       : `${recordsVerified} of ${pluralise(records.length, 'record')} verified in your browser`
 
+  // The verdict a claims handler reads; the tally under it is for whoever wants the count. Failure is named
+  // first, even mid-check, and "unchanged" needs the same evidence as green: the seal and every record.
+  const plainHeadline = sealFailed || recordsFailed > 0
+    ? 'Something in this pack does not match the public ledger'
+    : !settled
+      ? 'Checking this pack against the public ledger…'
+      : allVerified
+        ? 'Unchanged since it was issued'
+        : sealResult?.state === 'no_receipt'
+          ? 'This pack was not sealed on the public ledger'
+          : 'Not confirmed against the public ledger yet'
+
   // Green is reserved for a verified seal AND every record verified; anything less must not look like success.
   const tone = sealFailed || recordsFailed > 0
     ? 'border-err bg-err-c'
@@ -182,36 +194,45 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
 
   return (
     <section aria-labelledby="verify-title" className={`rounded-lg border-2 p-4 sm:p-5 ${tone}`}>
-      <h2 id="verify-title" aria-live="polite" className="text-[15px] font-extrabold">
-        {sealHeadline} · {recordsHeadline}
-      </h2>
-      <p className="mt-1 text-[13px] text-muted">
-        Your browser hashed each anchored payload itself and confirmed the Hedera {seal.hedera_network} ledger holds that
-        hash at the recorded position. This proves those payloads existed unchanged at the times shown; it does not by
-        itself prove every figure on this page came from them.
+      <h3 id="verify-title" aria-live="polite" className="text-[17px] font-extrabold">{plainHeadline}</h3>
+      <p className="num mt-0.5 text-[13px] font-semibold text-muted">{sealHeadline} · {recordsHeadline}</p>
+      <p className="mt-1 text-[14px] text-muted">
+        Your browser checks this pack&apos;s seal and each anchored record against the public Hedera ledger itself.
       </p>
-      <p className="num mt-1 text-[12px] text-muted">
-        {mirrorBase
-          ? `Mirror node: ${new URL(mirrorBase).host}`
-          : `No trusted mirror node is known for the network “${seal.hedera_network}”, so the ledger cannot be checked.`}
-        {PINNED_TOPIC_ID && ` · Topic ${PINNED_TOPIC_ID} (pinned)`}
-      </p>
-      <ul className="mt-3 divide-y divide-outline-v/40 rounded-md bg-surf-lowest">
-        {targets.map((t) => {
-          const check = checks[t.key]
-          const shown = check ? rowResult(t, check) : null
-          return (
-            <li key={t.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
-              <span className="font-semibold">{t.label}</span>
-              <span className={`num text-[12px] font-semibold ${shown ? shown.tone : 'text-muted'}`}>
-                {!check || !shown
-                  ? 'Checking…'
-                  : `${shown.text}${check.consensusTimestamp ? ` · ${consensusText(check.consensusTimestamp)}` : ''}`}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
+      {/* The per-record rows are the proof, not the story: folded away until something fails, then shown. */}
+      <details open={sealFailed || recordsFailed > 0} className="group mt-3">
+        <summary className="no-print flex min-h-11 cursor-pointer list-none items-center gap-2 text-[14px] font-semibold text-sec">
+          <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
+          Show each check ({targets.length})
+        </summary>
+        <p className="mt-2 text-[13px] text-muted">
+          Your browser hashed each anchored payload itself and confirmed the Hedera {seal.hedera_network} ledger holds that
+          hash at the recorded position. This proves those payloads existed unchanged at the times shown; it does not by
+          itself prove every figure on this page came from them.
+        </p>
+        <p className="num mt-1 text-[12px] text-muted">
+          {mirrorBase
+            ? `Mirror node: ${new URL(mirrorBase).host}`
+            : `No trusted mirror node is known for the network “${seal.hedera_network}”, so the ledger cannot be checked.`}
+          {PINNED_TOPIC_ID && ` · Topic ${PINNED_TOPIC_ID} (pinned)`}
+        </p>
+        <ul className="mt-3 divide-y divide-outline-v/40 rounded-md bg-surf-lowest">
+          {targets.map((t) => {
+            const check = checks[t.key]
+            const shown = check ? rowResult(t, check) : null
+            return (
+              <li key={t.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
+                <span className="font-semibold">{t.label}</span>
+                <span className={`num text-[12px] font-semibold ${shown ? shown.tone : 'text-muted'}`}>
+                  {!check || !shown
+                    ? 'Checking…'
+                    : `${shown.text}${check.consensusTimestamp ? ` · ${consensusText(check.consensusTimestamp)}` : ''}`}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </details>
       <div className="no-print mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={rerunBrowserChecks} disabled={unverifiedKeys.length === 0} className={buttonClass}>
           Re-run browser check
