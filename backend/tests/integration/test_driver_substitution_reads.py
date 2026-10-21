@@ -179,3 +179,18 @@ async def test_completed_projection_includes_requestless_legacy_once(db_session:
     assert detail.request_id is None and detail.reason is None and detail.completion is None
     assert detail.confirmations == [] and detail.required_confirmation_roles is None
     assert detail.confirmation_policy is None and detail.request_format is None
+
+
+async def test_batched_links_match_the_per_trip_read_and_cover_trips_without_handovers(
+    client: AsyncClient, db_session: AsyncSession,
+):
+    """GET /trips/me reads every chain through completed_links_by_trip, so it must agree with
+    completed_links trip by trip, and a trip with no handovers must still get an (empty) entry."""
+    from app.orchestration.substitutions.access import completed_links, completed_links_by_trip
+    w, _ = await completed(client, db_session)
+    no_handovers = uuid.uuid4()
+
+    batched = await completed_links_by_trip(db_session, trip_ids=[w.trip_id, no_handovers])
+
+    assert batched == {w.trip_id: await completed_links(db_session, trip_id=w.trip_id), no_handovers: []}
+    assert [link.sequence_number for link in batched[w.trip_id]] == [1]
