@@ -18,7 +18,7 @@ from app.orchestration.substitutions import transfer_review
 from app.orchestration.substitutions.service import complete_attested_substitution
 from app.schemas.driver_substitutions import SubstitutionRequestRead, SubstitutionState
 from tests.integration._driver_substitution_world import SubWorld
-from tests.integration.test_driver_substitution_seal_findings import FAR_AWAY, confirm, staged, tracker  # noqa: F401 - staged is a fixture
+from tests.integration.test_driver_substitution_seal_findings import FAR_AWAY, _staged_fixture, confirm, tracker  # noqa: F401 - registered under the name `staged`
 from tests.integration.test_driver_substitution_service import (  # noqa: F401 - clock is an autouse fixture
     armed, chain, clock, completion, dispatcher, get_row,
 )

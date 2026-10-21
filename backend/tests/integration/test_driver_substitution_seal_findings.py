@@ -44,8 +44,11 @@ def tracker(position: tuple[float, float] | None, *, fixed_at: datetime = FRESH)
                      lat=Decimal(str(position[0])), lng=Decimal(str(position[1])), fixed_at=fixed_at)
 
 
-@pytest.fixture
-def staged(monkeypatch: pytest.MonkeyPatch) -> dict[str, PulsitFix]:
+# name="staged" keeps the fixture's pytest-visible name while the Python identifier differs, so
+# test_driver_substitution_review_exception.py can import it without its `staged` test parameters
+# reading to ruff as redefining an unused import (F811). Same pattern as pulsit_store.
+@pytest.fixture(name="staged")
+def _staged_fixture(monkeypatch: pytest.MonkeyPatch) -> dict[str, PulsitFix]:
     """The tracker fix the next confirmation will see; defaults to fresh and at the exchange."""
     box = {"fix": tracker(EXCHANGE)}
 
