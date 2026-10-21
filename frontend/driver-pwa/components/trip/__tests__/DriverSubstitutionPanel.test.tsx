@@ -3,6 +3,7 @@
 // FP-83 T1: what a driver must not miss — a pending arrangement (even with no current trip),
 // unread notices, and the trip they just handed over. Dismissing a notice only hides it once
 // the server agrees; opening a completed one lets the trip page ask the server who holds it.
+// Shown in a bottom sheet that opens itself once per unseen item and stays one tap away.
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
@@ -60,9 +61,21 @@ function renderPanel(trip: Partial<TripState> = {}, toast?: ToastState) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.sessionStorage.clear()
   mockUserId = incomingPending.incoming.id
   mockState = state({})
 })
+
+function sheet(): HTMLElement | null {
+  return document.querySelector('[role="dialog"]')
+}
+
+function expectSheetOpen(isOpen: boolean) {
+  const dialog = sheet()
+  expect(dialog).not.toBeNull()
+  if (isOpen) expect(dialog).toHaveAttribute('aria-modal', 'true')
+  else expect(dialog).not.toHaveAttribute('aria-modal')
+}
 
 describe('DriverSubstitutionPanel', () => {
   it('test_renders_nothing_without_handovers', () => {
@@ -76,7 +89,66 @@ describe('DriverSubstitutionPanel', () => {
 
     renderPanel({ trip: null })
 
+    // First time this session: the sheet opens itself with the arrangement inside.
+    expectSheetOpen(true)
+    expect(screen.getByRole('dialog', { name: 'Driver handover' })).toBeInTheDocument()
     expect(screen.getByText('Collect this trip')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Driver handover/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('test_sheet_summary_names_the_trip_on_the_compact_row', () => {
+    mockState = state({ pending: [incomingPending] })
+
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: `Driver handover Collect ${incomingPending.trip_reference}` })).toBeInTheDocument()
+  })
+
+  it('test_closing_the_sheet_keeps_the_compact_row', () => {
+    mockState = state({ pending: [incomingPending] })
+    renderPanel()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }))
+
+    expectSheetOpen(false)
+    const row = screen.getByRole('button', { name: /Driver handover/ })
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(row)
+    expectSheetOpen(true)
+  })
+
+  it('test_sheet_does_not_reopen_for_items_already_shown_this_session', () => {
+    mockState = state({ pending: [incomingPending] })
+    const first = renderPanel()
+    expectSheetOpen(true)
+    first.unmount()
+
+    renderPanel()
+
+    expectSheetOpen(false)
+    expect(screen.getByRole('button', { name: /Driver handover/ })).toBeInTheDocument()
+  })
+
+  it('test_a_changed_or_new_arrangement_reopens_the_sheet', () => {
+    mockState = state({ pending: [incomingPending] })
+    const first = renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }))
+    expectSheetOpen(false)
+    first.unmount()
+
+    mockState = state({ pending: [{ ...incomingPending, version: incomingPending.version + 1 }] })
+    renderPanel()
+
+    expectSheetOpen(true)
+  })
+
+  it('test_sheet_never_locks_the_page_scroll', () => {
+    mockState = state({ pending: [incomingPending] })
+
+    renderPanel()
+
+    expectSheetOpen(true)
+    expect(document.body.style.overflow).toBe('')
   })
 
   it('test_arrangement_not_naming_this_driver_is_not_shown', () => {
