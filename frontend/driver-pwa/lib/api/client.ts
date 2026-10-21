@@ -2,7 +2,7 @@
  * Typed fetch wrapper for the FreightProof FastAPI backend.
  */
 
-import { supabase, getAccessToken } from '@/lib/supabase'
+import { getSupabase, getAccessToken } from '@/lib/supabase'
 import { actorGeneration } from '@/lib/session/custody-context'
 import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
@@ -119,7 +119,7 @@ async function signOutSupersededDevice(): Promise<void> {
     window.sessionStorage.setItem(SIGNED_OUT_REASON_KEY, SESSION_SUPERSEDED_MESSAGE)
   }
   try {
-    await supabase.auth.signOut()
+    await getSupabase().auth.signOut()
   } catch (err) {
     // Even if Supabase can't be reached, the local session is what gates the app —
     // AuthContext's own listener sees the sign-out and the (app) layout redirects.
@@ -153,7 +153,7 @@ async function resolveToken(): Promise<string | null> {
   const cached = getAccessToken()
   if (cached !== null) return cached
   const { data: { session } } = await withTimeout(
-    supabase.auth.getSession(),
+    getSupabase().auth.getSession(),
     SESSION_TIMEOUT_MS,
     'Auth session lookup',
   )
@@ -213,6 +213,9 @@ async function request<T>(
     throw err
   }
 
+  // A response authorized for the previous account must never reach the new account's UI.
+  checkAccount()
+
   // A 401 usually means the access token expired between resolveToken() and the
   // backend validating it, or the cache was simply stale — not that the session is
   // truly invalid. Force one refresh and retry exactly once with the new token; a
@@ -222,6 +225,7 @@ async function request<T>(
   // decided by its detail rather than its status — and a Response body can only be
   // consumed once. Non-401 errors reuse this same parse when they throw below.
   const parsedError = res.ok ? null : await readError(res)
+  checkAccount()
   const errorMessage = parsedError?.message ?? null
 
   // A superseded device (app/auth/sessions.py) must NOT be refresh-retried: a refresh
@@ -245,7 +249,7 @@ async function request<T>(
     let freshToken: string | null = null
     try {
       const { data, error } = await withTimeout(
-        supabase.auth.refreshSession(),
+        getSupabase().auth.refreshSession(),
         SESSION_TIMEOUT_MS,
         'Auth session refresh',
       )
@@ -269,7 +273,9 @@ async function request<T>(
   }
 
   if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
+  const body = await res.json() as T
+  checkAccount()
+  return body
 }
 
 export const api = {

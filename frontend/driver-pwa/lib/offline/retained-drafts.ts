@@ -88,7 +88,7 @@ function retain(key: string, record: Omit<RetainedDraft, 'id' | 'retainedAt'>): 
 
 function mismatch(stored: StoredDraft, stamp: CustodyStamp): string | null {
   if (stored.actorId === null) return UNKNOWN_CAPTURER_REASON
-  if (stamp.actorId !== null && stored.actorId !== stamp.actorId) return OTHER_ACCOUNT_REASON
+  if (stored.actorId !== stamp.actorId) return OTHER_ACCOUNT_REASON
   // Unknown is compatible only before any transfer; returning A must not relabel it.
   if (stored.custodySequence === null && stamp.custodySequence !== null && stamp.custodySequence > 0) {
     return EARLIER_PERIOD_REASON
@@ -141,13 +141,37 @@ export function readDraft(tripId: string, phaseEventId: string, stamp: CustodySt
 
 /** Throws on a storage failure so the caller can say the draft was not kept. */
 export function writeDraft(tripId: string, phaseEventId: string, stamp: CustodyStamp, draft: object): void {
+  const store = storage()
+  const key = draftKey(tripId, phaseEventId)
+  // A previous retention may have failed (quota/private mode). Never overwrite its only
+  // durable copy with the next driver's or period's work, even if the new form is blank.
+  readDraft(tripId, phaseEventId, stamp)
+  const remaining = store?.getItem(key) ?? null
+  if (remaining !== null) {
+    const previous: unknown = JSON.parse(remaining)
+    if (!isStoredDraft(previous) || mismatch(previous, stamp) !== null) {
+      throw new Error('The previous draft could not be retained; its original evidence is still stored.')
+    }
+  }
   const stored: StoredDraft = {
     v: DRAFT_FORMAT_VERSION,
     actorId: stamp.actorId,
     custodySequence: stamp.custodySequence,
     draft: draft as Record<string, unknown>,
   }
-  storage()?.setItem(draftKey(tripId, phaseEventId), JSON.stringify(stored))
+  store?.setItem(key, JSON.stringify(stored))
+}
+
+/** An old submission's completion must never delete a successor's draft for the same phase. */
+export function removeDraft(tripId: string, phaseEventId: string, stamp: CustodyStamp, expectedValue: string | null): void {
+  const store = storage()
+  const key = draftKey(tripId, phaseEventId)
+  const raw = store?.getItem(key) ?? null
+  if (raw === null || raw !== expectedValue) return
+  const previous: unknown = JSON.parse(raw)
+  if (isStoredDraft(previous) && previous.actorId === stamp.actorId
+      && (previous.custodySequence === stamp.custodySequence
+        || (previous.custodySequence === null && stamp.custodySequence === 0))) store?.removeItem(key)
 }
 
 /**

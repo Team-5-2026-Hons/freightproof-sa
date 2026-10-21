@@ -51,12 +51,17 @@ export function recordScreen(pathname: string, url: string, direction: Transitio
   }
 }
 
-/** The nearest earlier, non-transient screen — or `fallback` on a cold start or deep link. */
-export function backTarget(fallback: string): string {
+/** The nearest earlier, non-transient screen, or null on a cold start or deep link. */
+export function previousScreen(): string | null {
   for (let i = stack.length - 2; i >= 0; i--) {
     if (!isTransient(stack[i].pathname)) return stack[i].url
   }
-  return fallback
+  return null
+}
+
+/** The nearest earlier, non-transient screen — or `fallback` on a cold start or deep link. */
+export function backTarget(fallback: string): string {
+  return previousScreen() ?? fallback
 }
 
 /** Test-only reset; the stack is module state that would otherwise leak between tests. */

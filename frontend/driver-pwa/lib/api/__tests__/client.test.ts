@@ -2,7 +2,7 @@
 //
 // Covers the hardening in lib/api/client.ts: a wedged token refresh or a stalled
 // socket must never hang a handshake submit forever with no feedback to the driver.
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 const mockGetSession = vi.fn()
 const mockGetAccessToken = vi.fn()
@@ -11,13 +11,13 @@ const mockRefreshSession = vi.fn()
 const mockSignOut = vi.fn()
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: {
+  getSupabase: () => ({
     auth: {
       getSession: (...args: unknown[]) => mockGetSession(...args),
       refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
       signOut: (...args: unknown[]) => mockSignOut(...args),
     },
-  },
+  }),
   getAccessToken: () => mockGetAccessToken(),
 }))
 
@@ -384,5 +384,32 @@ describe('account generation during auth awaits', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(stage === 'cold' ? 0 : 1)
     vi.unstubAllGlobals()
     context.__resetCustodyContextForTests()
+  })
+})
+
+describe('account generation while receiving a response', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it.each(['headers', 'body', 'no-content'] as const)('rejects an old account response during %s', async stage => {
+    const context = await import('@/lib/session/custody-context')
+    context.bindActorLease('driver-a', context.invalidateActorLease())
+    mockGetAccessToken.mockReturnValue('token-a')
+    let release!: () => void
+    const paused = new Promise<void>(resolve => { release = resolve })
+    const response = {
+      ok: true, status: stage === 'no-content' ? 204 : 200,
+      json: vi.fn(async () => { if (stage === 'body') await paused; return { privateTripOf: 'driver-a' } }),
+    }
+    const fetchSpy = vi.fn(async () => { if (stage !== 'body') await paused; return response })
+    vi.stubGlobal('fetch', fetchSpy)
+    const { api } = await import('../client')
+    const result = api.get('/api/v1/trips/me/active').catch((error: unknown) => error)
+    await vi.waitFor(() => expect(stage === 'body' ? response.json : fetchSpy).toHaveBeenCalled())
+
+    context.bindActorLease('driver-b', context.invalidateActorLease())
+    context.bindActorLease('driver-a', context.invalidateActorLease())
+    release()
+
+    expect(await result).toMatchObject({ status: 0, message: expect.stringContaining('Account changed') })
   })
 })

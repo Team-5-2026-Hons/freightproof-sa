@@ -4,9 +4,23 @@
 // A pack issued to an email address also needs a viewer grant (FP-291): earned once by
 // entering the code emailed to the recipient, kept in this browser, and sent as a header
 // on every request for that pack — a header, never the URL, which ends up in logs.
-import type { EmailCodeSent, LiveVerification, PublicAuditPackView, PublicPackSeal, ViewerGrant } from './types'
+import type {
+  EmailCodeSent,
+  ErrorBody,
+  LiveVerification,
+  PublicAuditPackView,
+  PublicPackSeal,
+  ViewerGrant,
+} from './types'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const LOCAL_API_URL = 'http://localhost:8000'
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
+// A production bundle that silently fell back to the loopback address would ship a portal that
+// can never load a pack (and would try to reach the visitor's own machine), so fail the build.
+if (!configuredApiUrl && process.env.NODE_ENV === 'production') {
+  throw new Error('NEXT_PUBLIC_API_URL must be set for a production build of the client portal.')
+}
+const BASE_URL = configuredApiUrl || LOCAL_API_URL
 const PUBLIC = `${BASE_URL}/api/v1/public/audit-packs`
 
 const GRANT_HEADER = 'X-Audit-Pack-Grant'
@@ -31,35 +45,58 @@ export class PackError extends Error {
 
 const REQUEST: RequestInit = { cache: 'no-store', referrerPolicy: 'no-referrer' }
 
-interface ErrorBody {
-  detail?: string
-  verification_required?: boolean
-  email_hint?: string
+/** FastAPI sends a string for our own errors and a list of {msg} items for a 422. */
+export function detailText(detail: ErrorBody['detail']): string | null {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => item.msg).filter((msg) => typeof msg === 'string' && msg !== '')
+    return messages.length > 0 ? messages.join('; ') : null
+  }
+  return null
 }
 
-// Storage can throw (private mode, blocked site data). A lost grant only means entering a
-// fresh code, so every failure here degrades to "no grant", never to a broken page.
+// The grant also lives in memory for the life of the page: when site storage is blocked
+// (private mode, "block all cookies") the recipient who just entered a code would otherwise
+// be asked again by the very next request, and the pack would never open.
+const memoryGrants = new Map<string, string>()
+let storageWriteFailed = false
+
+export const STORAGE_BLOCKED_NOTICE = 'This browser blocks site storage, so you may be asked for a code again next time.'
+
+/** True once saving the grant to this browser's storage failed: the next visit will ask for a code again. */
+export function storageBlocked(): boolean {
+  return storageWriteFailed
+}
+
+// Storage can throw (private mode, blocked site data). A lost stored grant only means
+// entering a fresh code, so every failure here degrades to the in-memory copy, never to a broken page.
 function readGrant(token: string): string | null {
+  const remembered = memoryGrants.get(token)
+  if (remembered) return remembered
   try {
     return window.localStorage.getItem(GRANT_STORAGE_PREFIX + token)
-  } catch {
+  } catch (error) {
+    console.warn('Could not read the stored viewer grant', error)
     return null
   }
 }
 
 function storeGrant(token: string, grant: string): void {
+  memoryGrants.set(token, grant)
   try {
     window.localStorage.setItem(GRANT_STORAGE_PREFIX + token, grant)
-  } catch {
-    // Not kept: the recipient enters a code again next visit. Nothing else breaks.
+  } catch (error) {
+    storageWriteFailed = true
+    console.warn('Could not store the viewer grant; it is kept for this page only', error)
   }
 }
 
 function forgetGrant(token: string): void {
+  memoryGrants.delete(token)
   try {
     window.localStorage.removeItem(GRANT_STORAGE_PREFIX + token)
-  } catch {
-    // Nothing stored, or storage unavailable — either way nothing to remove.
+  } catch (error) {
+    console.warn('Could not remove the stored viewer grant', error)
   }
 }
 
@@ -70,12 +107,13 @@ function packRequest(token: string, init: RequestInit = {}): RequestInit {
 
 async function failure(response: Response, token: string | null): Promise<PackError> {
   const body = (await response.json().catch(() => ({}))) as ErrorBody
+  const message = detailText(body.detail)
   if (response.status === 401 && body.verification_required && token !== null) {
     // A stored grant the server no longer accepts is useless; drop it so the next code sticks.
     forgetGrant(token)
-    return new PackError(401, body.detail ?? 'Enter the emailed code to open this pack.', body.email_hint ?? '')
+    return new PackError(401, message ?? 'Enter the emailed code to open this pack.', body.email_hint ?? '')
   }
-  return new PackError(response.status, body.detail ?? response.statusText)
+  return new PackError(response.status, message ?? response.statusText)
 }
 
 async function parse<T>(response: Response, token: string | null = null): Promise<T> {
@@ -97,9 +135,12 @@ export async function runServerVerification(token: string): Promise<LiveVerifica
   return parse(await fetch(`${PUBLIC}/${encode(token)}/verify`, packRequest(token, { method: 'POST' })), token)
 }
 
-export async function fetchArtifactBytes(token: string, artifactId: string): Promise<ArrayBuffer> {
-  const response = await fetch(`${PUBLIC}/${encode(token)}/artifacts/${encode(artifactId)}`, packRequest(token))
-  if (!response.ok) throw new PackError(response.status, 'Evidence file unavailable')
+/** `signal` lets a photo that scrolls away or unmounts cancel its download. */
+export async function fetchArtifactBytes(token: string, artifactId: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetch(`${PUBLIC}/${encode(token)}/artifacts/${encode(artifactId)}`, packRequest(token, { signal }))
+  // Through failure(), not a bare PackError: the caller needs the real status (expired grant,
+  // closed link, rate limit, storage outage) and whether the emailed code is wanted again.
+  if (!response.ok) throw await failure(response, token)
   return response.arrayBuffer()
 }
 

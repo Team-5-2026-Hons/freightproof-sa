@@ -23,7 +23,7 @@ from app.orchestration.audit_packs import access, lifecycle
 from app.orchestration.audit_packs.lifecycle import IssuedPack, issue_audit_pack, revoke_audit_pack
 from app.schemas.audit_pack import AuditPackCreate
 from app.schemas.people import UserRead
-from app.storage.supabase_storage import UploadResult
+from app.storage.supabase_storage import EvidenceObjectIntegrityError, EvidenceStorageUnavailableError, UploadResult
 
 from tests.integration._audit_pack_anchor_helpers import anchor_event, raise_critical, review_exception
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
@@ -195,6 +195,43 @@ async def test_shared_artifact_not_in_manifest_is_404(client, db_session, audit_
 
     # Assert
     assert response.status_code == 404
+
+
+async def test_shared_artifact_integrity_failure_is_409_not_503(
+    client, db_session, audit_trip, storage, monkeypatch: pytest.MonkeyPatch,
+):
+    # Arrange
+    issued = await _issue(db_session, audit_trip)
+
+    async def tampered_download(*, s3_bucket: str, s3_key: str) -> bytes:
+        raise EvidenceObjectIntegrityError("stored bytes no longer hash to the recorded value")
+
+    monkeypatch.setattr(access, "download_evidence_file", tampered_download)
+
+    # Act
+    response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{audit_trip.seal_photo.id}")
+
+    # Assert
+    assert response.status_code == 409
+    assert "no longer matches" in response.json()["detail"]
+
+
+async def test_shared_artifact_storage_outage_is_503(
+    client, db_session, audit_trip, storage, monkeypatch: pytest.MonkeyPatch,
+):
+    # Arrange
+    issued = await _issue(db_session, audit_trip)
+
+    async def storage_down(*, s3_bucket: str, s3_key: str) -> bytes:
+        raise EvidenceStorageUnavailableError("storage unreachable")
+
+    monkeypatch.setattr(access, "download_evidence_file", storage_down)
+
+    # Act
+    response = await client.get(f"{PUBLIC}/{issued.raw_token}/artifacts/{audit_trip.seal_photo.id}")
+
+    # Assert
+    assert response.status_code == 503
 
 
 async def test_pack_seal_check_by_id_shows_no_evidence(client, db_session, audit_trip, storage):

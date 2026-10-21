@@ -1,5 +1,6 @@
-"""Dispatcher-initiated changes to a trip that already exists. Today that is cancel_trip, the
-only code in app/ that writes TripStatus.CANCELLED: it locks the trip row, records the acting
+"""Dispatcher-initiated changes to a trip that already exists. terminate_trip is the only code
+in app/ that writes TripStatus.CANCELLED, reached two ways: cancel_trip, and an incident that
+stops its trip (orchestration.incidents.creation). cancel_trip locks the trip row, records the acting
 dispatcher on a DISPATCHER_NOTE exception (whose description starts with _CANCELLED_BY_PREFIX),
 queues the realtime events and returns the trip detail read back after the write. Phase rows
 are left as they were: the plan is abandoned, not completed.
@@ -60,8 +61,24 @@ async def cancel_trip(
     if trip.status in (TripStatus.CLOSED, TripStatus.CANCELLED):
         raise TripStateError(current_status=TripStatus(trip.status).value, attempted_action="cancel")
 
+    await terminate_trip(db, trip=trip, user_id=user_id, note=note)
+
+    return await get_trip_detail(
+        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
+    )
+
+
+async def terminate_trip(db: AsyncSession, *, trip: Trip, user_id: uuid.UUID, note: str) -> None:
+    """Write a trip's cancellation: status, closed_at, the pending handover, the ledger note and
+    the realtime events. Shared by cancel_trip and an incident that stops its trip
+    (orchestration.incidents), so both exits leave exactly the same record.
+
+    The caller must already hold the trip row FOR UPDATE and have checked it is not CLOSED or
+    CANCELLED: that check-then-write is what stops a racing retry writing a second ledger row.
+    """
+    closed_at = datetime.now(UTC)
     trip.status = TripStatus.CANCELLED
-    trip.closed_at = datetime.now(UTC)
+    trip.closed_at = closed_at
     # A pending driver handover cannot outlive its trip: cancel it, free the incoming driver's
     # reservation and notify both drivers in this same transaction (FP-83).
     await cancel_pending_for_terminal_trip(db, trip=trip, reason=TRIP_CANCELLED_REASON)
@@ -90,7 +107,7 @@ async def cancel_trip(
     await register_exception(db, TripException(
         trip_id=trip.id, exception_type=ExceptionType.DISPATCHER_NOTE,
         source=ExceptionSource.DISPATCHER, severity=ExceptionSeverity.WARNING,
-        **dispatcher_authored_review(user_id=user_id, at=trip.closed_at),
+        **dispatcher_authored_review(user_id=user_id, at=closed_at),
         description=f"{_CANCELLED_BY_PREFIX}{user_id}: {note}",
     ), cancelled_trip=trip)
     await db.flush()
@@ -106,7 +123,3 @@ async def cancel_trip(
     # Published on commit — the dispatcher's list must drop this trip from
     # Active on the same refetch trip_closed already triggers.
     enqueue_event(db, trip.operator_organization_id, TripEvent(id=trip.id, kind=RealtimeKind.TRIP_CLOSED))
-
-    return await get_trip_detail(
-        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
-    )

@@ -96,7 +96,19 @@ function announceActor(actorId: string | null): void {
 export function setCustodyContext(next: CustodyContextState): void {
   // A stale TripContext render cannot revive a signed-out or superseded profile.
   if (next.actorId !== state.actorId) return
+  const changed = next.tripId !== state.tripId || next.custodySequence !== state.custodySequence
   state = next
+  // TripContext feeds this during render. Notify later so a mounted background
+  // status consumer updates on period changes without setting state mid-render.
+  if (changed) setTimeout(() => tripCustodyListeners.forEach(listener => listener()), 0)
+}
+
+const tripCustodyListeners = new Set<() => void>()
+
+/** Trip/period visibility changes, separate from account changes that trigger queue work. */
+export function onTripCustodyChange(listener: () => void): () => void {
+  tripCustodyListeners.add(listener)
+  return () => { tripCustodyListeners.delete(listener) }
 }
 
 /**
@@ -118,6 +130,12 @@ export function captureCustody(tripId: string): CustodyStamp {
     actorId: state.actorId,
     custodySequence: state.tripId === tripId ? state.custodySequence : null,
   }
+}
+
+/** A visible scope must belong to the selected trip, not another trip's unknown period. */
+export function isCurrentTripCustody(tripId: string, custody: CustodyStamp): boolean {
+  return state.tripId === tripId && state.actorId === custody.actorId
+    && (state.custodySequence ?? 0) === (custody.custodySequence ?? 0)
 }
 
 /** Whoever is signed in right now — the only account whose queued work may be sent. */

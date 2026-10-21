@@ -13,6 +13,8 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The X-Powered-By header only tells a scanner which framework to target.
+  poweredByHeader: false,
   // Pin the monorepo root so Next never walks up and adopts an unrelated lockfile.
   outputFileTracingRoot: path.join(__dirname, '../..'),
   experimental: { externalDir: true },

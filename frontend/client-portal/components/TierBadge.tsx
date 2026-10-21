@@ -27,12 +27,16 @@ export function tierMeaning(tier: EvidenceTier): string {
   return STYLE[tier].meaning
 }
 
+export function tierLabel(tier: EvidenceTier): string {
+  return STYLE[tier].label
+}
+
 export function TierBadge({ tier }: { tier: EvidenceTier }) {
   const style = STYLE[tier]
   return (
     <span
       title={style.meaning}
-      className={`inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] ${style.className}`}
+      className={`tier-badge inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] ${style.className}`}
     >
       {style.label}
     </span>

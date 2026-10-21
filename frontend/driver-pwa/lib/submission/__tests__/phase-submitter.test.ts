@@ -237,7 +237,7 @@ describe('startPhaseSubmission — failure paths', () => {
 
     expect((await h.outcome).kind).toBe('queued')
     expect(h.enqueuePhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null, { actorId: 'driver-1', custodySequence: 2 },
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null, { actorId: 'driver-1', custodySequence: 2 }, null, h.request.idempotencyKey,
     )
   })
 

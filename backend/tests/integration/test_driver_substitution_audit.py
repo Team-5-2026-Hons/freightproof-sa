@@ -130,7 +130,7 @@ async def test_pack_names_actual_completer_and_each_clarification(db_session: As
     manifest = await manifest_for(db_session, w)
     [record] = manifest.driver.substitutions
 
-    assert manifest.manifest_version == 3
+    assert manifest.manifest_version == 4
     assert record.completed_by_user_id == completer.id
     assert record.completed_by_name == 'Fixture Completing Dispatcher'
     assert record.arranged_by_name == 'D'

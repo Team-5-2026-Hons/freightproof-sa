@@ -1,9 +1,10 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { usePhaseDraft } from '../usePhaseDraft'
 import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { listRetainedDrafts, writeDraft } from '@/lib/offline/retained-drafts'
 import type { ActivationEvidence, ArrivalEvidence } from '@/lib/types/evidence-draft'
+import { bindActorLease, invalidateActorLease, setCustodyContext } from '@/lib/session/custody-context'
 
 // Activation's draft is down to capturedAt (its GPS fields moved out when the manual
 // capture step was removed), so the patch/persist cases below exercise ARRIVAL_INITIAL
@@ -21,8 +22,92 @@ beforeEach(() => {
   localStorage.clear()
   authenticateTestDriver('trip-1')
 })
+afterEach(() => vi.restoreAllMocks())
 
 describe('usePhaseDraft', () => {
+  it('retains a mounted earlier-period draft and rejects its old edit and clear callbacks', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealNumberAtArrival: 'AB-1234', sealPhotoDataUrl: 'original-photo' }))
+    const oldUpdate = result.current[1]
+    const oldClear = result.current[2]
+
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    rerender()
+
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
+    expect(listRetainedDrafts()).toEqual([expect.objectContaining({ actorId: 'driver-1', custodySequence: 0,
+      draft: expect.objectContaining({ sealNumberAtArrival: 'AB-1234', sealPhotoDataUrl: 'original-photo' }) })])
+    act(() => result.current[1]({ sealNumberAtArrival: 'CD-5678' }))
+    act(() => { oldUpdate({ sealNumberAtArrival: 'EF-9999' }); oldClear() })
+    expect(result.current[0].sealNumberAtArrival).toBe('CD-5678')
+    expect(JSON.parse(localStorage.getItem('fp_draft_trip-1_phase-event-1') ?? '{}')).toMatchObject({
+      actorId: 'driver-1', custodySequence: 2, draft: { sealNumberAtArrival: 'CD-5678' },
+    })
+  })
+
+  it('resets a mounted draft when another account takes the same phase', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'first-account-photo' }))
+    bindActorLease('driver-2', invalidateActorLease())
+    setCustodyContext({ actorId: 'driver-2', tripId: 'trip-1', custodySequence: 1 })
+    rerender()
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
+    expect(listRetainedDrafts()).toEqual([expect.objectContaining({ actorId: 'driver-1',
+      draft: expect.objectContaining({ sealPhotoDataUrl: 'first-account-photo' }) })])
+  })
+
+  it('does not edit or delete old evidence after custody changes before React rerenders', () => {
+    const { result } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'original-photo' }))
+    const original = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    act(() => { result.current[1]({ sealPhotoDataUrl: 'late-photo' }); result.current[2]() })
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(original)
+  })
+
+  it('keeps a known legacy draft when the first server custody answer is zero', () => {
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: null })
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'compatible-photo' }))
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 0 })
+    rerender()
+    expect(result.current[0].sealPhotoDataUrl).toBe('compatible-photo')
+    expect(listRetainedDrafts()).toEqual([])
+    act(() => result.current[2]())
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBeNull()
+  })
+
+  it('an old hook cannot edit or clear a newer draft in the same custody period', () => {
+    const original = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => original.result.current[1]({ sealPhotoDataUrl: 'original-photo' }))
+    const oldUpdate = original.result.current[1]
+    const oldClear = original.result.current[2]
+    original.unmount()
+    const reopened = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => reopened.result.current[1]({ sealPhotoDataUrl: 'newer-photo' }))
+    const newer = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+
+    act(() => { oldUpdate({ sealPhotoDataUrl: 'late-upload-result' }); oldClear() })
+
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(newer)
+    expect(reopened.result.current[0].sealPhotoDataUrl).toBe('newer-photo')
+  })
+
+  it('refuses to overwrite an old draft when its retained copy cannot be saved', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'irreplaceable-photo' }))
+    const original = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+    const setItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key.startsWith('fp_retained_draft_')) throw new DOMException('Full', 'QuotaExceededError')
+      setItem.call(this, key, value)
+    })
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    rerender()
+    act(() => result.current[1]({ sealPhotoDataUrl: 'new-period-photo' }))
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(original)
+  })
+
   it('returns initial state when nothing is stored', () => {
     const { result } = renderHook(() =>
       usePhaseDraft<ActivationEvidence>('trip-1', 'phase-event-1', INITIAL)

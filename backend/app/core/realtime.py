@@ -73,6 +73,9 @@ class RealtimeKind(str, Enum):
     # the dispatcher refetches the trip. Drivers learn of it from their durable notices.
     DRIVER_SUBSTITUTION_CHANGED = "driver_substitution_changed"
     LATE_DRIVER_EVIDENCE_CHANGED = "late_driver_evidence_changed"
+    # An incident on this trip was reported, followed up, closed or reopened. INFO, never a
+    # toast: the dispatcher who acted already knows, and colleagues refetch the incident list.
+    INCIDENT_CHANGED = "incident_changed"
 
 
 class EventSeverity(str, Enum):

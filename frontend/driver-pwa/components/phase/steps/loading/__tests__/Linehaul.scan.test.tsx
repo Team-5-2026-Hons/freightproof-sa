@@ -185,3 +185,58 @@ describe('Linehaul — scan and PDF', () => {
     expect(mockScan).not.toHaveBeenCalled()
   })
 })
+
+// Android recreates the WebView after the document scanner on a low-memory phone. The
+// draft kept the scan (usePhaseDraft), but the PDF the step builds from it was lost with
+// the JavaScript heap, so a returning driver would have submitted the loading without it.
+describe('Linehaul PDF rebuilt on resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('test_a_resumed_draft_with_a_scan_but_no_pdf_rebuilds_and_uploads_the_pdf', async () => {
+    // Arrange
+    mockIsNative.mockReturnValue(false)
+    mockBuildPdf.mockResolvedValue('data:application/pdf;base64,REBUILT')
+    mockUploadNow.mockResolvedValue('pdf-artifact')
+    const onUpdate = vi.fn()
+
+    // Act
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={makePhase('loading', { blocked_on: null })}
+        stepIndex={0}
+        linehaul={LINEHAUL}
+        draft={{ ...EMPTY_DRAFT, linehaulPhotoDataUrl: 'data:image/jpeg;base64,SCAN', capturedAt: '2026-10-21T08:00:00Z' }}
+        onUpdate={onUpdate}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    // Assert
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfDataUrl: 'data:application/pdf;base64,REBUILT' }))
+    expect(mockBuildPdf).toHaveBeenCalledTimes(1)
+    expect(mockBuildPdf).toHaveBeenCalledWith('data:image/jpeg;base64,SCAN')
+    expect(mockUploadNow).toHaveBeenCalledWith('data:application/pdf;base64,REBUILT', 'document', '2026-10-21T08:00:00Z', 'linehaul_pdf')
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfArtifactId: 'pdf-artifact' }))
+  })
+
+  it('test_a_draft_whose_pdf_already_exists_is_left_alone', () => {
+    mockIsNative.mockReturnValue(false)
+
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={makePhase('loading', { blocked_on: null })}
+        stepIndex={0}
+        linehaul={LINEHAUL}
+        draft={{ ...EMPTY_DRAFT, linehaulPhotoDataUrl: 'data:image/jpeg;base64,SCAN', linehaulPdfDataUrl: 'data:application/pdf;base64,HAVE', capturedAt: '2026-10-21T08:00:00Z' }}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    expect(mockBuildPdf).not.toHaveBeenCalled()
+  })
+})

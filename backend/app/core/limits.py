@@ -35,6 +35,9 @@ BLOCKCHAIN_VERIFY = RateLimit(max_requests=30, window_seconds=_ONE_MINUTE, name=
 
 FLEET_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="fleet_mutation")
 
+# The driver app registers once per launch; anything faster is a client loop.
+PUSH_TOKEN_REGISTER = RateLimit(max_requests=10, window_seconds=_ONE_MINUTE, name="push_token_register")
+
 # Blast-radius cap: coordinates/radius decide the FP-68 geofence verdict on every handshake.
 PRECINCT_MUTATION = RateLimit(max_requests=60, window_seconds=_ONE_MINUTE, name="precinct_mutation")
 

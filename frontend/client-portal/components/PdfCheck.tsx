@@ -1,50 +1,103 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState, type ChangeEvent, type DragEvent } from 'react'
+import { ANCHOR_STATE_TEXT, UNSUPPORTED_TEXT } from '@/lib/anchor-text'
+import { readSealPayload, sealedString } from '@/lib/seal'
 import type { PublicPackSeal } from '@/lib/types'
-import { checkBytesAgainstHash } from '@/lib/verify'
+import { CryptoUnavailableError, checkBytesAgainstHash, type AnchorCheckResult } from '@/lib/verify'
 
 type Result = { matches: boolean; actual: string; name: string } | { error: string }
+
+interface Props {
+  seal: PublicPackSeal
+  // The browser's own check of the seal against Hedera. A PDF can match the fingerprint inside
+  // the seal payload and still be unproven if that payload was never confirmed on the ledger.
+  sealCheck: AnchorCheckResult | null
+}
 
 /** The PDF fingerprint committed inside the Hedera-sealed payload — not the API's own
  *  `pdf_sha256` field, so a check that passes cannot rest on trusting our server. */
 export function sealedPdfHash(seal: PublicPackSeal): string | null {
-  if (!seal.seal) return null
-  try {
-    const payload = JSON.parse(seal.seal.canonical_payload) as { pdf_sha256?: unknown }
-    return typeof payload.pdf_sha256 === 'string' ? payload.pdf_sha256 : null
-  } catch {
-    return null
-  }
+  return sealedString(readSealPayload(seal), 'pdf_sha256')
 }
 
-export function PdfCheck({ seal }: { seal: PublicPackSeal }) {
+function unconfirmedReason(sealCheck: AnchorCheckResult | null): string {
+  return sealCheck ? ANCHOR_STATE_TEXT[sealCheck.state].text : 'the seal is still being checked'
+}
+
+export function PdfCheck({ seal, sealCheck }: Props) {
   const [result, setResult] = useState<Result | null>(null)
-  const expected = sealedPdfHash(seal)
+  const [busy, setBusy] = useState(false)
+  // Memoised: reading a malformed payload logs a warning, which must not repeat on every render.
+  const sealRead = useMemo(() => readSealPayload(seal), [seal])
+  const expected = sealedString(sealRead, 'pdf_sha256')
+  const sealVerified = sealCheck?.state === 'verified'
 
   async function onFile(file: File | undefined) {
-    if (!file) return
+    if (!file || busy) return
     if (!expected) {
-      setResult({ error: 'This pack has no Hedera seal to compare against.' })
+      setResult({
+        error: sealRead.state === 'unreadable'
+          ? "The seal payload in this pack could not be read, so the PDF can't be compared."
+          : 'This pack has no Hedera seal to compare against.',
+      })
       return
     }
-    const check = await checkBytesAgainstHash(await file.arrayBuffer(), expected)
-    setResult({ ...check, name: file.name })
+    setBusy(true)
+    setResult(null)
+    try {
+      const check = await checkBytesAgainstHash(await file.arrayBuffer(), expected)
+      setResult({ ...check, name: file.name })
+    } catch (error) {
+      console.warn('Could not hash the chosen PDF', error)
+      setResult({
+        error: error instanceof CryptoUnavailableError
+          ? UNSUPPORTED_TEXT
+          : 'This file could not be read. Choose it again, or try a different copy.',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function onChange(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget
+    const file = input.files?.[0]
+    // Cleared so choosing the same file again (after a failed read, say) fires onChange again.
+    input.value = ''
+    void onFile(file)
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    // Without preventDefault the browser opens the dropped PDF in this tab and leaves the page.
+    event.preventDefault()
+    void onFile(event.dataTransfer.files[0])
   }
 
   return (
     <div className="no-print">
-      <label className="block cursor-pointer rounded-md border-2 border-dashed border-outline-v px-4 py-5 text-center text-[13px] hover:bg-surf-low">
+      <label
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={onDrop}
+        className="block cursor-pointer rounded-md border-2 border-dashed border-outline-v px-4 py-5 text-center text-[13px] hover:bg-surf-low focus-within:ring-2 focus-within:ring-sec"
+      >
         <span className="font-semibold">Check a PDF copy</span>
-        <span className="block text-muted">Choose the PDF you were sent. It is hashed here in your browser and never uploaded.</span>
-        <input type="file" accept="application/pdf" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} />
+        <span className="block text-muted">Choose or drop the PDF you were sent. It is hashed here in your browser and never uploaded.</span>
+        <input type="file" accept="application/pdf" className="sr-only" disabled={busy} onChange={onChange} />
       </label>
-      {result && 'error' in result && <p className="mt-2 text-[13px] text-warn">{result.error}</p>}
+      {/* aria-live rather than role=status: the result below is the page's one status message. */}
+      {busy && <p aria-live="polite" className="mt-2 text-[13px] text-muted">Hashing…</p>}
+      {result && 'error' in result && <p role="alert" className="mt-2 text-[13px] text-warn">{result.error}</p>}
       {result && 'matches' in result && (
-        <p role="status" className={`mt-2 text-[13px] font-semibold ${result.matches ? 'text-ok' : 'text-err'}`}>
+        <p
+          role="status"
+          className={`mt-2 text-[13px] font-semibold ${result.matches ? (sealVerified ? 'text-ok' : 'text-warn') : 'text-err'}`}
+        >
           {result.matches
-            ? `${result.name} is an unaltered copy of pack ${seal.pack_label}.`
-            : `${result.name} is NOT the issued PDF — its fingerprint differs from the one sealed on Hedera.`}
+            ? sealVerified
+              ? `${result.name} is an unaltered copy of pack ${seal.pack_label} (seal verified on Hedera).`
+              : `${result.name} matches the PDF fingerprint in the pack's seal payload, but the seal itself is not confirmed (${unconfirmedReason(sealCheck)}).`
+            : `${result.name} is NOT the issued PDF — its fingerprint differs from the one ${sealVerified ? 'sealed on Hedera' : "in the pack's seal payload"}.`}
         </p>
       )}
     </div>

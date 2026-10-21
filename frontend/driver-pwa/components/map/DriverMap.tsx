@@ -11,7 +11,7 @@
 //
 // POPIA: never transmits a coordinate; draws locally what the caller passes in.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import { Loader2, MapPinOff, Navigation, WifiOff } from 'lucide-react'
@@ -106,6 +106,14 @@ function isStale(capturedAt: string | null, now: number): boolean {
   return now - takenAt > STALE_FIX_MS
 }
 
+// Where a caller's extra action lands on a fallback card: in the card's own flow, right
+// aligned under the card's text and hand-off button. A control floated over the card cannot
+// know how tall its text has grown (a short phone, a long caption), so it ends up on top of
+// the card's own button; in the flow it can only ever sit below it.
+function FallbackExtraAction({ children }: { children: ReactNode }) {
+  return <div className="flex w-full shrink-0 justify-end">{children}</div>
+}
+
 /** Why the map itself is not on screen. Drives the coordinates card's headline copy. */
 type FallbackReason = 'no-key' | 'tiles-unreachable'
 
@@ -114,10 +122,11 @@ interface CoordinatesCardProps {
   capturedAt: string | null
   reason: FallbackReason
   className?: string
+  extraAction?: ReactNode
 }
 
 // Rungs 1 and 2 of the ladder. Identical content, different headline explaining why.
-function CoordinatesCard({ position, capturedAt, reason, className }: CoordinatesCardProps) {
+function CoordinatesCard({ position, capturedAt, reason, className, extraAction }: CoordinatesCardProps) {
   const stale = isStale(capturedAt, Date.now())
 
   return (
@@ -173,6 +182,7 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
         <Navigation className="h-4 w-4" strokeWidth={2} aria-hidden />
         Open in Maps
       </a>
+      {extraAction !== undefined && <FallbackExtraAction>{extraAction}</FallbackExtraAction>}
     </div>
   )
 }
@@ -180,10 +190,11 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
 interface NoFixPanelProps {
   onRetry?: () => void
   className?: string
+  extraAction?: ReactNode
 }
 
 // Rung 3. Nothing is drawn, because there is nothing true to draw.
-function NoFixPanel({ onRetry, className }: NoFixPanelProps) {
+function NoFixPanel({ onRetry, className, extraAction }: NoFixPanelProps) {
   return (
     <div
       className={cn(
@@ -202,6 +213,7 @@ function NoFixPanel({ onRetry, className }: NoFixPanelProps) {
           Try Again
         </Button>
       )}
+      {extraAction !== undefined && <FallbackExtraAction>{extraAction}</FallbackExtraAction>}
     </div>
   )
 }
@@ -227,6 +239,15 @@ export interface DriverMapProps {
    * Defaults to `className`.
    */
   fallbackClassName?: string
+  /**
+   * A second hand-off that belongs on the map surface (In Transit's Navigate to the
+   * destination). On the live map it floats where `extraActionClassName` places it; on the
+   * fallback cards it joins the card's flow instead, so it can never cover the card's own
+   * "Open in Maps" button. Omit for none.
+   */
+  extraAction?: ReactNode
+  /** Placement of `extraAction` over the live map, e.g. `bottom-12 right-4`. */
+  extraActionClassName?: string
   /** The planned leg being driven, [lat, lng] in driving order. Omit or null for no line. */
   route?: readonly RouteCoordinate[] | null
 }
@@ -234,7 +255,7 @@ export interface DriverMapProps {
 /** Whether the Maps JS API is usable right now. */
 type MapState = 'loading' | 'ready' | 'unavailable'
 
-export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className, route = null }: DriverMapProps) {
+export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className, extraAction, extraActionClassName, route = null }: DriverMapProps) {
   const [mapState, setMapState] = useState<MapState>('loading')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
@@ -387,10 +408,10 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
   }, [retryTiles])
 
   // Rung 3 first: with no fix there is no coordinate for rungs 1 and 2 to show either.
-  if (position === null) return <NoFixPanel onRetry={onRetry} className={fallbackClassName} />
-  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={fallbackClassName} />
+  if (position === null) return <NoFixPanel onRetry={onRetry} className={fallbackClassName} extraAction={extraAction} />
+  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={fallbackClassName} extraAction={extraAction} />
   if (mapState === 'unavailable') {
-    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={fallbackClassName} />
+    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={fallbackClassName} extraAction={extraAction} />
   }
 
   return (
@@ -419,6 +440,7 @@ export function DriverMap({ position, capturedAt, onRetry, className, handoffCla
           Open in Maps
         </a>
       )}
+      {extraAction !== undefined && <div className={cn('absolute', extraActionClassName)}>{extraAction}</div>}
     </div>
   )
 }

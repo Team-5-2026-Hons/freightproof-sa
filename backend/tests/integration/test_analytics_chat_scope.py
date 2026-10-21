@@ -18,6 +18,7 @@ from app.db.models.organisations import Precinct
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.analytics_chat.basis import basis_for
+from app.orchestration.analytics_chat.definitions import about
 from app.orchestration.analytics_chat.tools import run_tool
 
 from tests.integration._fleet_seed import (
@@ -101,9 +102,10 @@ async def test_on_time_tool_returns_what_the_on_time_tab_shows(
     )
 
     assert response.status_code == 200
-    # The tab's figures exactly, plus the server's totals block in front (B37).
+    # The tab's figures exactly, plus the page's own lines (B43) and the server's totals (B37) in front.
     assert outcome.result is not None
-    assert {key: value for key, value in outcome.result.items() if key != "totals"} == response.json()
+    assert {key: value for key, value in outcome.result.items() if key not in {"about", "totals"}} == response.json()
+    assert outcome.result["about"] == about("on_time")
     # Not an empty-equals-empty pass: the three recent trips are in it, nobody else's.
     punctuality = response.json()["punctuality"]
     assert sum(bucket["arrivals_with_plan"] for bucket in punctuality) == len(_RECENT_DAYS)

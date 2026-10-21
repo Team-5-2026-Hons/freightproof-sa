@@ -52,12 +52,22 @@ export const ROUNDED_BOTTOM: [number, number, number, number] = [0, 0, 4, 4]
 export const ROUNDED_RIGHT: [number, number, number, number] = [0, 4, 4, 0]
 /** Room for long category names beside horizontal bars. */
 export const CATEGORY_AXIS_WIDTH = 168
+/** In a narrow card the names may take at most this share of its width; they wrap onto more
+ *  lines instead, so the bars and their value axis keep room to read. */
+export const MAX_CATEGORY_AXIS_SHARE = 0.45
 /** Scatter dots are drawn larger than line dots to be found at a glance. */
 export const SCATTER_DOT_RADIUS = 6
 /** Height of one horizontal bar's row; a long list grows the chart instead of squashing bars. */
 export const BAR_ROW_HEIGHT = 32
-/** Real line spacing so a wrapped category name's lines don't sit on each other. */
-export const CATEGORY_LINE_HEIGHT = '1.3em'
+// Real line spacing so a wrapped category name's lines don't sit on each other.
+const CATEGORY_LINE_RATIO = 1.3
+export const CATEGORY_LINE_HEIGHT = `${CATEGORY_LINE_RATIO}em`
+/** One wrapped line of an axis name, in px. */
+export const CATEGORY_LINE_PX = AXIS_FONT_SIZE * CATEGORY_LINE_RATIO
+/** Recharts' default x-axis band: room for one line of column names. */
+export const COLUMN_AXIS_HEIGHT = 30
+/** Least space kept between neighbouring column names, so wrapped names never touch. */
+export const COLUMN_LABEL_GAP_PX = 6
 /** Space between a category name and the axis line. */
 export const CATEGORY_TICK_PADDING = 8
 /** x-axis band height when it carries a heading (horizontal bars and the scatter). */

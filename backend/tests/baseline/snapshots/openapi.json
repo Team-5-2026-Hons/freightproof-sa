@@ -450,6 +450,92 @@
         "title": "ActivityResponse",
         "type": "object"
       },
+      "AddParcelsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "parcel_added",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "parcel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Parcel Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "parcel_ids"
+        ],
+        "title": "AddParcelsUpdate",
+        "type": "object"
+      },
+      "AffectedParcelRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "barcode": {
+            "title": "Barcode",
+            "type": "string"
+          },
+          "consignment_id": {
+            "format": "uuid",
+            "title": "Consignment Id",
+            "type": "string"
+          },
+          "latest_finding": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Finding"
+          },
+          "parcel_id": {
+            "format": "uuid",
+            "title": "Parcel Id",
+            "type": "string"
+          },
+          "scan_state": {
+            "enum": [
+              "scanned_in",
+              "no_scan_in_recorded",
+              "no_scan_recorded"
+            ],
+            "title": "Scan State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parcel_id",
+          "barcode",
+          "consignment_id",
+          "scan_state",
+          "latest_finding"
+        ],
+        "title": "AffectedParcelRecord",
+        "type": "object"
+      },
       "AnchorStatus": {
         "description": "Hedera anchor state for one phase event. A phase may be\n`completed` while its anchor is `failed` — that keeps the fail-open policy\nhonest, since the system still knows a receipt is owed. Never render `failed`\nas success.",
         "enum": [
@@ -816,6 +902,46 @@
         "title": "ArtifactType",
         "type": "string"
       },
+      "AssignUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "kind": {
+            "const": "assigned",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "kind",
+          "assigned_to_user_id"
+        ],
+        "title": "AssignUpdate",
+        "type": "object"
+      },
       "AuditPackAccessEventRead": {
         "additionalProperties": false,
         "properties": {
@@ -1033,6 +1159,14 @@
               }
             ]
           },
+          "investigations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InvestigationRecord"
+            },
+            "title": "Investigations",
+            "type": "array"
+          },
           "late_evidence": {
             "default": [],
             "items": {
@@ -1052,7 +1186,7 @@
             "type": "array"
           },
           "manifest_version": {
-            "default": 3,
+            "default": 4,
             "title": "Manifest Version",
             "type": "integer"
           },
@@ -1565,6 +1699,27 @@
         ],
         "title": "BlockchainReceiptType",
         "type": "string"
+      },
+      "Body_attach_incident_document_endpoint_api_v1_incidents__incident_id__documents_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "note"
+        ],
+        "title": "Body_attach_incident_document_endpoint_api_v1_incidents__incident_id__documents_post",
+        "type": "object"
       },
       "Body_upload_artifact_endpoint_api_v1_artifacts_post": {
         "properties": {
@@ -2773,6 +2928,32 @@
         "title": "CompletedSubstitutionSummary",
         "type": "object"
       },
+      "ConfidenceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "$ref": "#/components/schemas/IncidentConfidence"
+          },
+          "kind": {
+            "const": "confidence_changed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "confidence",
+          "note"
+        ],
+        "title": "ConfidenceUpdate",
+        "type": "object"
+      },
       "ConfirmSubstitutionObservationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3534,6 +3715,57 @@
         "title": "ConsignmentRecord",
         "type": "object"
       },
+      "ConsignmentScanSummary": {
+        "properties": {
+          "consignment_id": {
+            "format": "uuid",
+            "title": "Consignment Id",
+            "type": "string"
+          },
+          "no_scan_in_recorded": {
+            "title": "No Scan In Recorded",
+            "type": "integer"
+          },
+          "parcel_count_expected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Expected"
+          },
+          "parcels_on_record": {
+            "title": "Parcels On Record",
+            "type": "integer"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "scanned_in": {
+            "title": "Scanned In",
+            "type": "integer"
+          },
+          "scanned_out": {
+            "title": "Scanned Out",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "consignment_id",
+          "reference",
+          "parcel_count_expected",
+          "parcels_on_record",
+          "scanned_out",
+          "scanned_in",
+          "no_scan_in_recorded"
+        ],
+        "title": "ConsignmentScanSummary",
+        "type": "object"
+      },
       "CorrectSubstitutionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3859,6 +4091,73 @@
           "lanes"
         ],
         "title": "CostResponse",
+        "type": "object"
+      },
+      "CountReading": {
+        "properties": {
+          "driver_visual_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Visual Count"
+          },
+          "parcel_count_destination": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Destination"
+          },
+          "parcel_count_origin": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Count Origin"
+          },
+          "phase_event_id": {
+            "format": "uuid",
+            "title": "Phase Event Id",
+            "type": "string"
+          },
+          "phase_type": {
+            "title": "Phase Type",
+            "type": "string"
+          },
+          "precinct_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Name"
+          }
+        },
+        "required": [
+          "phase_event_id",
+          "phase_type",
+          "precinct_name",
+          "parcel_count_origin",
+          "parcel_count_destination",
+          "driver_visual_count"
+        ],
+        "title": "CountReading",
         "type": "object"
       },
       "CoverageGap": {
@@ -7465,6 +7764,49 @@
         "title": "ExpiryBands",
         "type": "object"
       },
+      "ExternalActionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/IncidentExternalAction"
+          },
+          "action_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action At"
+          },
+          "kind": {
+            "const": "external_action",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "kind",
+          "action"
+        ],
+        "title": "ExternalActionUpdate",
+        "type": "object"
+      },
       "FacilityMetricsResponse": {
         "description": "Pulsit corroboration at one precinct, with the precinct's name.",
         "properties": {
@@ -8261,6 +8603,146 @@
         "title": "InTransitCompleteRequest",
         "type": "object"
       },
+      "IncidentCloseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "outcome": {
+            "$ref": "#/components/schemas/IncidentOutcome"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "reason"
+        ],
+        "title": "IncidentCloseRequest",
+        "type": "object"
+      },
+      "IncidentConfidence": {
+        "description": "How well-founded the incident is. A client's phone call stays REPORTED until\nsomething independent agrees — it never becomes a system-confirmed theft by itself.",
+        "enum": [
+          "suspected",
+          "reported",
+          "corroborated"
+        ],
+        "title": "IncidentConfidence",
+        "type": "string"
+      },
+      "IncidentCreate": {
+        "additionalProperties": false,
+        "description": "POST /trips/{trip_id}/incidents. Every fact a report rests on is explicit — the\ndispatcher UI fills hijacking defaults (stop the trip, all parcels), the API assumes none.",
+        "properties": {
+          "all_parcels": {
+            "default": false,
+            "title": "All Parcels",
+            "type": "boolean"
+          },
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/IncidentConfidence"
+          },
+          "exception_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Exception Ids",
+            "type": "array"
+          },
+          "incident_type": {
+            "$ref": "#/components/schemas/IncidentType"
+          },
+          "parcel_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Parcel Ids",
+            "type": "array"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "report_channel": {
+            "$ref": "#/components/schemas/IncidentReportChannel"
+          },
+          "reported_by_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported By Name"
+          },
+          "reported_occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Occurred At"
+          },
+          "reporter_role": {
+            "$ref": "#/components/schemas/IncidentReporterRole"
+          },
+          "stop_trip": {
+            "default": false,
+            "title": "Stop Trip",
+            "type": "boolean"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_type",
+          "summary",
+          "reporter_role",
+          "report_channel",
+          "confidence"
+        ],
+        "title": "IncidentCreate",
+        "type": "object"
+      },
       "IncidentDeclarationCreate": {
         "additionalProperties": false,
         "description": "What a claim form asks for that FreightProof never captured. Append-only: a\ncorrection is a new declaration, so what was declared when stays on record.",
@@ -8288,6 +8770,18 @@
               }
             ],
             "title": "Exception Id"
+          },
+          "incident_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incident Id"
           },
           "insurer_claim_reference": {
             "anyOf": [
@@ -8442,6 +8936,18 @@
             ],
             "title": "Exception Id"
           },
+          "incident_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incident Id"
+          },
           "insurer_claim_reference": {
             "anyOf": [
               {
@@ -8558,6 +9064,571 @@
         "title": "IncidentDeclarationRecord",
         "type": "object"
       },
+      "IncidentDetail": {
+        "properties": {
+          "assigned_to_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To Name"
+          },
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Reason"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/IncidentConfidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "declarations": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentDeclarationRecord"
+            },
+            "title": "Declarations",
+            "type": "array"
+          },
+          "document_upload_enabled": {
+            "title": "Document Upload Enabled",
+            "type": "boolean"
+          },
+          "exception_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Exception Ids",
+            "type": "array"
+          },
+          "exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentExceptionRead"
+            },
+            "title": "Exceptions",
+            "type": "array"
+          },
+          "exceptions_reviewed": {
+            "title": "Exceptions Reviewed",
+            "type": "integer"
+          },
+          "exceptions_total": {
+            "title": "Exceptions Total",
+            "type": "integer"
+          },
+          "incident_id": {
+            "format": "uuid",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "incident_type": {
+            "$ref": "#/components/schemas/IncidentType"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parcels": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentParcelRead"
+            },
+            "title": "Parcels",
+            "type": "array"
+          },
+          "parcels_total": {
+            "title": "Parcels Total",
+            "type": "integer"
+          },
+          "parcels_unresolved": {
+            "title": "Parcels Unresolved",
+            "type": "integer"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
+          },
+          "recorded_by_user_id": {
+            "format": "uuid",
+            "title": "Recorded By User Id",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "report_channel": {
+            "$ref": "#/components/schemas/IncidentReportChannel"
+          },
+          "reported_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported By Name"
+          },
+          "reported_occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Occurred At"
+          },
+          "reporter_role": {
+            "$ref": "#/components/schemas/IncidentReporterRole"
+          },
+          "response_guide": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ResponseStep"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Guide"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "trip_stopped_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Stopped At"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentUpdateRead"
+            },
+            "title": "Updates",
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "incident_id",
+          "reference",
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "incident_type",
+          "summary",
+          "status",
+          "confidence",
+          "outcome",
+          "assigned_to_user_id",
+          "assigned_to_name",
+          "reported_occurred_at",
+          "received_at",
+          "trip_stopped_at",
+          "closed_at",
+          "created_at",
+          "exception_ids",
+          "exceptions_total",
+          "exceptions_reviewed",
+          "parcels_total",
+          "parcels_unresolved",
+          "reported_by_name",
+          "reporter_role",
+          "report_channel",
+          "recorded_by_user_id",
+          "recorded_by_name",
+          "closure_reason",
+          "exceptions",
+          "parcels",
+          "updates",
+          "declarations",
+          "document_upload_enabled"
+        ],
+        "title": "IncidentDetail",
+        "type": "object"
+      },
+      "IncidentDocumentLink": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "signed_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed Url"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "signed_url"
+        ],
+        "title": "IncidentDocumentLink",
+        "type": "object"
+      },
+      "IncidentEvidence": {
+        "properties": {
+          "consignments": {
+            "items": {
+              "$ref": "#/components/schemas/ConsignmentScanSummary"
+            },
+            "title": "Consignments",
+            "type": "array"
+          },
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/CountReading"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "coverage_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageGap"
+            },
+            "title": "Coverage Gaps",
+            "type": "array"
+          },
+          "incident_id": {
+            "format": "uuid",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "last_known_position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PositionFix"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/Observation"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "position_reference_time": {
+            "format": "date-time",
+            "title": "Position Reference Time",
+            "type": "string"
+          },
+          "seals": {
+            "items": {
+              "$ref": "#/components/schemas/SealReading"
+            },
+            "title": "Seals",
+            "type": "array"
+          },
+          "trip_exceptions": {
+            "items": {
+              "$ref": "#/components/schemas/TripExceptionLink"
+            },
+            "title": "Trip Exceptions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "incident_id",
+          "seals",
+          "counts",
+          "consignments",
+          "trip_exceptions",
+          "last_known_position",
+          "position_reference_time",
+          "coverage_gaps",
+          "observations"
+        ],
+        "title": "IncidentEvidence",
+        "type": "object"
+      },
+      "IncidentExceptionRead": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "exception_id": {
+            "format": "uuid",
+            "title": "Exception Id",
+            "type": "string"
+          },
+          "exception_type": {
+            "$ref": "#/components/schemas/ExceptionType"
+          },
+          "linked_at": {
+            "format": "date-time",
+            "title": "Linked At",
+            "type": "string"
+          },
+          "raised_at": {
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "review_status": {
+            "$ref": "#/components/schemas/ExceptionReviewStatus"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ExceptionSeverity"
+          }
+        },
+        "required": [
+          "exception_id",
+          "exception_type",
+          "severity",
+          "description",
+          "review_status",
+          "raised_at",
+          "linked_at"
+        ],
+        "title": "IncidentExceptionRead",
+        "type": "object"
+      },
+      "IncidentExternalAction": {
+        "description": "Something done outside FreightProof that the dispatcher records. FreightProof records\nthese responses; it never performs them (docs/scope-boundaries.md §0).",
+        "enum": [
+          "tracking_company_alerted",
+          "saps_reported",
+          "insurer_notified",
+          "client_notified",
+          "driver_welfare_check",
+          "recovery_reported",
+          "other"
+        ],
+        "title": "IncidentExternalAction",
+        "type": "string"
+      },
+      "IncidentOutcome": {
+        "description": "What the investigation established. Kept apart from IncidentStatus so closing never\nhas to pretend cargo was recovered — INCONCLUSIVE is a legitimate way to close.",
+        "enum": [
+          "recording_error",
+          "cargo_recovered",
+          "partial_recovery",
+          "shortage_confirmed",
+          "damage_confirmed",
+          "theft_reported",
+          "inconclusive"
+        ],
+        "title": "IncidentOutcome",
+        "type": "string"
+      },
+      "IncidentParcelRead": {
+        "properties": {
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "barcode": {
+            "title": "Barcode",
+            "type": "string"
+          },
+          "consignment_id": {
+            "format": "uuid",
+            "title": "Consignment Id",
+            "type": "string"
+          },
+          "consignment_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consignment Reference"
+          },
+          "delivery_stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Stop"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "latest_finding": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParcelFinding"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parcel_id": {
+            "format": "uuid",
+            "title": "Parcel Id",
+            "type": "string"
+          },
+          "scan_state": {
+            "enum": [
+              "scanned_in",
+              "no_scan_in_recorded",
+              "no_scan_recorded"
+            ],
+            "title": "Scan State",
+            "type": "string"
+          },
+          "scanned_in_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned In At"
+          },
+          "scanned_out_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned Out At"
+          }
+        },
+        "required": [
+          "parcel_id",
+          "barcode",
+          "description",
+          "consignment_id",
+          "consignment_reference",
+          "delivery_stop",
+          "scanned_out_at",
+          "scanned_in_at",
+          "scan_state",
+          "latest_finding",
+          "added_at"
+        ],
+        "title": "IncidentParcelRead",
+        "type": "object"
+      },
       "IncidentPin": {
         "description": "One located report on the incident map (chart 3.6). Deliberately nothing about the\nperson: no driver name, phone or id. A pin is where a named driver was, so it carries only\nwhat the dispatcher needs to open the report (POPIA).",
         "properties": {
@@ -8608,10 +9679,238 @@
         "title": "IncidentPin",
         "type": "object"
       },
+      "IncidentRead": {
+        "description": "One incident in a list: enough to triage without opening it.",
+        "properties": {
+          "assigned_to_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To Name"
+          },
+          "assigned_to_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To User Id"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/IncidentConfidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "exception_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Exception Ids",
+            "type": "array"
+          },
+          "exceptions_reviewed": {
+            "title": "Exceptions Reviewed",
+            "type": "integer"
+          },
+          "exceptions_total": {
+            "title": "Exceptions Total",
+            "type": "integer"
+          },
+          "incident_id": {
+            "format": "uuid",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "incident_type": {
+            "$ref": "#/components/schemas/IncidentType"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parcels_total": {
+            "title": "Parcels Total",
+            "type": "integer"
+          },
+          "parcels_unresolved": {
+            "title": "Parcels Unresolved",
+            "type": "integer"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "reported_occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Occurred At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "trip_stopped_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Stopped At"
+          }
+        },
+        "required": [
+          "incident_id",
+          "reference",
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "incident_type",
+          "summary",
+          "status",
+          "confidence",
+          "outcome",
+          "assigned_to_user_id",
+          "assigned_to_name",
+          "reported_occurred_at",
+          "received_at",
+          "trip_stopped_at",
+          "closed_at",
+          "created_at",
+          "exception_ids",
+          "exceptions_total",
+          "exceptions_reviewed",
+          "parcels_total",
+          "parcels_unresolved"
+        ],
+        "title": "IncidentRead",
+        "type": "object"
+      },
+      "IncidentReopenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "IncidentReopenRequest",
+        "type": "object"
+      },
+      "IncidentReportChannel": {
+        "enum": [
+          "phone",
+          "whatsapp",
+          "email",
+          "in_person",
+          "in_app"
+        ],
+        "title": "IncidentReportChannel",
+        "type": "string"
+      },
+      "IncidentReporterRole": {
+        "enum": [
+          "driver",
+          "client",
+          "receiver",
+          "tracking_company",
+          "police",
+          "operator_staff",
+          "freightproof",
+          "other"
+        ],
+        "title": "IncidentReporterRole",
+        "type": "string"
+      },
+      "IncidentStatus": {
+        "description": "Where the investigation is. Independent of Trip.status (a trip can close while a\nshortage investigation stays open) and of each exception's review_status.",
+        "enum": [
+          "open",
+          "investigating",
+          "closed"
+        ],
+        "title": "IncidentStatus",
+        "type": "string"
+      },
       "IncidentSummary": {
         "additionalProperties": false,
         "description": "The key times an adjuster or detective reads first, derived from the critical\nexceptions. Built only when the trip has at least one.",
         "properties": {
+          "basis": {
+            "default": "exception",
+            "enum": [
+              "exception",
+              "investigation"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
           "exception_ids": {
             "items": {
               "format": "uuid",
@@ -8685,6 +9984,195 @@
         "title": "IncidentSummary",
         "type": "object"
       },
+      "IncidentType": {
+        "description": "What an incident investigates. An exception is one observation; an incident is the\ninvestigation several observations can belong to. Breakdowns are deliberately absent:\nout of MVP scope (Tim, 20 Oct 2026) — MECHANICAL stays an exception.",
+        "enum": [
+          "hijacking",
+          "parcel_shortage",
+          "parcel_damage"
+        ],
+        "title": "IncidentType",
+        "type": "string"
+      },
+      "IncidentUpdateKind": {
+        "description": "One entry on an incident's append-only ledger. The status, confidence, owner and\noutcome columns on Incident are caches rebuilt from these, never edited directly.",
+        "enum": [
+          "opened",
+          "note",
+          "status_changed",
+          "assigned",
+          "confidence_changed",
+          "exception_linked",
+          "parcel_added",
+          "parcel_finding",
+          "external_action",
+          "document_attached",
+          "trip_stopped",
+          "closed",
+          "reopened"
+        ],
+        "title": "IncidentUpdateKind",
+        "type": "string"
+      },
+      "IncidentUpdateRead": {
+        "properties": {
+          "action_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action At"
+          },
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "external_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentExternalAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "from_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Value"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/IncidentUpdateKind"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "parcel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Id"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
+          },
+          "recorded_by_user_id": {
+            "format": "uuid",
+            "title": "Recorded By User Id",
+            "type": "string"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "to_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Value"
+          },
+          "update_id": {
+            "format": "uuid",
+            "title": "Update Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "update_id",
+          "sequence",
+          "kind",
+          "note",
+          "from_value",
+          "to_value",
+          "parcel_id",
+          "exception_id",
+          "phase_event_id",
+          "artifact_id",
+          "external_action",
+          "action_at",
+          "recorded_by_user_id",
+          "recorded_by_name",
+          "recorded_at"
+        ],
+        "title": "IncidentUpdateRead",
+        "type": "object"
+      },
       "IncidentsResponse": {
         "properties": {
           "period": {
@@ -8708,6 +10196,294 @@
           "unlocated_count"
         ],
         "title": "IncidentsResponse",
+        "type": "object"
+      },
+      "InvestigationEntryRecord": {
+        "additionalProperties": false,
+        "description": "One entry of an incident's append-only ledger, as recorded by a dispatcher.",
+        "properties": {
+          "action_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action At"
+          },
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "external_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Action"
+          },
+          "from_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Value"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "parcel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Id"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "recorded_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded By Name"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "to_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Value"
+          }
+        },
+        "required": [
+          "sequence",
+          "kind",
+          "note",
+          "from_value",
+          "to_value",
+          "parcel_id",
+          "exception_id",
+          "external_action",
+          "action_at",
+          "recorded_by_name",
+          "recorded_at"
+        ],
+        "title": "InvestigationEntryRecord",
+        "type": "object"
+      },
+      "InvestigationRecord": {
+        "additionalProperties": false,
+        "description": "An incident the operator investigated: who reported what and when, how sure, what was\naffected, every follow-up, and what it established — or that it was still open. Declared\ntier throughout: the operator recorded all of it; FreightProof captured none of it.",
+        "properties": {
+          "assigned_to_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assigned To Name"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "closure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Reason"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigationEntryRecord"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "exception_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Exception Ids",
+            "type": "array"
+          },
+          "incident_id": {
+            "format": "uuid",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "incident_type": {
+            "title": "Incident Type",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "parcels": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedParcelRecord"
+            },
+            "title": "Parcels",
+            "type": "array"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "report_channel": {
+            "title": "Report Channel",
+            "type": "string"
+          },
+          "reported_occurred_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Occurred At"
+          },
+          "reporter_role": {
+            "title": "Reporter Role",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tier": {
+            "const": "declared",
+            "default": "declared",
+            "title": "Tier",
+            "type": "string"
+          },
+          "trip_stopped_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trip Stopped At"
+          }
+        },
+        "required": [
+          "incident_id",
+          "reference",
+          "incident_type",
+          "summary",
+          "reporter_role",
+          "report_channel",
+          "reported_occurred_at",
+          "received_at",
+          "confidence",
+          "status",
+          "outcome",
+          "closure_reason",
+          "closed_at",
+          "trip_stopped_at",
+          "assigned_to_name",
+          "exception_ids",
+          "parcels",
+          "entries"
+        ],
+        "title": "InvestigationRecord",
         "type": "object"
       },
       "LaneCost": {
@@ -9565,6 +11341,39 @@
         "title": "LinehaulResponse",
         "type": "object"
       },
+      "LinkExceptionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "exception_id": {
+            "format": "uuid",
+            "title": "Exception Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "exception_linked",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "kind",
+          "exception_id"
+        ],
+        "title": "LinkExceptionUpdate",
+        "type": "object"
+      },
       "LiveRecordCheck": {
         "additionalProperties": false,
         "properties": {
@@ -10018,6 +11827,64 @@
           "pulled_at"
         ],
         "title": "ManifestResponse",
+        "type": "object"
+      },
+      "NoteUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "exception_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exception Id"
+          },
+          "kind": {
+            "const": "note",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "parcel_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Id"
+          },
+          "phase_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase Event Id"
+          }
+        },
+        "required": [
+          "kind",
+          "note"
+        ],
+        "title": "NoteUpdate",
         "type": "object"
       },
       "Observation": {
@@ -10696,6 +12563,49 @@
           "has_delivery_failure"
         ],
         "title": "PPWaybillSummary",
+        "type": "object"
+      },
+      "ParcelFinding": {
+        "description": "What a dispatcher established about one affected parcel. There is no \"stolen\" and no\n\"no scan recorded\" here: a missing scan-in is a scan fact read from Parcel, shown beside\nthe finding, and a parcel with no finding yet is simply not established.",
+        "enum": [
+          "located",
+          "confirmed_missing",
+          "damage_confirmed",
+          "recording_error"
+        ],
+        "title": "ParcelFinding",
+        "type": "string"
+      },
+      "ParcelFindingUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "finding": {
+            "$ref": "#/components/schemas/ParcelFinding"
+          },
+          "kind": {
+            "const": "parcel_finding",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Note",
+            "type": "string"
+          },
+          "parcel_id": {
+            "format": "uuid",
+            "title": "Parcel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "parcel_id",
+          "finding",
+          "note"
+        ],
+        "title": "ParcelFindingUpdate",
         "type": "object"
       },
       "ParcelJourney": {
@@ -13304,6 +15214,36 @@
         "title": "PunctualityBucket",
         "type": "object"
       },
+      "PushPlatform": {
+        "description": "The native shell a push token came from; the sender picks the FCM/APNs path by it.",
+        "enum": [
+          "android",
+          "ios"
+        ],
+        "title": "PushPlatform",
+        "type": "string"
+      },
+      "PushTokenRegistration": {
+        "additionalProperties": false,
+        "description": "What the driver app sends after the OS hands it a token (Capacitor `registration`).",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/PushPlatform"
+          },
+          "token": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "title": "PushTokenRegistration",
+        "type": "object"
+      },
       "QueueBucket": {
         "description": "Chart 4.2: critical problems still waiting at the end of the bucket (or now, if sooner).",
         "properties": {
@@ -13544,6 +15484,63 @@
         "title": "ReplaceSubstitutionRequest",
         "type": "object"
       },
+      "ResponseStep": {
+        "description": "One step of the hijacking response guide, derived from what was recorded.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "done_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done At"
+          },
+          "key": {
+            "enum": [
+              "trip_stopped",
+              "tracking_company_alerted",
+              "saps_reported",
+              "insurer_notified",
+              "client_notified",
+              "driver_welfare_check",
+              "audit_pack_issued"
+            ],
+            "title": "Key",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "done",
+              "in_progress",
+              "todo",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "state"
+        ],
+        "title": "ResponseStep",
+        "type": "object"
+      },
       "ReviewAgeBand": {
         "description": "Chart 4.1: how long critical problems have waited for review.",
         "enum": [
@@ -13764,6 +15761,83 @@
         "title": "SealNumberSource",
         "type": "string"
       },
+      "SealReading": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "phase_event_id": {
+            "format": "uuid",
+            "title": "Phase Event Id",
+            "type": "string"
+          },
+          "phase_type": {
+            "title": "Phase Type",
+            "type": "string"
+          },
+          "photo_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Photo Ids",
+            "type": "array"
+          },
+          "precinct_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precinct Name"
+          },
+          "seal_condition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Condition"
+          },
+          "seal_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seal Number"
+          }
+        },
+        "required": [
+          "phase_event_id",
+          "phase_type",
+          "precinct_name",
+          "seal_number",
+          "seal_condition",
+          "completed_at",
+          "photo_ids"
+        ],
+        "title": "SealReading",
+        "type": "object"
+      },
       "SealReceipt": {
         "additionalProperties": false,
         "properties": {
@@ -13944,6 +16018,37 @@
           "lng"
         ],
         "title": "StationaryPeriod",
+        "type": "object"
+      },
+      "StatusUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "status_changed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          }
+        },
+        "required": [
+          "kind",
+          "status"
+        ],
+        "title": "StatusUpdate",
         "type": "object"
       },
       "StopRecord": {
@@ -15844,6 +17949,59 @@
           "trip_status"
         ],
         "title": "TripExceptionDetail",
+        "type": "object"
+      },
+      "TripExceptionLink": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "exception_id": {
+            "format": "uuid",
+            "title": "Exception Id",
+            "type": "string"
+          },
+          "exception_type": {
+            "title": "Exception Type",
+            "type": "string"
+          },
+          "incident_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incident Id"
+          },
+          "raised_at": {
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "review_status": {
+            "title": "Review Status",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "exception_id",
+          "exception_type",
+          "severity",
+          "description",
+          "raised_at",
+          "review_status",
+          "incident_id"
+        ],
+        "title": "TripExceptionLink",
         "type": "object"
       },
       "TripExceptionListItem": {
@@ -20016,6 +22174,46 @@
         ]
       }
     },
+    "/api/v1/drivers/me/push-tokens": {
+      "post": {
+        "description": "Idempotent: the app calls this on every launch, and a repeat only refreshes the row.",
+        "operationId": "register_my_push_token_api_v1_drivers_me_push_tokens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register this device's push token for the authenticated driver",
+        "tags": [
+          "drivers"
+        ]
+      }
+    },
     "/api/v1/drivers/{driver_id}": {
       "get": {
         "operationId": "get_driver_detail_endpoint_api_v1_drivers__driver_id__get",
@@ -20848,6 +23046,570 @@
         "summary": "Fetch the authoritative decision (public, no auth, no session id accepted)",
         "tags": [
           "handover"
+        ]
+      }
+    },
+    "/api/v1/incidents": {
+      "get": {
+        "operationId": "list_incidents_endpoint_api_v1_incidents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IncidentStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "incident_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/IncidentType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incident Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assigned To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentRead"
+                  },
+                  "title": "Response List Incidents Endpoint Api V1 Incidents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The organisation's incidents, newest first",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}": {
+      "get": {
+        "operationId": "get_incident_endpoint_api_v1_incidents__incident_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One incident in full",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/close": {
+      "post": {
+        "operationId": "close_incident_endpoint_api_v1_incidents__incident_id__close_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentCloseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Close an incident with an outcome and a reason",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/documents": {
+      "post": {
+        "operationId": "attach_incident_document_endpoint_api_v1_incidents__incident_id__documents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_attach_incident_document_endpoint_api_v1_incidents__incident_id__documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach a document to an incident (off unless INCIDENT_DOCUMENTS_ENABLED)",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/documents/{artifact_id}/url": {
+      "get": {
+        "operationId": "incident_document_url_endpoint_api_v1_incidents__incident_id__documents__artifact_id__url_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDocumentLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A short-lived link to a document this incident cites",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/evidence": {
+      "get": {
+        "operationId": "get_incident_evidence_endpoint_api_v1_incidents__incident_id__evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Seals, counts, scans, exceptions and last known position for this incident's trip",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/reopen": {
+      "post": {
+        "operationId": "reopen_incident_endpoint_api_v1_incidents__incident_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentReopenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reopen a closed incident with a reason",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/stop-trip": {
+      "post": {
+        "operationId": "stop_incident_trip_endpoint_api_v1_incidents__incident_id__stop_trip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop this incident's trip (decided after it was reported)",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}/updates": {
+      "post": {
+        "operationId": "append_incident_update_endpoint_api_v1_incidents__incident_id__updates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "mapping": {
+                    "assigned": "#/components/schemas/AssignUpdate",
+                    "confidence_changed": "#/components/schemas/ConfidenceUpdate",
+                    "exception_linked": "#/components/schemas/LinkExceptionUpdate",
+                    "external_action": "#/components/schemas/ExternalActionUpdate",
+                    "note": "#/components/schemas/NoteUpdate",
+                    "parcel_added": "#/components/schemas/AddParcelsUpdate",
+                    "parcel_finding": "#/components/schemas/ParcelFindingUpdate",
+                    "status_changed": "#/components/schemas/StatusUpdate"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/NoteUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StatusUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AssignUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConfidenceUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LinkExceptionUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AddParcelsUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ParcelFindingUpdate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExternalActionUpdate"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Append follow-up to an incident",
+        "tags": [
+          "incidents"
         ]
       }
     },
@@ -24191,6 +26953,114 @@
         "summary": "Declare police-report and notification facts for a trip's incident",
         "tags": [
           "audit-packs"
+        ]
+      }
+    },
+    "/api/v1/trips/{trip_id}/incidents": {
+      "get": {
+        "operationId": "list_trip_incidents_endpoint_api_v1_trips__trip_id__incidents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IncidentRead"
+                  },
+                  "title": "Response List Trip Incidents Endpoint Api V1 Trips  Trip Id  Incidents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "This trip's incidents, newest first",
+        "tags": [
+          "incidents"
+        ]
+      },
+      "post": {
+        "operationId": "report_incident_endpoint_api_v1_trips__trip_id__incidents_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trip_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Trip Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report an incident on this trip (optionally stopping it)",
+        "tags": [
+          "incidents"
         ]
       }
     },

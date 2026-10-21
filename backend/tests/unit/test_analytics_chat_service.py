@@ -185,6 +185,19 @@ async def test_ask_answer_ending_in_an_offer_keeps_its_basis(user: UserRead) -> 
     assert [b.tool for b in result.basis] == ["routes_and_sites"]
 
 
+async def test_ask_answer_never_shows_an_em_dash(user: UserRead) -> None:
+    provider = FakeProvider([text_reply("I can't predict next month \u2014 but the trend so far is flat.")])
+
+    result = await _ask(provider, user)
+
+    assert result.answer == "I can't predict next month, but the trend so far is flat."
+
+
+def test_prompt_asks_for_no_em_dashes_and_dash_lists() -> None:
+    assert "Never use em dashes" in SYSTEM_PROMPT
+    assert 'one item per line starting with "- "' in SYSTEM_PROMPT
+
+
 def test_prompt_asks_for_whole_rands() -> None:
     assert "Round rand amounts to whole rands" in SYSTEM_PROMPT
 
