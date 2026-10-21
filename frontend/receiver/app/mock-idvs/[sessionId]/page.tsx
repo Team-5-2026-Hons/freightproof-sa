@@ -9,32 +9,16 @@
 // handover page stashes where to come back to before it leaves.
 'use client'
 
+import { notFound } from 'next/navigation'
 import { useSyncExternalStore } from 'react'
+import { readStashedIdentity } from '@/lib/identity-stash'
 
-const IDENTITY_STASH_KEY = 'fp_handover_identity'
-
-interface StashedIdentity {
-  name: string
-  idNumber: string
-  token?: string
-}
-
-function readStash(): StashedIdentity | null {
-  try {
-    const raw = sessionStorage.getItem(IDENTITY_STASH_KEY)
-    if (raw === null) return null
-    const parsed: unknown = JSON.parse(raw)
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      typeof (parsed as Partial<StashedIdentity>).name === 'string'
-    ) {
-      return parsed as StashedIdentity
-    }
-    return null
-  } catch {
-    return null
-  }
+// A real deployment must not serve a page that says "Simulated · not a real identity
+// check" under a receiver-facing domain. Development always has it; a production build
+// only when someone has deliberately switched it on (e.g. a staging environment that runs
+// IDVS_USE_MOCK=true). Read inside the component, not at module load, so it is testable.
+function isMockIdvsEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ENABLE_MOCK_IDVS === 'true'
 }
 
 // No-op: the stash never changes for the lifetime of this page, so there's nothing to
@@ -44,12 +28,15 @@ function subscribeToNothing(): () => void {
 }
 
 export default function MockIdvsPage() {
+  // Throws, so it must come before the hook below.
+  if (!isMockIdvsEnabled()) notFound()
+
   // useSyncExternalStore avoids a hydration mismatch: a plain useState initializer would
   // read sessionStorage during prerender (null, since it doesn't exist at build time) but
   // the real value on the client's first render.
   const returnToken = useSyncExternalStore(
     subscribeToNothing,
-    () => readStash()?.token ?? null,
+    () => readStashedIdentity()?.token ?? null,
     () => null,
   )
 

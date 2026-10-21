@@ -15,6 +15,9 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The default X-Powered-By: Next.js header tells a prober which framework (and so which
+  // class of vulnerability) to try. Nothing here needs it.
+  poweredByHeader: false,
   // Pin the monorepo root so Next never walks up and adopts an unrelated lockfile.
   outputFileTracingRoot: path.join(__dirname, '../..'),
   // Required to compile the shared renderer from ../shared.

@@ -13,6 +13,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // There is deliberately no dark theme (see the note at the top). Saying so lets Android's
+  // automatic dark mode leave the page alone instead of inverting it — which would turn the
+  // swipe's white thumb on green into something the receiver has never seen.
+  colorScheme: 'light',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
