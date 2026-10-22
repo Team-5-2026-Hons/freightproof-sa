@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel
 
-from app.analytics.fleet.periods import Grain, Period
+from app.analytics.fleet.periods import Period
+from app.core.fleet_bands import Grain
 from app.orchestration.analytics_chat import tools
 from app.orchestration.analytics_chat.definitions import about
 from app.orchestration.analytics_chat.page_guide import GUIDE

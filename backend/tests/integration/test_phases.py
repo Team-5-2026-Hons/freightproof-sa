@@ -31,6 +31,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
+from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -39,6 +40,7 @@ from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
 from app.orchestration.consignments.scans import ingest_scans
 from app.orchestration.phases.override import override_phase
+from app.orchestration.trips.administration import cancel_trip
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
@@ -1045,8 +1047,10 @@ async def empty_leg_seed_data(db_session):
         id=uuid.uuid4(), organization_id=operator_org.id,
         email="el-dispatcher@test.co.za", full_name="EL Dispatcher", is_active=True,
     )
-    origin = Precinct(id=uuid.uuid4(), name="EL Origin", principal_organization_id=client_org.id, latitude="0", longitude="0")
-    dest = Precinct(id=uuid.uuid4(), name="EL Dest", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
+    origin = Precinct(id=uuid.uuid4(), name="EL Origin", is_shared=True, principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="EL Dest", is_shared=True, principal_organization_id=client_org.id, latitude="1", longitude="1")
     driver = Driver(
         id=uuid.uuid4(), organization_id=operator_org.id, full_name="EL Driver",
         id_number="8001015009133", phone_number="+27821234533", license_number="DRV-EL2",
@@ -1977,11 +1981,13 @@ async def test_confirmation_accepts_unattributed_artifact_without_driver_id(
     assert resp.json()["status"] == "closed"
 
 
-async def test_completion_request_for_overridden_phase_returns_recorded_state(
+async def test_completion_request_for_overridden_phase_returns_409_and_leaves_row_unchanged(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """D26: a resolved phase replays as 200 BEFORE any check, so the offline queue drains —
-    even when the request cites an artifact that would be rejected on an open phase."""
+    """Was D26 (an overridden phase replayed as 200 so the offline queue drained). Reversed:
+    override_phase only closes a PENDING/IN_PROGRESS row, so no driver completion of an
+    OVERRIDDEN row ever landed — a submission against it is new evidence, and a 200 told the
+    driver it was recorded while it was discarded. COMPLETED/EXCEPTION still replay as 200."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, trip.id, token)
@@ -2001,11 +2007,56 @@ async def test_completion_request_for_overridden_phase_returns_recorded_state(
 
     resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=contradictory)
 
-    assert resp.status_code == 200
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PHASE_OVERRIDDEN"
     await db_session.refresh(loading)
     assert loading.status == PhaseStatus.OVERRIDDEN
     assert loading.linehaul_photo_artifact_id is None
     assert loading.anchor_status == anchor_before
+
+
+async def test_complete_phase_after_override_returns_409_phase_overridden(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A driver's queued capture arriving after the dispatcher closed the step must be refused
+    with a coded 409 so the app keeps the evidence, and must write nothing."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = uuid.UUID(await _phase_id(client, trip.id, token, "activation"))
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=activation_id,
+        operator_organization_id=trip.operator_organization_id, user_id=trip.created_by_user_id,
+        note="Driver phone lost",
+    )
+    exceptions_before = (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PHASE_OVERRIDDEN"
+    assert "kept on this phone" in resp.json()["detail"]["message"]
+    activation = await db_session.get(PhaseEvent, activation_id)
+    await db_session.refresh(activation)
+    assert activation.status == PhaseStatus.OVERRIDDEN
+    assert activation.performed_by_driver_id is None
+    exceptions_after = (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+    assert exceptions_after == exceptions_before
+    artifacts = (await db_session.execute(
+        select(func.count()).select_from(EvidenceArtifact).where(EvidenceArtifact.trip_id == trip.id)
+    )).scalar_one()
+    assert artifacts == 0
 
 
 async def test_completion_request_for_completed_phase_with_new_key_returns_recorded_state(
@@ -2256,3 +2307,84 @@ async def test_loading_complete_rejects_a_linehaul_pdf_without_its_scan(
     assert resp.status_code == 422
     event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
     assert event.linehaul_pdf_artifact_id is None
+
+
+# ── WI-27 item 4: an own replay of an EXCEPTION-status completion is a 200 ──────────
+
+_ARRIVAL_SEAL_MISMATCH = "ZZ-9999"  # the fixture's departure seal is AB-1234
+
+
+async def _arrival_resolved_as_exception(client: AsyncClient, db_session, trip, token: str) -> tuple[str, str, dict]:
+    """Arrival whose seal number disagrees with the departure seal: SEAL_MISMATCH, row EXCEPTION.
+
+    Returns the arrival id, the idempotency key, and the exact request body so a replay can
+    resend byte-for-byte what the driver app would have queued.
+    """
+    key = str(uuid.uuid4())
+    arrival_id, resp = await _complete_arrival_with(
+        client, db_session, trip, token, seal_condition="intact",
+        seal_number_at_arrival=_ARRIVAL_SEAL_MISMATCH, idempotency_key=key,
+    )
+    assert resp.status_code == 200, resp.text
+    arrival = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    assert arrival.status == PhaseStatus.EXCEPTION
+    body = {
+        "phase_type": "arrival", "seal_condition": "intact",
+        "seal_number_at_arrival": _ARRIVAL_SEAL_MISMATCH,
+        "seal_photo_artifact_id": str(arrival.seal_photo_artifact_id), "idempotency_key": key,
+    }
+    return arrival_id, key, body
+
+
+async def _arrival_seal_exception_count(db_session, trip_id, arrival_id: str) -> int:
+    return (await db_session.execute(
+        select(func.count()).select_from(TripException).where(
+            TripException.trip_id == trip_id, TripException.phase_event_id == uuid.UUID(arrival_id),
+        )
+    )).scalar_one()
+
+
+async def test_own_replay_of_an_exception_completion_returns_200_and_files_no_second_exception(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """_is_resolved treats EXCEPTION like COMPLETED, so a resent offline-queue entry is answered
+    from the stored row instead of re-running the wrapper and filing the finding again."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    arrival_id, _key, body = await _arrival_resolved_as_exception(client, db_session, trip, token)
+    exceptions_before = await _arrival_seal_exception_count(db_session, trip.id, arrival_id)
+
+    replay = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete", json=body, headers=auth_header(token),
+    )
+
+    assert exceptions_before == 1
+    assert replay.status_code == 200, replay.text
+    assert await _arrival_seal_exception_count(db_session, trip.id, arrival_id) == 1
+    arrival = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    await db_session.refresh(arrival)
+    assert arrival.status == PhaseStatus.EXCEPTION
+
+
+async def test_own_replay_of_an_exception_completion_after_the_trip_was_cancelled_is_not_a_409(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The replay short-circuit runs BEFORE the trip-status check, for EXCEPTION as for COMPLETED
+    (test_phases_service pins the COMPLETED half): a queued entry for a decided phase must drain
+    even though the trip has since reached a terminal status."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    arrival_id, _key, body = await _arrival_resolved_as_exception(client, db_session, trip, token)
+    await cancel_trip(
+        db_session, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
+        user_id=trip.created_by_user_id, note="abandoned",
+    )
+    await db_session.refresh(trip)
+    assert TripStatus(trip.status) == TripStatus.CANCELLED
+
+    replay = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete", json=body, headers=auth_header(token),
+    )
+
+    assert replay.status_code == 200, replay.text
+    assert await _arrival_seal_exception_count(db_session, trip.id, arrival_id) == 1

@@ -8,7 +8,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, literal, or_, select, tuple_
+from sqlalchemy import ColumnElement, func, literal, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -104,27 +104,20 @@ async def list_trips(
     drivers_result = await db.execute(select(Driver).where(Driver.id.in_(set(current.values()))))
     drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
 
-    horse_ids = list({t.horse_id for t in trips})
-    horses_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(horse_ids)))
-    horses_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in horses_result.scalars().all()}
-
     tt_result = await db.execute(
         select(TripTrailer).where(TripTrailer.trip_id.in_(trip_ids))
     )
     trip_trailers = tt_result.scalars().all()
 
-    trailer_vehicle_ids = list({tt.trailer_id for tt in trip_trailers})
-    trailers_result = await db.execute(
-        select(Vehicle).where(Vehicle.id.in_(trailer_vehicle_ids))
-    )
-    trailers_by_id: dict[uuid.UUID, Vehicle] = {
-        v.id: v for v in trailers_result.scalars().all()
-    }
+    # Horses and trailers are both vehicles: one statement for the page, not one per kind.
+    vehicle_ids = {t.horse_id for t in trips} | {tt.trailer_id for tt in trip_trailers}
+    vehicles_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))
+    vehicles_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in vehicles_result.scalars().all()}
 
     trailers_by_trip: dict[uuid.UUID, list[Vehicle]] = defaultdict(list)
     for tt in trip_trailers:
-        if tt.trailer_id in trailers_by_id:
-            trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
+        if tt.trailer_id in vehicles_by_id:
+            trailers_by_trip[tt.trip_id].append(vehicles_by_id[tt.trailer_id])
 
     attention_by_trip = await _attention_by_trip(db, trip_ids)
 
@@ -161,7 +154,7 @@ async def list_trips(
             status=t.status,
             trip_type=TripType(t.trip_type),
             driver=DriverRead.model_validate(drivers_by_id[current[t.id]]),
-            horse=VehicleRead.model_validate(horses_by_id[t.horse_id]),
+            horse=VehicleRead.model_validate(vehicles_by_id[t.horse_id]),
             trailers=[VehicleRead.model_validate(v) for v in trailers_by_trip.get(t.id, [])],
             origin_precinct_id=t.origin_precinct_id,
             destination_precinct_id=t.destination_precinct_id,
@@ -182,24 +175,17 @@ async def list_trips(
     ]
 
 
-async def list_trip_history(
-    db: AsyncSession,
+def _history_filters(
     *,
     operator_organization_id: uuid.UUID,
-    limit: int = 25,
-    cursor_position: CursorPosition | None = None,
-    q: str | None = None,
-    precinct_id: uuid.UUID | None = None,
-    from_date: date | None = None,
-    to_date: date | None = None,
-) -> CursorPage[TripHistoryListItemResponse]:
-    """Closed/cancelled trips, newest close first, keyset-paginated.
-
-    The opaque shared cursor's timestamp field is named ``created_at`` internally, but
-    its value here is always Trip.closed_at. The API boundary decodes it before calling
-    this query so malformed client input fails without doing database work.
-    """
-    filters = [
+    q: str | None,
+    precinct_id: uuid.UUID | None,
+    from_date: date | None,
+    to_date: date | None,
+) -> list[ColumnElement[bool]]:
+    """The WHERE clauses for the history list: the org's finished trips, narrowed by the
+    search text, a precinct at either end, and an inclusive close-date range in SAST."""
+    filters: list[ColumnElement[bool]] = [
         Trip.operator_organization_id == operator_organization_id,
         Trip.status.in_([TripStatus.CLOSED, TripStatus.CANCELLED]),
         Trip.closed_at.is_not(None),
@@ -235,6 +221,62 @@ async def list_trip_history(
                 Trip.closed_at
                 < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=operations_tz)
             )
+    return filters
+
+
+async def _needs_review_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Exceptions still waiting for review, per trip. Trips with none are absent."""
+    exceptions_result = await db.execute(
+        select(TripException.trip_id, func.count(TripException.id))
+        .where(
+            TripException.trip_id.in_(trip_ids),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+        )
+        .group_by(TripException.trip_id)
+    )
+    return {trip_id: count for trip_id, count in exceptions_result.all()}
+
+
+async def _phase_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[int, int]]:
+    """(phases in the plan, phases resolved) per trip. Trips with no plan are absent."""
+    phases_result = await db.execute(
+        select(
+            PhaseEvent.trip_id,
+            func.count(PhaseEvent.id),
+            func.count(PhaseEvent.id).filter(
+                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
+            ),
+        )
+        .where(PhaseEvent.trip_id.in_(trip_ids))
+        .group_by(PhaseEvent.trip_id)
+    )
+    return {
+        trip_id: (total, completed)
+        for trip_id, total, completed in phases_result.all()
+    }
+
+
+async def list_trip_history(
+    db: AsyncSession,
+    *,
+    operator_organization_id: uuid.UUID,
+    limit: int = 25,
+    cursor_position: CursorPosition | None = None,
+    q: str | None = None,
+    precinct_id: uuid.UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> CursorPage[TripHistoryListItemResponse]:
+    """Closed/cancelled trips, newest close first, keyset-paginated.
+
+    The opaque shared cursor's timestamp field is named ``created_at`` internally, but
+    its value here is always Trip.closed_at. The API boundary decodes it before calling
+    this query so malformed client input fails without doing database work.
+    """
+    filters = _history_filters(
+        operator_organization_id=operator_organization_id, q=q, precinct_id=precinct_id,
+        from_date=from_date, to_date=to_date,
+    )
 
     count_stmt = (
         select(func.count())
@@ -274,33 +316,8 @@ async def list_trip_history(
         vehicle.id: vehicle for vehicle in horses_result.scalars().all()
     }
 
-    exceptions_result = await db.execute(
-        select(TripException.trip_id, func.count(TripException.id))
-        .where(
-            TripException.trip_id.in_(trip_ids),
-            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
-        )
-        .group_by(TripException.trip_id)
-    )
-    exception_counts: dict[uuid.UUID, int] = {
-        trip_id: count for trip_id, count in exceptions_result.all()
-    }
-
-    phases_result = await db.execute(
-        select(
-            PhaseEvent.trip_id,
-            func.count(PhaseEvent.id),
-            func.count(PhaseEvent.id).filter(
-                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
-            ),
-        )
-        .where(PhaseEvent.trip_id.in_(trip_ids))
-        .group_by(PhaseEvent.trip_id)
-    )
-    phase_counts: dict[uuid.UUID, tuple[int, int]] = {
-        trip_id: (total, completed)
-        for trip_id, total, completed in phases_result.all()
-    }
+    exception_counts = await _needs_review_counts(db, trip_ids)
+    phase_counts = await _phase_counts(db, trip_ids)
 
     client_names = await _client_names(db, trips)
 

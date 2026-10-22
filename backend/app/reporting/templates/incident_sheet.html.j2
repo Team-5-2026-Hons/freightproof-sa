@@ -22,7 +22,7 @@
 <div class="running running-issued">FreightProof · generated {{ m.generated_at|sast }}</div>
 
 <h1>Incident fact sheet</h1>
-<p class="muted">Trip {{ m.trip.trip_reference }} · order {{ m.trip.order_number or '—' }} · operator {{ m.trip.operator_name }} ·
+<p class="muted">Trip {{ m.trip.trip_reference }}{% if m.trip.order_number %} · order {{ m.trip.order_number }}{% endif %} · operator {{ m.trip.operator_name }} ·
   generated {{ m.generated_at|sast }}. Times are SAST.</p>
 
 <h2>What happened, where and when</h2>

@@ -29,6 +29,7 @@ from app.schemas.audit_pack import (
     AnchoredRecord,
     AnchoredField,
     CoverageGap,
+    DriverSubstitutionRecord,
     PositionFix,
     StopRecord,
 )
@@ -756,3 +757,35 @@ def test_find_stationary_periods_flags_a_stop_outside_the_outline_but_inside_the
 
     # Assert
     assert len(periods) == 1
+
+
+# ── Driver-change observation ───────────────────────────────────────────────
+
+
+def _manifest_with_substitution(exchange_location: str | None) -> AuditPackManifest:
+    manifest = _manifest(phases=[_phase(0, "trip_creation")])
+    substitution = DriverSubstitutionRecord(
+        substitution_id=uuid.uuid4(), original_driver_name="Thandi Nkosi",
+        substituting_driver_name="Sipho Dlamini", exchange_location=exchange_location,
+        is_planned=False, substitution_at=T0, anchor_receipt_id=None, tier="recorded",
+    )
+    driver = manifest.driver.model_copy(update={"substitutions": [substitution]})
+    return manifest.model_copy(update={"driver": driver})
+
+
+def test_driver_change_without_a_recorded_location_does_not_print_none():
+    manifest = _manifest_with_substitution(exchange_location=None)
+
+    texts = [o.text for o in derive_observations(manifest) if o.code == "identity.substitution"]
+
+    assert len(texts) == 1
+    assert "location not recorded" in texts[0]
+    assert "None" not in texts[0]
+
+
+def test_driver_change_with_a_recorded_location_names_it():
+    manifest = _manifest_with_substitution(exchange_location="Harrismith truck stop")
+
+    texts = [o.text for o in derive_observations(manifest) if o.code == "identity.substitution"]
+
+    assert "at Harrismith truck stop," in texts[0]

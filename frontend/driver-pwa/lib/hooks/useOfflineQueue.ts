@@ -26,7 +26,7 @@ import {
   dataUrlToBlob, sendExceptionReport, tryReportLock, waitReportLock,
 } from '@/lib/offline/exception-sync'
 import { migrateLegacyExceptionEntries } from '@/lib/offline/legacy-exception-migration'
-import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
+import { classifyLiveWriteFailure, isCustodyConflict, isPhaseOverridden, type RetainedAttention } from '@/lib/offline/live-write-conflict'
 import {
   entryStatus,
   isLegacyException,
@@ -417,7 +417,11 @@ async function flushQueue(): Promise<void> {
         } else if (failure.retryAfterMs !== null) {
           scheduleRateLimitRetry(failure.retryAfterMs)
         }
-        if (entry.kind === 'phase') stalledTripIds.add(entry.tripId)
+        // An overridden phase is resolved as far as the server's ordering is concerned, so
+        // the entries behind it are not out of order and must keep draining in this pass.
+        // Every other failure still stalls the trip.
+        const overriddenByDispatch = failure.kind === 'retain' && isPhaseOverridden(failure.attention)
+        if (entry.kind === 'phase' && !overriddenByDispatch) stalledTripIds.add(entry.tripId)
       }
     }
 
@@ -444,14 +448,15 @@ async function flushQueue(): Promise<void> {
 // The driver's "Try again": every capture of theirs the server refused goes back to pending
 // and the queue flushes. The same keys are kept, so nothing is duplicated server-side.
 // Custody conflicts are NOT retried live — the trip has moved on from this capture's period,
-// so a live resend can only be refused again; those go through late evidence instead.
+// so a live resend can only be refused again; those go through late evidence instead. Nor is a
+// capture for an overridden phase: the row stays overridden, so a resend is refused every time.
 async function retryAttention(): Promise<void> {
   const actorId = currentActorId()
   try {
     const envelopes = await listExceptionEnvelopes()
     for (const envelope of envelopes) {
       if (envelope.status !== 'needs-attention' || envelope.actorId !== actorId) continue
-      if (envelope.attention && isCustodyConflict(envelope.attention)) continue
+      if (envelope.attention && (isCustodyConflict(envelope.attention) || isPhaseOverridden(envelope.attention))) continue
       await resetExceptionToPending(envelope.clientReportId)
     }
   } catch (err) {
@@ -461,7 +466,7 @@ async function retryAttention(): Promise<void> {
     isSendableEntry(entry)
       && entry.status === 'needs-attention'
       && entry.actorId === actorId
-      && !(entry.attention && isCustodyConflict(entry.attention))
+      && !(entry.attention && (isCustodyConflict(entry.attention) || isPhaseOverridden(entry.attention)))
       ? { ...entry, status: 'pending' as const, attention: null }
       : entry
   )))
@@ -704,8 +709,11 @@ export function useOfflineQueue() {
           : undefined),
         ...(attention !== null ? { status: 'needs-attention' as const, attention } : {}),
       }
-      saveQueue([...loadQueue(), entry])
+      // Whether the write landed: a full or disabled store drops the entry, and the caller must
+      // not tell the driver the checkpoint is "stored on this device" when it is not.
+      const persisted = saveQueue([...loadQueue(), entry])
       publishCounts()
+      return persisted
     },
     [],
   )
@@ -718,8 +726,9 @@ export function useOfflineQueue() {
         ...stampFor(tripId, custody),
         ...(attention !== null ? { status: 'needs-attention' as const, attention } : {}),
       }
-      saveQueue([...loadQueue(), entry])
+      const persisted = saveQueue([...loadQueue(), entry])
       publishCounts()
+      return persisted
     },
     [],
   )

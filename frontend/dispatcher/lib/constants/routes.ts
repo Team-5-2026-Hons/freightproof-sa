@@ -24,5 +24,6 @@ export const ROUTES = {
   settings:        '/settings',
   settingsSection: (id: string) => `/settings?section=${id}`,
   login:           '/login',
+  dev:             '/dev',
   devTokens:       '/dev/tokens',
 } as const

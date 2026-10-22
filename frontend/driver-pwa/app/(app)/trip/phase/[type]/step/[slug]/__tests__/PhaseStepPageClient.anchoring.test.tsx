@@ -26,7 +26,8 @@ const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 const mockUseParams = vi.fn()
 const mockRouterPush = vi.fn()
 const mockNotify = vi.fn()
-const mockEnqueuePhase = vi.fn()
+// true: stored, as the real queue answers when the phone has room.
+const mockEnqueuePhase = vi.fn(() => true)
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.

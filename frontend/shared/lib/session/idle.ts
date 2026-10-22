@@ -8,8 +8,9 @@
  * How long a session may sit idle before it ends.
  * Must stay in step with SESSION_IDLE_TIMEOUT_MINUTES in backend/app/core/config.py —
  * enforced independently on each side, neither reads the other.
+ * An hour, so a dispatcher working a full shift is not signed out between interactions.
  */
-export const SESSION_IDLE_TIMEOUT_MS = 10 * 60 * 1000
+export const SESSION_IDLE_TIMEOUT_MS = 60 * 60 * 1000
 
 /** Grace subtracted from the server's window so the client always fires first. */
 const CLIENT_LEAD_MS = 15 * 1000

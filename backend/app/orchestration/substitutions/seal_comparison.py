@@ -8,8 +8,9 @@ discrepancy exactly as they would an arrival one:
 - SEAL_COMPROMISED: either driver found the seal damaged or missing (an opening).
 - SEAL_MISMATCH: the two readings differ, by number or by whether a seal exists at all (a swap).
 
-Both can fire on one vehicle, as at arrival. A substitution is never itself an exception: only a
-discrepancy writes a row, and no trip status or hold is changed here (arrival's reasoning: a
+Both can fire on one vehicle, as at arrival. A clean substitution is never itself an exception (a
+problem transfer is flagged separately by transfer_review): only a
+discrepancy writes a row here, and no trip status or hold is changed here (arrival's reasoning: a
 finding is evidence, not a dead end). Findings are scoped to the confirmation that completed the
 pair, so the partial unique index makes a replay or a race write each finding once.
 """

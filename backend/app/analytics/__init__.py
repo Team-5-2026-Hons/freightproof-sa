@@ -1,2 +1,1 @@
-"""Deliberately imports nothing: app.schemas.analytics imports app.analytics.stats, and an
-eager import of the grain modules here would turn that into a circular import."""
+"""Deliberately imports nothing, so importing one grain module never loads the others."""

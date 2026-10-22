@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { useToast } from '@/lib/hooks/useToast'
 import { AssistantBubble } from '@/components/assistant/AssistantBubble'
 import { DispatcherShell } from '@/components/layout/DispatcherShell'
 import { RealtimeProvider } from '@/lib/realtime/RealtimeProvider'
@@ -15,6 +16,7 @@ const AUTH_ROUTE_PREFIXES = [ROUTES.login]
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
+  const { clear: clearToasts } = useToast()
   const router = useRouter()
 
   useEffect(() => {
@@ -37,9 +39,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           AUTH_ROUTE_PREFIXES,
         )
       }
+      // ToastProvider lives above this gate, so toasts raised while signed in (error toasts
+      // are sticky) would otherwise still be on screen over the login page.
+      clearToasts()
       router.replace(ROUTES.login)
     }
-  }, [user, isLoading, router])
+  }, [user, isLoading, router, clearToasts])
 
   if (isLoading || !user) return null
 

@@ -10,7 +10,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.stats import validate_month_range
+from app.core.stats import validate_month_range
 from app.analytics.views import LaneAnalyticsView
 from app.schemas.analytics import DurationStats, LaneMetrics
 

@@ -24,6 +24,9 @@ from app.storage.supabase_storage import EvidenceStorageUnavailableError, Upload
 from tests.conftest import auth_header, make_token
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 PREVIEW = "/api/v1/trips/{trip_id}/audit-trail/preview"
 
 
@@ -129,6 +132,7 @@ async def test_preview_audit_trail_malformed_trip_id_is_422(client: AsyncClient,
 PREVIEW_PDF = "/api/v1/trips/{trip_id}/audit-trail/preview.pdf"
 
 
+@pytest.mark.real_pdf  # reads the rendered PDF itself
 async def test_preview_pdf_returns_pdf_marked_preview(client: AsyncClient, audit_trip: AuditTrip):
     # Act
     response = await client.get(PREVIEW_PDF.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))
@@ -373,6 +377,7 @@ async def test_access_events_start_empty(client, audit_trip, pdf_store):
 SHEET = "/api/v1/trips/{trip_id}/audit-trail/incident-sheet.pdf"
 
 
+@pytest.mark.real_pdf  # reads the rendered PDF itself
 async def test_incident_sheet_pdf_for_trip_with_critical_incident(client, audit_trip):
     # Act
     response = await client.get(SHEET.format(trip_id=audit_trip.trip.id), headers=_admin(audit_trip))

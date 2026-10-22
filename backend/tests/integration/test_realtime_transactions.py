@@ -37,9 +37,14 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[TripEvent]:
 
 async def _settle() -> None:
     """Let publish tasks scheduled by the commit hook run to completion."""
-    # wait() yields to the loop even for finished tasks, so their discard callbacks run.
-    while realtime._pending_tasks:
-        await asyncio.wait(tuple(realtime._pending_tasks), timeout=5)
+    # Only this test's tasks. `_pending_tasks` is module-level and every test gets its own event
+    # loop, so an earlier test whose loop closed with a publish still in flight leaves a task
+    # there that can never run or discard itself. Waiting on it never ends: the full suite hung
+    # here until pytest-timeout killed these tests one by one.
+    loop = asyncio.get_running_loop()
+    while own := [task for task in realtime._pending_tasks if task.get_loop() is loop]:
+        # wait() yields to the loop even for finished tasks, so their discard callbacks run.
+        await asyncio.wait(own, timeout=5)
     await asyncio.sleep(0)
 
 

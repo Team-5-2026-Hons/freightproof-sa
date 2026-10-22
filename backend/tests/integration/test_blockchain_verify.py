@@ -92,7 +92,10 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
     db_session.add(client_org)
     await db_session.flush()
 
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Cape Town Depot",
         principal_organization_id=client_org.id,
@@ -100,6 +103,7 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
         longitude="18.4241",
     )
     destination = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Johannesburg Depot",
         principal_organization_id=client_org.id,

@@ -16,7 +16,6 @@ from app.analytics.fleet.periods import (
     SECONDS_PER_HOUR,
     Bucket,
     Period,
-    ReviewAgeBand,
     bucket_start,
     buckets,
     instant_range,
@@ -27,7 +26,8 @@ from app.analytics.fleet.periods import (
     start_of_day,
     waiting_at,
 )
-from app.analytics.stats import MEDIAN_FRACTION, percentile, safe_ratio
+from app.core.fleet_bands import ReviewAgeBand
+from app.core.stats import MEDIAN_FRACTION, percentile, safe_ratio
 from app.db.models.enums import (
     DispatcherReviewOutcome,
     ExceptionReviewOutcome,

@@ -112,6 +112,10 @@ export const RESPONSE_STEP_ACTION: Partial<Record<ResponseStepKey, IncidentExter
   driver_welfare_check: 'driver_welfare_check',
 }
 
+/** Steps whose "done" the system established itself (the trip it stopped, the pack it issued).
+ *  Every other done step rests on what a dispatcher recorded. Mirrors response_guide.py. */
+export const SYSTEM_WITNESSED_STEPS: readonly ResponseStepKey[] = ['trip_stopped', 'audit_pack_issued']
+
 const FINISHED_TRIP: readonly TripStatus[] = ['closed', 'cancelled']
 
 export function tripIsLive(status: TripStatus): boolean {
@@ -140,6 +144,15 @@ export function incidentTypeForException(type: ExceptionType): IncidentType {
 
 function label<T extends string>(labels: Record<T, string>, value: string | null): string {
   return value !== null && value in labels ? labels[value as T] : (value ?? '—')
+}
+
+/** A folded run of identical entries as one sentence, e.g. "48 parcels named as affected". */
+export function describeUpdateRun(kind: IncidentUpdate['kind'], count: number): string {
+  switch (kind) {
+    case 'parcel_added': return `${count} parcels named as affected`
+    case 'exception_linked': return `${count} exceptions grouped under this incident`
+    default: return `${count} × ${describeUpdate({ kind } as IncidentUpdate)}`
+  }
 }
 
 /** One ledger entry as a sentence. `names` resolves an assignee id to a dispatcher's name. */

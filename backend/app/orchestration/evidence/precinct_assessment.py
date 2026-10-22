@@ -1,7 +1,7 @@
 """The precinct half of an ActionLocationAssessment: which fence a phase is judged
 against, and whether the driver's phone and the truck's tracker were inside it.
 
-Split out of action_location.build_phase_assessment so that function stays under the
+Split out of evidence.location_assessment.build_phase_assessment so that function stays under the
 structure ratchet's size limit (scripts/check_structure.py); behaviour is unchanged.
 
 Layering: orchestration → evidence.geofence → db. Imported only by action_location.

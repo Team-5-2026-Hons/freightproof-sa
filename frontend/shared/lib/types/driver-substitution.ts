@@ -176,6 +176,8 @@ export interface SubstitutionCompletionRead {
   trigger: SubstitutionCompletionTrigger
   completed_by_driver_id: string | null
   completed_by_user_id: string | null
+  // Display label, filled by the completed-transfer detail only.
+  completed_by_name?: string | null
 }
 
 export interface SubstitutionRequestRead {
@@ -255,6 +257,8 @@ export interface SubstitutionCorrectionRead {
   correction_note: string
   anchor_status: AnchorStatus
   receipt_id: string | null
+  // Display label, filled by the completed-transfer detail only.
+  recorded_by_name?: string | null
 }
 
 export interface CustodyPeriodRead {
@@ -567,6 +571,7 @@ export interface IdentityAttestationRead {
   attested_by_user_id: string
   reason: string
   attested_at: string
+  attested_by_name?: string | null
 }
 
 export interface CompletedSubstitutionSummary {
@@ -591,6 +596,7 @@ export interface CompletedSubstitutionDetail extends CompletedSubstitutionSummar
   artifacts: EvidenceArtifactWithUrl[]
   corrections: SubstitutionCorrectionRead[]
   arranged_by_user_id: string | null
+  arranged_by_name?: string | null
   completion: SubstitutionCompletionRead | null
   identity_attestation: IdentityAttestationRead | null
   declared_exchange_at: string | null

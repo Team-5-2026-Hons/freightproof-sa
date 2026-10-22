@@ -22,7 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.fleet.constants import EXPIRY_BAND_EDGES_DAYS, TILE_WINDOW_DAYS
-from app.analytics.fleet.periods import Grain, Period, today_sast
+from app.analytics.fleet.periods import Period, today_sast
+from app.core.fleet_bands import Grain
 from app.orchestration.analytics.fleet import (
     check_period,
     get_activity,

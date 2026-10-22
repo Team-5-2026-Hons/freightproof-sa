@@ -9,12 +9,13 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import event, func, select
 
 from app.core.config import settings
 from app.db.models.enums import (
     AnchorStatus,
     ArtifactType,
+    ExceptionType,
     IdvsStatus,
     PhaseStatus,
     PhaseType,
@@ -26,19 +27,24 @@ from app.db.models.enums import (
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.phases import PhaseEvent
 from app.db.models.receiver_verification import IdvsQuotaLedger
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.integrations.idvs import IdvsDecisionStatus, IdvsSession, MockIdvsClient
-from app.orchestration.handover.receiver_verification import record_consent_declined
+from app.orchestration.handover import receiver_verification as receiver_verification_module
+from app.orchestration.handover.consent import record_consent_declined
+from app.orchestration.handover.service import resolve_receiver_verification
 from app.orchestration.handover.capability import (
     issue_capability_token,
     record_handover_confirmation,
 )
 from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
-    record_consent,
     resolve_verification,
     start_verification,
+    sweep_abandoned_verifications,
 )
+from app.orchestration.handover.idvs_webhook import ingest_webhook_decision
+from app.orchestration.handover.consent import record_consent
 
 _CONSENT = "I agree to my identity document and photograph being checked."
 
@@ -351,3 +357,263 @@ async def test_start_verification_refuses_a_row_with_no_consent_even_if_pending(
 
     assert session is None
     assert client.sessions_created == 0
+
+
+class _DecisionCountingIdvsClient(MockIdvsClient):
+    """The mock vendor, counting how many decisions it was asked to fetch."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.decisions_fetched = 0
+
+    async def get_decision(self, session_id: str):
+        self.decisions_fetched += 1
+        return await super().get_decision(session_id)
+
+
+async def _exception_count(db_session, trip_id: uuid.UUID) -> int:
+    return (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip_id)
+    )).scalar_one()
+
+
+async def _started_verification(db_session, seeded_phase_event, monkeypatch):
+    """A PENDING verification with a vendor session, and the counting client the service
+    layer will resolve it against (it takes no client argument — it asks get_idvs_client)."""
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent(db_session, token=token, consent_text=_CONSENT)
+    client = _DecisionCountingIdvsClient()
+    await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=client,
+    )
+    monkeypatch.setattr(receiver_verification_module, "get_idvs_client", lambda: client)
+    return token, v, client
+
+
+async def test_resolving_a_failed_verification_again_keeps_it_failed_and_calls_no_vendor(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """The receiver route is unauthenticated: without this a token holder could retype a
+    matching name/ID after a FAILED verdict and turn it into VERIFIED."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Someone Else", typed_id_number="8801015800085",
+    )
+    assert v.status is ReceiverVerificationStatus.FAILED
+    fetched_after_first = client.decisions_fetched
+    exceptions_after_first = await _exception_count(db_session, token.trip_id)
+
+    again = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert again.status is ReceiverVerificationStatus.FAILED
+    assert again.identity_match is False
+    assert client.decisions_fetched == fetched_after_first
+    assert await _exception_count(db_session, token.trip_id) == exceptions_after_first
+
+
+async def test_resolving_a_verified_verification_again_cannot_downgrade_it(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+    assert v.status is ReceiverVerificationStatus.VERIFIED
+    fetched_after_first = client.decisions_fetched
+    exceptions_after_first = await _exception_count(db_session, token.trip_id)
+
+    again = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Someone Else", typed_id_number="8801015800085",
+    )
+
+    assert again.status is ReceiverVerificationStatus.VERIFIED
+    assert again.identity_match is True
+    assert client.decisions_fetched == fetched_after_first
+    assert await _exception_count(db_session, token.trip_id) == exceptions_after_first
+
+
+async def _exception_types(db_session, trip_id: uuid.UUID) -> list[ExceptionType]:
+    rows = (await db_session.execute(
+        select(TripException.exception_type).where(TripException.trip_id == trip_id)
+    )).scalars().all()
+    return [ExceptionType(row) for row in rows]
+
+
+async def test_webhook_first_then_receiver_with_a_mismatching_name_fails_with_one_exception(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """The webhook can terminalise a row before the receiver returns, but it never runs the
+    typed-identity cross-check or files an exception. The receiver's resolve must still do both."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await ingest_webhook_decision(
+        db_session, payload={"session_id": v.provider_session_id, "status": "Approved"},
+    )
+    assert v.status is ReceiverVerificationStatus.VERIFIED
+    assert v.identity_match is None
+
+    resolved = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Someone Else", typed_id_number="8801015800085",
+    )
+
+    assert resolved.status is ReceiverVerificationStatus.FAILED
+    assert resolved.identity_match is False
+    assert await _exception_types(db_session, token.trip_id) == [ExceptionType.RECEIVER_ID_MISMATCH]
+
+
+async def test_webhook_first_then_receiver_with_a_matching_name_is_verified_without_exception(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await ingest_webhook_decision(
+        db_session, payload={"session_id": v.provider_session_id, "status": "Approved"},
+    )
+
+    resolved = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert resolved.status is ReceiverVerificationStatus.VERIFIED
+    assert resolved.identity_match is True
+    assert await _exception_types(db_session, token.trip_id) == []
+
+
+async def test_resolving_a_vendor_unavailable_verification_twice_files_one_exception(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """A row that never got a vendor session is UNVERIFIED before the receiver returns; resolve
+    is what files its exception, and a repeat must not file another."""
+    monkeypatch.setattr(settings, "IDVS_MONTHLY_SESSION_LIMIT", 0)
+    raw_token, token = await _fresh_token(db_session, seeded_phase_event)
+    v = await record_consent(db_session, token=token, consent_text=_CONSENT)
+    await start_verification(
+        db_session, token=token, raw_token=raw_token, verification=v, client=MockIdvsClient(),
+    )
+    assert v.status is ReceiverVerificationStatus.UNVERIFIED
+    assert v.provider_session_id is None
+
+    for _ in range(2):
+        await resolve_receiver_verification(
+            db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+        )
+
+    assert await _exception_types(db_session, token.trip_id) == [ExceptionType.RECEIVER_ID_UNVERIFIED]
+
+
+# ── A final verdict is recorded once; a pending one is asked again (review, 22 Oct 2026) ──
+# identity_match is the cross-check RESULT, and None means "nothing to compare", so it cannot
+# also say "the receiver's resolve already finished". These pin the explicit marker instead.
+
+
+async def test_a_failed_verdict_with_no_extracted_identity_is_never_re_resolved(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """A decline with no extracted document data leaves identity_match NULL. If the vendor's
+    answer later changes, a second resolve must not overwrite the recorded FAILED."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(v.provider_session_id, status=IdvsDecisionStatus.DECLINED)
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+    assert v.status is ReceiverVerificationStatus.FAILED
+    assert v.identity_match is None
+    fetched_after_first = client.decisions_fetched
+    exceptions_after_first = await _exception_count(db_session, token.trip_id)
+
+    await client.stage_decision(v.provider_session_id, status=IdvsDecisionStatus.APPROVED)
+    again = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert again.status is ReceiverVerificationStatus.FAILED
+    assert client.decisions_fetched == fetched_after_first
+    assert await _exception_count(db_session, token.trip_id) == exceptions_after_first
+
+
+async def test_a_pending_decision_with_extracted_identity_is_asked_again_until_final(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """The vendor can return the document data before its decision. The cross-check result
+    from that early read must not end the receiver's resolving: the next call asks again."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.IN_REVIEW,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+    assert v.status is ReceiverVerificationStatus.PENDING
+    assert v.resolved_at is None
+
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    final = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert final.status is ReceiverVerificationStatus.VERIFIED
+    assert final.resolved_at is not None
+    assert await _exception_types(db_session, token.trip_id) == []
+
+
+async def _locking_selects(db_session, run) -> list[str]:
+    """The SELECTs on receiver_identity_verifications that `run` issues, as SQL text."""
+    connection = (await db_session.connection()).sync_connection
+    seen: list[str] = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        if statement.lstrip().upper().startswith("SELECT") and "receiver_identity_verifications" in statement:
+            seen.append(statement)
+
+    event.listen(connection, "before_cursor_execute", capture)
+    try:
+        await run()
+    finally:
+        event.remove(connection, "before_cursor_execute", capture)
+    return seen
+
+
+async def test_the_webhook_locks_the_row_before_applying_a_decision(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """Every verdict writer takes the row lock the receiver's resolve takes, so a webhook
+    arriving mid-resolve waits and then sees the resolved row, instead of overwriting it."""
+    _token, v, _client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+
+    selects = await _locking_selects(db_session, lambda: ingest_webhook_decision(
+        db_session, payload={"session_id": v.provider_session_id, "status": "Approved"},
+    ))
+
+    assert selects and all("FOR UPDATE" in s for s in selects)
+
+
+async def test_the_sweeper_locks_the_rows_it_terminalises(db_session, seeded_phase_event, monkeypatch):
+    """The sweeper re-reads each PENDING row under the lock, so a resolve that finished while it
+    waited is skipped rather than overwritten with ABANDONED."""
+    await _started_verification(db_session, seeded_phase_event, monkeypatch)
+
+    selects = await _locking_selects(db_session, lambda: sweep_abandoned_verifications(
+        db_session, older_than_seconds=0,
+    ))
+
+    assert selects and all("FOR UPDATE" in s for s in selects)

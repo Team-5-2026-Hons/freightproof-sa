@@ -91,3 +91,106 @@ describe('ToastProvider — auto-dismiss', () => {
     expect(screen.queryByText('Warning exception')).not.toBeInTheDocument()
   })
 })
+
+/** Exposes the context directly so each test can call notify/clear in its own act(). */
+function Probe({ onReady }: { onReady: (api: ReturnType<typeof useToast>) => void }) {
+  const api = useToast()
+  onReady(api)
+  return null
+}
+
+function mountProbe() {
+  const handle: { api: ReturnType<typeof useToast> | null } = { api: null }
+  render(
+    <ToastProvider>
+      <Probe onReady={api => { handle.api = api }} />
+    </ToastProvider>,
+  )
+  return handle as { api: ReturnType<typeof useToast> }
+}
+
+describe('ToastProvider — duplicate suppression', () => {
+  // One outage re-raises the same error on every 60 s refetch; each used to stack another
+  // sticky toast until the viewport was full of copies of one message.
+  it('shows one toast for two identical notifications', () => {
+    const h = mountProbe()
+
+    act(() => {
+      h.api.notify({ kind: 'error', title: 'Failed to load trips', body: 'request timed out' })
+      h.api.notify({ kind: 'error', title: 'Failed to load trips', body: 'request timed out' })
+    })
+
+    expect(screen.getAllByText('Failed to load trips')).toHaveLength(1)
+    expect(onScreen()).toBe(1)
+  })
+
+  it('still shows a second toast when the body differs', () => {
+    const h = mountProbe()
+
+    act(() => {
+      h.api.notify({ kind: 'error', title: 'Failed to load trips', body: 'request timed out' })
+      h.api.notify({ kind: 'error', title: 'Failed to load trips', body: 'server error' })
+    })
+
+    expect(screen.getAllByText('Failed to load trips')).toHaveLength(2)
+  })
+
+  it('still shows a second toast when the kind differs', () => {
+    const h = mountProbe()
+
+    act(() => {
+      h.api.notify({ kind: 'error', title: 'Saved' })
+      h.api.notify({ kind: 'success', title: 'Saved' })
+    })
+
+    expect(screen.getAllByText('Saved')).toHaveLength(2)
+  })
+
+  it('allows the same message again once the first has been dismissed', () => {
+    const h = mountProbe()
+    act(() => h.api.notify({ kind: 'error', title: 'Failed to load trips' }))
+    fireEvent.click(screen.getByLabelText('Dismiss notification'))
+
+    act(() => h.api.notify({ kind: 'error', title: 'Failed to load trips' }))
+
+    expect(screen.getAllByText('Failed to load trips')).toHaveLength(1)
+  })
+
+  it('does not stack a second auto-dismiss timer for a repeated transient toast', () => {
+    vi.useFakeTimers()
+    const h = mountProbe()
+
+    act(() => {
+      h.api.notify({ kind: 'warning', title: 'Warning exception' })
+      h.api.notify({ kind: 'warning', title: 'Warning exception' })
+    })
+
+    expect(vi.getTimerCount()).toBe(1)
+  })
+})
+
+describe('ToastProvider — clear', () => {
+  it('empties every toast on screen', () => {
+    const h = mountProbe()
+    act(() => {
+      h.api.notify({ kind: 'error', title: 'One' })
+      h.api.notify({ kind: 'error', title: 'Two' })
+    })
+    expect(onScreen()).toBe(2)
+
+    act(() => h.api.clear())
+
+    expect(onScreen()).toBe(0)
+  })
+
+  it('cancels pending auto-dismiss timers', () => {
+    vi.useFakeTimers()
+    const h = mountProbe()
+    act(() => h.api.notify({ kind: 'warning', title: 'Warning exception' }))
+    expect(vi.getTimerCount()).toBe(1)
+
+    act(() => h.api.clear())
+
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

@@ -9,7 +9,7 @@ import { fmtDateTime, fmtFull } from '@shared/lib/utils/datetime'
 import type { ParcelJourney, ParcelTraceException } from '@shared/lib/types/parcel-trace'
 import { ROUTES } from '@/lib/constants/routes'
 import { countLabel } from '@/lib/format/count'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtExceptionType } from '@/lib/format/exception'
 import { withReturnTo } from '@/lib/navigation/returnTo'
 import {
   LOCATION_LABELS, Heading, awaitsReview, hiddenLedgerCounts, locationLabel, notRecordedItems, parcelSteps, reviewStatusLabel, severityLabel,
@@ -72,7 +72,7 @@ function ExceptionLine({ item, returnTo }: { item: ParcelTraceException; returnT
   const severity = severityLabel(item.severity)
   const review = reviewStatusLabel(item.review_status)
   return <li>
-    <Link href={withReturnTo(ROUTES.exceptionDetail(item.id), returnTo)} aria-label={`${when} · ${type} · ${severity} · ${review}. ${descriptionExcerpt(item.description)}`} className={EXCEPTION_LINE_CLASS}>
+    <Link href={withReturnTo(ROUTES.exceptionDetail(item.id), returnTo)} aria-label={`${when} · ${type} · ${severity} · ${review}. ${descriptionExcerpt(exceptionDescriptionText(item))}`} className={EXCEPTION_LINE_CLASS}>
       <Ic n="warn" s={13} className="mt-0.5 shrink-0 text-warn" />
       <span className="min-w-0">
         <time dateTime={item.recorded_at} className="tabular-nums text-on-surf-v">{when}</time> · <span className="font-semibold">{type}</span> · {severity} · <span className={awaitsReview(item) ? 'font-semibold text-warn-onc' : undefined}>{review}</span>

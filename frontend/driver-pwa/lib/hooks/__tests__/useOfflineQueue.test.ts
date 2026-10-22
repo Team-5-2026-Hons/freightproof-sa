@@ -383,6 +383,43 @@ describe('useOfflineQueue', () => {
     expect(stored[0].tripId).toBe('trip-1')
   })
 
+  it('enqueueCheckpoint reports whether the checkpoint was stored', async () => {
+    const { result } = await renderQueue()
+
+    let stored: boolean | undefined
+    act(() => { stored = result.current.enqueueCheckpoint('trip-1', CHECKPOINT_EVIDENCE) })
+
+    expect(stored).toBe(true)
+    expect(result.current.queueLength).toBe(1)
+  })
+
+  it('enqueueCheckpoint returns false, and queues nothing, when storage refuses the write', async () => {
+    const { result } = await renderQueue()
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    let stored: boolean | undefined
+    act(() => { stored = result.current.enqueueCheckpoint('trip-1', CHECKPOINT_EVIDENCE) })
+    setItem.mockRestore()
+    warn.mockRestore()
+
+    expect(stored).toBe(false)
+    expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([])
+  })
+
+  it('enqueueLocation reports whether the batch was stored', async () => {
+    const { result } = await renderQueue()
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    let stored: boolean | undefined
+    act(() => { stored = result.current.enqueueLocation('trip-1', []) })
+    setItem.mockRestore()
+    warn.mockRestore()
+
+    expect(stored).toBe(false)
+  })
+
   it('flush calls submitCheckpoint for a queued checkpoint and clears the queue', async () => {
     const { submitCheckpoint } = await import('@/lib/api/checkpoints')
     const { result } = await renderQueue()
@@ -1381,4 +1418,78 @@ it('stops_after_account_generation_changes', async () => {
     expect.objectContaining({ phaseEventId: 'phase-two', actorId }),
   ])
   actor.invalidateActorLease()
+})
+
+// A queued capture the dispatcher already closed (backend A1: 409 PHASE_OVERRIDDEN). It must be
+// kept for the driver, but the server treats an overridden row as resolved, so it must NOT stall
+// the later phases of the same trip the way an unresolved earlier phase does.
+describe('queued capture for an overridden phase', () => {
+  const overriddenError = () => new ApiError(409, 'The dispatcher closed this step while your capture was waiting. It is kept on this phone.', undefined, {
+    code: 'PHASE_OVERRIDDEN', requestId: null, currentVersion: null, evidenceId: null,
+  })
+
+  it('keeps the entry as needs-attention with the server reason', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(overriddenError())
+    const { result } = await renderQueue()
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
+
+    await act(() => result.current.flush())
+
+    expect(result.current.queueLength).toBe(0)
+    expect(result.current.attentionCount).toBe(1)
+    expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
+      expect.objectContaining({
+        status: 'needs-attention', evidence: EVIDENCE,
+        attention: expect.objectContaining({ code: 'PHASE_OVERRIDDEN', lateEligible: false, reason: expect.stringContaining('kept on this phone') }),
+      }),
+    ])
+  })
+
+  it('still sends the next phase for the same trip in the same pass', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(overriddenError())
+    const { result } = await renderQueue()
+    act(() => {
+      result.current.enqueuePhase('trip-1', 'phase-event-activation', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+      result.current.enqueuePhase('trip-1', 'phase-event-loading', 'loading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+    })
+
+    await act(() => result.current.flush())
+
+    expect(submitPhase).toHaveBeenCalledTimes(2)
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ phaseType: string; status: string }>
+    expect(stored.map((entry) => [entry.phaseType, entry.status])).toEqual([['activation', 'needs-attention']])
+  })
+
+  it('still stalls the next phase for the same trip after any other retained refusal', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(new ApiError(409, 'Captured before the handover', undefined, {
+      code: 'CUSTODY_CONTEXT_CHANGED', requestId: null, currentVersion: null, evidenceId: null,
+    }))
+    const { result } = await renderQueue()
+    act(() => {
+      result.current.enqueuePhase('trip-1', 'phase-event-activation', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+      result.current.enqueuePhase('trip-1', 'phase-event-loading', 'loading', EVIDENCE, POSITION, DRIVER_CAPTURED_AT)
+    })
+
+    await act(() => result.current.flush())
+
+    expect(submitPhase).toHaveBeenCalledTimes(1)
+    const stored = JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]') as Array<{ phaseType: string }>
+    expect(stored.map((entry) => entry.phaseType)).toEqual(['activation', 'loading'])
+  })
+
+  it('"Try again" does not put an overridden capture back in the send queue', async () => {
+    const { submitPhase } = await import('@/lib/api/phases')
+    vi.mocked(submitPhase).mockRejectedValueOnce(overriddenError())
+    const { result } = await renderQueue()
+    act(() => result.current.enqueuePhase('trip-1', 'phase-event-1', 'activation', EVIDENCE, POSITION, DRIVER_CAPTURED_AT))
+    await act(() => result.current.flush())
+
+    await act(() => result.current.retryAttention())
+
+    expect(submitPhase).toHaveBeenCalledTimes(1)
+    expect(result.current.attentionCount).toBe(1)
+  })
 })

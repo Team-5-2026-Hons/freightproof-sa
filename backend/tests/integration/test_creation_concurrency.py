@@ -374,11 +374,15 @@ async def racing_api_world(test_engine, monkeypatch):
         id=uuid.uuid4(), organization_id=operator.id,
         email=f"api-dispatcher-b-{suffix}@test.co.za", full_name="Dispatcher B", is_active=True,
     )
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name=f"Origin {suffix}", principal_organization_id=principal.id,
         latitude="33.9249", longitude="18.4241",
     )
     destination = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name=f"Dest {suffix}", principal_organization_id=principal.id,
         latitude="26.2041", longitude="28.0473",
     )

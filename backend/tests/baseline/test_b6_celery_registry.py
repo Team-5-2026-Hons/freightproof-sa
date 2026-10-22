@@ -10,7 +10,7 @@ tests/unit/test_blockchain_task_registration.py pins two of these names individu
 This pins the whole set, so a task cannot be added, dropped or renamed unnoticed.
 
 Anchoring recovery itself (recover_phase_anchor picking up a PENDING row older than
-due_before) is already pinned by tests/unit/test_phase_anchor_payload.py::
+due_before) is already pinned by tests/integration/test_phase_anchor_payload.py::
 test_recovery_restores_lost_dispatch_without_changing_original_hash and
 tests/integration/test_every_phase_anchoring.py::
 test_recover_phase_anchor_picks_up_an_overdue_override_and_anchors_it, so it is not repeated.

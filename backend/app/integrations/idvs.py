@@ -42,7 +42,8 @@ from app.integrations.mock_state import MockStateStore, build_key, get_mock_stat
 logger = logging.getLogger(__name__)
 
 _IDVS_KEY_KIND = "idvs"
-_PROVIDER_DIDIT = "didit"
+# The provider name stamped on verification rows and quota ledger entries.
+PROVIDER_DIDIT = "didit"
 
 # --- The quarantined guesses -------------------------------------------------
 _DIDIT_SESSION_PATH = "/v3/session/"

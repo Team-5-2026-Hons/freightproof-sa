@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -30,7 +30,8 @@ from app.db.models.trips import Consignment, Trip
 from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUnsupportedError
 from app.integrations.parcel_perfect.factory import get_pp_client
 from app.integrations.parcel_perfect.models import PPManifestResponse
-from app.orchestration.consignments.sync import scanned_consignment_ids
+from app.orchestration.fleet.precinct_visibility import visible_to
+from app.orchestration.consignments.sync import incident_references_by_consignment, scanned_consignment_ids
 from app.orchestration.consignments.manifest_snapshot import (
     manifest_key,
     manifest_snapshot,
@@ -58,17 +59,6 @@ from app.schemas.pp_manifest import (
 from app.schemas.trips import TripDetailResponse, TripStopCreate, validate_declared_schedule
 
 logger = logging.getLogger(__name__)
-
-
-def _visible_to(operator_organization_id: uuid.UUID) -> ColumnElement[bool]:
-    """The precinct read rule (SEC-PRECINCT-1, as in fleet.precincts.list_precincts):
-    a dispatcher sees their own organisation's precincts plus any marked is_shared. A
-    manifest must neither reveal a depot the dispatcher cannot see nor route a trip into
-    one, so both the hub lookup and the dispatcher's own pick apply it."""
-    return or_(
-        Precinct.principal_organization_id == operator_organization_id,
-        Precinct.is_shared.is_(True),
-    )
 
 
 @dataclass(frozen=True)
@@ -103,12 +93,13 @@ async def _fetch_manifest(manifest_number: int) -> PPManifestResponse:
 async def _waybills_held_elsewhere(
     db: AsyncSession, refs: list[str], *, exclude_trip_id: uuid.UUID | None,
     operator_organization_id: uuid.UUID,
-) -> dict[tuple[uuid.UUID | None, str | None], list[str]]:
-    """Waybills another trip holds, grouped by (trip id, trip reference). A cancelled
-    holder counts only if a parcel was scanned there: otherwise the waybill can move
-    (spec §10.5)."""
+) -> tuple[dict[tuple[uuid.UUID | None, str | None], list[str]], dict[str, tuple[str, ...]]]:
+    """Waybills another trip holds, grouped by (trip id, trip reference), and the incidents
+    citing each one that is held only for that reason. A cancelled holder counts only if a
+    parcel was scanned there or an incident names one: otherwise the waybill can move
+    (spec §10.5). Incident references are withheld for another operator's trips."""
     if not refs:
-        return {}
+        return {}, {}
     rows = (await db.execute(
         select(
             Consignment.id, Consignment.parcel_perfect_reference,
@@ -122,17 +113,22 @@ async def _waybills_held_elsewhere(
         if status == TripStatus.CANCELLED and trip_id != exclude_trip_id
     ]
     scanned = await scanned_consignment_ids(db, cancelled)
+    cited = await incident_references_by_consignment(db, cancelled)
 
     held: dict[tuple[uuid.UUID | None, str | None], list[str]] = defaultdict(list)
+    cited_by: dict[str, tuple[str, ...]] = {}
     for consignment_id, ref, trip_id, trip_reference, status, owner_id in rows:
         if trip_id == exclude_trip_id:
             continue  # the trip already holding this manifest is reported once, above
-        if status == TripStatus.CANCELLED and consignment_id not in scanned:
+        if status == TripStatus.CANCELLED and consignment_id not in scanned and consignment_id not in cited:
             continue
         # Conflict detection is global; foreign trip identities remain tenant-private.
-        identity = (trip_id, trip_reference) if owner_id == operator_organization_id else (None, None)
+        own = owner_id == operator_organization_id
+        identity = (trip_id, trip_reference) if own else (None, None)
         held[identity].append(ref)
-    return held
+        if own and consignment_id in cited and consignment_id not in scanned:
+            cited_by[ref] = cited[consignment_id]
+    return held, cited_by
 
 
 def _warning(code: PPManifestWarningCode, message: str, **extra: Any) -> PPManifestWarning:
@@ -159,7 +155,7 @@ async def _build_context(
             select(Precinct).where(
                 Precinct.principal_organization_id == client.id,
                 Precinct.pp_hub_code.in_({header.origin_hub, header.destination_hub}),
-                _visible_to(operator_organization_id),
+                visible_to(operator_organization_id),
             )
         )
         hubs = {p.pp_hub_code: p for p in result.scalars().all() if p.pp_hub_code is not None}
@@ -169,7 +165,7 @@ async def _build_context(
     existing = await find_live_trip_for_manifest(
         db, operator_organization_id=operator_organization_id, key=manifest_key(manifest),
     )
-    held = await _waybills_held_elsewhere(
+    held, cited_by = await _waybills_held_elsewhere(
         db, [w.details.waybill for w in manifest.waybills],
         exclude_trip_id=existing.id if existing is not None else None,
         operator_organization_id=operator_organization_id,
@@ -198,7 +194,11 @@ async def _build_context(
         warnings.append(_warning(
             PPManifestWarningCode.WAYBILL_ON_OTHER_TRIP,
             f"{len(refs)} waybill(s) are already on "
-            + (f"trip {trip_reference}." if trip_reference is not None else "another trip."),
+            + (f"trip {trip_reference}." if trip_reference is not None else "another trip.")
+            + "".join(
+                f" {ref} cannot move: it is cited by incident {', '.join(cited_by[ref])}."
+                for ref in sorted(refs) if ref in cited_by
+            ),
             trip_id=trip_id, trip_reference=trip_reference, waybills=sorted(refs),
         ))
     if not manifest.waybills:
@@ -322,7 +322,7 @@ async def _resolve_precinct(
         select(Precinct).where(
             Precinct.id == requested_id,
             Precinct.principal_organization_id == client.id,
-            _visible_to(operator_organization_id),
+            visible_to(operator_organization_id),
         )
     )).scalar_one_or_none()
     if precinct is None:

@@ -31,6 +31,9 @@ from tests.integration._audit_pack_anchor_helpers import raise_critical as _rais
 from tests.integration._audit_pack_anchor_helpers import review_exception as _review
 from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 _GENERATED = T0 + timedelta(days=1)
 
 

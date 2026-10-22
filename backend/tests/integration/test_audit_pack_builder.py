@@ -22,6 +22,9 @@ from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
 from tests.integration.audit_pack_seed import T0, AuditTrip, _artifact, _receipt, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 
 @pytest.fixture
 async def audit_trip(db_session: AsyncSession) -> AuditTrip:
@@ -270,6 +273,19 @@ async def test_build_audit_manifest_unfinished_trip_is_buildable(db_session, aud
     assert manifest.location_coverage.window_end == T0 + timedelta(days=1)
 
 
+async def test_build_audit_manifest_trip_without_order_number_is_buildable(db_session, audit_trip):
+    # Arrange: trips imported from a Parcel Perfect manifest carry no order number.
+    audit_trip.trip.order_number = None
+    await db_session.flush()
+
+    # Act
+    manifest = await _build(db_session, audit_trip)
+
+    # Assert
+    assert manifest.trip.order_number is None
+    assert manifest.trip.trip_reference == "FP-AUDIT"
+
+
 async def test_build_audit_manifest_summarises_the_critical_incident(db_session, audit_trip):
     # Act
     manifest = await _build(db_session, audit_trip)
@@ -352,15 +368,3 @@ async def test_build_audit_manifest_includes_the_anchored_linehaul_pdf(db_sessio
     linehaul_pdf = next(e for e in record.evidence if e.role == "linehaul_pdf")
     assert linehaul_pdf.tier == "anchored"
     assert linehaul_pdf.mime_type == "application/pdf"
-
-
-async def test_build_audit_manifest_trip_without_order_number_succeeds(db_session, audit_trip):
-    # Arrange — FP-281 stopped writing order_number, so new trips have none.
-    audit_trip.trip.order_number = None
-    await db_session.flush()
-
-    # Act
-    manifest = await _build(db_session, audit_trip)
-
-    # Assert
-    assert manifest.trip.order_number is None

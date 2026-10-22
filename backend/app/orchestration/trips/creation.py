@@ -35,11 +35,13 @@ from app.db.models.enums import (
     TripType, VehicleType,
 )
 from app.db.models.phases import PhaseEvent
+from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.trips import (
-    PP_MANIFEST_INDEX, Trip, TripStop, TripTrailer,
+    PP_MANIFEST_INDEX, Consignment, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
+from app.orchestration.fleet.precinct_visibility import visible_to
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
@@ -117,6 +119,23 @@ async def _fetch_vehicle(
     if vehicle is None:
         raise ResourceNotFoundError(vehicle_type.value.capitalize(), str(vehicle_id))
     return vehicle
+
+
+async def _assert_precincts_visible(
+    db: AsyncSession, stops: list[TripStopCreate], organization_id: uuid.UUID,
+) -> None:
+    """Refuses a route through a precinct this dispatcher may not see (SEC-PRECINCT-1).
+
+    A foreign private precinct and a nonexistent id raise the same ResourceNotFoundError, so
+    the response never reveals whether another organisation owns a given depot — the same
+    stance _fetch_driver takes for another organisation's driver.
+    """
+    wanted = {spec.precinct_id for spec in stops}
+    found = set((await db.execute(
+        select(Precinct.id).where(Precinct.id.in_(wanted), visible_to(organization_id))
+    )).scalars().all())
+    for missing in sorted(wanted - found, key=str):
+        raise ResourceNotFoundError("Precinct", str(missing))
 
 
 async def _claim_crew(
@@ -235,6 +254,7 @@ async def _manifest_conflict(
 
 async def _sync_cargo_entry(
     db: AsyncSession, pp_reference: str, sync: Awaitable["ConsignmentSyncResult"],
+    operator_org_id: uuid.UUID,
 ) -> "ConsignmentSyncResult":
     """Run one consignment sync with trip creation's fail-closed error mapping: any
     failure rolls back the whole trip, because a trip whose cargo plan couldn't be
@@ -246,10 +266,22 @@ async def _sync_cargo_entry(
         # handler keeps its DB-specific semantics instead of a misleading 422.
         await rollback_after_error(db)
         raise
-    except ConsignmentAlreadyAssignedError:
+    except ConsignmentAlreadyAssignedError as exc:
         # Nor is this a PP fault: the waybill is real and the conflict is ours, so it
         # must not be relabelled as a PP sync failure. Re-raised for the endpoint's 409.
-        await rollback_after_error(db)
+        # Conflict detection is global, but a foreign holder's trip and incident
+        # references are tenant-private. Resolved after the rollback because the
+        # holder can change while this trip was being created; if the rollback
+        # failed the holder can't be looked up, so fail closed to the private form.
+        if not await rollback_after_error(db):
+            raise type(exc)(exc.pp_reference, None) from exc
+        owner_id = (await db.execute(
+            select(Trip.operator_organization_id)
+            .join(Consignment, Consignment.trip_id == Trip.id)
+            .where(Consignment.parcel_perfect_reference == exc.pp_reference)
+        )).scalar_one_or_none()
+        if owner_id != operator_org_id:
+            raise type(exc)(exc.pp_reference, None) from exc
         raise
     except Exception as exc:
         # Explicit rollback keeps the guarantee independent of the session implementation
@@ -358,6 +390,49 @@ def _journey_lock_payload(
     )
 
 
+async def _sync_consignments(
+    db: AsyncSession, new_trip: NewTrip, trip: Trip, operator_org_id: uuid.UUID,
+) -> list["ConsignmentSyncResult"]:
+    """Sync every consignment the trip names, from its manifest and from its bare references."""
+    cargo = new_trip.manifest
+    # Sync every consignment. Local import kept from before the split; no module-load
+    # cycle exists today (consignments.sync → parcel_perfect never imports back here).
+    consignment_results: list["ConsignmentSyncResult"] = []
+    if cargo is not None or new_trip.consignment_refs:
+        from app.orchestration.consignments.sync import (
+            fetch_and_sync_consignment,
+            sync_consignment_from_waybill,
+        )
+
+        if cargo is not None:
+            # Scan ingestion locks this same bytewise waybill order. Sort even if
+            # PP returns a different order, so multi-waybill scans cannot deadlock.
+            for waybill in sorted(cargo.waybills, key=lambda w: w.details.waybill):
+                consignment_results.append(await _sync_cargo_entry(
+                    db, waybill.details.waybill,
+                    sync_consignment_from_waybill(
+                        db, waybill, trip_id=trip.id,
+                        origin_precinct_id=trip.origin_precinct_id,
+                        destination_precinct_id=trip.destination_precinct_id,
+                    ),
+                    operator_org_id,
+                ))
+        for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
+            consignment_results.append(await _sync_cargo_entry(
+                db, entry.pp_reference,
+                fetch_and_sync_consignment(
+                    db,
+                    pp_reference=entry.pp_reference,
+                    trip_id=trip.id,
+                    unit_count_expected=entry.unit_count_expected,
+                    origin_precinct_id=trip.origin_precinct_id,
+                    destination_precinct_id=trip.destination_precinct_id,
+                ),
+                operator_org_id,
+            ))
+    return consignment_results
+
+
 async def persist_trip(
     db: AsyncSession,
     new_trip: NewTrip,
@@ -377,6 +452,10 @@ async def persist_trip(
         PPSyncError: a waybill could not be pulled or written.
     """
     cargo = new_trip.manifest
+
+    # 0. Every stop's precinct must be one this dispatcher may see. The manifest path checked
+    #    its own two hubs, but a direct POST /trips copies whatever ids the body carries.
+    await _assert_precincts_visible(db, new_trip.stops, current_user.organization_id)
 
     # 1. Lock, validate and clash-check the crew before any writes (FP-139).
     driver, horse, trailers = await _claim_crew(db, new_trip, current_user.organization_id)
@@ -456,39 +535,7 @@ async def persist_trip(
     for stop in trip_stops:
         await db.refresh(stop)
 
-    # Sync every consignment. Local import kept from before the split; no module-load
-    # cycle exists today (consignments.sync → parcel_perfect never imports back here).
-    consignment_results: list["ConsignmentSyncResult"] = []
-    if cargo is not None or new_trip.consignment_refs:
-        from app.orchestration.consignments.sync import (
-            fetch_and_sync_consignment,
-            sync_consignment_from_waybill,
-        )
-
-        if cargo is not None:
-            # Scan ingestion locks this same bytewise waybill order. Sort even if
-            # PP returns a different order, so multi-waybill scans cannot deadlock.
-            for waybill in sorted(cargo.waybills, key=lambda w: w.details.waybill):
-                consignment_results.append(await _sync_cargo_entry(
-                    db, waybill.details.waybill,
-                    sync_consignment_from_waybill(
-                        db, waybill, trip_id=trip.id,
-                        origin_precinct_id=trip.origin_precinct_id,
-                        destination_precinct_id=trip.destination_precinct_id,
-                    ),
-                ))
-        for entry in sorted(new_trip.consignment_refs, key=lambda e: e.pp_reference):
-            consignment_results.append(await _sync_cargo_entry(
-                db, entry.pp_reference,
-                fetch_and_sync_consignment(
-                    db,
-                    pp_reference=entry.pp_reference,
-                    trip_id=trip.id,
-                    unit_count_expected=entry.unit_count_expected,
-                    origin_precinct_id=trip.origin_precinct_id,
-                    destination_precinct_id=trip.destination_precinct_id,
-                ),
-            ))
+    consignment_results = await _sync_consignments(db, new_trip, trip, current_user.organization_id)
 
     # Stamp the route onto every synced consignment: stop-0 pickup, stop-last
     # delivery. TripConsignmentInput (schemas/trips.py) carries no per-consignment

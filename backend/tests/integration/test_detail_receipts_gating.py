@@ -258,7 +258,9 @@ async def test_vehicle_detail_exposes_receipts_for_admin() -> None:
 # ── GET /trips/{id} ───────────────────────────────────────────────────────────
 
 
-async def _pass_through_custody(_db: object, detail: TripDetailResponse, *, actor: UserRead) -> TripDetailResponse:
+async def _pass_through_custody(
+    _db: object, detail: TripDetailResponse, *, actor: UserRead, facts: object,
+) -> TripDetailResponse:
     return detail
 
 

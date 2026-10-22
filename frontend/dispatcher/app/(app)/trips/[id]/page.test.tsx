@@ -8,6 +8,7 @@ import { mockPrecincts, mockTrips, TRIP_0040_ID } from '@shared/lib/mocks'
 import type { TripException } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
 import { line } from '@/components/domain/__tests__/textLine'
+import { substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
 
 const push = vi.fn()
 const replace = vi.fn()
@@ -38,6 +39,12 @@ vi.mock('@/lib/hooks/useTripDetail', () => ({
 vi.mock('@/lib/api/auditPacks', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/auditPacks')>('@/lib/api/auditPacks')
   return { ...actual, listAuditPacks: vi.fn().mockResolvedValue([]), listIncidentDeclarations: vi.fn().mockResolvedValue([]) }
+})
+
+// The evidence modal's read never settles here: these tests are about who opens it, not its content.
+vi.mock('@/lib/api/driverSubstitutions', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/api/driverSubstitutions')>('@/lib/api/driverSubstitutions')
+  return { ...actual, getCompletedSubstitution: vi.fn(() => new Promise(() => {})) }
 })
 
 vi.mock('@/lib/hooks/usePrecincts', () => ({
@@ -777,7 +784,7 @@ describe('Trip detail legacy audit navigation', () => {
       navigation.search = new URLSearchParams('panel=audit')
       const rendered = render(<TripDetailPage />)
       const surface = docked ? within(screen.getByRole('complementary', { name: 'Trip detail' })).getByRole('tabpanel') : screen.getByRole('dialog', { name: 'Trip information' })
-      expect(screen.getByRole('heading', { name: 'Custody' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Schedule & seal' })).toBeInTheDocument()
       expect(screen.getByRole('region', { name: 'Audit packs' })).toBeInTheDocument()
       await waitFor(() => expect(surface.scrollTop).toBe(460))
       const timeline = document.querySelector('[data-timeline-scroller]')!
@@ -796,7 +803,7 @@ describe('Trip detail legacy audit navigation', () => {
     render(<TripDetailPage />)
     await screen.findByText('No audit packs issued for this trip yet.')
     expect(screen.getByRole('dialog', { name: 'Trip information' }).scrollTop).toBe(0)
-    expect(screen.getByRole('heading', { name: 'Custody' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Schedule & seal' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Audit packs' })).toBeInTheDocument()
   })
 })
@@ -1180,5 +1187,25 @@ describe('Trip detail: a revealed row lands with its phase in view (L2)', () => 
       await waitFor(() => expect(document.activeElement).toHaveAttribute('id', `exception-row-${firstId}`))
       expect(scroller.scrollTop).toBe(CARD_TOP + rowOffset - TOOLBAR_HEIGHT - GAP)
     } finally { restore() }
+  })
+})
+
+describe('Trip detail driver transfer evidence', () => {
+  it('opens one evidence modal, outside the Info overlay, from a handover row in the Info panel', async () => {
+    const base = mockTrips.find(candidate => candidate.id === TRIP_0040_ID)!
+    const completed = substitutionFixturePack.normalCompleted
+    mockedUseTripDetail.mockReturnValue({
+      trip: { ...base, pending_driver_substitution: null, driver_substitutions: [completed] }, isLoading: false, isValidating: false,
+      error: null, errorStatus: null, refetch: vi.fn(), refetchSilent: vi.fn(), lastUpdated: null,
+    })
+    navigation.search = new URLSearchParams('panel=information')
+    render(<TripDetailPage />)
+
+    await userEvent.click(screen.getByRole('heading', { name: 'Driver & custody' }))
+    await userEvent.click(screen.getByRole('button', { name: /View evidence/ }))
+
+    const modal = screen.getByRole('dialog', { name: 'Driver transfer evidence' })
+    expect(screen.getByRole('dialog', { name: 'Trip information' }).contains(modal)).toBe(false)
+    expect(within(modal).getByRole('status', { name: 'Loading transfer evidence' })).toBeInTheDocument()
   })
 })

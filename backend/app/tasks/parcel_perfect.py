@@ -9,6 +9,8 @@ Layering: tasks → orchestration → integrations → db.
 
 import asyncio
 import logging
+import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from celery import Task
@@ -33,6 +35,16 @@ _ACTIVE_STATUSES: frozenset[TripStatus] = frozenset({
     TripStatus.CREATED,
     TripStatus.ACTIVE,
 })
+
+
+@dataclass(frozen=True)
+class _ConsignmentWork:
+    """One consignment's sweep inputs as plain values, safe to read after a rollback."""
+
+    id: uuid.UUID
+    pp_reference: str
+    trip_id: uuid.UUID
+    pp_raw_json: dict[str, Any] | None
 
 
 async def _sync_all_active() -> dict[str, Any]:
@@ -76,24 +88,29 @@ async def _sync_all_active() -> dict[str, Any]:
             .join(Trip, Trip.id == Consignment.trip_id)
             .where(Trip.status.in_(_ACTIVE_STATUSES))
         )
-        consignments: list[Consignment] = list(result.scalars().all())
+        # Plain values, copied out before the loop. db.rollback() below expires EVERY instance
+        # the session holds, and an expired attribute in async code is a lazy load that raises
+        # (MissingGreenlet) — inside the error handler, and again on every later iteration.
+        # Nothing in the loop may touch a loaded Consignment for its own bookkeeping.
+        work: list[_ConsignmentWork] = [
+            _ConsignmentWork(c.id, c.parcel_perfect_reference, c.trip_id, c.pp_raw_json)
+            for c in result.scalars().all() if c.trip_id is not None  # the join already excludes NULL; narrows the type
+        ]
 
         logger.info(
             "pp_sync: found %d active consignment(s) to refresh",
-            len(consignments),
+            len(work),
         )
 
-        for consignment in consignments:
+        for item in work:
             # Skip consignments where PP already confirmed delivery in a prior poll.
             # poddate is written into pp_raw_json by serialise_waybill() on every sync,
             # so a non-empty value here means PP has definitively closed the delivery.
-            prior_poddate: str = (
-                (consignment.pp_raw_json or {}).get("details", {}).get("poddate", "")
-            )
+            prior_poddate: str = (item.pp_raw_json or {}).get("details", {}).get("poddate", "")
             if prior_poddate:
                 logger.info(
                     "pp_sync: skipping consignment id=%s — POD already confirmed (%s)",
-                    consignment.id,
+                    item.id,
                     prior_poddate,
                 )
                 pods_confirmed += 1
@@ -102,14 +119,14 @@ async def _sync_all_active() -> dict[str, Any]:
             try:
                 sync_result = await fetch_and_sync_consignment(
                     db=db,
-                    pp_reference=consignment.parcel_perfect_reference,
-                    trip_id=consignment.trip_id,
+                    pp_reference=item.pp_reference,
+                    trip_id=item.trip_id,
                 )
                 if sync_result.warning:
                     logger.warning(
                         "pp_sync: consignment id=%s pp_reference=%s: %s",
-                        consignment.id,
-                        consignment.parcel_perfect_reference,
+                        item.id,
+                        item.pp_reference,
                         sync_result.warning,
                     )
                 updated = sync_result.consignment
@@ -124,26 +141,27 @@ async def _sync_all_active() -> dict[str, Any]:
                     pods_confirmed += 1
                     logger.info(
                         "pp_sync: POD confirmed for consignment id=%s pp_reference=%s poddate=%s",
-                        updated.id,
-                        consignment.parcel_perfect_reference,
+                        item.id,
+                        item.pp_reference,
                         new_poddate,
                     )
                 else:
                     logger.info(
                         "pp_sync: synced consignment id=%s pp_reference=%s",
-                        consignment.id,
-                        consignment.parcel_perfect_reference,
+                        item.id,
+                        item.pp_reference,
                     )
-            except Exception as exc:
+            except Exception:
                 # Roll back only this consignment's in-progress changes so the
                 # session remains usable for subsequent consignments.
                 await db.rollback()
                 errors += 1
-                logger.error(
-                    "pp_sync: failed to sync consignment id=%s pp_reference=%s: %r",
-                    consignment.id,
-                    consignment.parcel_perfect_reference,
-                    exc,
+                # logger.exception keeps the traceback; the ids are the plain locals above,
+                # never the (now expired) instance.
+                logger.exception(
+                    "pp_sync: failed to sync consignment id=%s pp_reference=%s",
+                    item.id,
+                    item.pp_reference,
                 )
 
     await engine.dispose()

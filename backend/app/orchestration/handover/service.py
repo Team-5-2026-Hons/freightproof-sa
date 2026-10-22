@@ -10,6 +10,7 @@ depends on (a lost race saves its attempt row BEFORE the 404). Errors are domain
 core/exceptions.py; the route owns the status codes and detail strings.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,7 +25,7 @@ from app.core.exceptions import (
     HandoverLinkInvalidError,
     ResourceNotFoundError,
 )
-from app.db.models.enums import ArtifactType, EvidenceRole, PhaseType
+from app.db.models.enums import ArtifactType, EvidenceRole, PhaseType, ReceiverVerificationStatus
 from app.db.models.handover import HandoverCapabilityToken, HandoverConfirmation
 from app.db.models.organisations import Precinct
 from app.db.models.phases import PhaseEvent
@@ -49,11 +50,13 @@ from app.orchestration.handover.capability import (
 from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
     load_verification_for_token,
-    raise_verification_exception,
-    record_consent_decision,
     resolve_verification,
     start_verification,
 )
+from app.orchestration.handover.consent import record_consent_decision
+from app.orchestration.handover.verdict import raise_verification_exception
+
+logger = logging.getLogger(__name__)
 
 # The signature is a PNG the receiver drew; nothing else is ever stored from this surface.
 _SIGNATURE_MIME_TYPE = "image/png"
@@ -373,10 +376,27 @@ async def resolve_receiver_verification(
 
     Takes no session identifier from the caller: the session id comes from our own row,
     written before the redirect, so the client can only say "I am back".
+
+    The receiver's typed-identity cross-check runs once, at the vendor's final decision. The route
+    is unauthenticated (whoever holds the token), so letting it re-run would let them retype a
+    matching name after a FAILED verdict, or let a changed vendor answer overwrite a recorded one.
+    The guard is `resolved_at`, set here only once the verdict is final. Not the status: the vendor
+    webhook can set VERIFIED before the receiver returns, yet it never runs the cross-check or
+    files an exception, and a row that never got a vendor session is UNVERIFIED before this call;
+    in both cases this call is still owed. Not `identity_match` either: NULL there also means
+    "nothing to compare", and it is written while the vendor is still deciding.
     """
-    verification = await load_verification_for_token(db, token_id=token.id)
+    # Locked so two simultaneous calls cannot both run the cross-check.
+    verification = await load_verification_for_token(db, token_id=token.id, lock=True)
     if verification is None:
         raise HandoverLinkInvalidError()
+
+    if verification.resolved_at is not None:
+        logger.info(
+            "Receiver verification=%s was already resolved; returning it unchanged",
+            verification.id,
+        )
+        return verification
 
     verdict = await resolve_verification(
         db,
@@ -385,10 +405,16 @@ async def resolve_receiver_verification(
         typed_id_number=typed_id_number,
     )
 
+    # Still deciding (or the vendor was unreachable): nothing is final, so the next call asks again.
+    if verdict.status == ReceiverVerificationStatus.PENDING:
+        return verification
+
     if verdict.exception_type is not None:
         trip = await load_trip_for_token(db, token=token)
         await raise_verification_exception(
             db, trip=trip, phase_event_id=token.phase_event_id,
             trip_stop_id=token.trip_stop_id, verdict=verdict,
         )
+    verification.resolved_at = datetime.now(UTC)
+    await db.flush()
     return verification

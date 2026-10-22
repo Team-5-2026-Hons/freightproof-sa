@@ -9,6 +9,8 @@ export interface ToastState {
   toasts: Toast[]
   notify: (toast: Omit<Toast, 'id'>) => void
   dismiss: (id: string) => void
+  /** Drops every toast and cancels their timers. */
+  clear: () => void
 }
 
 export const ToastContext = createContext<ToastState | null>(null)
@@ -37,23 +39,46 @@ function evictToCap(toasts: Toast[]): Toast[] {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // Mirrors `toasts` synchronously. notify() must see toasts raised earlier in the same
+  // render batch to de-duplicate them, which the async state value can't offer, and a
+  // state updater is the wrong place for the timer side effect.
+  const current = useRef<Toast[]>([])
+
+  const commit = useCallback((next: Toast[]) => {
+    current.current = next
+    setToasts(next)
+  }, [])
 
   const dismiss = useCallback((id: string) => {
     clearTimeout(timers.current[id])
     delete timers.current[id]
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }, [])
+    commit(current.current.filter(t => t.id !== id))
+  }, [commit])
+
+  const clear = useCallback(() => {
+    // Nothing showing means nothing to do; skipping the state write avoids re-rendering
+    // every context consumer for a no-op.
+    if (current.current.length === 0) return
+    Object.values(timers.current).forEach(clearTimeout)
+    timers.current = {}
+    commit([])
+  }, [commit])
 
   const notify = useCallback((toast: Omit<Toast, 'id'>) => {
+    // A failing refetch re-raises the same error every minute; showing it once is enough.
+    const duplicate = current.current.some(
+      t => t.kind === toast.kind && t.title === toast.title && t.body === toast.body,
+    )
+    if (duplicate) return
     const id = crypto.randomUUID()
-    setToasts(prev => evictToCap([...prev, { ...toast, id }]))
+    commit(evictToCap([...current.current, { ...toast, id }]))
     if (!toast.sticky && toast.kind !== 'error') {
       timers.current[id] = setTimeout(() => dismiss(id), TOAST_AUTO_DISMISS_MS)
     }
-  }, [dismiss])
+  }, [commit, dismiss])
 
   return (
-    <ToastContext.Provider value={{ toasts, notify, dismiss }}>
+    <ToastContext.Provider value={{ toasts, notify, dismiss, clear }}>
       {children}
       {/* ToastViewport handles positioning and aria-live per DESIGN_SYSTEM.md §10.7 */}
       <ToastViewport toasts={toasts} onDismiss={dismiss} />

@@ -9,7 +9,7 @@ from pypdf import PdfReader
 from app.reporting.pdf_renderer import render_audit_pack_html, render_audit_pack_pdf
 from app.schemas.audit_pack import (
     AnchoredRecord, AuditPackManifest, DriverSubstitutionRecord, ExceptionAnchorRecord,
-    ExceptionPhoto, HandoverDeclarationRecord, PackIssue, SubstitutionClarificationRecord,
+    ExceptionPhoto, HandoverDeclarationRecord, PackIssue, SubstitutionClarificationRecord, TripSummary,
 )
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest, make_phase
@@ -439,3 +439,32 @@ def test_audit_pack_html_summarises_an_operator_declared_incident_without_a_crit
     assert "tier-declared" in summary
     assert "No review recorded" not in summary
     assert "Critical exceptions" not in summary
+
+
+def _without_order_number(manifest: AuditPackManifest) -> AuditPackManifest:
+    # Validated, not model_copy: the schema itself must accept a trip with no order number.
+    trip = TripSummary.model_validate({**manifest.trip.model_dump(), "order_number": None})
+    return manifest.model_copy(update={"trip": trip})
+
+
+def test_audit_pack_html_without_order_number_says_not_recorded():
+    # Arrange: a trip imported from a Parcel Perfect manifest carries no order number.
+    manifest = _without_order_number(make_manifest(phases=[make_phase(0, "activation")]))
+
+    # Act
+    html = render_audit_pack_html(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert "<th>Order number</th><td>Not recorded</td>" in html
+    assert ">None<" not in html
+
+
+def test_audit_pack_pdf_renders_without_order_number():
+    # Arrange
+    manifest = _without_order_number(make_manifest(phases=[make_phase(0, "activation")]))
+
+    # Act
+    pdf = render_audit_pack_pdf(manifest, issue=None, mirror_base_url=MIRROR)
+
+    # Assert
+    assert pdf.startswith(b"%PDF-")

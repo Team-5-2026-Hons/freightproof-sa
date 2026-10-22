@@ -1,5 +1,5 @@
 """Read side of the phase ledger: a trip's current phase event, the driver's next phase event,
-and the full phase list for a trip.
+the full phase list for a trip, and the stop sequences its phase rows are rendered with.
 """
 
 import uuid
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import PhaseStatus
 from app.db.models.phases import PhaseEvent
+from app.db.models.trips import TripStop
 from app.orchestration.phases.loaders import _load_trip_for_driver
 from app.orchestration.phases.state import _is_resolved
 
@@ -77,3 +78,12 @@ async def list_phases(
         .order_by(PhaseEvent.sequence_number)
     )
     return list(result.scalars().all())
+
+
+async def stop_sequence_map(db: AsyncSession, *, trip_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    """Each stop's sequence, keyed by stop id. PhaseEventRead.stop_sequence is a join, not a
+    column (see its docstring), so the phase routes pass this map to `from_event`."""
+    result = await db.execute(
+        select(TripStop.id, TripStop.sequence).where(TripStop.trip_id == trip_id)
+    )
+    return {stop_id: sequence for stop_id, sequence in result.all()}

@@ -69,3 +69,22 @@ it.each(['network', 'custody', 'account'] as const)('keeps the original wire key
     expect(loadQueue()).toEqual([])
   }
 })
+
+it('does not report queued when the phone refuses to store the retry', async () => {
+  // Storage full or disabled: enqueuePhase stores nothing and says so. Reporting "queued" here
+  // would keep the optimistic advance and promise a replay that was never scheduled.
+  const enqueuePhase = vi.fn(() => false)
+  let finish!: (outcome: PhaseSubmissionOutcome) => void
+  const outcome = new Promise<PhaseSubmissionOutcome>(resolve => { finish = resolve })
+  act(() => {
+    startPhaseSubmission({ tripId: 'trip', phaseEventId: 'phase', phaseType: 'in_transit',
+      evidence: { capturedAt: new Date().toISOString() }, idempotencyKey: crypto.randomUUID(),
+      driverCapturedAt: new Date().toISOString(), position: Promise.resolve(null),
+      enqueuePhase, refetchTrip: vi.fn(), onOutcome: finish })
+  })
+
+  const result = await outcome
+
+  expect(enqueuePhase).toHaveBeenCalledTimes(1)
+  expect(result.kind).toBe('failed')
+})

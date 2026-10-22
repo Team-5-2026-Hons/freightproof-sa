@@ -173,10 +173,16 @@ async def test_attach_document_not_allowed_type_422(client, db_session, seed, st
     assert stored == []
 
 
-async def test_attach_document_oversize_413(client, db_session, seed, stored, enabled):
+async def test_attach_document_oversize_413(client, db_session, seed, stored, enabled, monkeypatch):
     incident_id = await _incident(client, db_session, seed)
+    # The real limit is pinned here, then lowered so the over-limit body is a few bytes, not 10 MiB:
+    # streaming 10 MiB through multipart parsing made this the slowest test in the suite (6 s).
+    assert MAX_FILE_SIZE_BYTES == 10 * 1024 * 1024
+    small_limit = len(_PDF_BYTES)
+    monkeypatch.setattr("app.api.v1.endpoints.incidents.MAX_FILE_SIZE_BYTES", small_limit)
+    monkeypatch.setattr("app.orchestration.incidents.documents.MAX_FILE_SIZE_BYTES", small_limit)
 
-    resp = await _attach(client, seed, incident_id, content=_PDF_BYTES + b"0" * MAX_FILE_SIZE_BYTES)
+    resp = await _attach(client, seed, incident_id, content=_PDF_BYTES + b"0")
 
     assert resp.status_code == 413
     assert stored == []

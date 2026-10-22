@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VehicleId } from '@shared/lib/types/vehicle'
-import { exceptionReference, matchesExceptionReference, fmtBreakdownVehicle, fmtClaimedFor, fmtExceptionRaisedParts, fmtExceptionType } from './exception'
+import { exceptionDescriptionText, exceptionReference, matchesExceptionReference, fmtBreakdownVehicle, fmtClaimedFor, fmtExceptionRaisedParts, fmtExceptionType } from './exception'
 
 describe('fmtExceptionType', () => {
   it('title-cases every word of a snake_case enum', () => {
@@ -56,6 +56,12 @@ describe('fmtBreakdownVehicle', () => {
     expect(fmtBreakdownVehicle({
       vehicle_id: RECORDED_ID, vehicle_type: null, vehicle_registration: null,
     })).toBe('—')
+  })
+})
+
+describe('driver transfer exception label', () => {
+  it('reads_as_a_request_for_review_not_a_bare_type_name', () => {
+    expect(fmtExceptionType('driver_substitution')).toBe('Driver transfer needs review')
   })
 })
 
@@ -128,5 +134,33 @@ describe('matchesExceptionReference', () => {
 
   it('does not match on the prefix alone or on text that is not in the hex', () => {
     for (const q of ['x', 'ex', 'zz', 'ex-ffff']) expect(matchesExceptionReference(id, q), q).toBe(false)
+  })
+})
+
+describe('exceptionDescriptionText', () => {
+  const USER_ID = '3f2a9c1e-7b4d-4e8a-9d21-5a6c0b8e1f34'
+  const note = (description: string, reviewed_by_name?: string | null) =>
+    ({ exception_type: 'dispatcher_note', description, reviewed_by_name })
+
+  it('replaces the cancelling user id with the reviewer name', () => {
+    expect(exceptionDescriptionText(note(`Cancelled by user ${USER_ID}: Trip stopped by dispatch.`, 'Demo Dispatcher')))
+      .toBe('Cancelled by Demo Dispatcher: Trip stopped by dispatch.')
+  })
+
+  it('falls_back_to_a_dispatcher_when_no_name_is_known', () => {
+    expect(exceptionDescriptionText(note(`Cancelled by user ${USER_ID}: Stopped.`, null)))
+      .toBe('Cancelled by a dispatcher: Stopped.')
+    expect(exceptionDescriptionText(note(`Cancelled by user ${USER_ID}: Stopped.`)))
+      .toBe('Cancelled by a dispatcher: Stopped.')
+  })
+
+  it('leaves other dispatcher notes untouched', () => {
+    const description = 'Called the driver; running late.'
+    expect(exceptionDescriptionText(note(description, 'Demo Dispatcher'))).toBe(description)
+  })
+
+  it('leaves other exception types untouched even when the text looks like a cancellation', () => {
+    const description = `Cancelled by user ${USER_ID}: Stopped.`
+    expect(exceptionDescriptionText({ exception_type: 'panic_button', description, reviewed_by_name: 'Demo Dispatcher' })).toBe(description)
   })
 })

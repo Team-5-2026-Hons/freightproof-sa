@@ -154,7 +154,7 @@ class Settings(BaseSettings):
     OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
     # Enforced in auth/sessions.py; Supabase tokens otherwise refresh forever.
-    SESSION_IDLE_TIMEOUT_MINUTES: int = 10
+    SESSION_IDLE_TIMEOUT_MINUTES: int = 60
 
     # Token lifetime, separate from how often the QR on screen rotates.
     HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10

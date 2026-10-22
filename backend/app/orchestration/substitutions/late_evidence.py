@@ -31,9 +31,13 @@ from app.db.models.driver_substitutions import (
 )
 from app.orchestration.substitutions.access import lock_trip
 from app.orchestration.substitutions.artifacts import PURPOSE_LATE, require_former_period, require_participant
-from app.orchestration.substitutions import service
-from app.orchestration.substitutions.service import (
-    OperationKey, body_digest, find_replay, lock_org_trip, record_operation,
+from app.orchestration.substitutions import operations
+from app.orchestration.substitutions.guards import lock_org_trip
+from app.orchestration.substitutions.operations import (
+    OperationKey,
+    body_digest,
+    find_replay,
+    record_operation,
 )
 from app.schemas.driver_substitutions import (
     AcknowledgeLateEvidenceRequest, LateEvidenceRead, LateEvidenceRequest, LateEvidenceStatus,
@@ -147,7 +151,7 @@ async def retain_late_evidence(
         id=uuid.uuid4(), trip_id=trip.id, driver_id=driver.id, custody_sequence=payload.custody_sequence,
         kind=payload.evidence.kind.value, evidence_json=evidence_json, payload_sha256=payload_sha256(evidence_json),
         original_idempotency_key=payload.original_idempotency_key, captured_at=payload.captured_at,
-        received_at=service.utcnow(), status=LateEvidenceStatus.AWAITING_REVIEW.value,
+        received_at=operations.utcnow(), status=LateEvidenceStatus.AWAITING_REVIEW.value,
     )
     db.add(row)
     await db.flush()
@@ -190,7 +194,7 @@ async def acknowledge_late_evidence(
 
     row.status = LateEvidenceStatus.ACKNOWLEDGED.value
     row.reviewed_by_user_id = actor.id
-    row.reviewed_at = service.utcnow()
+    row.reviewed_at = operations.utcnow()
     row.review_note = payload.note
     await db.flush()
     await db.refresh(row)

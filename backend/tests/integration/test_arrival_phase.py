@@ -117,7 +117,7 @@ async def _complete_arrival(
 
 async def _dispatcher_token_for(db_session, trip) -> str:
     """_seed_trip creates exactly one User for the operator org — resolved by
-    query, never a hardcoded id, matching test_phase_service.py's override
+    query, never a hardcoded id, matching test_phases_service.py's override
     test precedent."""
     user = (await db_session.execute(
         select(User).where(User.organization_id == trip.operator_organization_id)

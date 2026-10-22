@@ -29,6 +29,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_private_key
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -79,6 +81,42 @@ settings.RATE_LIMIT_ENABLED = False
 # suite runs with them on. The disabled mode is asserted explicitly where it matters
 # (test_driver_substitution_endpoints.py), by switching it back off.
 settings.DRIVER_SUBSTITUTIONS_ENABLED = True
+
+# ── Parallel runs (pytest -n N, pytest-xdist) ─────────────────────────────────
+# Each worker is its own process with its own test session, so it gets its own PostgreSQL
+# database (test_engine creates and drops the whole schema, which two workers cannot share)
+# and its own Redis database number (mock-state keys are fixed device ids). A plain `pytest`
+# sets no worker id and uses TEST_DATABASE_URL and REDIS_URL unchanged.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+_BASE_TEST_DATABASE_URL = settings.TEST_DATABASE_URL
+# Redis numbers its databases 0-15; 0 is the unchanged default, so workers use 1-15.
+_REDIS_WORKER_DATABASES = 15
+if _XDIST_WORKER and settings.TEST_DATABASE_URL:
+    _base_test_url = make_url(_BASE_TEST_DATABASE_URL)
+    settings.TEST_DATABASE_URL = _base_test_url.set(
+        database=f"{_base_test_url.database}_{_XDIST_WORKER}"
+    ).render_as_string(hide_password=False)
+    _worker_number = int(_XDIST_WORKER.removeprefix("gw"))
+    settings.REDIS_URL = str(make_url(settings.REDIS_URL).set(
+        database=str(1 + _worker_number % _REDIS_WORKER_DATABASES)
+    ).render_as_string(hide_password=False))
+
+
+async def _ensure_database_exists(url: str) -> None:
+    """Create the worker's test database on first use, from a connection to the base one."""
+    target = make_url(url)
+    engine = create_async_engine(_BASE_TEST_DATABASE_URL, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": target.database},
+            )
+            if not exists:
+                # Identifier, not a bind parameter: CREATE DATABASE takes no parameters. The
+                # name is the base test database plus an xdist worker id, never user input.
+                await conn.execute(text(f'CREATE DATABASE "{target.database}"'))
+    finally:
+        await engine.dispose()
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -271,6 +309,8 @@ def test_engine():
     if not settings.TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL not set — skipping integration tests")
 
+    if _XDIST_WORKER:
+        asyncio.run(_ensure_database_exists(settings.TEST_DATABASE_URL))
     engine = create_async_engine(settings.TEST_DATABASE_URL, poolclass=NullPool)
 
     async def _create() -> None:
@@ -341,7 +381,7 @@ class FakeMockStateStore:
 
 
 # ── Warehouse-scan fixtures ─────────────────────────────────────────────────────
-# Shared by test_scan_service.py and test_phase_gate.py, so both agree on one
+# Shared by test_consignment_scans.py and test_phases_gate.py, so both agree on one
 # seeded trip shape instead of drifting apart in duplicated fixture bodies.
 
 

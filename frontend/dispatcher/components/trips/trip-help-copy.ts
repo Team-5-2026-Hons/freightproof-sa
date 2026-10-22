@@ -34,8 +34,8 @@ export const TRIP_HELP = {
   info: {
     label: 'About the Info tab',
     question: 'What the Info tab holds',
-    basis: 'Custody gives the last departure seal number. Schedule compares planned and recorded times. Route lists the stops in order; select one to preview it.',
-    note: 'Audit packs are sealed, shareable records of this trip for an insurer, loss adjuster, client or SAPS. Police & notifications holds details a dispatcher enters after an event.',
+    basis: 'Schedule & seal compares planned and recorded times and gives the last departure seal number. Route lists the stops in order; select one to preview it. Driver & custody summarises who has driven and each handover; open one for its evidence.',
+    note: 'Incidents lists the reports on this trip, with the police details a dispatcher enters after an event beneath them. Audit packs are sealed, shareable records of this trip for an insurer, loss adjuster, client or SAPS; each fact in one is labelled Anchored, Corroborated, Recorded or Declared so nothing claims more than the evidence supports.',
     footnote: 'Not recorded means no record exists yet, not that nothing happened.',
   },
   cargo: {

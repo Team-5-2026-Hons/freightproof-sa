@@ -137,7 +137,7 @@ class DriverSubstitutionConfirmation(Base):
     discrepancy_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # FP-83 C3 CP4: this capture's phone-versus-tracker comparison, the same
     # ActionLocationAssessment shape a checkpoint stores (built by
-    # evidence.action_location.build_capture_assessment, which needs no phase or precinct). A
+    # evidence.location_assessment.build_capture_assessment, which needs no phase or precinct). A
     # missing phone fix or tracker outage is recorded explicitly as proximity "unverified" with
     # its reasons; NULL means the comparison itself could not be built (logged), never "fine".
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)

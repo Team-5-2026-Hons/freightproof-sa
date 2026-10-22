@@ -19,6 +19,9 @@ export function defaultTripSortDirection(key: TripSortKey): SortDir {
   return key === 'date' ? 'desc' : 'asc'
 }
 
+/** Most urgent first: the order both the Active Trips page and the dashboard open in. */
+export const TRIP_ATTENTION_SORT: TripSort = { key: 'exceptions', dir: defaultTripSortDirection('exceptions') }
+
 // Progress is how far through its plan a trip is. A trip with no plan has no meaningful position,
 // so it is "no data" and sorts last rather than posing as "0% done".
 function progressOf(trip: TripChecklistItem): number | null {

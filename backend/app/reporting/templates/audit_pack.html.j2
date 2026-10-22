@@ -148,7 +148,7 @@
 
   <h3 class="cover-h">Pack details</h3>
   <table class="kv kv-compact">
-    <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td><th>Order number</th><td>{{ m.trip.order_number or '—' }}</td></tr>
+    <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td><th>Order number</th><td>{{ m.trip.order_number or 'Not recorded' }}</td></tr>
     <tr><th>Operator</th><td>{{ m.trip.operator_name }}</td><th>Client(s)</th><td>{{ m.trip.client_names|join(', ') or '—' }}</td></tr>
     <tr><th>Scope</th><td>{% if m.options.scope_consignment_id %}Single consignment: {{ m.consignments[0].parcel_perfect_reference if m.consignments else '—' }}{% else %}Whole trip{% endif %}</td><th>Manifest</th><td>v{{ m.manifest_version }}</td></tr>
     {% if issue %}

@@ -30,13 +30,13 @@ from app.analytics.fleet.problems import build_problems
 from app.analytics.fleet.review import build_review
 from app.analytics.fleet.routes import incident_pins, lane_trips, site_counts
 from app.analytics.fleet.periods import (
-    Grain,
     Period,
     build_period,
     instant_range,
     resolve_start,
     today_sast,
 )
+from app.core.fleet_bands import Grain
 from app.analytics.fleet.tiles import get_fleet_tiles
 from app.analytics.cost_model import to_rand
 from app.db.models.organisations import Precinct

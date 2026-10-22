@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ResourceNotFoundError
-from app.db.models.incidents import Incident, IncidentException
+from app.db.models.incidents import Incident
 from app.db.models.trips import Trip
 from app.orchestration.audit_packs.analysis import last_fix_before
 from app.orchestration.audit_packs.builder import build_audit_manifest
@@ -80,10 +80,13 @@ async def get_incident_evidence(
         db, trip_id=trip.id, operator_organization_id=organization_id,
         options=AuditPackOptions(include_location_trail=True, include_full_driver_id=False),
     )
-    holders = dict((await db.execute(
-        select(IncidentException.exception_id, IncidentException.incident_id)
-        .where(IncidentException.exception_id.in_([e.exception_id for e in manifest.exceptions]))
-    )).tuples().all())
+    # Which incident holds each exception comes from the investigations the manifest already
+    # loaded. This pack is unscoped, so none is cut, and an exception belongs to at most one
+    # incident (uq_incident_exceptions_exception): the same map the table would give.
+    holders = {
+        exception_id: record.incident_id
+        for record in manifest.investigations for exception_id in record.exception_ids
+    }
     reference_time = incident.reported_occurred_at or incident.received_at
     return IncidentEvidence(
         incident_id=incident.id, seals=_seals(manifest), counts=_counts(manifest),

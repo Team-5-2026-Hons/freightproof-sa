@@ -6,6 +6,7 @@ writes.
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import case, func, or_, select
@@ -17,9 +18,9 @@ from app.db.models.transit import TripException
 from app.db.models.trips import DriverSubstitution, Trip
 from app.orchestration.substitutions.access import (
     CompletedCustodyLink, completed_links_by_trip, current_driver_id_expression, custody_holders,
-    custody_holders_from_links, require_current_driver,
+    custody_holders_from_links, require_current_driver_with_links,
 )
-from app.orchestration.trips.detail import get_trip_detail
+from app.orchestration.trips.detail import TripReadFacts, get_trip_detail
 from app.schemas.driver_substitutions import DriverAccess, DriverParticipation
 from app.schemas.trips import DriverTripListItemResponse, TripDetailResponse
 
@@ -96,6 +97,7 @@ async def get_active_trip_for_driver(db: AsyncSession, driver_id: uuid.UUID) -> 
 
 async def _driver_view(
     db: AsyncSession, detail: TripDetailResponse, *, trip: Trip, driver_id: uuid.UUID,
+    links: Sequence[CompletedCustodyLink] | None = None,
 ) -> TripDetailResponse:
     """The dispatcher's trip detail minus what the driver app must not receive. The PP
     manifest key names the client's manifest: dispatcher context, never shown to the
@@ -106,7 +108,10 @@ async def _driver_view(
     dispatcher's substitution context: no original-driver record (another person's details),
     no request list, integrity result or flag.
     """
-    holders = await custody_holders(db, trip=trip)
+    holders = (
+        custody_holders_from_links(trip.driver_id, links) if links is not None
+        else await custody_holders(db, trip=trip)
+    )
     earlier = any(holder == driver_id and seq != detail.custody_sequence for seq, holder in holders.items())
     return detail.model_copy(update={
         "pp_manifest": None, "original_driver": None, "driver_substitutions": [],
@@ -179,24 +184,7 @@ async def list_trips_for_driver(
     def precinct_name(precinct_id: uuid.UUID | None) -> str | None:
         return None if precinct_id is None else precinct_names.get(precinct_id)
 
-    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
-    # but the driver has no review action at all (see FP-146 follow-on): a count of
-    # routine warnings they can neither act on nor clear is noise on their trip card.
-    # The dispatcher-facing counts deliberately include every severity.
-    exc_counts: dict[uuid.UUID, int] = {
-        row[0]: row[1]
-        for row in (
-            await db.execute(
-                select(TripException.trip_id, func.count(TripException.id))
-                .where(
-                    TripException.trip_id.in_(trip_ids),
-                    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
-                    TripException.severity == ExceptionSeverity.CRITICAL,
-                )
-                .group_by(TripException.trip_id)
-            )
-        ).all()
-    }
+    exc_counts = await _critical_exception_counts(db, trip_ids)
 
     return [
         DriverTripListItemResponse(
@@ -221,6 +209,28 @@ async def list_trips_for_driver(
         )
         for t in trips
     ]
+
+
+async def _critical_exception_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Unreviewed critical exceptions per trip, for the driver's trip cards."""
+    # Unreviewed CRITICAL rows only. Since FP-280 every exception starts needs_review,
+    # but the driver has no review action at all (see FP-146 follow-on): a count of
+    # routine warnings they can neither act on nor clear is noise on their trip card.
+    # The dispatcher-facing counts deliberately include every severity.
+    return {
+        row[0]: row[1]
+        for row in (
+            await db.execute(
+                select(TripException.trip_id, func.count(TripException.id))
+                .where(
+                    TripException.trip_id.in_(trip_ids),
+                    TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+                    TripException.severity == ExceptionSeverity.CRITICAL,
+                )
+                .group_by(TripException.trip_id)
+            )
+        ).all()
+    }
 
 
 def _participation(
@@ -253,8 +263,11 @@ async def get_own_trip_detail_for_driver(
     """
     # 404 for a driver who never held the trip, TripHandedOverError for one who held it earlier
     # (their history is a separate, restricted read); never the current trip data.
-    trip = await require_current_driver(db, trip_id=trip_id, driver_id=driver_id)
-    return await _driver_view(
-        db, await get_trip_detail(db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id),
-        trip=trip, driver_id=driver_id,
+    held = await require_current_driver_with_links(db, trip_id=trip_id, driver_id=driver_id)
+    trip = held.trip
+    # The gate read the trip and the custody links; the detail and the view reuse them.
+    detail = await get_trip_detail(
+        db, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
+        facts=TripReadFacts(trip=trip, custody_links=held.links),
     )
+    return await _driver_view(db, detail, trip=trip, driver_id=driver_id, links=held.links)
