@@ -16,6 +16,7 @@ Anyone else gets the same 404 as a missing record, so a trip's existence is not 
 """
 
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from sqlalchemy import or_, select
@@ -34,10 +35,12 @@ from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import DriverSubstitution, Trip, TripStop
 from app.orchestration.evidence_anchors.reads import decorate_exception_reads
-from app.orchestration.substitutions.anchors import verify_custody_chain
+from app.orchestration.substitutions.anchors import LoadedChain, verify_custody_chain
 from app.orchestration.substitutions.access import completed_links, custody_holders, participant_driver_ids
 from app.orchestration.substitutions.late_evidence import build_late_evidence_read
-from app.orchestration.substitutions.request_read import Viewer, build_request_read, required_confirmation_roles
+from app.orchestration.substitutions.request_read import (
+    Preloaded, Viewer, build_request_read, build_request_reads, required_confirmation_roles,
+)
 from app.orchestration.substitutions.service import viewer_for
 from app.schemas.driver_substitutions import (
     CustodyPeriodRead, DriverParticipationHistoryRead, DriverSubstitutionContextRead, LateEvidenceDetailRead,
@@ -49,6 +52,7 @@ from app.schemas.driver_substitutions import (
 from app.schemas.evidence import EvidenceArtifactWithUrl
 from app.schemas.people import UserRead
 from app.schemas.transit import TripExceptionRead
+from app.orchestration.trips.detail import TripReadFacts
 from app.schemas.trips import TripDetailResponse, TripStopRead
 from app.storage.supabase_storage import create_signed_url
 
@@ -80,15 +84,18 @@ async def _org_trip(db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uu
 # ── dispatcher ───────────────────────────────────────────────────────────────
 
 
+async def _trip_request_rows(db: AsyncSession, *, trip_id: uuid.UUID) -> list[DriverSubstitutionRequest]:
+    return list((await db.execute(
+        select(DriverSubstitutionRequest).where(DriverSubstitutionRequest.trip_id == trip_id)
+        .order_by(DriverSubstitutionRequest.created_at.desc(), DriverSubstitutionRequest.id)
+    )).scalars().all())
+
+
 async def list_trip_requests(db: AsyncSession, *, trip_id: uuid.UUID, actor: UserRead) -> list[SubstitutionRequestRead]:
     """Every arrangement on the trip, newest first."""
     await _org_trip(db, trip_id=trip_id, organization_id=actor.organization_id)
-    requests = (await db.execute(
-        select(DriverSubstitutionRequest).where(DriverSubstitutionRequest.trip_id == trip_id)
-        .order_by(DriverSubstitutionRequest.created_at.desc(), DriverSubstitutionRequest.id)
-    )).scalars().all()
-    viewer, now = viewer_for(actor), _now()
-    return [await build_request_read(db, request, viewer=viewer, now=now) for request in requests]
+    requests = await _trip_request_rows(db, trip_id=trip_id)
+    return await build_request_reads(db, requests, viewer=viewer_for(actor), now=_now())
 
 
 async def get_trip_request(
@@ -318,15 +325,44 @@ async def get_driver_participation_history(
     )
 
 
-async def with_dispatcher_custody(db: AsyncSession, detail: TripDetailResponse, *, actor: UserRead) -> TripDetailResponse:
+async def with_dispatcher_custody(
+    db: AsyncSession, detail: TripDetailResponse, *, actor: UserRead, facts: TripReadFacts,
+) -> TripDetailResponse:
     """The dispatcher trip detail's FP-83 fields: every arrangement (newest first), the pending
-    one, the custody-chain integrity read and whether new arrangements are enabled."""
-    requests = await list_trip_requests(db, trip_id=detail.id, actor=actor)
+    one, the custody-chain integrity read and whether new arrangements are enabled.
+
+    `facts` is what get_trip_detail loaded for this trip. Its trip was read with the actor's
+    organisation filter, so the three reads below that used to repeat that filter use it instead
+    of querying again; the check is made here, against the actor, before anything is shared.
+    """
+    trip = facts.trip
+    if trip is None or trip.id != detail.id or trip.operator_organization_id != actor.organization_id:
+        raise ResourceNotFoundError("Trip", str(detail.id))
+
+    requests = await _trip_request_rows(db, trip_id=trip.id)
+    substitutions = list((await db.execute(
+        select(DriverSubstitution).where(DriverSubstitution.trip_id == trip.id)
+        .order_by(DriverSubstitution.sequence_number, DriverSubstitution.id)
+    )).scalars())
+    request_reads = await build_request_reads(
+        db, requests, viewer=viewer_for(actor), now=_now(), preloaded=Preloaded(
+            trip=trip, drivers=facts.drivers,
+            completed_by_request={row.request_id: row for row in substitutions if row.request_id is not None},
+        ),
+    )
+    completed = await _completed_summaries(
+        db, substitutions, requests={request.id: request for request in requests},
+        drivers=facts.drivers, phases=list(facts.phase_events),
+    )
+    integrity = await verify_custody_chain(
+        db, trip_id=trip.id, organization_id=actor.organization_id,
+        loaded=LoadedChain(trip=trip, rows=substitutions, requests=requests),
+    )
     return detail.model_copy(update={
-        "driver_substitutions": requests,
-        "completed_driver_substitutions": await list_completed_substitutions(db, trip_id=detail.id, actor=actor),
-        "pending_driver_substitution": next((r for r in requests if r.state is SubstitutionState.PENDING), None),
-        "custody_integrity": await verify_custody_chain(db, trip_id=detail.id, organization_id=actor.organization_id),
+        "driver_substitutions": request_reads,
+        "completed_driver_substitutions": completed,
+        "pending_driver_substitution": next((r for r in request_reads if r.state is SubstitutionState.PENDING), None),
+        "custody_integrity": integrity,
         "driver_substitutions_enabled": settings.DRIVER_SUBSTITUTIONS_ENABLED,
     })
 
@@ -357,12 +393,24 @@ async def list_completed_substitutions(
     await _org_trip(db, trip_id=trip_id, organization_id=actor.organization_id)
     rows = list((await db.execute(select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id)
         .order_by(DriverSubstitution.sequence_number, DriverSubstitution.id))).scalars())
-    driver_ids = {id_ for row in rows for id_ in (row.original_driver_id, row.substituting_driver_id)}
-    drivers = {d.id: d for d in (await db.execute(select(Driver).where(Driver.id.in_(driver_ids)))).scalars()}
-    requests = {r.id: r for r in (await db.execute(select(DriverSubstitutionRequest)
-        .where(DriverSubstitutionRequest.id.in_([r.request_id for r in rows if r.request_id])))).scalars()}
     phases = list((await db.execute(select(PhaseEvent).where(PhaseEvent.trip_id == trip_id)
         .order_by(PhaseEvent.sequence_number))).scalars())
+    return await _completed_summaries(db, rows, requests={}, drivers={}, phases=phases)
+
+
+async def _completed_summaries(
+    db: AsyncSession, rows: list[DriverSubstitution], *, requests: Mapping[uuid.UUID, DriverSubstitutionRequest],
+    drivers: Mapping[uuid.UUID, Driver], phases: list[PhaseEvent],
+) -> list[CompletedSubstitutionSummary]:
+    """The summaries of `rows`. Requests, drivers and phases the caller already holds are used as
+    given; any the rows name that it does not hold are read here, in one statement each."""
+    driver_ids = {id_ for row in rows for id_ in (row.original_driver_id, row.substituting_driver_id)}
+    missing_drivers = driver_ids - drivers.keys()
+    drivers = {**drivers, **{d.id: d for d in (await db.execute(
+        select(Driver).where(Driver.id.in_(missing_drivers)))).scalars()}} if missing_drivers else drivers
+    wanted_requests = {row.request_id for row in rows if row.request_id} - requests.keys()
+    requests = {**requests, **{r.id: r for r in (await db.execute(select(DriverSubstitutionRequest)
+        .where(DriverSubstitutionRequest.id.in_(wanted_requests)))).scalars()}} if wanted_requests else requests
     result: list[CompletedSubstitutionSummary] = []
     for row in rows:
         request = requests.get(row.request_id) if row.request_id is not None else None

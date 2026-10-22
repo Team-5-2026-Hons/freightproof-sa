@@ -104,27 +104,20 @@ async def list_trips(
     drivers_result = await db.execute(select(Driver).where(Driver.id.in_(set(current.values()))))
     drivers_by_id: dict[uuid.UUID, Driver] = {d.id: d for d in drivers_result.scalars().all()}
 
-    horse_ids = list({t.horse_id for t in trips})
-    horses_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(horse_ids)))
-    horses_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in horses_result.scalars().all()}
-
     tt_result = await db.execute(
         select(TripTrailer).where(TripTrailer.trip_id.in_(trip_ids))
     )
     trip_trailers = tt_result.scalars().all()
 
-    trailer_vehicle_ids = list({tt.trailer_id for tt in trip_trailers})
-    trailers_result = await db.execute(
-        select(Vehicle).where(Vehicle.id.in_(trailer_vehicle_ids))
-    )
-    trailers_by_id: dict[uuid.UUID, Vehicle] = {
-        v.id: v for v in trailers_result.scalars().all()
-    }
+    # Horses and trailers are both vehicles: one statement for the page, not one per kind.
+    vehicle_ids = {t.horse_id for t in trips} | {tt.trailer_id for tt in trip_trailers}
+    vehicles_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(vehicle_ids)))
+    vehicles_by_id: dict[uuid.UUID, Vehicle] = {v.id: v for v in vehicles_result.scalars().all()}
 
     trailers_by_trip: dict[uuid.UUID, list[Vehicle]] = defaultdict(list)
     for tt in trip_trailers:
-        if tt.trailer_id in trailers_by_id:
-            trailers_by_trip[tt.trip_id].append(trailers_by_id[tt.trailer_id])
+        if tt.trailer_id in vehicles_by_id:
+            trailers_by_trip[tt.trip_id].append(vehicles_by_id[tt.trailer_id])
 
     attention_by_trip = await _attention_by_trip(db, trip_ids)
 
@@ -161,7 +154,7 @@ async def list_trips(
             status=t.status,
             trip_type=TripType(t.trip_type),
             driver=DriverRead.model_validate(drivers_by_id[current[t.id]]),
-            horse=VehicleRead.model_validate(horses_by_id[t.horse_id]),
+            horse=VehicleRead.model_validate(vehicles_by_id[t.horse_id]),
             trailers=[VehicleRead.model_validate(v) for v in trailers_by_trip.get(t.id, [])],
             origin_precinct_id=t.origin_precinct_id,
             destination_precinct_id=t.destination_precinct_id,

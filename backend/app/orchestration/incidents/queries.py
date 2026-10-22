@@ -41,6 +41,7 @@ from app.schemas.incidents import (
 INCIDENT_LIST_LIMIT = 200
 
 _Assignee = aliased(User)
+_Recorder = aliased(User)
 
 
 def scan_state(parcel: Parcel) -> ParcelScanState:
@@ -88,6 +89,19 @@ async def _aggregates(db: AsyncSession, incident_ids: Sequence[uuid.UUID]) -> _A
         exceptions_reviewed=Counter(i for i, _, status in exception_rows if status == ExceptionReviewStatus.REVIEWED),
         parcels_total=Counter(i for i, _ in parcel_rows),
         parcels_unresolved=Counter(i for i, finding in parcel_rows if finding is None),
+    )
+
+
+def _aggregates_of(
+    incident_id: uuid.UUID, exceptions: Sequence[IncidentExceptionRead], parcels: Sequence[IncidentParcelRead],
+) -> _Aggregates:
+    """`_aggregates` for one incident, from the exception and parcel reads already in hand."""
+    linked_in_order = sorted(exceptions, key=lambda e: e.linked_at)
+    return _Aggregates(
+        exception_ids={incident_id: [e.exception_id for e in linked_in_order]},
+        exceptions_reviewed=Counter({incident_id: sum(1 for e in exceptions if e.review_status == ExceptionReviewStatus.REVIEWED)}),
+        parcels_total=Counter({incident_id: len(parcels)}),
+        parcels_unresolved=Counter({incident_id: sum(1 for p in parcels if p.latest_finding is None)}),
     )
 
 
@@ -208,23 +222,28 @@ async def get_incident_detail(
     db: AsyncSession, *, incident_id: uuid.UUID, organization_id: uuid.UUID, warnings: Sequence[str] = (),
 ) -> IncidentDetail:
     row = (await db.execute(
-        _base().where(Incident.id == incident_id, Trip.operator_organization_id == organization_id)
+        _base().add_columns(_Recorder.full_name)
+        .outerjoin(_Recorder, _Recorder.id == Incident.recorded_by_user_id)
+        .where(Incident.id == incident_id, Trip.operator_organization_id == organization_id)
     )).tuples().one_or_none()
     if row is None:
         raise ResourceNotFoundError("Incident", str(incident_id))
-    incident, trip, assignee_name = row
-    recorder = (await db.execute(select(User.full_name).where(User.id == incident.recorded_by_user_id))).scalar_one_or_none()
+    incident, trip, assignee_name, recorder = row
     # This incident's own declarations and the trip-level ones made outside any incident: the
     # same rule the close warning and the pack's case-number check use, so all three agree.
     declarations = [d for d in await load_declarations(db, trip_id=trip.id) if d.incident_id in (incident.id, None)]
-    summary = _summary(incident, trip, assignee_name, await _aggregates(db, [incident.id]))
+    exceptions = await _exceptions(db, incident.id)
+    parcels = await _parcels(db, incident.id)
+    # The summary's counts come from the rows the detail lists anyway, not from a second pair of
+    # queries over the same two tables.
+    summary = _summary(incident, trip, assignee_name, _aggregates_of(incident.id, exceptions, parcels))
     updates = await _updates(db, incident.id)
     return IncidentDetail(
         **summary.model_dump(),
         reported_by_name=incident.reported_by_name, reporter_role=incident.reporter_role,
         report_channel=incident.report_channel, recorded_by_user_id=incident.recorded_by_user_id,
         recorded_by_name=recorder, closure_reason=incident.closure_reason,
-        exceptions=await _exceptions(db, incident.id), parcels=await _parcels(db, incident.id),
+        exceptions=exceptions, parcels=parcels,
         updates=updates, declarations=declarations,
         document_upload_enabled=settings.INCIDENT_DOCUMENTS_ENABLED, warnings=list(warnings),
         response_guide=await _guide(db, incident, trip, updates, declarations),

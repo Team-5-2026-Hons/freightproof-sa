@@ -6,7 +6,8 @@ transaction.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,7 @@ from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.evidence_anchors.reads import decorate_exception_reads
 from app.orchestration.exceptions.review_identity import with_reviewer_names
 from app.orchestration.consignments.scans import scanned_counts_for_trip
-from app.orchestration.substitutions.access import get_current_custody
+from app.orchestration.substitutions.access import CompletedCustodyLink, completed_links, derive_custody
 from app.schemas.blockchain import BlockchainReceiptRead
 from app.schemas.phases import PhaseEventRead
 from app.schemas.pp_manifest import PPManifestRef
@@ -36,6 +37,27 @@ from app.schemas.trips import (
     TripStopRead,
 )
 from app.schemas.vehicles import VehicleRead
+
+
+@dataclass
+class TripReadFacts:
+    """Rows shared between get_trip_detail and its caller, in both directions.
+
+    Out: the dispatcher trip page adds its driver-handover fields to this read; they need the
+    trip, its phases and the drivers, which are already in hand. A caller passes an empty
+    instance and get_trip_detail fills it, so the extension does not fetch them a second time.
+    `trip` was read with the organisation filter, so the extension may rely on it for tenancy.
+
+    In: a caller that has already read the trip and its completed custody links (the driver's
+    access gate does) sets `trip` and `custody_links` first, and get_trip_detail uses them. It
+    still checks the trip's id and organisation against its own arguments, so a trip from the
+    wrong organisation is refused exactly as the query would refuse it.
+    """
+
+    trip: Trip | None = None
+    custody_links: Sequence[CompletedCustodyLink] | None = None
+    phase_events: Sequence[PhaseEvent] = ()
+    drivers: Mapping[uuid.UUID, Driver] = field(default_factory=dict)
 
 
 async def _client_names(db: AsyncSession, trips: Sequence[Trip]) -> dict[uuid.UUID, str]:
@@ -102,22 +124,35 @@ async def get_trip_detail(
     operator_organization_id: uuid.UUID,
     *,
     include_reviewer_names: bool = False,
+    facts: TripReadFacts | None = None,
 ) -> TripDetailResponse:
-    """Raises ResourceNotFoundError if trip not found or belongs to a different org."""
-    # Filter by org at the DB level — avoids leaking trip existence to other orgs.
-    result = await db.execute(
-        select(Trip).where(
-            Trip.id == trip_id,
-            Trip.operator_organization_id == operator_organization_id,
+    """Raises ResourceNotFoundError if trip not found or belongs to a different org.
+
+    `facts`, when given, is filled with the trip, phase events and drivers this read loaded."""
+    if facts is not None and facts.trip is not None:
+        # Read by the caller; the same two conditions the query below applies.
+        trip = facts.trip
+        if trip.id != trip_id or trip.operator_organization_id != operator_organization_id:
+            raise ResourceNotFoundError("Trip", str(trip_id))
+    else:
+        # Filter by org at the DB level — avoids leaking trip existence to other orgs.
+        result = await db.execute(
+            select(Trip).where(
+                Trip.id == trip_id,
+                Trip.operator_organization_id == operator_organization_id,
+            )
         )
-    )
-    trip = result.scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
+        trip = result.scalar_one_or_none()
+        if trip is None:
+            raise ResourceNotFoundError("Trip", str(trip_id))
 
     client_names = await _client_names(db, [trip])
     # FP-83: `driver` is whoever holds the trip now; Trip.driver_id stays the journey lock's original.
-    custody = await get_current_custody(db, trip=trip)
+    links = (
+        facts.custody_links if facts is not None and facts.custody_links is not None
+        else await completed_links(db, trip_id=trip.id)
+    )
+    custody = derive_custody(trip.driver_id, links)
     drivers = {d.id: d for d in (await db.execute(
         select(Driver).where(Driver.id.in_({trip.driver_id, custody.driver_id}))
     )).scalars()}
@@ -196,6 +231,9 @@ async def get_trip_detail(
         })
         for c in consignments
     ]
+
+    if facts is not None:
+        facts.trip, facts.custody_links, facts.phase_events, facts.drivers = trip, links, phase_events, drivers
 
     return TripDetailResponse(
         id=trip.id,

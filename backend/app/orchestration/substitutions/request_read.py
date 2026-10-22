@@ -10,7 +10,8 @@ saved: it answers "what is stopping this from completing right now?" without cha
 """
 
 import uuid
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select
@@ -91,15 +92,63 @@ async def build_request_read(
     # created_at and updated_at are server-side values; reading them off a just-flushed row
     # would lazy-load, which is illegal in an async session.
     await db.refresh(request)
-    trip = await db.get(Trip, request.trip_id)
+    (read,) = await build_request_reads(db, [request], viewer=viewer, now=now)
+    return read
+
+
+@dataclass(frozen=True)
+class Preloaded:
+    """What a caller already holds about the requests' trip, so the batch does not fetch it again.
+
+    `trip` must have been read with the caller's own organisation filter: build_request_reads does
+    not re-check tenancy, it only checks the trip is the requests' trip. `drivers` and
+    `completed_by_request` (the trip's completed substitution rows keyed by request id) are optional
+    extras; anything missing is read.
+    """
+
+    trip: Trip
+    drivers: Mapping[uuid.UUID, Driver] = field(default_factory=dict)
+    completed_by_request: Mapping[uuid.UUID, DriverSubstitution] | None = None
+
+
+@dataclass(frozen=True)
+class _BatchContext:
+    trip: Trip
+    drivers: Mapping[uuid.UUID, Driver]
+    vehicles: list[VehicleRef]
+    saved_by_request: Mapping[uuid.UUID, Mapping[SubstitutionRole, DriverSubstitutionConfirmation]]
+    completed_by_request: Mapping[uuid.UUID, DriverSubstitution]
+
+
+async def build_request_reads(
+    db: AsyncSession, requests: Sequence[DriverSubstitutionRequest], *, viewer: Viewer, now: datetime,
+    preloaded: Preloaded | None = None,
+) -> list[SubstitutionRequestRead]:
+    """The wire shape of every request on ONE trip, with the lookups shared by the whole batch.
+
+    A trip page lists every arrangement on the trip, so per-request reads of the trip, the drivers,
+    the vehicles, the confirmations and the completed row cost a round trip each, per request.
+    Here each is one statement however many requests there are.
+    """
+    if not requests:
+        return []
+    trip_id = requests[0].trip_id
+    if any(request.trip_id != trip_id for request in requests):
+        raise ValueError("build_request_reads takes the requests of a single trip")
+    context = await _load_context(db, requests, preloaded)
+    return [await _request_read(db, request, context, viewer=viewer, now=now) for request in requests]
+
+
+async def _load_context(
+    db: AsyncSession, requests: Sequence[DriverSubstitutionRequest], preloaded: Preloaded | None,
+) -> _BatchContext:
+    trip_id = requests[0].trip_id
+    trip = preloaded.trip if preloaded is not None else await db.get(Trip, trip_id)
     if trip is None:
-        raise ResourceNotFoundError("Trip", str(request.trip_id))
-    drivers = {
-        driver.id: driver for driver in (await db.execute(
-            select(Driver).where(Driver.id.in_([request.outgoing_driver_id, request.incoming_driver_id]))
-        )).scalars()
-    }
-    outgoing, incoming = drivers[request.outgoing_driver_id], drivers[request.incoming_driver_id]
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    if trip.id != trip_id:
+        raise ValueError("The preloaded trip is not the requests' trip")
+    drivers = await _drivers_for(db, requests, preloaded.drivers if preloaded is not None else {})
 
     vehicle_ids = await trip_vehicle_ids(db, trip)
     vehicles_by_id = {
@@ -110,11 +159,63 @@ async def build_request_read(
         for v in (vehicles_by_id[vehicle_id] for vehicle_id in vehicle_ids)
     ]
 
-    saved = {
-        SubstitutionRole(c.role): c for c in (await db.execute(
-            select(DriverSubstitutionConfirmation).where(DriverSubstitutionConfirmation.request_id == request.id)
-        )).scalars()
+    completed = preloaded.completed_by_request if preloaded is not None else None
+    return _BatchContext(
+        trip=trip, drivers=drivers, vehicles=vehicles,
+        saved_by_request=await _confirmations_for(db, requests),
+        completed_by_request=completed if completed is not None else await _completed_for(db, requests),
+    )
+
+
+async def _drivers_for(
+    db: AsyncSession, requests: Sequence[DriverSubstitutionRequest], known: Mapping[uuid.UUID, Driver],
+) -> dict[uuid.UUID, Driver]:
+    drivers = dict(known)
+    missing = {
+        driver_id for request in requests for driver_id in (request.outgoing_driver_id, request.incoming_driver_id)
+        if driver_id not in drivers
     }
+    if missing:
+        drivers.update({
+            driver.id: driver for driver in (await db.execute(select(Driver).where(Driver.id.in_(missing)))).scalars()
+        })
+    return drivers
+
+
+async def _confirmations_for(
+    db: AsyncSession, requests: Sequence[DriverSubstitutionRequest],
+) -> dict[uuid.UUID, dict[SubstitutionRole, DriverSubstitutionConfirmation]]:
+    saved: dict[uuid.UUID, dict[SubstitutionRole, DriverSubstitutionConfirmation]] = {r.id: {} for r in requests}
+    for confirmation in (await db.execute(
+        select(DriverSubstitutionConfirmation).where(DriverSubstitutionConfirmation.request_id.in_(saved))
+    )).scalars():
+        saved[confirmation.request_id][SubstitutionRole(confirmation.role)] = confirmation
+    return saved
+
+
+async def _completed_for(
+    db: AsyncSession, requests: Sequence[DriverSubstitutionRequest],
+) -> dict[uuid.UUID, DriverSubstitution]:
+    completed_ids = [r.id for r in requests if SubstitutionState(r.state) is SubstitutionState.COMPLETED]
+    found: dict[uuid.UUID, DriverSubstitution] = {}
+    if not completed_ids:
+        return found
+    for row in (await db.execute(
+        select(DriverSubstitution).where(DriverSubstitution.request_id.in_(completed_ids))
+    )).scalars():
+        if row.request_id in found:
+            raise ValueError("A request has more than one completed substitution")
+        found[row.request_id] = row
+    return found
+
+
+async def _request_read(
+    db: AsyncSession, request: DriverSubstitutionRequest, context: _BatchContext, *, viewer: Viewer, now: datetime,
+) -> SubstitutionRequestRead:
+    trip, drivers, vehicles = context.trip, context.drivers, context.vehicles
+    saved = context.saved_by_request[request.id]
+    completed = context.completed_by_request.get(request.id)
+    outgoing, incoming = drivers[request.outgoing_driver_id], drivers[request.incoming_driver_id]
     confirmations = [
         ConfirmationSummary(
             id=saved[role].id, role=role, driver_id=saved[role].driver_id,
@@ -124,10 +225,10 @@ async def build_request_read(
     ]
     state = SubstitutionState(request.state)
     required = required_confirmation_roles(request.request_format)
+    # Only a completed request is read against its substitution row, whatever the caller handed over.
+    if state is not SubstitutionState.COMPLETED:
+        completed = None
 
-    completed = (await db.execute(
-        select(DriverSubstitution).where(DriverSubstitution.request_id == request.id)
-    )).scalar_one_or_none() if state is SubstitutionState.COMPLETED else None
     if completed is not None:
         # Frozen at completion; never re-read from the driver, whose status may have moved since.
         if completed.incoming_identity_observed_at is None:

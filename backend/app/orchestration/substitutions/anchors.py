@@ -20,7 +20,7 @@ import asyncio
 import enum
 import logging
 import uuid
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -35,7 +35,7 @@ from app.db.models.driver_substitutions import DriverSubstitutionCorrection, Dri
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType, SubjectType
 from app.db.models.trips import DriverSubstitution, Trip
 from app.orchestration.evidence_anchors.dispatch import run_after_outer_commit
-from app.orchestration.substitutions.access import CustodyChainError, completed_links, derive_custody
+from app.orchestration.substitutions.access import CustodyChainError, derive_custody, links_from_rows
 from app.orchestration.substitutions.canonical import UnsupportedPayload
 from app.orchestration.verification.substitution_payloads import (
     completed_metadata_findings, receipt_binding_findings, ReceiptBinding, rebuild_correction_payload, rebuild_substitution_payload,
@@ -259,7 +259,8 @@ async def recover_custody_anchor(db: AsyncSession, *, due_before: datetime) -> b
 async def _chain_findings(db: AsyncSession, trip: Trip, rows: list[DriverSubstitution]) -> list[str]:
     findings: list[str] = []
     try:
-        derive_custody(trip.driver_id, await completed_links(db, trip_id=trip.id))
+        # From the rows in hand: the same columns completed_links would select again.
+        derive_custody(trip.driver_id, links_from_rows(rows))
     except CustodyChainError as error:
         findings.append(f"Custody chain is broken: {error}")
     by_id = {row.id: row for row in rows}
@@ -314,15 +315,19 @@ async def _correction_findings(db: AsyncSession, trip_id: uuid.UUID) -> list[str
     return findings
 
 
-async def _missing_rows(db: AsyncSession, trip_id: uuid.UUID, rows: list[DriverSubstitution]) -> list[str]:
+async def _missing_rows(
+    db: AsyncSession, trip_id: uuid.UUID, rows: list[DriverSubstitution], completed_request_ids: Sequence[uuid.UUID] | None,
+) -> list[str]:
     """Evidence an amendment existed that the remaining rows no longer show: a completed request
     or a trip-linked substitution receipt with no row. Deleting the newest amendment cannot make
     the shortened chain read as complete."""
     findings: list[str] = []
     present = {row.request_id for row in rows}
-    completed = (await db.execute(select(DriverSubstitutionRequest.id).where(
-        DriverSubstitutionRequest.trip_id == trip_id, DriverSubstitutionRequest.state == SubstitutionState.COMPLETED.value,
-    ))).scalars().all()
+    completed = completed_request_ids if completed_request_ids is not None else (await db.execute(
+        select(DriverSubstitutionRequest.id).where(
+            DriverSubstitutionRequest.trip_id == trip_id, DriverSubstitutionRequest.state == SubstitutionState.COMPLETED.value,
+        )
+    )).scalars().all()
     findings.extend(f"Completed handover {request_id} has no custody amendment." for request_id in completed if request_id not in present)
     row_ids = {row.id for row in rows}
     receipts = (await db.execute(select(BlockchainReceipt).where(
@@ -336,22 +341,48 @@ async def _missing_rows(db: AsyncSession, trip_id: uuid.UUID, rows: list[DriverS
     return findings
 
 
-async def verify_custody_chain(db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uuid.UUID) -> CustodyIntegrityRead:
+@dataclass(frozen=True)
+class LoadedChain:
+    """What a caller already read for the trip, so the integrity check does not read it again.
+
+    `trip` must be the organisation-scoped read the caller made; verify_custody_chain still
+    compares its id and organisation with the arguments it was asked about. `rows` are the trip's
+    DriverSubstitution rows ordered by sequence_number; `requests` are every request on the trip.
+    """
+
+    trip: Trip
+    rows: Sequence[DriverSubstitution]
+    requests: Sequence[DriverSubstitutionRequest]
+
+
+async def verify_custody_chain(
+    db: AsyncSession, *, trip_id: uuid.UUID, organization_id: uuid.UUID, loaded: LoadedChain | None = None,
+) -> CustodyIntegrityRead:
     """The dispatcher's integrity read for a trip's custody chain, from live rows.
 
     Checks continuity, each amendment's commitment against its live rows, the previous-hash links,
     and rows that should exist but do not. It does not call Hedera or re-read Storage on every
     detail read; the per-receipt /verify path does both for one amendment.
     """
-    trip = (await db.execute(
-        select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == organization_id)
-    )).scalar_one_or_none()
-    if trip is None:
-        raise ResourceNotFoundError("Trip", str(trip_id))
-    rows = list((await db.execute(
-        select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id).order_by(DriverSubstitution.sequence_number)
-    )).scalars())
-    findings = [*await _chain_findings(db, trip, rows), *await _missing_rows(db, trip_id, rows), *await _correction_findings(db, trip_id)]
+    completed_request_ids: list[uuid.UUID] | None = None
+    if loaded is None:
+        trip = (await db.execute(
+            select(Trip).where(Trip.id == trip_id, Trip.operator_organization_id == organization_id)
+        )).scalar_one_or_none()
+        if trip is None:
+            raise ResourceNotFoundError("Trip", str(trip_id))
+        rows = list((await db.execute(
+            select(DriverSubstitution).where(DriverSubstitution.trip_id == trip_id).order_by(DriverSubstitution.sequence_number)
+        )).scalars())
+    else:
+        # The same filter the query above applies, checked against the row the caller read.
+        if loaded.trip.id != trip_id or loaded.trip.operator_organization_id != organization_id:
+            raise ResourceNotFoundError("Trip", str(trip_id))
+        trip, rows = loaded.trip, list(loaded.rows)
+        completed_request_ids = [
+            request.id for request in loaded.requests if request.state == SubstitutionState.COMPLETED.value
+        ]
+    findings = [*await _chain_findings(db, trip, rows), *await _missing_rows(db, trip_id, rows, completed_request_ids), *await _correction_findings(db, trip_id)]
     pending_corrections = (await db.execute(
         select(func.count()).select_from(DriverSubstitutionCorrection)
         .join(DriverSubstitution, DriverSubstitution.id == DriverSubstitutionCorrection.substitution_id)

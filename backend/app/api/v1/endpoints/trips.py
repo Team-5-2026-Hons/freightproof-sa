@@ -47,7 +47,7 @@ from app.db.models.enums import DispatcherRole, TripStatus
 from app.db.session import get_db
 from app.orchestration.consignments.manifest_import import create_trip_from_pp_manifest, preview_pp_manifest
 from app.orchestration.substitutions.reads import with_dispatcher_custody
-from app.orchestration.trips.detail import get_trip_detail
+from app.orchestration.trips.detail import TripReadFacts, get_trip_detail
 from app.orchestration.trips.listing import list_trip_history, list_trips
 from app.orchestration.trips.availability import CrewFilter, TimeWindow, busy_crew_in_window
 from app.orchestration.trips.creation import create_trip
@@ -404,12 +404,15 @@ async def get_trip_detail_endpoint(
     db: AsyncSession = Depends(get_db),
     current_user: UserRead = Depends(get_current_dispatcher),
 ) -> TripDetailResponse:
+    # Handed to the custody fields below so they reuse the rows this read loaded.
+    facts = TripReadFacts()
     try:
         detail = await get_trip_detail(
             db=db,
             trip_id=trip_id,
             operator_organization_id=current_user.organization_id,
             include_reviewer_names=True,
+            facts=facts,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(
@@ -418,4 +421,4 @@ async def get_trip_detail_endpoint(
         ) from exc
     if current_user.role != DispatcherRole.ADMIN_DISPATCHER:
         detail = detail.model_copy(update={"blockchain_receipts": []})
-    return await with_dispatcher_custody(db, detail, actor=current_user)
+    return await with_dispatcher_custody(db, detail, actor=current_user, facts=facts)
