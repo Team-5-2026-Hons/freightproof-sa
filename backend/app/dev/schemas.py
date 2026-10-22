@@ -310,7 +310,6 @@ class MoveTruckRequest(BaseModel):
     waypoint_id: Optional[str] = None
     scenario: Optional[DevTruckScenario] = None
     trip_stop_id: Optional[uuid.UUID] = None
-
     @model_validator(mode="after")
     def _validate_exactly_one_mode(self) -> "MoveTruckRequest":
         has_waypoint = self.waypoint_id is not None
@@ -495,3 +494,68 @@ class PpManifestTriggerResponse(BaseModel):
 
     manifest_number: int
     snapshot_sha256: str
+
+
+# ---- "Move the phone" (FP demo scaffolding) ------------------------------------------
+# A closed, server-defined vocabulary, exactly like the truck's scenarios: the browser
+# never sends coordinates, it names a place on THIS trip and the server resolves it.
+PHONE_AT_ORIGIN = "at_origin"
+PHONE_AT_DESTINATION = "at_destination"
+PHONE_AT_STOP = "at_stop"
+PHONE_RELEASE = "release"
+
+DevPhonePlacement = Literal["at_origin", "at_destination", "at_stop", "release"]
+
+PHONE_PLACEMENT_LABELS: dict[str, str] = {
+    PHONE_AT_ORIGIN: "Phone at origin",
+    PHONE_AT_DESTINATION: "Phone at destination",
+    PHONE_AT_STOP: "Phone at this stop",
+    PHONE_RELEASE: "Use the phone's real location",
+}
+
+
+class MovePhoneRequest(BaseModel):
+    """Place one trip's DRIVER PHONE position, or hand it back to the real device.
+
+    Deliberately independent of move-truck (Tim, 22 Oct 2026): the two are separate
+    controls on the panel, so a demo can put the phone at a precinct while the tracker
+    sits elsewhere — which is also what makes a genuine phone/tracker divergence
+    (FP-145 GPS_MISMATCH) still stageable.
+
+    `at_stop` is the cross-dock case and is the only placement that needs
+    `trip_stop_id`; origin and destination resolve to the trip's first and last stop.
+    `release` drops any staged position, after which the handset's own fix is recorded
+    again — which is also the state of every trip that was never staged.
+    """
+
+    trip_id: uuid.UUID
+    placement: DevPhonePlacement
+    trip_stop_id: Optional[uuid.UUID] = None
+
+    @model_validator(mode="after")
+    def _stop_required_for_at_stop(self) -> "MovePhoneRequest":
+        if self.placement == PHONE_AT_STOP and self.trip_stop_id is None:
+            raise ValueError("placement 'at_stop' requires trip_stop_id.")
+        return self
+
+
+class MovePhoneResponse(BaseModel):
+    """Where this trip's phone will now report from, and what it is measured against.
+
+    `staged` is false only for `release`. The coordinates are the precinct centre the
+    phone was placed at — the same geometry move-truck's `at_stop` scenario uses, so a
+    phone and a truck placed at the same stop agree exactly rather than approximately.
+    """
+
+    trip_id: uuid.UUID
+    placement: DevPhonePlacement
+    placement_label: str
+    staged: bool
+    # Null for `release`: there is no coordinate when the device is reporting for itself.
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    trip_stop_id: Optional[uuid.UUID] = None
+    precinct_name: Optional[str] = None
+    # Says in the response what the ledger will say, so a presenter is never under the
+    # impression a staged walk is recorded as a real capture.
+    recorded_as: str = "simulated"

@@ -11,6 +11,8 @@ import type {
   ExceptionTriggerRequest,
   ExceptionTriggerResponse,
   FlushMockStateResponse,
+  MovePhoneRequest,
+  MovePhoneResponse,
   MoveTruckRequest,
   MoveTruckResponse,
   PpTriggerRequest,
@@ -61,6 +63,9 @@ export interface UseDevTriggersResult {
   flushMockState: () => Promise<FlushMockStateResponse | null>
   loadWaypoints: () => Promise<void>
   moveTruck: (body: MoveTruckRequest) => Promise<MoveTruckResponse | null>
+  // Separate from moveTruck on purpose: the phone and the tracker are independent
+  // controls, so a demo can place one without disturbing the other.
+  movePhone: (body: MovePhoneRequest) => Promise<MovePhoneResponse | null>
   // Every action's outcome, newest first — the panel's record of what the presenter did.
   activity: ActivityEntry[]
   runRigScenario: (body: RigScenarioRequest) => Promise<RigScenarioResponse | null>
@@ -224,6 +229,24 @@ export function useDevTriggers(): UseDevTriggersResult {
     [run],
   )
 
+  const movePhone = useCallback(
+    (body: MovePhoneRequest) =>
+      run(
+        () => api.post<MovePhoneResponse>(`${DEV_BASE}/phone/move`, body),
+        (result) => {
+          if (!result.staged) {
+            return "Phone released: the handset's own fix will be recorded again (device)."
+          }
+          // Says "simulated" out loud. A presenter who forgets a position is staged
+          // would otherwise read the resulting phase rows as genuine captures, and the
+          // ledger's own stamp is the only thing that still knows the difference.
+          return `Phone staged at ${result.precinct_name ?? 'the chosen stop'}`
+            + ` — phases completed now record driver_position_source=${result.recorded_as}.`
+        },
+      ),
+    [run],
+  )
+
   const newFindings = (result: RoadCheckResponse): RoadFindingRead[] =>
     result.findings.filter(f => f.newly_recorded)
 
@@ -250,6 +273,6 @@ export function useDevTriggers(): UseDevTriggersResult {
   return {
     trips, waypoints, isLoading, error, lastResult, activity,
     loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
-    loadWaypoints, moveTruck, runRigScenario, runRoadCheck,
+    loadWaypoints, moveTruck, movePhone, runRigScenario, runRoadCheck,
   }
 }

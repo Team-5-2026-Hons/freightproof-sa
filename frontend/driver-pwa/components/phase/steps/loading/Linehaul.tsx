@@ -163,6 +163,11 @@ export function Linehaul({
         hint="Lay it flat, all four corners in view"
         dataUrl={draft.linehaulPhotoDataUrl}
         onCapture={handleCapture}
+        // The build is the only reason the swipe is still disabled after a scan, so say
+        // so on the scan itself rather than only in the swipe's waiting label — the
+        // driver is looking at the sheet they just captured, not at the button.
+        busy={pdfBuilding}
+        busyLabel="Preparing the PDF"
         // The phone's document scanner finds the edges and flattens the page; the browser
         // has none, so it keeps the plain camera and the PDF wraps the uncropped photo.
         nativeSource={Capacitor.isNativePlatform() ? scanLinehaulSheet : undefined}

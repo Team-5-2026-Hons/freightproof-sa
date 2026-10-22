@@ -29,6 +29,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>FreightProof uses the camera to capture seal, linehaul, and proof-of-delivery evidence.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FreightProof connects to a FreightProof server on this network when testing against a local backend.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FreightProof records location during active trips and checkpoints as journey evidence.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

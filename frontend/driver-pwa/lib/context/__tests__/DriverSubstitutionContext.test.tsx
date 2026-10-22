@@ -41,7 +41,7 @@ function driverWithId(id: string): DriverUser {
 }
 
 function authFor(user: DriverUser | null): AuthState {
-  return { user, isLoading: false, requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
+  return { user, isLoading: false, connectionFault: false, retryProfile: vi.fn(), requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
 }
 
 const unreadCompleted: SubstitutionNoticeRead = { ...noticeFixtures.completedRead, read_at: null }

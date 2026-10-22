@@ -28,6 +28,8 @@ if (!activeTrip) throw new Error('Fixture drift: mockDrivers[0] has no active mo
 const authValue: AuthState = {
   user: demoDriver,
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),

@@ -64,6 +64,8 @@ vi.mock('@/lib/api/phases', () => ({ submitPhase: vi.fn() }))
 const authValue: AuthState = {
   user: mockDrivers[0],
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),

@@ -382,3 +382,41 @@ describe('CameraCapture after Android reclaimed the WebView mid-capture', () => 
     await waitFor(() => expect(window.localStorage.getItem('fp:pending-camera-capture')).toBeNull())
   })
 })
+
+// Tim, 21 Oct: after the linehaul scan the sheet sat there looking finished while the PDF
+// was still building, and the only sign of the wait was the swipe's label — which the
+// driver is not looking at. The veil puts the wait on the thing causing it.
+describe('CameraCapture busy veil', () => {
+  it('test_lays_a_veil_and_a_spinner_over_the_capture_while_it_is_being_processed', () => {
+    render(
+      <CameraCapture
+        label="Linehaul sheet"
+        dataUrl={SAMPLE_DATA_URL}
+        onCapture={vi.fn()}
+        busy
+        busyLabel="Preparing the PDF"
+      />,
+    )
+
+    const veil = screen.getByRole('status', { name: 'Preparing the PDF' })
+
+    expect(veil).toBeInTheDocument()
+    // Faint, not opaque: the driver must still be able to read the sheet they captured.
+    expect(veil.className).toContain('bg-black/35')
+  })
+
+  it('test_the_capture_and_its_retake_stay_readable_through_the_veil', () => {
+    render(
+      <CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} busy />,
+    )
+
+    expect(screen.getByAltText('Linehaul sheet')).toBeInTheDocument()
+    expect(screen.getByText('Retake')).toBeInTheDocument()
+  })
+
+  it('test_no_veil_once_the_step_is_done_with_the_capture', () => {
+    render(<CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})

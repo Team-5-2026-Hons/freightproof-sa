@@ -16,6 +16,7 @@ import { ToastContext, type ToastState } from '../ToastContext'
 import type { AuthState } from '@/lib/types/user'
 import { mockDrivers } from '@shared/lib/mocks/drivers'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
+import { TRIP_POLL_INTERVAL_MS, UNASSIGNED_TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseEventId } from '@shared/lib/types/phase'
 
@@ -36,6 +37,8 @@ const demoDriver = mockDrivers[0]
 const authValue: AuthState = {
   user: demoDriver,
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
@@ -287,5 +290,83 @@ describe('TripContext — unblock toast fires on a real gate transition only', (
     })
 
     expect(notify).not.toHaveBeenCalled()
+  })
+})
+
+// The gap that made a driver kill and relaunch the app to see an assignment (Tim, 21 Oct):
+// pollingEnabled used to require `trip !== null`, so a Home with no trip started no
+// interval at all. Nothing else on that screen asks again — the foreground refresh only
+// fires when the app comes BACK, and a phone propped on the dash never leaves the
+// foreground.
+describe('TripContext — a driver waiting to be assigned a trip', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  async function renderWithNoTrip() {
+    mockFetchMyActiveTrip.mockResolvedValue(null)
+    render(
+      <AuthContext.Provider value={authValue}>
+        <TripProvider>
+          <Probe />
+        </TripProvider>
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('is-loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('trip-loaded')).toHaveTextContent('no')
+  }
+
+  it('test_a_newly_assigned_trip_appears_without_relaunching_the_app', async () => {
+    await renderWithNoTrip()
+    // The poll's leading edge, which also retries a first load that failed.
+    await waitFor(() => expect(mockFetchMyActiveTrip.mock.calls.length).toBeGreaterThanOrEqual(2))
+
+    // Dispatch assigns one while the driver sits on Home, touching nothing.
+    mockFetchMyActiveTrip.mockResolvedValue(buildTrip())
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS)
+    })
+
+    expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes')
+  })
+
+  it('test_waiting_for_an_assignment_polls_slower_than_waiting_at_a_gate', async () => {
+    await renderWithNoTrip()
+    await waitFor(() => expect(mockFetchMyActiveTrip.mock.calls.length).toBeGreaterThanOrEqual(2))
+    const afterLeadingEdge = mockFetchMyActiveTrip.mock.calls.length
+
+    // A blocked gate's cadence must NOT be what an all-day wait costs in battery and data.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TRIP_POLL_INTERVAL_MS)
+    })
+    expect(mockFetchMyActiveTrip.mock.calls.length).toBe(afterLeadingEdge)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS - TRIP_POLL_INTERVAL_MS)
+    })
+    expect(mockFetchMyActiveTrip.mock.calls.length).toBe(afterLeadingEdge + 1)
+  })
+
+  it('test_an_unblocked_trip_still_does_not_poll', async () => {
+    mockFetchMyActiveTrip.mockResolvedValue(buildTrip({ blockedOn: null }))
+    render(
+      <AuthContext.Provider value={authValue}>
+        <TripProvider>
+          <Probe />
+        </TripProvider>
+      </AuthContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes'))
+    const afterMount = mockFetchMyActiveTrip.mock.calls.length
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS * 2)
+    })
+
+    expect(mockFetchMyActiveTrip.mock.calls.length).toBe(afterMount)
   })
 })

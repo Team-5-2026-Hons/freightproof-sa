@@ -13,10 +13,15 @@ import {
   DEV_TRUCK_SCENARIOS,
   isClosedPhaseStatus,
   NO_STOP_REQUIRED_SCENARIO,
+  PHONE_PLACEMENT_LABELS,
+  PHONE_PLACEMENTS,
   SCENARIO_LABELS,
+  STOP_REQUIRED_PLACEMENT,
   type DevConsignment,
+  type DevPhonePlacement,
   type DevTripStop,
   type DevTruckScenario,
+  type MovePhoneResponse,
   type MoveTruckResponse,
   type ScanDirection,
 } from '@/lib/types/dev'
@@ -209,7 +214,7 @@ function buildWaybillBreakdown(
 export function AllControls({ controls, tripId }: AllControlsProps): React.ReactElement {
   const {
     trips, isLoading,
-    loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, moveTruck,
+    loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, moveTruck, movePhone,
   } = controls
 
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
@@ -220,6 +225,8 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
   // just until the next unrelated action.
   const [activeScenarioKey, setActiveScenarioKey] = useState<string | null>(null)
   const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
+  const [phonePlacement, setPhonePlacement] = useState<DevPhonePlacement | ''>('')
+  const [movePhoneResult, setMovePhoneResult] = useState<MovePhoneResponse | null>(null)
 
   // FP-197: which of the selected trip's own stops the scenario mode targets.
   // '' means "no stop chosen" — valid only for the no_signal scenario.
@@ -485,6 +492,25 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     }
   }
 
+  // Same deliberate bypass of the confirm flow as onMoveTruckScenario above, for the
+  // same reason: narrated live, and it writes staged mock state only. The phone is a
+  // SEPARATE control from the truck — pressing one never moves the other.
+  const onMovePhone = async (placement: DevPhonePlacement): Promise<void> => {
+    if (tripId === '') return
+    if (placement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '') return
+
+    const requestedTripId = tripId
+    const result = await movePhone({
+      trip_id: tripId,
+      placement,
+      trip_stop_id: placement === STOP_REQUIRED_PLACEMENT && selectedTripStopId !== ''
+        ? selectedTripStopId
+        : undefined,
+    })
+    if (latestSelectionRef.current.tripId !== requestedTripId) return
+    if (result !== null) setMovePhoneResult(result)
+  }
+
   const onConfirmPendingAction = async (): Promise<void> => {
     if (pendingAction === null) return
     switch (pendingAction.kind) {
@@ -677,6 +703,83 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
           </div>
         </Card>
       )}
+
+      <Card>
+        <div className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-medium">Move the phone (dev-mode simulation)</h3>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+              Dev only — recorded as simulated
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Places the DRIVER&apos;S PHONE for this trip, independently of the truck. Set
+            it before the driver submits a phase and their capture is recorded at that
+            precinct instead of wherever the handset actually is — which is what stops a
+            demo walked far from any depot raising a location warning on every phase.
+          </p>
+          <p className="text-xs text-slate-500">
+            Every phase completed while a position is staged is stored with{' '}
+            <code>driver_position_source = &quot;simulated&quot;</code>, so a staged walk
+            can always be told apart from a real one. &quot;Use the phone&apos;s real
+            location&quot; releases it.
+          </p>
+
+          <Select
+            label="Phone position"
+            value={phonePlacement}
+            onChange={(e) => setPhonePlacement(e.target.value as DevPhonePlacement | '')}
+          >
+            <option value="">Select a position…</option>
+            {PHONE_PLACEMENTS.map((placement) => (
+              <option key={placement} value={placement}>
+                {PHONE_PLACEMENT_LABELS[placement]}
+              </option>
+            ))}
+          </Select>
+
+          {phonePlacement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '' && (
+            <p role="alert" className="text-xs text-amber-700">
+              Pick a trip stop above first — &quot;{PHONE_PLACEMENT_LABELS[STOP_REQUIRED_PLACEMENT]}&quot; needs one.
+            </p>
+          )}
+
+          <Button
+            variant="secondary"
+            size="lg"
+            full
+            disabled={
+              isLoading
+              || tripId === ''
+              || phonePlacement === ''
+              || (phonePlacement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '')
+            }
+            onClick={() => { if (phonePlacement !== '') void onMovePhone(phonePlacement) }}
+          >
+            Apply to the phone
+          </Button>
+
+          {movePhoneResult !== null && (
+            <div className="space-y-1 rounded-lg border border-outline-v/20 p-3">
+              <p className="text-sm font-semibold">{movePhoneResult.placement_label}</p>
+              {movePhoneResult.staged ? (
+                <>
+                  <p className="text-xs text-slate-500">
+                    {movePhoneResult.precinct_name} · {movePhoneResult.latitude}, {movePhoneResult.longitude}
+                  </p>
+                  <p className="text-xs font-medium text-amber-700">
+                    Phases completed now record driver_position_source = {movePhoneResult.recorded_as}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  The handset&apos;s own fix will be recorded again (device).
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Card>
         <div className="space-y-3 p-4">

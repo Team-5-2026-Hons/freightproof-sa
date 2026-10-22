@@ -8,6 +8,7 @@ import type {
   DevConsignment,
   DevTripStop,
   DevTripSummary,
+  MovePhoneResponse,
   MoveTruckResponse,
   ScanTriggerResponse,
 } from '@/lib/types/dev'
@@ -88,6 +89,7 @@ function makeHookReturn(overrides: Partial<UseDevTriggersResult> = {}): UseDevTr
     flushMockState: vi.fn().mockResolvedValue(null),
     loadWaypoints: vi.fn().mockResolvedValue(undefined),
     moveTruck: vi.fn().mockResolvedValue(null),
+    movePhone: vi.fn().mockResolvedValue(null),
     activity: [],
     runRigScenario: vi.fn().mockResolvedValue(null),
     runRoadCheck: vi.fn().mockResolvedValue(null),
@@ -788,5 +790,98 @@ describe('AllControls — close session', () => {
       trip_stop_id: 'stop-1',
       direction: 'out',
     })
+  })
+})
+
+function makeMovePhoneResponse(overrides: Partial<MovePhoneResponse> = {}): MovePhoneResponse {
+  return {
+    trip_id: 'trip-1',
+    placement: 'at_origin',
+    placement_label: 'Phone at origin',
+    staged: true,
+    latitude: '-33.9249000',
+    longitude: '18.4241000',
+    trip_stop_id: 'stop-1',
+    precinct_name: 'Cape Town Depot',
+    recorded_as: 'simulated',
+    ...overrides,
+  }
+}
+
+function choosePhonePlacement(value: string): void {
+  fireEvent.change(screen.getByLabelText('Phone position'), { target: { value } })
+}
+
+describe('AllControls — move the phone', () => {
+  it('sends the chosen placement, and nothing about the truck', async () => {
+    const movePhone = vi.fn().mockResolvedValue(makeMovePhoneResponse())
+    const moveTruck = vi.fn().mockResolvedValue(null)
+    renderAllControls(makeHookReturn({ trips: [makeTrip()], movePhone, moveTruck }), 'trip-1')
+
+    choosePhonePlacement('at_destination')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply to the phone' }))
+
+    await waitFor(() => expect(movePhone).toHaveBeenCalledWith({
+      trip_id: 'trip-1',
+      placement: 'at_destination',
+      trip_stop_id: undefined,
+    }))
+    // The two controls are independent: placing the phone must never move the tracker.
+    expect(moveTruck).not.toHaveBeenCalled()
+  })
+
+  it('says the ledger will record the position as simulated', async () => {
+    const movePhone = vi.fn().mockResolvedValue(makeMovePhoneResponse())
+    renderAllControls(makeHookReturn({ trips: [makeTrip()], movePhone }), 'trip-1')
+
+    choosePhonePlacement('at_origin')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply to the phone' }))
+
+    // A presenter who forgets a position is staged would otherwise read the phase rows
+    // that follow as genuine captures.
+    await waitFor(() => expect(
+      screen.getByText(/driver_position_source = simulated/),
+    ).toBeInTheDocument())
+    expect(screen.getByText(/Cape Town Depot/)).toBeInTheDocument()
+  })
+
+  it('reports a release as handing the fix back to the handset', async () => {
+    const movePhone = vi.fn().mockResolvedValue(makeMovePhoneResponse({
+      placement: 'release',
+      placement_label: "Use the phone's real location",
+      staged: false,
+      latitude: null,
+      longitude: null,
+      trip_stop_id: null,
+      precinct_name: null,
+      recorded_as: 'device',
+    }))
+    renderAllControls(makeHookReturn({ trips: [makeTrip()], movePhone }), 'trip-1')
+
+    choosePhonePlacement('release')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply to the phone' }))
+
+    await waitFor(() => expect(
+      screen.getByText(/own fix will be recorded again/),
+    ).toBeInTheDocument())
+  })
+
+  it('will not apply "at this stop" until a stop is picked, and says why', () => {
+    const movePhone = vi.fn().mockResolvedValue(null)
+    renderAllControls(makeHookReturn({ trips: [makeTrip()], movePhone }), 'trip-1')
+
+    choosePhonePlacement('at_stop')
+
+    expect(screen.getByRole('button', { name: 'Apply to the phone' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick a trip stop above first')
+    expect(movePhone).not.toHaveBeenCalled()
+  })
+
+  it('cannot be applied before a trip is selected', () => {
+    renderAllControls(makeHookReturn({ trips: [makeTrip()] }), '')
+
+    choosePhonePlacement('at_origin')
+
+    expect(screen.getByRole('button', { name: 'Apply to the phone' })).toBeDisabled()
   })
 })

@@ -43,6 +43,7 @@ function controls(overrides: Partial<UseDevTriggersResult> = {}): UseDevTriggers
     closeScanSession: vi.fn().mockResolvedValue(null), triggerPpChange: vi.fn().mockResolvedValue(null),
     triggerException: vi.fn().mockResolvedValue(null), flushMockState: vi.fn().mockResolvedValue(null),
     loadWaypoints: vi.fn().mockResolvedValue(undefined), moveTruck: vi.fn().mockResolvedValue(null),
+    movePhone: vi.fn().mockResolvedValue(null),
     runRigScenario: vi.fn().mockResolvedValue(null), runRoadCheck: vi.fn().mockResolvedValue(null),
     ...overrides,
   }
