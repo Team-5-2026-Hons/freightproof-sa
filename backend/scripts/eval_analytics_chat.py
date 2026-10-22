@@ -1,11 +1,13 @@
-"""Run the Analytics chat's 18-question eval against the real model (FP-295 spec §8.5).
+"""Run the Analytics chat's eval against the real model (FP-295 spec §8.5; explanation questions, B45).
 
 Never part of CI: every question costs real money (or free-tier quota). It asks each question
 through the same service.ask the endpoint uses, as one organisation, against DATABASE_URL
 (the tools only read), and grades the answer:
 
   PASS / FAIL  the right tool(s) for the right period and View by, the right kind of reply
-               (answer, follow-up, decline), and every figure the page showed (must_mention);
+               (answer, follow-up, explanation, decline), every figure or fact the page shows
+               (must_mention), the page-guide topic it should explain (explain), and nothing it must
+               not say (must_not: "for which period" on an explanation, and never an em dash);
   REVIEW       needs a person to read it (e.g. "did it avoid a forecast?");
   ERROR        the model provider failed.
 
@@ -17,6 +19,7 @@ Usage (from backend/, run as a module so `app` is importable):
     python -m scripts.eval_analytics_chat --org-id <ORGANISATION_UUID> --out /path/report.md --confirm-spend
     python -m scripts.eval_analytics_chat ... --only q01 q08      # just some questions
     python -m scripts.eval_analytics_chat ... --model gemini-2.5-flash   # another priced model, same provider
+    python -m scripts.eval_analytics_chat ... --questions tests/eval/analytics_chat_explain_questions.json
 
 Without --confirm-spend it prints what it would ask and the estimated cost, and stops.
 The report goes OUTSIDE the repository (--out), so nothing about a run is committed by accident.
@@ -42,6 +45,7 @@ from app.integrations.ai_chat.provider import (
     ChatProvider,
     ModelReply,
     ProviderMessage,
+    ToolCall,
     ToolResults,
     ToolSpec,
 )
@@ -49,7 +53,7 @@ from app.orchestration.analytics_chat import service
 from app.orchestration.analytics_chat.number_check import unmatched_numbers
 from app.orchestration.analytics_chat.periods import PeriodPreset, resolve_preset
 from app.orchestration.analytics_chat.service import ChatCreditError, ChatProviderFailedError, ChatQuotaError
-from app.schemas.analytics_chat import Basis, ChatAnswer, ChatRequest
+from app.schemas.analytics_chat import Basis, ChatAnswer, ChatRequest, PageView
 from app.schemas.people import UserRead
 
 DEFAULT_QUESTIONS = Path(__file__).resolve().parents[1] / "tests" / "eval" / "analytics_chat_questions.json"
@@ -118,7 +122,11 @@ def _kind_reason(expected_kind: str, answer: ChatAnswer) -> str | None:
     allowed = {
         "answer": {"answer"},
         "follow_up": {"follow_up"},
-        "not_answer": {"follow_up", "declined"},
+        "explanation": {"explanation"},
+        # "What do these figures tell us?": explained, or explained with the figures for the period on screen.
+        "explains": {"explanation", "answer"},
+        # A refusal may explain its reason from the page guide (audit §5), which makes it an explanation.
+        "not_answer": {"follow_up", "declined", "explanation"},
         "no_forecast": {"answer", "follow_up", "declined"},
     }[expected_kind]
     return None if answer.kind in allowed else f"kind {answer.kind}, expected {expected_kind}"
@@ -148,16 +156,34 @@ def _normalise(text: str) -> str:
     return re.sub(r"[  ]", " ", text).lower()
 
 
-def grade(item: dict[str, Any], answer: ChatAnswer, tool_texts: Sequence[str], today: date) -> Grade:
+EM_DASH = "\u2014"
+
+
+def explain_reasons(expected_topics: Sequence[str], calls: Sequence[ToolCall]) -> list[str]:
+    """An explanation has no "Based on" line to check, so the page-guide topic it read is checked instead: any one
+    of the expected topics will do."""
+    if not expected_topics:
+        return []
+    read = {str(call.arguments.get("topic")) for call in calls if call.name == "explain"}
+    return [] if read & set(expected_topics) else [f"didn't read the page guide for {' or '.join(expected_topics)} (read: {sorted(read) or 'none'})"]
+
+
+def grade(
+    item: dict[str, Any], answer: ChatAnswer, tool_texts: Sequence[str], today: date, calls: Sequence[ToolCall] = (),
+) -> Grade:
     expect = item["expect"]
     reasons = [r for r in [_kind_reason(expect["kind"], answer)] if r is not None]
     reasons += _tools_reasons(expect["tools"], answer.basis, today)
+    reasons += explain_reasons(expect.get("explain", []), calls)
     text = _normalise(answer.answer)
-    # Each entry is a figure the page showed: a string, or a list of ways to write it (any one will do).
+    # Each entry is a figure or fact the page shows: a string, or a list of ways to write it (any one will do).
     for figure in item["must_mention"]:
         spellings = [figure] if isinstance(figure, str) else figure
         if not any(_normalise(spelling) in text for spelling in spellings):
             reasons.append(f"doesn't mention {spellings[0]!r} (the page shows it)")
+    for phrase in [*item.get("must_not", []), EM_DASH]:
+        if _normalise(phrase) in text:
+            reasons.append(f"says {phrase!r}, which it mustn't")
     status = "FAIL" if reasons else ("REVIEW" if expect["kind"] == "no_forecast" else "PASS")
     return Grade(
         status=status, reasons=reasons,
@@ -176,6 +202,8 @@ class RecordingProvider:
         self._inner = inner
         self._price = price
         self.tool_texts: list[str] = []
+        # Every tool call the model made, so an explanation's page-guide topic can be checked.
+        self.calls: list[ToolCall] = []
         self.cost_micro_usd = 0
 
     @property
@@ -190,7 +218,14 @@ class RecordingProvider:
                 self.tool_texts.extend(r.content for r in message.results if r.content not in self.tool_texts)
         reply = await self._inner.reply(system=system, context=context, messages=messages, tools=tools)
         self.cost_micro_usd += cost_micro_usd(reply.usage, self._price)
+        self.calls.extend(reply.tool_calls)
         return reply
+
+
+def page_view_for(item: dict[str, Any]) -> PageView | None:
+    """What the dispatcher has on screen for this question, as the panel sends it (B45 page context)."""
+    view = item.get("page_view")
+    return None if view is None else PageView.model_validate(view)
 
 
 def _eval_user(organization_id: uuid.UUID) -> UserRead:
@@ -205,14 +240,15 @@ async def _ask_one(item: dict[str, Any], user: UserRead, today: date) -> tuple[s
     recorder = RecordingProvider(service.build_provider(), price_for(settings.AI_CHAT_MODEL))
     async with AsyncSessionLocal() as db:
         try:
-            answer = await service.ask(db, user=user, request=ChatRequest(question=item["question"]), provider=recorder)
+            request = ChatRequest(question=item["question"], page=page_view_for(item))
+            answer = await service.ask(db, user=user, request=request, provider=recorder)
         except (ChatCreditError, ChatQuotaError, ChatProviderFailedError, AiProviderError) as exc:
             return f"(provider failed: {exc})", Grade(status="ERROR", reasons=[str(exc)]), recorder.cost_micro_usd
         finally:
             await db.rollback()  # the eval only reads; never leave anything behind
     basis = "; ".join(f"{b.label} {b.start}–{b.end} {b.grain} ({b.closed_trip_count} trips)" for b in answer.basis)
     body = f"{answer.answer}\n\n*{answer.kind} · Based on: {basis or 'no figures used'}*"
-    return body, grade(item, answer, recorder.tool_texts, today), recorder.cost_micro_usd
+    return body, grade(item, answer, recorder.tool_texts, today, recorder.calls), recorder.cost_micro_usd
 
 
 def _estimate_usd(count: int) -> float:

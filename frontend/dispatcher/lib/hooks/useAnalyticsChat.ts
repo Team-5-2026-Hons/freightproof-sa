@@ -4,14 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { ApiError, api } from '@/lib/api/client'
 import { useFleetQuery } from '@/lib/hooks/useFleetAnalytics'
-import type {
-  Basis,
-  ChatAnswer,
-  ChatAnswerKind,
-  ChatStatus,
-  ChatTurn,
-  SpendStatus,
-} from '@shared/lib/types/analytics-chat'
+import type { Basis, ChatAnswer, ChatAnswerKind, ChatPageView, ChatStatus, ChatTurn, SpendStatus } from '@shared/lib/types/analytics-chat'
 
 export const CHAT_PATH = '/api/v1/analytics/chat'
 export const CHAT_STATUS_PATH = '/api/v1/analytics/chat/status'
@@ -46,8 +39,9 @@ export interface AnalyticsChat {
   /** This month's spend from the latest answer; null until the first one (the page's status
    *  read covers that time). */
   spend: SpendStatus | null
-  /** Resolves true when an answer arrived; false leaves the question for the dispatcher to retry. */
-  send: (question: string) => Promise<boolean>
+  /** Resolves true when an answer arrived; false leaves the question for the dispatcher to retry. `page` is what
+   *  the dispatcher has on screen, so "these figures" means the period they're looking at. */
+  send: (question: string, page?: ChatPageView) => Promise<boolean>
 }
 
 /** The text the server gets back as history: the last MAX_HISTORY_TURNS messages. */
@@ -64,7 +58,7 @@ export function useAnalyticsChat(onTooManyRequests: () => void): AnalyticsChat {
   const [spend, setSpend] = useState<SpendStatus | null>(null)
   const nextId = useRef(0)
 
-  const send = useCallback(async (question: string): Promise<boolean> => {
+  const send = useCallback(async (question: string, page?: ChatPageView): Promise<boolean> => {
     const trimmed = question.trim()
     if (trimmed === '') return false
     setPending(trimmed)
@@ -72,7 +66,7 @@ export function useAnalyticsChat(onTooManyRequests: () => void): AnalyticsChat {
     try {
       const answer = await api.post<ChatAnswer>(
         CHAT_PATH,
-        { question: trimmed, history: historyFor(messages) },
+        { question: trimmed, history: historyFor(messages), ...(page === undefined ? {} : { page }) },
         { timeoutMs: CHAT_TIMEOUT_MS },
       )
       setMessages((current) => [

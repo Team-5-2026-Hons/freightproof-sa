@@ -17,6 +17,8 @@ import pytest
 from app.analytics.fleet.periods import Period
 from app.core.fleet_bands import Grain
 from app.core.config import settings
+from app.integrations.ai_chat.anthropic_client import AnthropicProvider
+from app.integrations.ai_chat.gemini_client import GeminiProvider
 from app.integrations.ai_chat.provider import (
     AiCreditError,
     AiProviderError,
@@ -35,22 +37,26 @@ from app.orchestration.analytics_chat.prompt import (
     SYSTEM_PROMPT,
     TOOL_CAP_MESSAGE,
 )
-from app.integrations.ai_chat.anthropic_client import AnthropicProvider
-from app.integrations.ai_chat.gemini_client import GeminiProvider
 from app.orchestration.analytics_chat.service import (
     MAX_MODEL_CALLS,
     TOOL_SPECS,
-    ChatDisabledError,
     ChatCreditError,
+    ChatDisabledError,
     ChatProviderFailedError,
     ChatQuotaError,
     ask,
     build_provider,
 )
 from app.orchestration.analytics_chat.tools import TOOLS_BY_NAME, ToolOutcome
-from app.schemas.analytics_chat import Basis, ChatAnswer, ChatRequest, ChatTurn, SpendStatus
+from app.schemas.analytics_chat import (
+    Basis,
+    ChatAnswer,
+    ChatRequest,
+    ChatTurn,
+    PageView,
+    SpendStatus,
+)
 from app.schemas.people import UserRead
-
 from tests.fake_ai_provider import FAKE_USAGE, FakeProvider, text_reply, tool_reply
 
 # 10:00 SAST on Monday 19 Oct 2026.
@@ -100,13 +106,16 @@ def tool_runs(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         tool = TOOLS_BY_NAME.get(name)
         if tool is None:
             return ToolOutcome(tool=None, result=None, error=f"Unknown tool: {name}", period=None)
+        if not tool.gives_figures:
+            # The page guide: no period, and only the guide's own numbers (a cost rate here).
+            return ToolOutcome(tool=tool, result={"guide": [], "current_rates": {"fuel_per_km": 17.64}}, error=None, period=None)
         return ToolOutcome(tool=tool, result={"figure": 42}, error=None, period=_PERIOD)
 
     mock = AsyncMock(side_effect=_run)
     monkeypatch.setattr(service, "run_tool", mock)
 
     async def _basis(db: object, *, organization_id: uuid.UUID, outcome: ToolOutcome) -> Basis | None:
-        if outcome.tool is None or outcome.error is not None:
+        if outcome.tool is None or outcome.error is not None or not outcome.tool.gives_figures:
             return None
         return Basis(
             tool=outcome.tool.name, tab=outcome.tool.tab, label=outcome.tool.label,
@@ -405,7 +414,7 @@ async def test_ask_sends_the_fixed_prompt_todays_date_and_all_tools(user: UserRe
     assert sent.system == SYSTEM_PROMPT
     assert "Monday 2026-10-19" in sent.context
     assert sent.tools == TOOL_SPECS
-    assert len(sent.tools) == 8
+    assert len(sent.tools) == 9
 
 
 async def test_ask_tells_the_model_the_periods_the_question_names(user: UserRead) -> None:
@@ -522,3 +531,96 @@ def test_build_provider_anthropic_when_chosen(monkeypatch: pytest.MonkeyPatch) -
 
     assert isinstance(provider, AnthropicProvider)
     assert provider.model == "claude-sonnet-5-5"
+
+
+# ── Explaining the page (B45) ────────────────────────────────────────────────
+
+
+async def test_ask_explanation_from_the_guide_is_labelled_and_has_no_based_on(user: UserRead) -> None:
+    provider = FakeProvider([
+        tool_reply(("explain", {"topic": "cost"})),
+        text_reply("Operating cost is road distance times fuel and running per km, plus driving hours times the driver rate."),
+    ])
+
+    result = await _ask(provider, user, _request("How do we come up with operating cost?"))
+
+    assert (result.kind, result.basis) == ("explanation", [])
+
+
+async def test_ask_explanation_may_quote_the_guides_numbers_without_being_sent_back(user: UserRead) -> None:
+    provider = FakeProvider([
+        tool_reply(("explain", {"topic": "cost"})),
+        text_reply("Fuel is costed at R 17.64 per km from your current rates."),
+    ])
+
+    result = await _ask(provider, user, _request("How is fuel costed?"))
+
+    # One answer, no "No tool, no figures" correction: 17.64 came from the guide's rates.
+    assert len(provider.sent) == 2
+    assert result.answer == "Fuel is costed at R 17.64 per km from your current rates."
+
+
+async def test_ask_explanation_still_rejects_a_number_the_guide_never_gave(user: UserRead) -> None:
+    invented = "Operating cost was R 999 999 last quarter."
+    provider = FakeProvider([tool_reply(("explain", {"topic": "cost"})), text_reply(invented), text_reply(invented)])
+
+    result = await _ask(provider, user, _request("How is operating cost worked out?"))
+
+    assert result.answer != invented
+    assert result.kind == "declined"
+
+
+async def test_ask_explanation_with_figures_is_an_answer_with_based_on(user: UserRead) -> None:
+    provider = FakeProvider([
+        tool_reply(("explain", {"topic": "cost"}), ("cost", _ON_TIME_ARGS)),
+        text_reply("It came to 42, worked out from your rates."),
+    ])
+
+    result = await _ask(provider, user, _request("How did we get to that operating cost?"))
+
+    assert result.kind == "answer"
+    assert [basis.tool for basis in result.basis] == ["cost"]
+
+
+def test_prompt_explains_the_page_from_the_guide_and_never_asks_a_period_for_it() -> None:
+    assert "call `explain` with its topic and answer from the guide" in SYSTEM_PROMPT
+    assert "These need no period: never ask for one." in SYSTEM_PROMPT
+    assert "Never explain from general knowledge" in SYSTEM_PROMPT
+    assert "If a question asks for figures and doesn't say which period" in SYSTEM_PROMPT
+
+
+async def test_ask_tells_the_model_an_explanation_needs_no_period(user: UserRead) -> None:
+    provider = FakeProvider([text_reply("For which period?")])
+
+    await _ask(provider, user, _request("How do we come up with operating cost?"))
+
+    assert "call `explain` for its topic (no period is needed)" in provider.sent[0].context
+
+
+# ── What's on screen (B45, Stage 4b) ─────────────────────────────────────────
+
+
+async def test_ask_tells_the_model_what_is_on_screen(user: UserRead) -> None:
+    provider = FakeProvider([text_reply("Here is what they show.")])
+    request = ChatRequest(
+        question="What do these figures tell us?", page=PageView(tab="cost", preset="last_12_weeks", grain="week"),
+    )
+
+    await _ask(provider, user, request)
+
+    context = provider.sent[0].context
+    assert "looking at the Cost tab, Period last 12 weeks" in context
+    assert 'tool "cost" with preset "last_12_weeks", grain "week"' in context
+
+
+async def test_ask_without_a_page_view_says_nothing_about_the_screen(user: UserRead) -> None:
+    provider = FakeProvider([text_reply("For which period?")])
+
+    await _ask(provider, user, _request("Which lane costs the most to run?"))
+
+    assert "looking at" not in provider.sent[0].context
+
+
+def test_prompt_uses_the_period_on_screen_before_asking_for_one() -> None:
+    assert "use the period on screen when the server's note says what the dispatcher is looking at" in SYSTEM_PROMPT
+    assert "Never pick a period yourself when none is given and none is on screen." in " ".join(SYSTEM_PROMPT.split())

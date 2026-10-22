@@ -16,9 +16,17 @@ import math
 import re
 from collections.abc import Iterable
 
-# "R 305 781", "81%", "4.5", "1,5": a number with optional thousands spaces and decimals.
-_NUMBER = re.compile(r"(?<![\w.])\d{1,3}(?:[   ]\d{3})+(?:[.,]\d+)?|(?<![\w.])\d+(?:[.,]\d+)?")
-_THOUSANDS_SPACE = re.compile(r"[   ]")
+# A number as a sentence writes it. Three forms, tried in this order:
+# - thousands in spaces, the page's style: "R 305 781", "R 20 000", with optional decimals ("1 100,50");
+# - thousands in commas, as Bruce's figures are written: "R20,000", "R1,100.00" (a comma then exactly three digits);
+# - a plain number with an optional decimal point or decimal comma: "81", "4.5", "17,64".
+# A number never starts inside a word ("Q3", "last_12_months"), except straight after a rand sign ("R20,000").
+_AFTER_RAND = r"(?<=\bR)"
+_SPACE_THOUSANDS = rf"(?:{_AFTER_RAND}|(?<![\w.,]))\d{{1,3}}(?:[ \u00a0\u202f]\d{{3}})+(?:[.,]\d+)?"
+_COMMA_THOUSANDS = rf"(?:{_AFTER_RAND}|(?<![\w.,]))\d{{1,3}}(?:,\d{{3}})+(?:\.\d+)?(?!\d|,\d)"
+_PLAIN = rf"(?:{_AFTER_RAND}|(?<![\w.]))\d+(?:[.,]\d+)?"
+_NUMBER = re.compile(rf"({_SPACE_THOUSANDS})|({_COMMA_THOUSANDS})|({_PLAIN})")
+_THOUSANDS_SPACE = re.compile(r"[ \u00a0\u202f]")
 # Sources are machine text (JSON, preset names like last_12_months), so every digit run counts there,
 # even one joined to letters or underscores, which _NUMBER deliberately skips in prose.
 _SOURCE_NUMBER = re.compile(r"\d+(?:\.\d+)?")
@@ -30,7 +38,13 @@ HOURS_PER_DAY = 24
 
 
 def numbers_in(text: str) -> list[float]:
-    return [float(_THOUSANDS_SPACE.sub("", match).replace(",", ".")) for match in _NUMBER.findall(text)]
+    values: list[float] = []
+    for spaced, commas, plain in _NUMBER.findall(text):
+        if commas:
+            values.append(float(commas.replace(",", "")))
+        else:
+            values.append(float(_THOUSANDS_SPACE.sub("", spaced or plain).replace(",", ".")))
+    return values
 
 
 def _restatements(value: float) -> set[float]:
@@ -47,10 +61,13 @@ def _restatements(value: float) -> set[float]:
 
 
 def known_numbers(sources: Iterable[str]) -> set[float]:
+    """Every number a source holds, read two ways: each run of digits (machine text such as last_12_months), and
+    each number as a sentence writes it, so "about R 20 000" in the page guide is 20000, not 20 and 000 (eval, 22 Oct:
+    an explanation quoting Bruce's R 20 000 run was taken for an invented figure)."""
     known: set[float] = set()
     for text in sources:
-        for match in _SOURCE_NUMBER.findall(text):
-            known.update(_restatements(float(match)))
+        for value in [float(match) for match in _SOURCE_NUMBER.findall(text)] + numbers_in(text):
+            known.update(_restatements(value))
     return known
 
 

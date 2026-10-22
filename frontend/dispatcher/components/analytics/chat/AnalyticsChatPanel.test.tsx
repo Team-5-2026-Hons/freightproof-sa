@@ -185,6 +185,28 @@ describe('AnalyticsChatPanel', () => {
     expect(screen.getByRole('button', { name: 'Ask' })).toHaveClass('hover:underline', 'hover:decoration-white')
   })
 
+  it('labels an explanation as coming from the page\'s own notes', async () => {
+    mockedPost.mockResolvedValue({ answer: 'Operating cost is distance times the per-km rates.', kind: 'explanation', basis: [], spend: SPEND })
+    renderPanel()
+
+    ask('How do we come up with operating cost?')
+
+    expect(await screen.findByText("Explained from the page's own notes")).toBeInTheDocument()
+    expect(screen.queryByText('No figures used')).not.toBeInTheDocument()
+  })
+
+  it('sends the page view with the question when it has one, and nothing extra when it has none', async () => {
+    mockedPost.mockResolvedValue(ANSWER)
+    const pageView = { tab: 'cost', preset: 'last_12_weeks', grain: 'week' } as const
+    renderPanel({ pageView })
+
+    ask('What do these figures tell us?')
+
+    await waitFor(() => expect(mockedPost).toHaveBeenCalledWith(
+      CHAT_PATH, { question: 'What do these figures tell us?', history: [], page: pageView }, { timeoutMs: 60_000 },
+    ))
+  })
+
   it('marks a follow-up question as using no figures', async () => {
     mockedPost.mockResolvedValue({ answer: 'For which period?', kind: 'follow_up', basis: [], spend: SPEND })
     renderPanel()

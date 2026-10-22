@@ -39,7 +39,7 @@ import {
 } from '@/lib/format/period'
 import { useChatStatus } from '@/lib/hooks/useAnalyticsChat'
 import { useFleetTiles } from '@/lib/hooks/useFleetAnalytics'
-import type { Basis } from '@shared/lib/types/analytics-chat'
+import type { Basis, ChatPageView } from '@shared/lib/types/analytics-chat'
 
 // Fleet-wide patterns and trends. Per-entity numbers live on each
 // vehicle, driver and precinct detail page, so this page answers "how is the whole
@@ -150,6 +150,15 @@ function FleetAnalytics() {
   const allTimeStart = tiles.data?.all_time_start ?? null
   const activeControls = controls[active]
   const query = resolveTabQuery(activeControls.period, activeControls.grain, today, allTimeStart)
+  // What's on screen, sent with each chat question (B45): the View by actually drawn, which may be coarser than the
+  // one chosen, and none on Routes & sites.
+  const period = activeControls.period
+  const pageView: ChatPageView = {
+    tab: active,
+    preset: period.preset,
+    ...(period.preset === 'custom' ? { start: period.start, end: period.end } : {}),
+    grain: TABS_WITHOUT_GRAIN.includes(active) ? null : query.grain,
+  }
 
   // Once the returned-to choices are in state, tidy the address back to just the tab, so a
   // later refresh follows what's on screen rather than what the dispatcher came back with.
@@ -265,6 +274,7 @@ function FleetAnalytics() {
             onRecheckStatus={chatStatus.refetch}
             onOpenBasis={openBasis}
             initialQuestion={askedElsewhere ?? undefined}
+            pageView={pageView}
           />
         )}
       </div>

@@ -2523,6 +2523,7 @@
             "enum": [
               "answer",
               "follow_up",
+              "explanation",
               "declined"
             ],
             "title": "Kind",
@@ -2558,6 +2559,16 @@
             "maxItems": 10,
             "title": "History",
             "type": "array"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageView"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "question": {
             "maxLength": 500,
@@ -13627,6 +13638,87 @@
           "has_delivery_failure"
         ],
         "title": "PPWaybillSummary",
+        "type": "object"
+      },
+      "PageView": {
+        "additionalProperties": false,
+        "description": "What the dispatcher has on screen when they ask (B45, Stage 4b): the open tab, its Period and its View by.\nSo \"what do these figures tell us?\" is answered for the period on screen instead of asking for one. A period\nthe question names itself still wins. Holds no personal data.",
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "enum": [
+                  "week",
+                  "month",
+                  "year"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grain"
+          },
+          "preset": {
+            "enum": [
+              "last_4_weeks",
+              "last_12_weeks",
+              "last_26_weeks",
+              "last_3_months",
+              "last_6_months",
+              "last_12_months",
+              "this_year",
+              "last_3_years",
+              "all_time",
+              "custom"
+            ],
+            "title": "Preset",
+            "type": "string"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "tab": {
+            "enum": [
+              "activity",
+              "on-time",
+              "problems",
+              "review",
+              "evidence",
+              "routes",
+              "cost"
+            ],
+            "title": "Tab",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tab",
+          "preset"
+        ],
+        "title": "PageView",
         "type": "object"
       },
       "ParcelCard": {
