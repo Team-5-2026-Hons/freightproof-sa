@@ -9,7 +9,7 @@ import type { VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
+import { TRIP_POLL_INTERVAL_MS, UNASSIGNED_TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
 import { isTripHandedOver } from '@/lib/api/driver-substitutions'
@@ -426,16 +426,29 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   // Derived fresh every render from `trip` (never cached) — the whole point is that this
   // must flip false the instant the server's own recomputation says so.
   const actionable = trip !== null ? actionablePhase(trip.phases) : null
+
+  // A driver with no trip is waiting to be given one, and nothing else on Home will tell
+  // them it arrived: the foreground refresh fires when the app comes BACK, and a phone
+  // propped on the dash never leaves the foreground. Until this arm existed, the only way
+  // to see a new assignment was to kill and relaunch the app, which is exactly what a
+  // driver had to do (Tim, 21 Oct). It also recovers a Home whose first load failed and
+  // left `trip` null, which otherwise reads as "No trip assigned" until the next launch.
+  //
+  // Gated on isLoading so the hook's leading-edge refresh does not duplicate the mount
+  // effect's own first load, and on demo mode because refreshQuietly is a no-op there.
+  const hasNoTrip = trip === null && !isLoading && !IS_DEMO_MODE
   // `?? null` first is mandatory: `blocked_on` is optional on the shared PhaseDescriptor
   // type, so `undefined !== null` would be permanently true and polling would never turn
   // off. Mirrors the exact guard in Linehaul.tsx (`isBlocked`) — match its style.
   const pollingEnabled =
-    trip !== null &&
-    ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold')
+    hasNoTrip ||
+    (trip !== null && ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold'))
 
   useTripAutoRefresh({
     pollingEnabled,
-    intervalMs: TRIP_POLL_INTERVAL_MS,
+    // See UNASSIGNED_TRIP_POLL_INTERVAL_MS: waiting for an assignment is a slower
+    // question than waiting on a gate the driver is standing at.
+    intervalMs: hasNoTrip ? UNASSIGNED_TRIP_POLL_INTERVAL_MS : TRIP_POLL_INTERVAL_MS,
     onRefresh: refreshQuietly,
   })
 
