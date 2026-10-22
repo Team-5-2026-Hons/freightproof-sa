@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 
 from app.core.config import settings
 from app.db.models.enums import (
@@ -31,7 +31,7 @@ from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
 from app.integrations.idvs import IdvsDecisionStatus, IdvsSession, MockIdvsClient
 from app.orchestration.handover import receiver_verification as receiver_verification_module
-from app.orchestration.handover.receiver_verification import record_consent_declined
+from app.orchestration.handover.consent import record_consent_declined
 from app.orchestration.handover.service import resolve_receiver_verification
 from app.orchestration.handover.capability import (
     issue_capability_token,
@@ -39,11 +39,12 @@ from app.orchestration.handover.capability import (
 )
 from app.orchestration.handover.receiver_verification import (
     attach_confirmation,
-    ingest_webhook_decision,
-    record_consent,
     resolve_verification,
     start_verification,
+    sweep_abandoned_verifications,
 )
+from app.orchestration.handover.idvs_webhook import ingest_webhook_decision
+from app.orchestration.handover.consent import record_consent
 
 _CONSENT = "I agree to my identity document and photograph being checked."
 
@@ -514,3 +515,105 @@ async def test_resolving_a_vendor_unavailable_verification_twice_files_one_excep
         )
 
     assert await _exception_types(db_session, token.trip_id) == [ExceptionType.RECEIVER_ID_UNVERIFIED]
+
+
+# ── A final verdict is recorded once; a pending one is asked again (review, 22 Oct 2026) ──
+# identity_match is the cross-check RESULT, and None means "nothing to compare", so it cannot
+# also say "the receiver's resolve already finished". These pin the explicit marker instead.
+
+
+async def test_a_failed_verdict_with_no_extracted_identity_is_never_re_resolved(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """A decline with no extracted document data leaves identity_match NULL. If the vendor's
+    answer later changes, a second resolve must not overwrite the recorded FAILED."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(v.provider_session_id, status=IdvsDecisionStatus.DECLINED)
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+    assert v.status is ReceiverVerificationStatus.FAILED
+    assert v.identity_match is None
+    fetched_after_first = client.decisions_fetched
+    exceptions_after_first = await _exception_count(db_session, token.trip_id)
+
+    await client.stage_decision(v.provider_session_id, status=IdvsDecisionStatus.APPROVED)
+    again = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert again.status is ReceiverVerificationStatus.FAILED
+    assert client.decisions_fetched == fetched_after_first
+    assert await _exception_count(db_session, token.trip_id) == exceptions_after_first
+
+
+async def test_a_pending_decision_with_extracted_identity_is_asked_again_until_final(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """The vendor can return the document data before its decision. The cross-check result
+    from that early read must not end the receiver's resolving: the next call asks again."""
+    token, v, client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.IN_REVIEW,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+    assert v.status is ReceiverVerificationStatus.PENDING
+    assert v.resolved_at is None
+
+    await client.stage_decision(
+        v.provider_session_id, status=IdvsDecisionStatus.APPROVED,
+        extracted_surname="Nkosi", extracted_id_number="9202204720082",
+    )
+    final = await resolve_receiver_verification(
+        db_session, token=token, typed_name="Thandi Nkosi", typed_id_number="9202204720082",
+    )
+
+    assert final.status is ReceiverVerificationStatus.VERIFIED
+    assert final.resolved_at is not None
+    assert await _exception_types(db_session, token.trip_id) == []
+
+
+async def _locking_selects(db_session, run) -> list[str]:
+    """The SELECTs on receiver_identity_verifications that `run` issues, as SQL text."""
+    connection = (await db_session.connection()).sync_connection
+    seen: list[str] = []
+
+    def capture(_conn, _cursor, statement, _params, _context, _executemany) -> None:
+        if statement.lstrip().upper().startswith("SELECT") and "receiver_identity_verifications" in statement:
+            seen.append(statement)
+
+    event.listen(connection, "before_cursor_execute", capture)
+    try:
+        await run()
+    finally:
+        event.remove(connection, "before_cursor_execute", capture)
+    return seen
+
+
+async def test_the_webhook_locks_the_row_before_applying_a_decision(
+    db_session, seeded_phase_event, monkeypatch,
+):
+    """Every verdict writer takes the row lock the receiver's resolve takes, so a webhook
+    arriving mid-resolve waits and then sees the resolved row, instead of overwriting it."""
+    _token, v, _client = await _started_verification(db_session, seeded_phase_event, monkeypatch)
+
+    selects = await _locking_selects(db_session, lambda: ingest_webhook_decision(
+        db_session, payload={"session_id": v.provider_session_id, "status": "Approved"},
+    ))
+
+    assert selects and all("FOR UPDATE" in s for s in selects)
+
+
+async def test_the_sweeper_locks_the_rows_it_terminalises(db_session, seeded_phase_event, monkeypatch):
+    """The sweeper re-reads each PENDING row under the lock, so a resolve that finished while it
+    waited is skipped rather than overwritten with ABANDONED."""
+    await _started_verification(db_session, seeded_phase_event, monkeypatch)
+
+    selects = await _locking_selects(db_session, lambda: sweep_abandoned_verifications(
+        db_session, older_than_seconds=0,
+    ))
+
+    assert selects and all("FOR UPDATE" in s for s in selects)

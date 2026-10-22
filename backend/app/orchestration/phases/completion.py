@@ -15,7 +15,7 @@ from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
 from app.integrations.pulsit import PulsitFix
-from app.orchestration.evidence import action_location
+from app.orchestration.evidence import action_location, location_assessment
 from app.orchestration.phases.findings import (
     _raise_position_disagreement_if_unrecorded, _raise_trailer_decoupling_if_unrecorded,
 )
@@ -39,7 +39,7 @@ async def _finish_phase(
     obtained a few lines earlier, and the request's own driver-claimed phone
     accuracy — both threaded through as keyword-only, defaulted, arguments rather
     than positional ones, so every existing call site not yet touched keeps
-    compiling unchanged. See evidence.action_location.build_phase_assessment's
+    compiling unchanged. See evidence.location_assessment.build_phase_assessment's
     own docstring for why this function does not re-fetch the fix itself."""
     event.idempotency_key = idempotency_key
     event.completed_at = event.completed_at or datetime.now(UTC)
@@ -84,7 +84,7 @@ async def _finish_phase(
     # transaction usable for the flush below.
     evaluated_at = datetime.now(UTC)
     try:
-        assessment = await action_location.build_phase_assessment(
+        assessment = await location_assessment.build_phase_assessment(
             db, trip=trip, event=event, horse_fix=horse_fix,
             driver_accuracy_metres=driver_accuracy_metres, evaluated_at=evaluated_at,
         )

@@ -435,7 +435,9 @@ async def test_a_missing_name_is_null_not_an_error(client: AsyncClient, db_sessi
     arranger.organization_id = w.other_org_id
     await db_session.flush()
     url = f"{BASE}/{w.trip_id}/driver-substitutions/completed/{done['completed_substitution_id']}"
-    attester_id = uuid.UUID(done["completion"]["completed_by_user_id"])
+    completion = done["completion"]
+    assert isinstance(completion, dict)
+    attester_id = uuid.UUID(completion["completed_by_user_id"])
 
     detail = await client.get(url, headers=dispatcher(w, admin=True, user_id=attester_id))
 

@@ -129,7 +129,9 @@ def disposable_test_url() -> URL:
     url = make_url(settings.TEST_DATABASE_URL)
     # These checks need no schema and never use DATABASE_URL as a fallback. Match
     # the existing disposable compose/CI database, not a shared Supabase project.
-    if url.host not in {"localhost", "127.0.0.1", "::1", "test-db"} or url.database != "freightproof_test":
+    # A parallel run (pytest -n) gives each worker freightproof_test_gwN; still the disposable one.
+    database = (url.database or "").split("_gw", 1)[0]
+    if url.host not in {"localhost", "127.0.0.1", "::1", "test-db"} or database != "freightproof_test":
         pytest.fail("FP-275 tests require the local disposable freightproof_test database")
     return url
 

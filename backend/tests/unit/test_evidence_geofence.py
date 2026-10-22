@@ -1,7 +1,7 @@
 """Unit tests for app.orchestration.evidence.geofence — pure logic, no DB, no HTTP.
 
 Precinct rows are constructed in memory (never persisted) following the pattern in
-tests/unit/test_verification_service.py. Coordinates are real South African depot
+tests/integration/test_verification_service.py. Coordinates are real South African depot
 locations (this is a South African system): a Durban precinct is the fixed centre,
 compared against nearby Durban-area points for the in/near/out cases.
 """
@@ -24,7 +24,7 @@ from app.orchestration.evidence.geofence import (
 from app.schemas.organisations import _RADIUS_DEFAULT_METRES
 
 # Riverhorse Valley, Durban — a real precinct location already used as a fixture
-# elsewhere in this suite (tests/unit/test_verification_service.py).
+# elsewhere in this suite (tests/integration/test_verification_service.py).
 DURBAN_PRECINCT_LAT = Decimal("-29.7942000")
 DURBAN_PRECINCT_LNG = Decimal("30.9820000")
 

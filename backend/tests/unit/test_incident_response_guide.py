@@ -4,6 +4,7 @@ from what was recorded. Pure — no DB, plain facts in, step states out.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.db.models.enums import IncidentExternalAction, TripStatus
 from app.orchestration.incidents.response_guide import GuideFacts, build_response_guide
@@ -25,7 +26,7 @@ def _declaration(**facts) -> IncidentDeclarationRecord:
 
 
 def _facts(**overrides) -> GuideFacts:
-    base = {"trip_stopped_at": None, "trip_status": TripStatus.ACTIVE, "actions": [], "declarations": [], "pack_issued_at": None}
+    base: dict[str, Any] = {"trip_stopped_at": None, "trip_status": TripStatus.ACTIVE, "actions": [], "declarations": [], "pack_issued_at": None}
     return GuideFacts(**{**base, **overrides})
 
 

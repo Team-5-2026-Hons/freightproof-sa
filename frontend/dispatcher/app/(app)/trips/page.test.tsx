@@ -106,7 +106,8 @@ describe('Active Trips list', () => {
     for (const name of ['Created', 'Trip ID', 'Driver / horse', 'Route', 'Exceptions', 'Status']) {
       expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
     }
-    expect(screen.getByRole('link', { name: 'Sipho Dlamini · FP-t1' })).toHaveAttribute('href', '/trips/t1')
+    // The row carries the list it came from as returnTo, so the trip page's Back button can return to it.
+    expect(screen.getByRole('link', { name: 'Sipho Dlamini · FP-t1' })).toHaveAttribute('href', '/trips/t1?returnTo=%2Ftrips')
     // 08:00Z is 10:00 SAST.
     expect(screen.getByText('01 Oct 2026')).toBeInTheDocument()
     expect(screen.getByText('10:00 SAST')).toBeInTheDocument()

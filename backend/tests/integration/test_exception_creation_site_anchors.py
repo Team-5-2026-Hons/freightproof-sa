@@ -42,7 +42,7 @@ _APP = Path(__file__).resolve().parents[2] / "app"
 # Files whose constructions go through register_exception: path -> number of hooked sites.
 HOOKED_SITES = {
     "orchestration/evidence/road_check.py": 1,
-    "orchestration/handover/receiver_verification.py": 1,
+    "orchestration/handover/verdict.py": 1,
     "orchestration/phases/advance_departure.py": 1,
     "orchestration/phases/findings.py": 2,
     "orchestration/phases/override.py": 1,   # the authored note; its seal warning is below

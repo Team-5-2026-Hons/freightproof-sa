@@ -2,7 +2,7 @@
 
 Uses db_session (skips without TEST_DATABASE_URL) — the whole job is reading DB
 state, so a DB-free test would assert nothing meaningful. Mirrors
-test_scan_service.py, which does the same.
+test_consignment_scans.py, which does the same.
 """
 
 import pytest

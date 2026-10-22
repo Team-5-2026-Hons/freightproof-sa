@@ -28,8 +28,8 @@ from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.handover.capability import issue_capability_token
-from app.orchestration.handover.receiver_verification import (
-    PROVIDER_DIDIT,
+from app.integrations.idvs import PROVIDER_DIDIT
+from app.orchestration.handover.idvs_webhook import (
     WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
     ingest_webhook_decision,
     verify_webhook_signature,

@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.analytics.fleet.periods import Grain, Period
+from app.analytics.fleet.periods import Period
+from app.core.fleet_bands import Grain
 from app.core.config import settings
 from app.integrations.ai_chat.provider import (
     AiCreditError,

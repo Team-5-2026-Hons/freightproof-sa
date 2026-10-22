@@ -90,7 +90,7 @@ class PhaseEvent(Base):
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # The versioned ActionLocationAssessment snapshot (schemas/action_location.py)
-    # assembled by evidence.action_location.build_phase_assessment at
+    # assembled by evidence.location_assessment.build_phase_assessment at
     # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
     # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
     # completed before this column existed, and never backfilled — fabricating a

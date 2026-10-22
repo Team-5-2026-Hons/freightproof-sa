@@ -94,7 +94,7 @@ async def _sync_all_active() -> dict[str, Any]:
         # Nothing in the loop may touch a loaded Consignment for its own bookkeeping.
         work: list[_ConsignmentWork] = [
             _ConsignmentWork(c.id, c.parcel_perfect_reference, c.trip_id, c.pp_raw_json)
-            for c in result.scalars().all()
+            for c in result.scalars().all() if c.trip_id is not None  # the join already excludes NULL; narrows the type
         ]
 
         logger.info(

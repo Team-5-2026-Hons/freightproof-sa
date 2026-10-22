@@ -203,6 +203,9 @@ async def _completed_for(
     for row in (await db.execute(
         select(DriverSubstitution).where(DriverSubstitution.request_id.in_(completed_ids))
     )).scalars():
+        # in_() never matches NULL, so a legacy row (request_id NULL) cannot arrive here.
+        if row.request_id is None:
+            raise ValueError("A completed substitution matched by request has no request id")
         if row.request_id in found:
             raise ValueError("A request has more than one completed substitution")
         found[row.request_id] = row

@@ -14,6 +14,7 @@ import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { SearchField }    from '@/components/ui/SearchField'
 import { ListToolbar }    from '@/components/ui/ListToolbar'
 import { buildTripColumns, tripRowClassName } from '@/components/trips/tripColumns'
+import { withReturnTo } from '@/lib/navigation/returnTo'
 import { useActiveTrips } from '@/lib/hooks/useActiveTrips'
 import { useTableSort }   from '@/lib/hooks/useTableSort'
 import { useUrlListState } from '@/lib/hooks/useUrlListState'
@@ -50,7 +51,7 @@ export default function ActiveTripsPage() {
 function ActiveTripsList() {
   const router = useRouter()
   // Held in the URL so the list is still filtered after opening a trip and coming back.
-  const { state: { tab }, update, search, setSearch } = useUrlListState(TRIP_LIST_CODEC)
+  const { state: { tab }, update, search, setSearch, href: listHref } = useUrlListState(TRIP_LIST_CODEC)
   // Attention first by default: this is a monitoring screen, so a trip that has just raised a
   // critical must surface without anyone clicking a header, even though that means a live event can
   // move rows. A header click still takes over, and clicking Exceptions returns to attention order.
@@ -76,8 +77,12 @@ function ActiveTripsList() {
 
   // Built per render: route names depend on the loaded precincts.
   const columns = useMemo(
-    () => buildTripColumns<TripSummary>({ precincts, date: CREATED_DATE_COLUMN, showProgress: true, sortable: true }),
-    [precincts],
+    () => buildTripColumns<TripSummary>({
+      precincts, date: CREATED_DATE_COLUMN, showProgress: true, sortable: true,
+      // The filtered list as returnTo, so the trip page's Back button finds it too.
+      hrefFor: id => withReturnTo(ROUTES.tripDetail(id), listHref),
+    }),
+    [precincts, listHref],
   )
 
   const tabTripCount = tabs.find(t => t.id === tab)?.badge ?? 0

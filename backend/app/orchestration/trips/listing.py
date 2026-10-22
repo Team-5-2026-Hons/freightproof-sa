@@ -8,7 +8,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import func, literal, or_, select, tuple_
+from sqlalchemy import ColumnElement, func, literal, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -175,24 +175,17 @@ async def list_trips(
     ]
 
 
-async def list_trip_history(
-    db: AsyncSession,
+def _history_filters(
     *,
     operator_organization_id: uuid.UUID,
-    limit: int = 25,
-    cursor_position: CursorPosition | None = None,
-    q: str | None = None,
-    precinct_id: uuid.UUID | None = None,
-    from_date: date | None = None,
-    to_date: date | None = None,
-) -> CursorPage[TripHistoryListItemResponse]:
-    """Closed/cancelled trips, newest close first, keyset-paginated.
-
-    The opaque shared cursor's timestamp field is named ``created_at`` internally, but
-    its value here is always Trip.closed_at. The API boundary decodes it before calling
-    this query so malformed client input fails without doing database work.
-    """
-    filters = [
+    q: str | None,
+    precinct_id: uuid.UUID | None,
+    from_date: date | None,
+    to_date: date | None,
+) -> list[ColumnElement[bool]]:
+    """The WHERE clauses for the history list: the org's finished trips, narrowed by the
+    search text, a precinct at either end, and an inclusive close-date range in SAST."""
+    filters: list[ColumnElement[bool]] = [
         Trip.operator_organization_id == operator_organization_id,
         Trip.status.in_([TripStatus.CLOSED, TripStatus.CANCELLED]),
         Trip.closed_at.is_not(None),
@@ -228,6 +221,62 @@ async def list_trip_history(
                 Trip.closed_at
                 < datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=operations_tz)
             )
+    return filters
+
+
+async def _needs_review_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Exceptions still waiting for review, per trip. Trips with none are absent."""
+    exceptions_result = await db.execute(
+        select(TripException.trip_id, func.count(TripException.id))
+        .where(
+            TripException.trip_id.in_(trip_ids),
+            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
+        )
+        .group_by(TripException.trip_id)
+    )
+    return {trip_id: count for trip_id, count in exceptions_result.all()}
+
+
+async def _phase_counts(db: AsyncSession, trip_ids: list[uuid.UUID]) -> dict[uuid.UUID, tuple[int, int]]:
+    """(phases in the plan, phases resolved) per trip. Trips with no plan are absent."""
+    phases_result = await db.execute(
+        select(
+            PhaseEvent.trip_id,
+            func.count(PhaseEvent.id),
+            func.count(PhaseEvent.id).filter(
+                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
+            ),
+        )
+        .where(PhaseEvent.trip_id.in_(trip_ids))
+        .group_by(PhaseEvent.trip_id)
+    )
+    return {
+        trip_id: (total, completed)
+        for trip_id, total, completed in phases_result.all()
+    }
+
+
+async def list_trip_history(
+    db: AsyncSession,
+    *,
+    operator_organization_id: uuid.UUID,
+    limit: int = 25,
+    cursor_position: CursorPosition | None = None,
+    q: str | None = None,
+    precinct_id: uuid.UUID | None = None,
+    from_date: date | None = None,
+    to_date: date | None = None,
+) -> CursorPage[TripHistoryListItemResponse]:
+    """Closed/cancelled trips, newest close first, keyset-paginated.
+
+    The opaque shared cursor's timestamp field is named ``created_at`` internally, but
+    its value here is always Trip.closed_at. The API boundary decodes it before calling
+    this query so malformed client input fails without doing database work.
+    """
+    filters = _history_filters(
+        operator_organization_id=operator_organization_id, q=q, precinct_id=precinct_id,
+        from_date=from_date, to_date=to_date,
+    )
 
     count_stmt = (
         select(func.count())
@@ -267,33 +316,8 @@ async def list_trip_history(
         vehicle.id: vehicle for vehicle in horses_result.scalars().all()
     }
 
-    exceptions_result = await db.execute(
-        select(TripException.trip_id, func.count(TripException.id))
-        .where(
-            TripException.trip_id.in_(trip_ids),
-            TripException.review_status == ExceptionReviewStatus.NEEDS_REVIEW,
-        )
-        .group_by(TripException.trip_id)
-    )
-    exception_counts: dict[uuid.UUID, int] = {
-        trip_id: count for trip_id, count in exceptions_result.all()
-    }
-
-    phases_result = await db.execute(
-        select(
-            PhaseEvent.trip_id,
-            func.count(PhaseEvent.id),
-            func.count(PhaseEvent.id).filter(
-                PhaseEvent.status.in_(RESOLVED_PHASE_STATUSES)
-            ),
-        )
-        .where(PhaseEvent.trip_id.in_(trip_ids))
-        .group_by(PhaseEvent.trip_id)
-    )
-    phase_counts: dict[uuid.UUID, tuple[int, int]] = {
-        trip_id: (total, completed)
-        for trip_id, total, completed in phases_result.all()
-    }
+    exception_counts = await _needs_review_counts(db, trip_ids)
+    phase_counts = await _phase_counts(db, trip_ids)
 
     client_names = await _client_names(db, trips)
 

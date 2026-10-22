@@ -1,7 +1,7 @@
 """Unit tests for app.orchestration.evidence.proximity — pure logic, no DB, no HTTP.
 
 Coordinates are generated from ONE base point (Riverhorse Valley, Durban — the same
-precinct fixture used by tests/unit/test_geofence_service.py) via `_offset_east`, a
+precinct fixture used by tests/unit/test_evidence_geofence.py) via `_offset_east`, a
 spherical destination-point helper verified against `haversine_metres` below, rather
 than hardcoded as unexplained lat/lng pairs. `evaluated_at` is always passed in
 explicitly (an injected clock) — nothing here ever calls datetime.now().
@@ -26,7 +26,7 @@ from app.orchestration.evidence.proximity import FUTURE_FIX_SLACK_SECONDS, evalu
 
 # ── Shared fixtures ──────────────────────────────────────────────────────────────
 
-# Riverhorse Valley, Durban — the same base point test_geofence_service.py uses.
+# Riverhorse Valley, Durban — the same base point test_evidence_geofence.py uses.
 BASE_LAT = -29.7942000
 BASE_LNG = 30.9820000
 

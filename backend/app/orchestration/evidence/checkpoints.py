@@ -13,6 +13,7 @@ from app.db.models.trips import Trip
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint
 from app.orchestration.evidence import action_location as action_location_service
+from app.orchestration.evidence import location_assessment
 from app.orchestration.evidence.corroboration import record_checkpoint_corroboration
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.substitutions.access import WriteClaim, authorise_driver_write
@@ -100,7 +101,7 @@ async def _corroborate_and_assess(
     if phase_event is not None and payload.driver_captured_at is not None:
         # The report still owns the capture; phase context contributes only the leg's
         # frozen stop/precinct reference so a resulting checkpoint finding is scoped.
-        assessment = await action_location_service.build_phase_assessment(
+        assessment = await location_assessment.build_phase_assessment(
             db,
             trip=trip,
             event=phase_event,
@@ -115,7 +116,7 @@ async def _corroborate_and_assess(
             ),
         )
     else:
-        assessment = action_location_service.build_checkpoint_assessment(
+        assessment = location_assessment.build_checkpoint_assessment(
             checkpoint=checkpoint, horse_fix=horse_fix,
             driver_accuracy_metres=payload.driver_accuracy_metres, evaluated_at=evaluated_at,
         )

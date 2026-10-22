@@ -5,7 +5,7 @@ fixture binds every session to ONE outer connection with
 ``join_transaction_mode="create_savepoint"`` and rolls back at the end, so two sessions
 drawn from it share a transaction and can never contend for a row lock — a race test
 written against it would pass no matter what the service does. The existing conflict test
-in tests/unit/test_exception_service.py is sequential for the same reason: it proves the
+in tests/integration/test_exceptions_review_service.py is sequential for the same reason: it proves the
 409 branch is reachable, and nothing at all about simultaneity.
 
 Proving the FIRST review survives needs two independent connections and real commits,

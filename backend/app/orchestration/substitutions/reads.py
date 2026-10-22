@@ -41,7 +41,7 @@ from app.orchestration.substitutions.late_evidence import build_late_evidence_re
 from app.orchestration.substitutions.request_read import (
     Preloaded, Viewer, build_request_read, build_request_reads, required_confirmation_roles,
 )
-from app.orchestration.substitutions.service import viewer_for
+from app.orchestration.substitutions.guards import viewer_for
 from app.schemas.driver_substitutions import (
     CustodyPeriodRead, DriverParticipationHistoryRead, DriverSubstitutionContextRead, LateEvidenceDetailRead,
     LateEvidenceKind, ParticipationActionRef, SealCheck, SubstitutionCompletionMode, SubstitutionConfirmationDetail,
@@ -477,7 +477,7 @@ async def get_completed_substitution(
     completion = None if row.completed_by_driver_id is None and row.completed_by_user_id is None else SubstitutionCompletionRead(
         trigger=SubstitutionCompletionTrigger.DRIVER_CONFIRMATION if row.completed_by_driver_id else SubstitutionCompletionTrigger.DISPATCHER_ACTION,
         completed_by_driver_id=row.completed_by_driver_id, completed_by_user_id=row.completed_by_user_id,
-        completed_by_name=names.get(row.completed_by_driver_id or row.completed_by_user_id))
+        completed_by_name=names.get(completer_id) if (completer_id := row.completed_by_driver_id or row.completed_by_user_id) else None)
     identity = None if row.identity_attested_by_user_id is None else IdentityAttestationRead(
         attested_by_user_id=row.identity_attested_by_user_id, reason=row.identity_attestation_reason, attested_at=row.identity_attested_at,
         attested_by_name=names.get(row.identity_attested_by_user_id))

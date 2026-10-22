@@ -12,9 +12,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.analytics.fleet.constants import DayBlock
-from app.analytics.fleet.periods import Grain, LatenessBand, PlanBand, ReviewAgeBand
-from app.analytics.stats import safe_ratio
+from app.core.fleet_bands import DayBlock, Grain, LatenessBand, PlanBand, ReviewAgeBand
+from app.core.stats import safe_ratio
 from app.db.models.enums import (
     DispatcherReviewOutcome,
     ExceptionSeverity,

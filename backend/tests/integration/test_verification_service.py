@@ -33,7 +33,7 @@ async def test_verify_returns_no_receipt_when_none_exists(db_session):
 # No such tests or helpers (_stub_hedera_matching, _seed_unanchored_vehicle_event,
 # etc.) exist anywhere in this test suite as of this task. The helpers below are
 # written fresh, following the seeding pattern already established in
-# tests/unit/test_precinct_service.py (Organization/User/Precinct rows via
+# tests/integration/test_fleet_precincts.py (Organization/User/Precinct rows via
 # db_session, anchor_subject mocked out where the real service is exercised).
 
 

@@ -48,7 +48,7 @@ from app.db.models.enums import (
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.session import get_db
 from app.orchestration.handover.capability import build_scan_url, session_secret_matches
-from app.orchestration.handover.receiver_verification import (
+from app.orchestration.handover.idvs_webhook import (
     ingest_webhook_decision,
     verify_webhook_signature,
     webhook_timestamp_is_fresh,

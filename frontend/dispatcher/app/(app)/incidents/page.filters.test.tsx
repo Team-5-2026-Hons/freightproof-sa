@@ -63,4 +63,19 @@ describe('IncidentsPage status tabs', () => {
     expect(screen.queryByRole('link', { name: /FP-INVESTIGATING/ })).toBeNull()
     expect(screen.getByRole('link', { name: /FP-CLOSED/ })).toBeInTheDocument()
   })
+
+  it('carries_the_filtered_list_into_each_row_link_as_returnTo', async () => {
+    // The incident page's own Back button reads returnTo; without it only browser Back kept the filter.
+    render(<ForensicModeProvider><IncidentsPage /></ForensicModeProvider>)
+    await flush()
+    fireEvent.click(screen.getByRole('tab', { name: 'Closed' }))
+    await flush()
+
+    const href = screen.getByRole('link', { name: /FP-CLOSED/ }).getAttribute('href') ?? ''
+    const returnTo = new URL(href, 'https://x.invalid').searchParams.get('returnTo') ?? ''
+
+    expect(href.startsWith('/incidents/clo')).toBe(true)
+    expect(returnTo.startsWith('/incidents?')).toBe(true)
+    expect(new URLSearchParams(returnTo.split('?')[1]).toString()).toContain('closed')
+  })
 })

@@ -1,4 +1,5 @@
-"""Trip exceptions — the driver raising one, and the dispatcher reviewing it."""
+"""Trip exceptions raised by the driver: the report itself, its phase and location context, and the
+breakdown vehicle it names. Dispatcher review lives in `exceptions.review`."""
 
 import asyncio
 import logging
@@ -21,7 +22,7 @@ from app.db.models.trips import Trip, TripTrailer
 from app.db.models.transit import TripException
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
-from app.orchestration.evidence import action_location
+from app.orchestration.evidence import location_assessment
 from app.orchestration.evidence_anchors.artifacts import (
     resolve_photo_ids, validate_trip_artifacts,
 )
@@ -89,7 +90,7 @@ async def _driver_report_assessment(
         # The report row IS the capture: its own gps_lat/gps_lng and the device
         # timestamp the client sent, compared once against the tracker. Never stored
         # as a checkpoint and never turned into a second, system-generated exception.
-        assessment = action_location.build_capture_assessment(
+        assessment = location_assessment.build_capture_assessment(
             driver_lat=float(exc.gps_lat) if exc.gps_lat is not None else None,
             driver_lng=float(exc.gps_lng) if exc.gps_lng is not None else None,
             driver_captured_at=driver_captured_at,

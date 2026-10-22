@@ -22,6 +22,9 @@ from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
 from tests.integration.audit_pack_seed import T0, AuditTrip, _artifact, _receipt, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 
 @pytest.fixture
 async def audit_trip(db_session: AsyncSession) -> AuditTrip:

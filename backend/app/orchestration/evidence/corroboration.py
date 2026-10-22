@@ -491,7 +491,7 @@ async def record_checkpoint_corroboration(
     written to horse_gps_lat/lng), or `None` if none could be obtained at all —
     same contract as record_phase_corroboration, for the same reason:
     evidence.checkpoints.log_checkpoint passes this straight to
-    evidence.action_location.build_checkpoint_assessment rather than asking Pulsit a
+    evidence.location_assessment.build_checkpoint_assessment rather than asking Pulsit a
     second time for the same checkpoint.
     """
     context = f"checkpoint_id={checkpoint.id} trip_id={trip.id}"

@@ -21,6 +21,9 @@ export interface UrlListState<S extends { q: string }> {
   /** What the search box shows: runs ahead of `state.q` while the debounce waits. */
   search: string
   setSearch: (value: string) => void
+  /** This list with its committed filters, for a row link's returnTo, so a detail page's own Back
+   *  button (not only the browser's) returns to the list as it was left. */
+  href: string
 }
 
 /**
@@ -66,5 +69,8 @@ export function useUrlListState<S extends { q: string }>(codec: UrlListCodec<S>)
     return () => clearTimeout(timer)
   }, [search, state.q, update])
 
-  return { state, update, search, setSearch }
+  const committed = codec.serialize(state)
+  const href = committed ? `${pathname}?${committed}` : pathname
+
+  return { state, update, search, setSearch, href }
 }

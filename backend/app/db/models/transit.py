@@ -76,7 +76,7 @@ class Checkpoint(Base):
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
     # The versioned ActionLocationAssessment snapshot for this checkpoint's own
-    # handshake (evidence.action_location.build_checkpoint_assessment,
+    # handshake (evidence.location_assessment.build_checkpoint_assessment,
     # called from evidence.checkpoints.log_checkpoint). No precinct-membership facts —
     # unlike a phase event, a checkpoint happens on the road between precincts, so
     # those fields are always None here. See schemas/action_location.py.

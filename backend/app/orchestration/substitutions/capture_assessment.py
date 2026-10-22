@@ -29,7 +29,7 @@ from app.db.models.driver_substitutions import DriverSubstitutionConfirmation
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus, get_pulsit_client
-from app.orchestration.evidence import action_location
+from app.orchestration.evidence import action_location, location_assessment
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ async def record_capture_assessment(
     skew between them is one of the reasons the assessment can report.
     """
     try:
-        assessment = action_location.build_capture_assessment(
+        assessment = location_assessment.build_capture_assessment(
             driver_lat=None if confirmation.latitude is None else float(confirmation.latitude),
             driver_lng=None if confirmation.longitude is None else float(confirmation.longitude),
             # Older captures have no sample time; their declaration remains a legacy proxy.

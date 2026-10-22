@@ -118,65 +118,56 @@ async def _load_trip_receipts(
     return result.scalars().all()
 
 
-async def get_trip_detail(
+async def _load_org_trip(
     db: AsyncSession,
+    *,
     trip_id: uuid.UUID,
     operator_organization_id: uuid.UUID,
-    *,
-    include_reviewer_names: bool = False,
-    facts: TripReadFacts | None = None,
-) -> TripDetailResponse:
-    """Raises ResourceNotFoundError if trip not found or belongs to a different org.
-
-    `facts`, when given, is filled with the trip, phase events and drivers this read loaded."""
+    facts: TripReadFacts | None,
+) -> Trip:
+    """The trip, provided it belongs to the operator; ResourceNotFoundError otherwise."""
     if facts is not None and facts.trip is not None:
         # Read by the caller; the same two conditions the query below applies.
         trip = facts.trip
         if trip.id != trip_id or trip.operator_organization_id != operator_organization_id:
             raise ResourceNotFoundError("Trip", str(trip_id))
-    else:
-        # Filter by org at the DB level — avoids leaking trip existence to other orgs.
-        result = await db.execute(
-            select(Trip).where(
-                Trip.id == trip_id,
-                Trip.operator_organization_id == operator_organization_id,
-            )
+        return trip
+    # Filter by org at the DB level — avoids leaking trip existence to other orgs.
+    result = await db.execute(
+        select(Trip).where(
+            Trip.id == trip_id,
+            Trip.operator_organization_id == operator_organization_id,
         )
-        trip = result.scalar_one_or_none()
-        if trip is None:
-            raise ResourceNotFoundError("Trip", str(trip_id))
-
-    client_names = await _client_names(db, [trip])
-    # FP-83: `driver` is whoever holds the trip now; Trip.driver_id stays the journey lock's original.
-    links = (
-        facts.custody_links if facts is not None and facts.custody_links is not None
-        else await completed_links(db, trip_id=trip.id)
     )
-    custody = derive_custody(trip.driver_id, links)
-    drivers = {d.id: d for d in (await db.execute(
-        select(Driver).where(Driver.id.in_({trip.driver_id, custody.driver_id}))
-    )).scalars()}
-    driver = drivers[custody.driver_id]
+    found = result.scalar_one_or_none()
+    if found is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    return found
 
+
+async def _load_vehicles(db: AsyncSession, trip: Trip) -> tuple[Vehicle, list[Vehicle]]:
+    """The trip's horse and its trailers, trailers in the order they were coupled."""
     horse_result = await db.execute(select(Vehicle).where(Vehicle.id == trip.horse_id))
     horse = horse_result.scalar_one()
 
     tt_result = await db.execute(
-        select(TripTrailer).where(TripTrailer.trip_id == trip_id)
+        select(TripTrailer).where(TripTrailer.trip_id == trip.id)
     )
     trip_trailers = tt_result.scalars().all()
     trailer_ids = [tt.trailer_id for tt in trip_trailers]
     trailers_result = await db.execute(select(Vehicle).where(Vehicle.id.in_(trailer_ids)))
     trailers_by_id = {v.id: v for v in trailers_result.scalars().all()}
-    trailers = [trailers_by_id[tid] for tid in trailer_ids if tid in trailers_by_id]
+    return horse, [trailers_by_id[tid] for tid in trailer_ids if tid in trailers_by_id]
 
-    hs_result = await db.execute(
-        select(PhaseEvent)
-        .where(PhaseEvent.trip_id == trip_id)
-        .order_by(PhaseEvent.sequence_number)
-    )
-    phase_events = hs_result.scalars().all()
 
+async def _exception_reads(
+    db: AsyncSession,
+    *,
+    trip_id: uuid.UUID,
+    operator_organization_id: uuid.UUID,
+    include_reviewer_names: bool,
+) -> list[TripExceptionRead]:
+    """The trip's exceptions, decorated with their photos and anchor state."""
     exc_result = await db.execute(
         select(TripException).where(TripException.trip_id == trip_id)
     )
@@ -190,6 +181,73 @@ async def get_trip_detail(
         exception_reads = await with_reviewer_names(
             db, organization_id=operator_organization_id, reads=exception_reads,
         )
+    return exception_reads
+
+
+async def _consignment_reads(db: AsyncSession, *, trip_id: uuid.UUID) -> list[ConsignmentRead]:
+    """The trip's consignments with their live scan progress."""
+    # id tiebreaker: consignments inserted in one transaction share the same
+    # created_at (Postgres now() is per-transaction), so created_at alone is
+    # non-deterministic across reads.
+    consignments_result = await db.execute(
+        select(Consignment)
+        .where(Consignment.trip_id == trip_id)
+        .order_by(Consignment.created_at, Consignment.id)
+    )
+    consignments = consignments_result.scalars().all()
+
+    # One batched query for the whole trip's live scan progress — see its docstring
+    # for why this must not become a per-consignment loop on a dispatcher poll path.
+    scan_counts = await scanned_counts_for_trip(db, trip_id=trip_id)
+    return [
+        ConsignmentRead.model_validate(c).model_copy(update={
+            "scanned_out_count": scan_counts[c.id].scanned_out if c.id in scan_counts else 0,
+            "scanned_in_count": scan_counts[c.id].scanned_in if c.id in scan_counts else 0,
+        })
+        for c in consignments
+    ]
+
+
+async def get_trip_detail(
+    db: AsyncSession,
+    trip_id: uuid.UUID,
+    operator_organization_id: uuid.UUID,
+    *,
+    include_reviewer_names: bool = False,
+    facts: TripReadFacts | None = None,
+) -> TripDetailResponse:
+    """Raises ResourceNotFoundError if trip not found or belongs to a different org.
+
+    `facts`, when given, is filled with the trip, phase events and drivers this read loaded."""
+    trip = await _load_org_trip(
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id, facts=facts,
+    )
+
+    client_names = await _client_names(db, [trip])
+    # FP-83: `driver` is whoever holds the trip now; Trip.driver_id stays the journey lock's original.
+    links = (
+        facts.custody_links if facts is not None and facts.custody_links is not None
+        else await completed_links(db, trip_id=trip.id)
+    )
+    custody = derive_custody(trip.driver_id, links)
+    drivers = {d.id: d for d in (await db.execute(
+        select(Driver).where(Driver.id.in_({trip.driver_id, custody.driver_id}))
+    )).scalars()}
+    driver = drivers[custody.driver_id]
+
+    horse, trailers = await _load_vehicles(db, trip)
+
+    hs_result = await db.execute(
+        select(PhaseEvent)
+        .where(PhaseEvent.trip_id == trip_id)
+        .order_by(PhaseEvent.sequence_number)
+    )
+    phase_events = hs_result.scalars().all()
+
+    exception_reads = await _exception_reads(
+        db, trip_id=trip_id, operator_organization_id=operator_organization_id,
+        include_reviewer_names=include_reviewer_names,
+    )
 
     receipts = await _load_trip_receipts(
         db, trip_id=trip_id, phase_event_ids=[h.id for h in phase_events],
@@ -211,26 +269,7 @@ async def get_trip_detail(
     # whole trip, not one per phase event.
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
 
-    # id tiebreaker: consignments inserted in one transaction share the same
-    # created_at (Postgres now() is per-transaction), so created_at alone is
-    # non-deterministic across reads.
-    consignments_result = await db.execute(
-        select(Consignment)
-        .where(Consignment.trip_id == trip_id)
-        .order_by(Consignment.created_at, Consignment.id)
-    )
-    consignments = consignments_result.scalars().all()
-
-    # One batched query for the whole trip's live scan progress — see its docstring
-    # for why this must not become a per-consignment loop on a dispatcher poll path.
-    scan_counts = await scanned_counts_for_trip(db, trip_id=trip_id)
-    consignment_reads = [
-        ConsignmentRead.model_validate(c).model_copy(update={
-            "scanned_out_count": scan_counts[c.id].scanned_out if c.id in scan_counts else 0,
-            "scanned_in_count": scan_counts[c.id].scanned_in if c.id in scan_counts else 0,
-        })
-        for c in consignments
-    ]
+    consignment_reads = await _consignment_reads(db, trip_id=trip_id)
 
     if facts is not None:
         facts.trip, facts.custody_links, facts.phase_events, facts.drivers = trip, links, phase_events, drivers

@@ -26,7 +26,8 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.fleet.periods import Grain, Period
+from app.analytics.fleet.periods import Period
+from app.core.fleet_bands import Grain
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
 from app.orchestration.analytics.fleet import (

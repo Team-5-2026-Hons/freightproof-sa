@@ -548,7 +548,7 @@ def stub_hedera_service(monkeypatch):
     """advance_loading and advance_confirmation anchor through anchor_subject(), which
     constructs its own HederaService. These tests use a real (rolled-back) session but
     must never touch the Hedera SDK, so the wrapper is patched at the import boundary
-    anchor_service reaches it through — the same seam test_phase_service.py uses.
+    anchor_service reaches it through — the same seam test_phases_service.py uses.
 
     Autouse and harmless to the seal tests above: unloading does not anchor at all.
     """
@@ -777,7 +777,7 @@ def test_every_trip_exception_write_site_is_accounted_for():
         "app/orchestration/evidence/action_location.py": 2,
         "app/orchestration/evidence/road_check.py": 1,
         "app/orchestration/exceptions/creation.py": 1,
-        "app/orchestration/handover/receiver_verification.py": 1,
+        "app/orchestration/handover/verdict.py": 1,
         "app/orchestration/phases/advance_confirmation.py": 1,
         "app/orchestration/phases/advance_departure.py": 1,
         "app/orchestration/phases/findings.py": 4,

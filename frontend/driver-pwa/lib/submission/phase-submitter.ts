@@ -310,6 +310,8 @@ function addressedPhaseOf(trip: Trip | null, phaseEventId: string): PhaseDescrip
 
 const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry from the trip screen.'
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
+// Same wording as the checkpoint screen's storage failure, so the driver hears one message for one cause.
+const QUEUE_STORAGE_FAILED_MESSAGE = 'Couldn’t save on this phone — storage is full or unavailable. Try again.'
 
 async function runSubmission(request: PhaseSubmissionRequest, generation: number): Promise<PhaseSubmissionOutcome> {
   const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt, acknowledgement = null } = request
@@ -412,7 +414,11 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
       // Network error, 5xx, or a status-0 timeout — queue for retry once connectivity or
       // the server recovers. The position and the capture instant go WITH the entry so a
       // replay hours later still reports where — and when — the driver actually swiped.
-      request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey)
+      const persisted = request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey)
+      // The phone refused to store it (storage full or disabled): no replay is scheduled, so this
+      // is not "queued". 'failed' rolls the optimistic advance back and keeps the draft, so the
+      // driver retries from the same step instead of trusting a sync that will never happen.
+      if (!persisted) return { kind: 'failed', message: QUEUE_STORAGE_FAILED_MESSAGE }
       return { kind: 'queued' }
     }
 

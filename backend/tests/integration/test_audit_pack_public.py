@@ -28,6 +28,9 @@ from app.storage.supabase_storage import EvidenceObjectIntegrityError, EvidenceS
 from tests.integration._audit_pack_anchor_helpers import anchor_event, raise_critical, review_exception
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 PUBLIC = "/api/v1/public/audit-packs"
 
 
@@ -325,6 +328,7 @@ async def test_live_verification_mirror_down_is_error_not_mismatch(client, db_se
     assert response.json()["seal_status"] == "error"
 
 
+@pytest.mark.real_pdf  # reads the rendered PDF itself
 async def test_shared_incident_sheet_is_rendered_from_the_frozen_pack(client, db_session, audit_trip, storage):
     # Arrange: issue, then change the live trip — the sheet must still show the snapshot.
     issued = await _issue(db_session, audit_trip)

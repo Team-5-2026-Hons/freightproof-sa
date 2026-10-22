@@ -19,7 +19,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.transit import TripException
 from app.db.models.trips import DriverSubstitution, Trip
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
-from app.orchestration.evidence import action_location
+from app.orchestration.evidence import location_assessment
 from app.orchestration.substitutions import capture_assessment
 from app.orchestration.substitutions.service import confirm_substitution
 from app.schemas.driver_substitutions import (
@@ -172,7 +172,7 @@ async def test_a_failure_building_the_assessment_keeps_the_capture_as_not_assess
     def _boom(**_: object) -> None:
         raise RuntimeError("assessment exploded")
 
-    monkeypatch.setattr(action_location, "build_capture_assessment", _boom)
+    monkeypatch.setattr(location_assessment, "build_capture_assessment", _boom)
 
     read = await confirm(db_session, w, pending, w.a)
 

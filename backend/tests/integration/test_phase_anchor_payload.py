@@ -3,7 +3,7 @@
 Payload-shape tests are pure logic (no DB). The anchoring and verification
 reconstruction tests use a real (rolled-back) db_session with the Hedera SDK
 wrapper stubbed at the import boundary anchor_service uses it through — the
-same approach as tests/unit/test_phase_service.py's autouse fixture, kept
+same approach as tests/integration/test_phases_service.py's autouse fixture, kept
 consistent here rather than mixing in a second mocking style.
 
 The explicit v1 builders preserve historical receipts, while v2 builders add
@@ -96,7 +96,7 @@ _FORBIDDEN_KEYS = {
 def stub_hedera_service(monkeypatch):
     """Stub the Hedera SDK wrapper so advance_departure/advance_confirmation anchor
     for real (real anchor_subject, real BlockchainReceipt row) without real
-    network access — see the identical fixture in tests/unit/test_phase_service.py.
+    network access — see the identical fixture in tests/integration/test_phases_service.py.
     """
     mock_cls = MagicMock()
     mock_cls.return_value.submit_hash.return_value = HederaReceipt(
@@ -120,7 +120,7 @@ def stub_evidence_storage_hash(monkeypatch):
 
 @pytest_asyncio.fixture
 async def trip_fixture(db_session):
-    """Same hand-built single-leg plan as test_phase_service.py's trip_fixture,
+    """Same hand-built single-leg plan as test_phases_service.py's trip_fixture,
     IN_TRANSIT row included — see that file's fixture docstring."""
     org = Organization(id=uuid.uuid4(), name="Org", org_type=OrganizationType.OPERATOR)
     client_org = Organization(id=uuid.uuid4(), name="Client", org_type=OrganizationType.PRINCIPAL)

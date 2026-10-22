@@ -37,11 +37,6 @@ ignore_imports =
     # core -> db: enums used as shared vocabulary by two core modules.
     app.core.phase_meta -> app.db.models.enums
     app.core.realtime -> app.db.models.enums
-    # schemas -> analytics: pure constants and helpers; candidates to move below schemas.
-    app.schemas.analytics -> app.analytics.stats
-    app.schemas.fleet_analytics -> app.analytics.stats
-    app.schemas.fleet_analytics -> app.analytics.fleet.constants
-    app.schemas.fleet_analytics -> app.analytics.fleet.periods
     # orchestration -> tasks: phases.anchor_dispatch imports tasks.blockchain lazily (function
     # level) to queue the Hedera submit on the Celery worker. The anchor_dispatch split (audit
     # 5.2) removed the import CYCLE (tasks.blockchain now re-enters phases.anchor_execution,
@@ -140,8 +135,11 @@ layers =
 # ---------------------------------------------------------------------------
 # 12. Tier order inside evidence/ (audit 5, move order: leaves first). A module may import
 #     only from tiers below it; modules on one tier ("|") may not import each other. The
-#     tiers are the edges the code has today: checkpoints builds on corroboration and
-#     action_location; those and road_check build on the geofence/proximity leaves.
+#     tiers are the edges the code has today: checkpoints builds on corroboration,
+#     action_location and location_assessment; those and road_check build on the
+#     geofence/proximity leaves, location_assessment through precinct_assessment.
+#     location_assessment builds the snapshot and action_location records the findings it
+#     implies; neither imports the other (split 2026-10-22).
 #     evidence/__init__ stays empty (audit 5 rule 1), so there is no package facade to
 #     reach siblings through.
 #     Layers are not optional: a misspelt or missing module fails the contract.
@@ -153,7 +151,8 @@ containers =
     app.orchestration.evidence
 layers =
     checkpoints
-    corroboration | action_location | road_check
+    corroboration | action_location | road_check | location_assessment
+    precinct_assessment
     geofence | proximity | location | artifacts
     attribution
 
@@ -171,12 +170,13 @@ modules =
     app.orchestration.fleet.precincts
 
 # ---------------------------------------------------------------------------
-# 16. Tier order inside handover/. service composes the other two for the receiver routes
-#     (it is the route's database work, moved out of endpoints/handover.py); receiver_verification
-#     builds on capability (it extends a handover token and builds the scan URL); capability
-#     never reaches back. handover/__init__ stays empty (audit 5 rule 1), so there is no package
-#     facade to reach siblings through. Layers are not optional: a misspelt or missing module
-#     fails the contract.
+# 16. Tier order inside handover/. service composes the rest for the receiver routes (it is the
+#     route's database work, moved out of endpoints/handover.py). receiver_verification runs the
+#     vendor session lifecycle and idvs_webhook applies the vendor's pushed decision; neither uses
+#     the other. Below them sit independent leaves: capability (handover tokens and the scan URL),
+#     consent, quota, identity_match and verdict, none of which reaches back. handover/__init__
+#     stays empty (audit 5 rule 1), so there is no package facade to reach siblings through.
+#     Layers are not optional: a misspelt or missing module fails the contract.
 # ---------------------------------------------------------------------------
 [importlinter:contract:handover-tier-order]
 name = Inside handover/, modules import only from lower tiers
@@ -185,8 +185,8 @@ containers =
     app.orchestration.handover
 layers =
     service
-    receiver_verification
-    capability
+    receiver_verification | idvs_webhook
+    capability | consent | quota | identity_match | verdict
 
 # ---------------------------------------------------------------------------
 # 18. Tier order inside consignments/ (audit 5, move order: leaves first). The tiers are the
@@ -339,3 +339,113 @@ layers =
     service
     receipts | trip_payloads | phase_payloads | fleet_events
     errors
+
+# ---------------------------------------------------------------------------
+# 28. Tier order inside assistant/ (dispatcher assistant spec). service runs the question loop and
+#     sits on top; tools is the registry the model is offered; the tool modules beneath it may
+#     build on one another (":" = not independent) but never on the registry or the loop.
+#     tools_base holds what every tool shares; hints and refs format what tools return; the
+#     bottom row are leaves that import no sibling.
+# ---------------------------------------------------------------------------
+[importlinter:contract:assistant-tier-order]
+name = Inside assistant/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.assistant
+layers =
+    service
+    tools
+    tools_documents : tools_actions : tools_fleet : tools_crew : tools_history : tools_incidents : tools_parcels : tools_trips : tools_roster : tools_route
+    tools_base
+    hints | refs
+    enabled | prompt | resolve | results | route_cache | spend | when
+
+# ---------------------------------------------------------------------------
+# 29. Tier order inside analytics_chat/ (FP-295). service is the question loop; basis writes the
+#     "Based on" line from what the tools returned; tools and period_hints read data and the
+#     question; the bottom row are independent leaves.
+# ---------------------------------------------------------------------------
+[importlinter:contract:analytics-chat-tier-order]
+name = Inside analytics_chat/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.analytics_chat
+layers =
+    service
+    basis
+    period_hints | tools
+    budget | definitions | number_check | periods | prompt | punctuation | totals
+
+# ---------------------------------------------------------------------------
+# 30. Tier order inside incidents/. ledger is the one write path (append an entry, then copy
+#     the state), so every writer sits above it and nothing below it writes. state, guards and
+#     response_guide are leaves: state and response_guide are pure, guards only reads. evidence
+#     sits on top because it gathers a decision's evidence through audit_packs.builder, which
+#     itself reads incidents.manifest; layers contracts follow that indirect chain.
+# ---------------------------------------------------------------------------
+[importlinter:contract:incidents-tier-order]
+name = Inside incidents/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.incidents
+layers =
+    evidence
+    manifest
+    queries
+    creation | updates
+    documents | links
+    ledger
+    guards | response_guide | state
+
+# ---------------------------------------------------------------------------
+# 31. Tier order inside evidence_anchors/ (FP-290). recovery re-runs anchor debt through
+#     execution; execution re-checks an event against its live rows through
+#     verification.evidence_payloads, which reads recording's helpers, so it sits above recording;
+#     recording writes an action's anchor event using the independent leaves below.
+# ---------------------------------------------------------------------------
+[importlinter:contract:evidence-anchors-tier-order]
+name = Inside evidence_anchors/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.evidence_anchors
+layers =
+    recovery
+    execution
+    recording
+    artifacts | canonical | dispatch | reads
+
+# ---------------------------------------------------------------------------
+# 32. Tier order inside parcel_trace/ (FP-149). service answers the parcel search; projection
+#     turns rows into the timeline; evidence and queries load what it needs.
+# ---------------------------------------------------------------------------
+[importlinter:contract:parcel-trace-tier-order]
+name = Inside parcel_trace/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.parcel_trace
+layers =
+    service
+    projection
+    evidence
+    queries
+
+# ---------------------------------------------------------------------------
+# 33. Tier order inside substitutions/ (FP-83). service runs the handover lifecycle and sits
+#     beside artifacts (the upload routes); only client_operations (the public create/replace
+#     policy) and the reads above it build on them. What several actions share lives below:
+#     guards (locks and state checks) and operations (idempotency and the clock), so no sibling
+#     needs to import service for a helper. The bottom row are independent leaves.
+# ---------------------------------------------------------------------------
+[importlinter:contract:substitutions-tier-order]
+name = Inside substitutions/, modules import only from lower tiers
+type = layers
+containers =
+    app.orchestration.substitutions
+layers =
+    reads
+    client_operations | late_evidence
+    artifacts | service
+    capture_validation | guards
+    request_read
+    anchors | capture_assessment | eligibility | termination
+    access | availability | canonical | notices | operations | seal_comparison | transfer_review

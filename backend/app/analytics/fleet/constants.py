@@ -5,8 +5,7 @@ reason it has its value, so a chart's definition can be read without opening the
 that applies it.
 """
 
-import enum
-
+from app.core.fleet_bands import DayBlock
 from app.db.models.enums import ExceptionType
 
 # The zone the SQL buckets by. Named rather than a bare offset so the boundary reads as
@@ -65,15 +64,6 @@ THEFT_SIGNAL_TYPES: tuple[ExceptionType, ...] = (
 # records one automatically, so counting them would make "problems" rise whenever a
 # dispatcher does their job.
 EXCLUDED_FROM_PROBLEMS: frozenset[ExceptionType] = frozenset({ExceptionType.DISPATCHER_NOTE})
-
-
-class DayBlock(str, enum.Enum):
-    """A quarter of the South African day, for chart 3.5 (risky times of day)."""
-
-    NIGHT = "night"
-    MORNING = "morning"
-    AFTERNOON = "afternoon"
-    EVENING = "evening"
 
 
 # (block, first hour, end hour exclusive) in SAST. Together they cover 00:00-24:00 with no

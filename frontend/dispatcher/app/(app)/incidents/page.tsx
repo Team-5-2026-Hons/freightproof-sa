@@ -15,6 +15,8 @@ import { Spinner } from '@/components/ui/Spinner'
 import { Table } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
 import { buildIncidentColumns } from '@/components/incidents/incidentColumns'
+import { withReturnTo } from '@/lib/navigation/returnTo'
+import { ROUTES } from '@/lib/constants/routes'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useIncidents } from '@/lib/hooks/useIncidents'
 import { useNow } from '@/lib/hooks/useNow'
@@ -70,9 +72,13 @@ function IncidentsList(): React.JSX.Element {
   const { user } = useAuth()
   const { notify } = useToast()
   const now = useNow(CLOCK_TICK_MS)
-  const columns = useMemo(() => buildIncidentColumns(now), [now])
   // Held in the URL so the list is still filtered after opening an incident and coming back.
-  const { state: { status, type: incidentType, owner }, update, search, setSearch } = useUrlListState(INCIDENT_LIST_CODEC)
+  const { state: { status, type: incidentType, owner }, update, search, setSearch, href: listHref } = useUrlListState(INCIDENT_LIST_CODEC)
+  // Rows carry the filtered list as returnTo, so the incident page's Back button finds it too.
+  const columns = useMemo(
+    () => buildIncidentColumns(now, id => withReturnTo(ROUTES.incidentDetail(id), listHref)),
+    [now, listHref],
+  )
   const [page, setPage] = useState(FIRST_PAGE)
   // Read once per mount, as Trip History does: a changed preference applies on the next visit.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)

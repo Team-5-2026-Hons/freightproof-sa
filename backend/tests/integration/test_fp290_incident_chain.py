@@ -52,6 +52,9 @@ from tests.integration._audit_pack_anchor_helpers import anchor_event as _anchor
 from tests.integration._audit_pack_anchor_helpers import raise_critical as _raise_for_consignment
 from tests.integration.audit_pack_seed import AuditTrip, _artifact, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 _HASH_FN = "app.orchestration.verification.evidence_payloads.hash_stored_evidence_file"
 _PHOTO_LABELS = ("seal-cut-close-up", "seal-cut-wide-shot")
 _EVIDENCE_EVENT = SubjectType.EVIDENCE_EVENT.value

@@ -27,7 +27,7 @@ from app.db.models.enums import (
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
-from app.orchestration.handover.receiver_verification import Verdict, raise_verification_exception
+from app.orchestration.handover.verdict import Verdict, raise_verification_exception
 
 
 @pytest_asyncio.fixture

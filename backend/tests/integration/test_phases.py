@@ -2370,7 +2370,7 @@ async def test_own_replay_of_an_exception_completion_after_the_trip_was_cancelle
     client: AsyncClient, db_session, seed_trip,
 ):
     """The replay short-circuit runs BEFORE the trip-status check, for EXCEPTION as for COMPLETED
-    (test_phase_service pins the COMPLETED half): a queued entry for a decided phase must drain
+    (test_phases_service pins the COMPLETED half): a queued entry for a decided phase must drain
     even though the trip has since reached a terminal status."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")

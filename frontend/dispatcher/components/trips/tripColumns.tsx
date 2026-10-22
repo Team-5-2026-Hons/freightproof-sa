@@ -52,6 +52,9 @@ interface TripColumnOptions<T extends TripChecklistItem> {
   /** Header buttons for the owner to handle. Off for server-paginated lists, where sorting one
    *  page would present a partial ordering as the whole. Needs `onSort` on the Table too. */
   sortable?: boolean
+  /** Where a row opens. A filtered list passes one carrying its URL as returnTo, so the trip page's
+   *  own Back button returns to the list as it was left. */
+  hrefFor?: (tripId: string) => string
 }
 
 // Role (origin/destination) is derived, not stored (FP-112). Without a total stop count
@@ -112,7 +115,7 @@ export function tripRowClassName(trip: TripChecklistItem): string | undefined {
 /** One definition drives the header and every cell for both trip lists, so History and the
  *  Dashboard cannot drift apart. Built per render because route names depend on the loaded
  *  precincts. */
-export function buildTripColumns<T extends TripChecklistItem>({ precincts, date, showProgress, sortable = false }: TripColumnOptions<T>): TableColumn<T>[] {
+export function buildTripColumns<T extends TripChecklistItem>({ precincts, date, showProgress, sortable = false, hrefFor = ROUTES.tripDetail }: TripColumnOptions<T>): TableColumn<T>[] {
   const exceptionsWidth = showProgress ? ATTENTION_WIDTH_PX : EXCEPTIONS_WIDTH_PX
   const columns: TableColumn<T>[] = [
     {
@@ -157,7 +160,7 @@ export function buildTripColumns<T extends TripChecklistItem>({ precincts, date,
         {/* The only link in the row; its ::after covers the whole <tr> so the row is one
             target without nesting interactive elements. Named by driver and trip because
             several rows can share a driver. */}
-        <Link href={ROUTES.tripDetail(trip.id)} aria-label={`${trip.driver.full_name} · ${trip.trip_reference}`}
+        <Link href={hrefFor(trip.id)} aria-label={`${trip.driver.full_name} · ${trip.trip_reference}`}
           className="text-[13px] font-semibold text-on-surf after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-sec">
           {trip.driver.full_name}
         </Link>

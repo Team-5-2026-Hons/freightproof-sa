@@ -28,7 +28,8 @@ import re
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from app.analytics.fleet.periods import DAYS_PER_WEEK, MONTHS_PER_YEAR, Grain, bucket_start
+from app.analytics.fleet.periods import DAYS_PER_WEEK, MONTHS_PER_YEAR, bucket_start
+from app.core.fleet_bands import Grain
 from app.orchestration.analytics_chat.periods import PeriodPreset, add_months
 
 MONTHS_PER_QUARTER = 3

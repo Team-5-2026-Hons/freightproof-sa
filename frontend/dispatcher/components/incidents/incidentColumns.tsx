@@ -28,10 +28,14 @@ const CARGO_HIDE_BELOW_PX = 900
 const OWNER_WIDTH_PX = 150
 const OWNER_HIDE_BELOW_PX = 1100
 
-/** The Incidents list's columns. `now` ages the Received column, which counts up without a refetch. */
-export function buildIncidentColumns(now: Date): TableColumn<IncidentSummary>[] {
+/** The Incidents list's columns. `now` ages the Received column, which counts up without a refetch.
+ *  `hrefFor` is where a row opens; the list passes one carrying its filtered URL as returnTo. */
+export function buildIncidentColumns(
+  now: Date,
+  hrefFor: (incidentId: string) => string = ROUTES.incidentDetail,
+): TableColumn<IncidentSummary>[] {
   return [
-    { id: 'reference', label: 'Incident', width: REFERENCE_WIDTH_PX, sortable: true, render: i => <RecordLink href={ROUTES.incidentDetail(i.incident_id)} className="tabular-nums">{i.trip_reference} · {i.reference}</RecordLink> },
+    { id: 'reference', label: 'Incident', width: REFERENCE_WIDTH_PX, sortable: true, render: i => <RecordLink href={hrefFor(i.incident_id)} className="tabular-nums">{i.trip_reference} · {i.reference}</RecordLink> },
     { id: 'type', label: 'Type', width: TYPE_WIDTH_PX, sortable: true, render: i => INCIDENT_TYPE_LABELS[i.incident_type] },
     { id: 'status', label: 'Status', width: STATUS_WIDTH_PX, sortable: true, render: i => <IncidentStatusChip status={i.status} /> },
     { id: 'summary', label: 'What was reported', width: SUMMARY_WIDTH_PX, render: i => <span className="line-clamp-2">{i.summary}</span> },

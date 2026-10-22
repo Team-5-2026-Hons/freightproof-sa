@@ -3203,7 +3203,7 @@ async def test_load_phase_event_emits_for_update(db_session, trip_fixture, monke
 # The driver never enters the warehouse and may reach the truck after loading
 # finished, so a parcel count he types in is not evidence — it's a guess. These
 # fixtures build a trip whose loading phase is unblocked purely by the mock
-# scan feed (mirroring test_phase_gate.py's `store`/`seeded` pattern), never by
+# scan feed (mirroring test_phases_gate.py's `store`/`seeded` pattern), never by
 # a hand-inserted TripException — the whole point of the short/empty variants
 # is proving what happens when scan_service's own ingest has (or hasn't)
 # already recorded a finding before advance_loading runs.
@@ -3221,7 +3221,7 @@ async def _build_scan_ready_trip(db_session) -> dict[str, Any]:
     phase plan advance_loading needs already committed (trip_creation
     completed, activation completed, loading pending).
 
-    Same trip shape as conftest.py's `seeded` fixture (test_phase_gate.py's),
+    Same trip shape as conftest.py's `seeded` fixture (test_phases_gate.py's),
     extended with the PhaseEvent rows `seeded` deliberately omits — its only
     consumer calls blocked_on_by_stop directly and needs no phase plan at all,
     but advance_loading's own gate (_gate_and_load) requires one.

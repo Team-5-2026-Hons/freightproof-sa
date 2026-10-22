@@ -135,6 +135,43 @@ Other paths:
   `app.orchestration.verification_service.*` must retarget them when it integrates.
 - `integrity` still contains real code at its existing path.
 
+### Name moves, 22 October 2026 (no wrappers; module paths kept, names moved out of them)
+
+These modules still exist, but some of their names now live in a new sibling. A branch that imports a
+moved name from the old module gets an `ImportError`; a test that patches it there patches nothing.
+Function, class and constant names did not change.
+
+| Name(s) | Was in | Now in |
+|---|---|---|
+| `identity_matches` | `handover.receiver_verification` | `handover.identity_match` |
+| `Verdict`, `resolve_verdict`, `raise_verification_exception` | `handover.receiver_verification` | `handover.verdict` |
+| `hash_consent_text`, `record_consent`, `record_consent_declined`, `record_consent_decision` | `handover.receiver_verification` | `handover.consent` |
+| `consume_quota_slot` | `handover.receiver_verification` | `handover.quota` |
+| `WEBHOOK_MAX_CLOCK_SKEW_SECONDS`, `verify_webhook_signature`, `webhook_timestamp_is_fresh`, `ingest_webhook_decision` | `handover.receiver_verification` | `handover.idvs_webhook` |
+| `PROVIDER_DIDIT` | `handover.receiver_verification` | `app.integrations.idvs` (was the unused private `_PROVIDER_DIDIT`; same value) |
+| `utcnow`, `body_digest`, `OperationKey`, `find_replay`, `record_operation` | `substitutions.service` | `substitutions.operations` |
+| `lock_org_trip`, `require_pending_at`, `require_new_arrangements_enabled`, `require_live`, `viewer_for`, `lock_crew_and_request` | `substitutions.service` | `substitutions.guards` |
+| `build_phase_assessment`, `build_checkpoint_assessment`, `build_capture_assessment`, `preview_phase_location`, `PhaseLocationPreviewConflictError` | `evidence.action_location` | `evidence.location_assessment` |
+| `stop_sequence_map` (was the endpoint's private `_stop_sequence_map`) | `api/v1/endpoints/phases.py` | `phases.queries` |
+| `safe_ratio`, `percentile`, `validate_month_range`, `MEDIAN_FRACTION`, `P90_FRACTION` | `app.analytics.stats` (module retired) | `app.core.stats` |
+| `DayBlock` | `app.analytics.fleet.constants` | `app.core.fleet_bands` |
+| `Grain`, `LatenessBand`, `ReviewAgeBand`, `ExpiryBand`, `PlanBand` | `app.analytics.fleet.periods` | `app.core.fleet_bands` |
+| the dev panel's trip list (`list_dev_trips`'s body) | `app.dev.endpoints.triggers` | `app.dev.services.panel_trips.list_panel_trips` |
+
+Patch targets that moved with them: the substitution clock is pinned with
+`monkeypatch.setattr(operations, "utcnow", ...)` (both `service` and `late_evidence` read it as
+`operations.utcnow()`); `initial_review_status` and `register_exception` for receiver verification
+are looked up in `handover.verdict`; `build_phase_assessment` and `build_capture_assessment` are
+looked up through `evidence.location_assessment` (callers hold the module, so patch the module
+attribute there). `analytics.stats` is the one module path retired here; `fleet.periods` and
+`fleet.constants` still import the bands they use, but new code imports them from `core.fleet_bands`.
+
+Tests moved too: the 20 database-backed files under `tests/unit/` are now in `tests/integration/`,
+and test files named after retired modules were renamed (`test_phase_service.py` →
+`tests/integration/test_phases_service.py`, `test_scan_service.py` →
+`tests/integration/test_consignment_scans.py`, and so on). A branch that edits one of those test
+files will see a rename conflict; reapply the edit to the new path.
+
 Example of an ordinary import migration:
 
 ```python

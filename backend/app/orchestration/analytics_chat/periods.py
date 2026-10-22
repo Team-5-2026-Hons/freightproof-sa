@@ -12,7 +12,8 @@ Pure: no database, no I/O.
 import enum
 from datetime import date, timedelta
 
-from app.analytics.fleet.periods import DAYS_PER_WEEK, MONTHS_PER_YEAR, Grain, bucket_start
+from app.analytics.fleet.periods import DAYS_PER_WEEK, MONTHS_PER_YEAR, bucket_start
+from app.core.fleet_bands import Grain
 
 
 class PeriodPreset(str, enum.Enum):

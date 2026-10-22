@@ -208,7 +208,7 @@ class _PhaseCompleteBase(BaseModel):
     # The phone's own claimed
     # accuracy at the moment of driver_phone_lat/lng, feeding evidence.proximity.
     # evaluate_proximity's `poor_accuracy`/`missing_accuracy` gates via orchestration/
-    # evidence.action_location.build_phase_assessment. NOT a phase_events column —
+    # evidence.location_assessment.build_phase_assessment. NOT a phase_events column —
     # it lives only inside the action_location_assessment JSONB snapshot (schemas/
     # action_location.py). Optional so a client built before this field existed
     # still 200s on replay: an omitted value reads as `missing_accuracy`, which

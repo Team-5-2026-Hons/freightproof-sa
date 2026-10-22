@@ -73,7 +73,7 @@ function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): Phase
     idempotencyKey: 'idem-1',
     position: Promise.resolve(null),
     driverCapturedAt: '2026-06-12T10:00:00Z',
-    enqueuePhase: vi.fn(),
+    enqueuePhase: vi.fn(() => true), // stored, as the real queue answers when the phone has room
     refetchTrip: vi.fn().mockResolvedValue(null),
     onOutcome: vi.fn(),
     ...overrides,

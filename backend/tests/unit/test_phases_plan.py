@@ -3,7 +3,7 @@
 Asserts the plan against the frozen reference implementation, makePhasePlan(),
 in frontend/shared/lib/mocks/phase-trips.ts. Pure logic, no DB, no HTTP.
 
-Run: pytest tests/unit/test_phase_plan.py -v
+Run: pytest tests/unit/test_phases_plan.py -v
 """
 
 from app.db.models.enums import PhaseType

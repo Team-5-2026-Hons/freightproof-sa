@@ -11,7 +11,6 @@ import pytest
 
 from app.analytics.fleet.constants import MAX_TREND_BUCKETS
 from app.analytics.fleet.periods import (
-    Grain,
     Period,
     bucket_count,
     bucket_start,
@@ -26,6 +25,7 @@ from app.analytics.fleet.periods import (
     today_sast,
     trailing_days,
 )
+from app.core.fleet_bands import Grain
 
 _MONDAY = date(2026, 9, 7)
 _SUNDAY = date(2026, 9, 13)

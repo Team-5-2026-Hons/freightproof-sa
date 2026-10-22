@@ -3,6 +3,7 @@ consignment scope cut, the incident summary for a hijacking reported only by pho
 observations an adjuster reads, and the incident fact sheet rendering.
 """
 
+import pytest
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -19,6 +20,9 @@ from app.reporting.pdf_renderer import render_audit_pack_html
 from app.schemas.audit_pack import AuditPackManifest, AuditPackOptions
 
 from tests.conftest import auth_header, make_token
+
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
 
 
 @pytest_asyncio.fixture(autouse=True)

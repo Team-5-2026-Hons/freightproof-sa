@@ -4,7 +4,7 @@ These run on the rolled-back `db_session`: the service never commits (the reques
 so one shared transaction is exactly what its callers see. Where a lock must actually be waited
 on, see test_driver_substitution_concurrency.py.
 
-The clock is a patched `service.utcnow` so licence and availability rules are asserted at exact
+The clock is a patched `operations.utcnow` so licence and availability rules are asserted at exact
 SAST instants rather than "now-ish".
 """
 
@@ -31,7 +31,7 @@ from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import DriverSubstitution, Trip
 from app.orchestration.substitutions.access import get_current_custody
-from app.orchestration.substitutions import service
+from app.orchestration.substitutions import operations
 from app.orchestration.substitutions.service import (
     arrange_substitution, cancel_substitution, complete_attested_substitution, confirm_substitution,
     correct_completed_substitution, replace_substitution,
@@ -62,7 +62,7 @@ class Clock:
 @pytest.fixture(autouse=True)
 def clock(monkeypatch: pytest.MonkeyPatch) -> Clock:
     fixed = Clock()
-    monkeypatch.setattr(service, "utcnow", lambda: fixed.now)
+    monkeypatch.setattr(operations, "utcnow", lambda: fixed.now)
     return fixed
 
 

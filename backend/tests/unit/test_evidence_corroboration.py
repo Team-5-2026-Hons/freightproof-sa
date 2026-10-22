@@ -40,7 +40,7 @@ from app.orchestration.evidence.corroboration import (
 )
 from app.orchestration.evidence.geofence import DEFAULT_GEOFENCE_RADIUS_METRES
 
-# Riverhorse Valley, Durban — the same real precinct fixture test_geofence_service.py
+# Riverhorse Valley, Durban — the same real precinct fixture test_evidence_geofence.py
 # uses, kept identical so a distance that is "clearly inside" or "clearly outside"
 # means the same thing in both files.
 _PRECINCT_LAT = Decimal("-29.7942000")
@@ -223,7 +223,7 @@ def test_precinct_without_coordinates_returns_none():
 
 def test_fix_inside_tolerance_band_returns_true():
     # Arrange: precincts and fixes cannot be placed at an exact integer-metre
-    # boundary, so — mirroring test_geofence_service.py's own boundary tests —
+    # boundary, so — mirroring test_evidence_geofence.py's own boundary tests —
     # haversine_metres is patched to a distance strictly between the radius and
     # radius + tolerance: the marginal band that is still persisted as True.
     radius = DEFAULT_GEOFENCE_RADIUS_METRES

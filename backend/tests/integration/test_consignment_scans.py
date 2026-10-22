@@ -1,7 +1,7 @@
 """Unit tests for scan reconciliation.
 
 Uses the db_session fixture (skips without TEST_DATABASE_URL), matching
-test_consignment_service.py — the service's whole job is comparing DB rows
+test_consignment_sync.py — the service's whole job is comparing DB rows
 against feed events, so a DB-free test would assert nothing meaningful.
 """
 
@@ -32,7 +32,7 @@ def store(monkeypatch: pytest.MonkeyPatch) -> FakeMockStateStore:
     return fake
 
 
-# `seeded` now lives in tests/conftest.py, shared with test_phase_gate.py.
+# `seeded` now lives in tests/conftest.py, shared with test_phases_gate.py.
 
 
 async def test_full_scan_out_stamps_every_parcel(db_session, store, seeded):

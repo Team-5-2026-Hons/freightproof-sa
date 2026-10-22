@@ -106,7 +106,8 @@ interface Harness {
 }
 
 function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
-  const enqueuePhase = vi.fn()
+  // true: stored, as the real queue answers when the phone has room (see the queue test for false).
+  const enqueuePhase = vi.fn(() => true)
   const refetchTrip = vi.fn().mockResolvedValue(null)
   let settle: (outcome: PhaseSubmissionOutcome) => void = () => {}
   const outcome = new Promise<PhaseSubmissionOutcome>((resolve) => { settle = resolve })

@@ -1,5 +1,8 @@
 """Pure arithmetic for the analytics read layer — no database, no I/O.
 
+Lives in `core` rather than `app.analytics` because the response schemas use it too, and the
+schema layer sits below `app.analytics`.
+
 Kept apart from the query modules so the one place a rate is divided and a percentile is
 interpolated can be unit-tested directly against hand-computed values.
 """

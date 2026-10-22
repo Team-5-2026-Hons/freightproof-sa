@@ -730,7 +730,7 @@ async def test_a_database_error_filing_the_verification_exception_leaves_the_res
     (a genuinely aborted transaction); the savepoint is what keeps the verdict committable."""
     token = await _started_session(client, handover_trip, driver_auth, db_session)
     monkeypatch.setattr(
-        "app.orchestration.handover.receiver_verification.initial_review_status",
+        "app.orchestration.handover.verdict.initial_review_status",
         lambda _severity: "x" * 40,
     )
 

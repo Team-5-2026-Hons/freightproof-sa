@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.analytics.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
+from app.core.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
 
 
 class DriverMetrics(BaseModel):

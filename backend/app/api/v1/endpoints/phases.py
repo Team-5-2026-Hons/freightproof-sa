@@ -11,7 +11,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,13 +29,13 @@ from app.core.exceptions import (
 from app.core.limits import EVIDENCE_WRITE
 from app.core.rate_limit import rate_limit
 from app.db.errors import DatabaseUnavailableError
-from app.db.models.trips import TripStop
 from app.db.session import get_db
 from app.orchestration.phases.blocking import blocked_on_by_stop
-from app.orchestration.evidence.action_location import (
-    PhaseLocationPreviewConflictError, preview_phase_location,
+from app.orchestration.evidence.location_assessment import (
+    PhaseLocationPreviewConflictError,
+    preview_phase_location,
 )
-from app.orchestration.phases.queries import list_phases, next_phase
+from app.orchestration.phases.queries import list_phases, next_phase, stop_sequence_map
 from app.orchestration.phases.service import complete_phase
 from app.schemas.action_location import ActionLocationAssessment, DriverLocationCapture
 from app.schemas.people import DriverRead
@@ -46,14 +45,6 @@ from app.schemas.trips import TripDetailResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips/{trip_id}/phases", tags=["phases"])
-
-
-async def _stop_sequence_map(db: AsyncSession, *, trip_id: UUID) -> dict[UUID, int]:
-    """PhaseEventRead.stop_sequence is a join, not a column — see its docstring."""
-    result = await db.execute(
-        select(TripStop.id, TripStop.sequence).where(TripStop.trip_id == trip_id)
-    )
-    return {stop_id: sequence for stop_id, sequence in result.all()}
 
 
 @router.get("", response_model=list[PhaseEventRead], summary="A trip's committed phase plan")
@@ -68,7 +59,7 @@ async def list_phases_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except CustodyAccessError as exc:
         raise custody_http_exception(exc) from exc
-    stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    stop_sequences = await stop_sequence_map(db, trip_id=trip_id)
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return [
         PhaseEventRead.from_event(
@@ -96,7 +87,7 @@ async def next_phase_endpoint(
         raise custody_http_exception(exc) from exc
     if event is None:
         return None
-    stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    stop_sequences = await stop_sequence_map(db, trip_id=trip_id)
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return PhaseEventRead.from_event(
         event, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,

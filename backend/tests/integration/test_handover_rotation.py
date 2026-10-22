@@ -13,7 +13,7 @@ exactly once, so a forwarded URL opened in a second browser gets nothing and can
 confirm.
 
 The single-token branches (unknown, wrong-trip, wrong-stop, expired, already-redeemed)
-live in test_handover_service.py and are not repeated here.
+live in test_handover_capability.py and are not repeated here.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -29,7 +29,7 @@ from app.orchestration.handover.capability import (
     rotate_capability_token,
     session_secret_matches,
 )
-from tests.unit.test_handover_service import _seed
+from tests.integration.test_handover_capability import _seed
 
 # _seed returns plain ids, not ORM objects:
 # {"trip_id", "stop_id", "other_stop_id", "other_trip_id", "phase_event_id"}.

@@ -11,7 +11,7 @@ Patching strategy:
   - fetch_and_sync_consignment → AsyncMock to control success / failure per call
 
 All patches target app.tasks.parcel_perfect.* — the module path as seen by
-the system under test, following the same convention as test_consignment_service.py.
+the system under test, following the same convention as test_consignment_sync.py.
 """
 
 import uuid
