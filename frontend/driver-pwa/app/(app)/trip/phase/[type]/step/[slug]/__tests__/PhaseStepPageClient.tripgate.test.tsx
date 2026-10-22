@@ -49,6 +49,9 @@ const mockEnqueuePhase = vi.fn()
 // Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
+// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
+// hand-off under test runs the same code path the app does.
+const mockNoteTripCompleted = vi.fn()
 
 interface MockTripState {
   trip: Trip | null
@@ -58,6 +61,7 @@ interface MockTripState {
   syncingPhaseIds: readonly string[]
   markPhaseSyncing: typeof mockMarkPhaseSyncing
   clearPhaseSyncing: typeof mockClearPhaseSyncing
+  noteTripCompleted: typeof mockNoteTripCompleted
 }
 
 // Reassigned mid-test (then rerender()ed) to simulate TripContext's shared state moving
@@ -73,6 +77,7 @@ function setTripState(trip: Trip | null, isLoading: boolean): void {
     syncingPhaseIds: [],
     markPhaseSyncing: mockMarkPhaseSyncing,
     clearPhaseSyncing: mockClearPhaseSyncing,
+    noteTripCompleted: mockNoteTripCompleted,
   }
 }
 

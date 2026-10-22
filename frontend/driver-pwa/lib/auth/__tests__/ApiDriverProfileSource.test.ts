@@ -1,57 +1,66 @@
-/** ApiDriverProfileSource: loads the driver's own profile, and says why when it cannot. */
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '@/lib/api/client'
+import { ApiDriverProfileSource } from '../ApiDriverProfileSource'
+import { isProfileUnreachable } from '../DriverProfileSource'
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-import type { DriverUser } from '@/lib/types/user'
-
-class FakeApiError extends Error {
-  constructor(public readonly status: number, message: string) {
-    super(message)
-  }
-}
-
-const apiGet = vi.fn()
-vi.mock('@/lib/api/client', () => ({
-  api: { get: (...args: unknown[]) => apiGet(...args) },
-  ApiError: FakeApiError,
-}))
-
-const { ApiDriverProfileSource } = await import('../ApiDriverProfileSource')
-
-const DRIVER = { id: 'driver-1', full_name: 'Test Driver' } as unknown as DriverUser
-
-let consoleError: ReturnType<typeof vi.spyOn>
-
-beforeEach(() => {
-  apiGet.mockReset()
-  consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+const get = vi.fn()
+vi.mock('@/lib/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/client')>()
+  return { ...actual, api: { get: (...args: unknown[]) => get(...args) } }
 })
 
 afterEach(() => {
-  consoleError.mockRestore()
+  get.mockReset()
+  vi.restoreAllMocks()
 })
 
-describe('ApiDriverProfileSource.loadProfile', () => {
-  it("returns the driver's own profile from /drivers/me", async () => {
-    apiGet.mockResolvedValue(DRIVER)
+// The whole point of this split: a driver must never be told to log in again because the
+// backend was unreachable. See lib/auth/DriverProfileSource.ts.
+describe('ApiDriverProfileSource', () => {
+  it('returns the driver on success', async () => {
+    const driver = { id: 'd1', full_name: 'Timothy Gultig' }
+    get.mockResolvedValue(driver)
 
-    expect(await new ApiDriverProfileSource().loadProfile()).toBe(DRIVER)
-    expect(apiGet).toHaveBeenCalledWith('/api/v1/drivers/me')
+    const result = await new ApiDriverProfileSource().loadProfile()
+
+    expect(result).toBe(driver)
+    expect(isProfileUnreachable(result)).toBe(false)
   })
 
-  // Status and detail go INTO the message: the iOS console bridge drops a second argument.
-  it('returns null and logs the status and detail of an API error in one string', async () => {
-    apiGet.mockRejectedValue(new FakeApiError(403, 'Driver account not found.'))
+  it('reports unreachable when no HTTP response arrived (status 0)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    get.mockRejectedValue(new ApiError(0, 'Request timed out'))
 
-    expect(await new ApiDriverProfileSource().loadProfile()).toBeNull()
-    expect(consoleError).toHaveBeenCalledTimes(1)
-    expect(consoleError).toHaveBeenCalledWith('Failed to fetch driver profile: 403 Driver account not found.')
+    const result = await new ApiDriverProfileSource().loadProfile()
+
+    expect(isProfileUnreachable(result)).toBe(true)
   })
 
-  it('returns null and logs a non-API failure as text', async () => {
-    apiGet.mockRejectedValue(new TypeError('Network request failed'))
+  it('reports unreachable on a 5xx, which is the service failing and not the session', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    get.mockRejectedValue(new ApiError(502, 'Bad gateway'))
 
-    expect(await new ApiDriverProfileSource().loadProfile()).toBeNull()
-    expect(consoleError).toHaveBeenCalledWith('Failed to fetch driver profile: TypeError: Network request failed')
+    expect(isProfileUnreachable(await new ApiDriverProfileSource().loadProfile())).toBe(true)
+  })
+
+  it.each([
+    [401, 'Invalid token.'],
+    [403, 'Missing authentication credentials.'],
+    [404, 'Driver account not found.'],
+  ])('returns null on %i, which the backend actually decided', async (status, message) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    get.mockRejectedValue(new ApiError(status, message))
+
+    const result = await new ApiDriverProfileSource().loadProfile()
+
+    expect(result).toBeNull()
+    expect(isProfileUnreachable(result)).toBe(false)
+  })
+
+  it('reports unreachable when a non-ApiError escapes the client', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    get.mockRejectedValue(new TypeError('Load failed'))
+
+    expect(isProfileUnreachable(await new ApiDriverProfileSource().loadProfile())).toBe(true)
   })
 })

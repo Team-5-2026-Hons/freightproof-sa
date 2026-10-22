@@ -16,6 +16,8 @@ function renderPhonePage() {
   const authValue: AuthState = {
     user: null,
     isLoading: false,
+    connectionFault: false,
+    retryProfile: vi.fn(),
     requestOtp: mockRequestOtp,
     signIn: vi.fn(),
     signOut: vi.fn(),

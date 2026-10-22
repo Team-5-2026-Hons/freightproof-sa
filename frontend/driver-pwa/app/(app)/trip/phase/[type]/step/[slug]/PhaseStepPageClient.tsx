@@ -21,7 +21,7 @@ import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import {
   startPhaseSubmission, usePhaseSubmissions, type PhaseSubmissionOutcome,
 } from '@/lib/submission/phase-submitter'
-import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored } from '@/lib/phase'
+import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored, isFinalPhase } from '@/lib/phase'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
@@ -329,7 +329,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver } = useTrip()
+  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver, noteTripCompleted } = useTrip()
   const { capture } = useLocation()
   const tripId = String(trip.id)
   const captureScope = useRef({ ...captureCustody(tripId), generation: actorGeneration() })
@@ -555,6 +555,23 @@ function usePhaseStepController<T extends PhaseEvidence>(
     // Order matters: mark before navigating, so Home's very first render already sees
     // this phase resolved rather than re-offering the step for a frame.
     markPhaseSyncing(phase.phase_event_id)
+
+    // The last row of the plan: the driver has finished the trip, so hand the completion
+    // moment to the overlay before navigating. Optimistic by necessity — this phase's
+    // evidence is still in flight and its anchor has not landed — so the snapshot marks
+    // only what the driver just did, and PhaseList renders each row's real anchor state
+    // rather than implying a receipt exists. Raised BEFORE the push so the overlay is
+    // already mounted on Home's first frame, never a beat late.
+    if (isFinalPhase(trip.phases, phase)) {
+      noteTripCompleted({
+        tripId,
+        tripReference: trip.trip_reference,
+        phases: trip.phases.map(row => row.phase_event_id === phase.phase_event_id
+          ? { ...row, status: 'completed' as const, completed_at: driverCapturedAt }
+          : row),
+      })
+    }
+
     // Departure is the one phase whose next screen is certain: the truck is now moving,
     // so the driver lands on In Transit (Tim, 14 Oct). Every other phase goes Home, where
     // the Now card offers whatever comes next. A failed departure rolls back from there

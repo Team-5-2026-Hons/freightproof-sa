@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
+import { simulatedCapture } from '@/lib/location/simulated-position'
 
 export interface LocationCoords {
   latitude: number
@@ -125,6 +126,18 @@ export function useLocation(): LocationState {
     setStatus('capturing')
     setErrorReason(null)
     try {
+      // Demo override, FIRST so it also stands in where the device would have failed.
+      // Returns null in every build without NEXT_PUBLIC_DEMO_GPS and whenever the
+      // presenter has not switched it on, which is the normal case — see
+      // lib/location/simulated-position.ts for why this is gated so hard, and
+      // SimulatedGpsBanner for the warning that rides along with it.
+      const simulated = simulatedCapture()
+      if (simulated !== null) {
+        setCoords(simulated)
+        setStatus('captured')
+        return { coords: simulated, errorReason: null }
+      }
+
       let result: LocationCoords
       if (Capacitor.isNativePlatform()) {
         const pos = await Geolocation.getCurrentPosition({

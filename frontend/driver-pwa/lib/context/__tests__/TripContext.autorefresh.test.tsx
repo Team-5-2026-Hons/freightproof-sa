@@ -37,6 +37,8 @@ const demoDriver = mockDrivers[0]
 const authValue: AuthState = {
   user: demoDriver,
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),

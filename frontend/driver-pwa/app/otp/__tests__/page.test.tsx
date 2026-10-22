@@ -23,6 +23,8 @@ function renderOtpPage() {
   const authValue: AuthState = {
     user: null,
     isLoading: false,
+    connectionFault: false,
+    retryProfile: vi.fn(),
     requestOtp: mockRequestOtp,
     signIn: mockSignIn,
     signOut: vi.fn(),

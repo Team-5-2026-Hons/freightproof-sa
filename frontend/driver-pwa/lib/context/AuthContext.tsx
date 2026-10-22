@@ -4,6 +4,7 @@ import { createContext, useState, useEffect, useCallback } from 'react'
 import type { AuthState, DriverUser } from '@/lib/types/user'
 import type { OtpAuthPort } from '@shared/lib/auth/port'
 import { defaultOtpAuth, defaultProfileSource } from '@/lib/auth/defaults'
+import { isProfileUnreachable } from '@/lib/auth/DriverProfileSource'
 import type { DriverProfileSource } from '@/lib/auth/DriverProfileSource'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
@@ -52,6 +53,9 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   // refresh. It only turns false after BOTH have settled, which is what keeps the login
   // screen from rendering in the gap while an async restore is in flight.
   const [isLoading, setIsLoading] = useState(true)
+  // Set only by a profile load that got no answer. Distinct from `user === null`,
+  // which means "signed out" and is what sends a driver to /login.
+  const [connectionFault, setConnectionFault] = useState(false)
 
   // Tracks the currently-loaded driver id outside React state so the
   // onAuthStateChange listener (subscribed once, see below) can compare
@@ -76,9 +80,19 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
         return
       }
       if (loadedSubject === session.userId && captureActorLease() !== null) return
-      const profile = await fetchProfile()
+      const result = await fetchProfile()
       if (!active || revision !== requestRevision || actorGeneration() !== generation) return
+      if (isProfileUnreachable(result)) {
+        // There IS a session — the backend just didn't answer. Leave `user` untouched
+        // (so a driver already signed in keeps their screen) and let the layout offer a
+        // retry instead of redirecting to /login over an infrastructure fault.
+        setConnectionFault(true)
+        setIsLoading(false)
+        return
+      }
+      const profile = result
       if (profile !== null && !bindActorLease(String(profile.id), generation)) return
+      setConnectionFault(false)
       loadedSubject = session.userId
       setUser(profile)
       setIsLoading(false)
@@ -140,9 +154,42 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
     if (actorGeneration() !== sessionGeneration) return
     if (session === null) { setIsLoading(false); return }
     const generation = observeAuthSession(session?.userId ?? null)
-    const profile = await fetchProfile()
-    if (profile !== null && bindActorLease(String(profile.id), generation)) setUser(profile)
+    const result = await fetchProfile()
+    if (isProfileUnreachable(result)) {
+      // The OTP was accepted (that leg talks to Supabase directly) and only the backend
+      // profile fetch failed. Saying so is the whole point: the old behaviour dropped the
+      // driver back on the login screen, which reads as "your code was wrong".
+      setConnectionFault(true)
+      setIsLoading(false)
+      return
+    }
+    setConnectionFault(false)
+    if (result !== null && bindActorLease(String(result.id), generation)) setUser(result)
     setIsLoading(false)
+  }, [port, fetchProfile])
+
+  // Offered by the guarded layout's connection-fault screen. Re-reads the session (it
+  // may have refreshed while the backend was unreachable) and tries the profile again.
+  const retryProfile = useCallback(async () => {
+    setConnectionFault(false)
+    setIsLoading(true)
+    try {
+      const session = await port.getSession()
+      if (session === null) { setIsLoading(false); return }
+      const generation = observeAuthSession(session.userId)
+      const result = await fetchProfile()
+      if (isProfileUnreachable(result)) {
+        setConnectionFault(true)
+        return
+      }
+      if (result !== null && bindActorLease(String(result.id), generation)) setUser(result)
+    } catch (err: unknown) {
+      // getSession itself failing is the same class of fault as the profile call failing.
+      console.error('AuthContext: profile retry failed', err)
+      setConnectionFault(true)
+    } finally {
+      setIsLoading(false)
+    }
   }, [port, fetchProfile])
 
   // The actual exit mechanics, shared by both ways a session ends below. Deliberately
@@ -150,6 +197,9 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   // expiry want opposite outcomes for it.
   const performSignOut = useCallback(async () => {
     invalidateActorLease()
+    // A deliberate exit is not a connection fault; leaving it set would show the retry
+    // screen over the login screen.
+    setConnectionFault(false)
     await port.signOut()
     clearActivity(window.localStorage)
     setUser(null)
@@ -187,7 +237,7 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   useIdleTimeout(user !== null, handleIdleExpiry)
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, requestOtp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, connectionFault, retryProfile, requestOtp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
