@@ -356,6 +356,27 @@ describe('Analytics page', () => {
   describe('Ask about these figures', () => {
     const ON = { enabled: true, spend: { spent_usd: 0.42, budget_usd: 20, available: true } }
 
+    it("opens with the dispatcher assistant's question typed, not sent, and tidies the address (B30)", async () => {
+      chatStatus = ON
+      searchParams = new URLSearchParams({ ask: "What's our on-time rate this month?" })
+      renderPage()
+
+      const panel = await screen.findByRole('complementary', { name: 'Ask about these figures' })
+
+      expect(within(panel).getByRole('textbox', { name: 'Your question' })).toHaveValue("What's our on-time rate this month?")
+      expect(mockedPost).not.toHaveBeenCalled()
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/analytics?tab=activity', { scroll: false }))
+    })
+
+    it('ignores a carried question while the chat is switched off', async () => {
+      searchParams = new URLSearchParams({ ask: 'Anything?' })
+      renderPage()
+      await screen.findByText('Live trips')
+
+      await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(CHAT_STATUS_PATH))
+      expect(screen.queryByRole('complementary', { name: 'Ask about these figures' })).not.toBeInTheDocument()
+    })
+
     it('shows no chat button while the chat is switched off', async () => {
       renderPage()
       await screen.findByText('Live trips')

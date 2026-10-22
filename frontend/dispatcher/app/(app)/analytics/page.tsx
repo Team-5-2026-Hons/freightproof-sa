@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Sparkles } from 'lucide-react'
 
 import { AnalyticsChatPanel } from '@/components/analytics/chat/AnalyticsChatPanel'
+import { ANALYTICS_ASK_PARAM } from '@/lib/assistant/links'
 import { CHAT_COPY } from '@/components/analytics/chat/chatCopy'
 import { FleetTiles } from '@/components/analytics/fleet/FleetTiles'
 import { ControlRow, type TabControls } from '@/components/analytics/fleet/controls/ControlRow'
@@ -135,6 +136,10 @@ function FleetAnalytics() {
   const tiles = useFleetTiles()
   const chatStatus = useChatStatus()
   const [chatOpen, setChatOpen] = useState(false)
+  // The dispatcher assistant's "Ask in Analytics" (assistant spec B30): open the chat with that question typed, once
+  // the chat is known to be on. Never sent for them: sending costs money and starts this page's own conversation.
+  const [askedElsewhere, setAskedElsewhere] = useState<string | null>(() => search.get(ANALYTICS_ASK_PARAM))
+  if (askedElsewhere !== null && chatStatus.enabled && !chatOpen) setChatOpen(true)
   const [controls, setControls] = useState<Record<TabId, TabControls>>(() => initialControls(active, search))
   const [patternPeriod, setPatternPeriod] = useState<PeriodSelection>(DEFAULT_PATTERN_PERIOD)
   // Seeded from the address once, so /analytics?tab=routes&map=today opens on Today and Back
@@ -149,7 +154,9 @@ function FleetAnalytics() {
   // Once the returned-to choices are in state, tidy the address back to just the tab, so a
   // later refresh follows what's on screen rather than what the dispatcher came back with.
   useEffect(() => {
-    if (hasReturnedControls(search)) router.replace(`${pathname}?${TAB_PARAM}=${active}`, { scroll: false })
+    if (hasReturnedControls(search) || search.get(ANALYTICS_ASK_PARAM) !== null) {
+      router.replace(`${pathname}?${TAB_PARAM}=${active}`, { scroll: false })
+    }
   }, [search, router, pathname, active])
 
   function selectTab(id: string): void {
@@ -160,6 +167,7 @@ function FleetAnalytics() {
 
   const closeChat = useCallback(() => {
     setChatOpen(false)
+    setAskedElsewhere(null)
     // Back to the button that opened it, so keyboard users don't lose their place.
     // By id because the shared Button takes no ref; it stays on screen while the panel is open.
     document.getElementById(CHAT_BUTTON_ID)?.focus()
@@ -256,6 +264,7 @@ function FleetAnalytics() {
             statusSpend={chatStatus.spend}
             onRecheckStatus={chatStatus.refetch}
             onOpenBasis={openBasis}
+            initialQuestion={askedElsewhere ?? undefined}
           />
         )}
       </div>

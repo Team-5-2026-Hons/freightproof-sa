@@ -69,3 +69,6 @@ AUDIT_PACK_EMAIL_CODE = RateLimit(max_requests=10, window_seconds=_ONE_MINUTE, n
 # Every analytics chat question can cost real money (FP-295); a person asks one at a time, so
 # 10 a minute is generous for them and a hard brake on a script. The monthly budget is the real cap.
 ANALYTICS_CHAT = RateLimit(max_requests=10, window_seconds=_ONE_MINUTE, name="analytics_chat")
+
+# The dispatcher assistant's questions cost money the same way, so the same brake.
+ASSISTANT_CHAT = RateLimit(max_requests=10, window_seconds=_ONE_MINUTE, name="assistant_chat")
