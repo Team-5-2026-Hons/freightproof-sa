@@ -343,3 +343,45 @@ export interface RigScenarioResponse extends RoadCheckResponse {
   scenario: RigScenario
   label: string
 }
+
+// ---- "Move the phone" (demo scaffolding) --------------------------------------------
+// Mirrors backend/app/dev/schemas.py's MovePhoneRequest/Response. A closed vocabulary:
+// the panel names a place on the trip and the backend resolves the coordinate, so no
+// coordinate is ever sent from the browser.
+export const PHONE_PLACEMENTS = ['at_origin', 'at_destination', 'at_stop', 'release'] as const
+
+export type DevPhonePlacement = (typeof PHONE_PLACEMENTS)[number]
+
+// The one placement that needs a stop chosen with it (the cross-dock case); origin and
+// destination resolve to the trip's first and last stop server-side.
+export const STOP_REQUIRED_PLACEMENT: DevPhonePlacement = 'at_stop'
+
+export const PHONE_PLACEMENT_LABELS: Record<DevPhonePlacement, string> = {
+  at_origin: 'Phone at origin',
+  at_destination: 'Phone at destination',
+  at_stop: 'Phone at this stop',
+  release: "Use the phone's real location",
+}
+
+export interface MovePhoneRequest {
+  trip_id: string
+  placement: DevPhonePlacement
+  // Required for 'at_stop' only — the backend 422s otherwise.
+  trip_stop_id?: string
+}
+
+export interface MovePhoneResponse {
+  trip_id: string
+  placement: DevPhonePlacement
+  placement_label: string
+  staged: boolean
+  // Null on 'release': there is no coordinate when the handset reports for itself.
+  latitude: string | null
+  longitude: string | null
+  trip_stop_id: string | null
+  precinct_name: string | null
+  // What the ledger will record for phases completed in this state: 'simulated' while a
+  // position is staged, 'device' once released. Surfaced so a presenter is never under
+  // the impression a staged walk is stored as a real capture.
+  recorded_as: string
+}

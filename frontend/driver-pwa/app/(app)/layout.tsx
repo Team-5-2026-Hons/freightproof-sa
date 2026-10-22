@@ -10,7 +10,6 @@ import { LocationProvider } from '@/lib/context/LocationContext'
 import { DriverSubstitutionProvider } from '@/lib/context/DriverSubstitutionContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { TripCompleteOverlay } from '@/components/trip/TripCompleteOverlay'
-import { SimulatedGpsBanner } from '@/components/dev/SimulatedGpsBanner'
 import { Button } from '@/components/ui/Button'
 import { CapacitorBridge } from '@/components/layout/CapacitorBridge'
 import { ROUTES } from '@/lib/constants/routes'
@@ -97,7 +96,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <CapacitorBridge />
       <DriverSubstitutionProvider>
         <LocationProvider>
-          <SimulatedGpsBanner />
           {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}
           {/* Inside TripProvider (it reads the completed-trip snapshot) and last, so it
               paints over whatever screen the final hand-off navigated to. */}

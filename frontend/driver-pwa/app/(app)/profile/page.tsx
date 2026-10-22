@@ -9,7 +9,6 @@ import { DriverAvatar } from '@/components/profile/DriverAvatar'
 import { AppearanceSheet } from '@/components/profile/AppearanceSheet'
 import { SignOutSheet } from '@/components/profile/SignOutSheet'
 import { ListRow, ListSection } from '@/components/ui/ListSection'
-import { SimulatedGpsPanel } from '@/components/dev/SimulatedGpsPanel'
 import { Switch } from '@/components/ui/Switch'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useTrip } from '@/lib/hooks/useTrip'
@@ -233,9 +232,6 @@ export default function ProfilePage() {
           }
         />
       </ListSection>
-
-      {/* Renders nothing unless NEXT_PUBLIC_DEMO_GPS was set in this build. */}
-      <SimulatedGpsPanel />
 
       <ListSection title="Help" className="mt-5">
         {SUPPORT_PHONE !== null && (

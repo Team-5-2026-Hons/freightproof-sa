@@ -71,6 +71,7 @@ from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.evidence.precinct_assessment import build_phase_precinct_assessment, tracker_fix
 from app.orchestration.evidence.proximity import evaluate_proximity
 from app.orchestration.exceptions.review_policy import initial_review_status
+from app.orchestration.phases.demo_position import staged_demo_position
 from app.orchestration.substitutions.access import require_current_driver
 from app.schemas.action_location import (
     ACTION_LOCATION_POLICY_VERSION, ActionLocationAssessment, DriverLocationCapture,
@@ -255,10 +256,20 @@ async def preview_phase_location(
             # assessment, but must never turn a preview into a write/retry workflow.
             logger.warning("Location preview tracker read unavailable for trip=%s: %s", trip.id, exc)
 
+    # A demo-staged phone position (dev panel -> "move the phone") is applied to the
+    # PREVIEW too, not just the recorded completion. Otherwise the driver is shown a
+    # warning about a mismatch that the submission a second later will not record, and the
+    # preview's whole job is to predict what completing the phase would store. The staged
+    # pair is stamped SIMULATED where it is written — see phases/driver_position.py.
+    staged = await staged_demo_position(trip.id)
+    previewed = capture if staged is None else capture.model_copy(
+        update={"driver_phone_lat": float(staged[0]), "driver_phone_lng": float(staged[1])},
+    )
+
     return await build_phase_assessment(
         db, trip=trip, event=event, horse_fix=horse_fix,
-        driver_accuracy_metres=capture.driver_accuracy_metres,
-        evaluated_at=datetime.now(UTC), capture=capture,
+        driver_accuracy_metres=previewed.driver_accuracy_metres,
+        evaluated_at=datetime.now(UTC), capture=previewed,
     )
 
 
