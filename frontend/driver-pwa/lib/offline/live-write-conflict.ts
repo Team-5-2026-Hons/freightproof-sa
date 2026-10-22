@@ -5,13 +5,12 @@
 // custody period, and dropping either would delete evidence (contract v1, "Stable errors":
 // "Do not treat every 409 as a duplicate ... A new unrecognised conflict is needs-attention,
 // never evidence deletion").
-import { ApiError } from '@/lib/api/client'
-import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
+import { ApiError, type DriverConflictCode } from '@/lib/api/client'
 
 /** Why a queued capture stopped sending, kept with it until the driver decides. */
 export interface RetainedAttention {
   /** The server's stable code, or null for a legacy uncoded refusal. */
-  code: SubstitutionErrorCode | null
+  code: DriverConflictCode | null
   /** HTTP status of the refusal; 0 for a local problem (unreadable photo). */
   status: number
   /** Driver-facing explanation. */
@@ -46,7 +45,7 @@ const HTTP_SERVER_ERROR_MIN = 500
 // waiting for an unrelated flush trigger. exception-sync and the queue re-export this one.
 export const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000
 
-const CODED_REASONS: Partial<Record<SubstitutionErrorCode, string>> = {
+const CODED_REASONS: Partial<Record<DriverConflictCode, string>> = {
   TRIP_HANDED_OVER:
     'You handed this trip over before this was sent. It is kept on this phone — send it as late evidence.',
   CUSTODY_CONTEXT_CHANGED:
@@ -58,14 +57,20 @@ const CODED_REASONS: Partial<Record<SubstitutionErrorCode, string>> = {
 }
 
 // Codes whose capture can still reach the record, through the late-evidence route.
-const LATE_ELIGIBLE: ReadonlySet<SubstitutionErrorCode> = new Set<SubstitutionErrorCode>([
+const LATE_ELIGIBLE: ReadonlySet<DriverConflictCode> = new Set<DriverConflictCode>([
   'TRIP_HANDED_OVER',
   'CUSTODY_CONTEXT_CHANGED',
 ])
 
+// Only the defensive paths (an older backend that answers 200 or an uncoded 409 for an overridden
+// phase) need this; a coded PHASE_OVERRIDDEN carries the server's own message, which is the same
+// sentence. Deliberately not in CODED_REASONS, which would replace the server's wording.
+export const PHASE_OVERRIDDEN_REASON =
+  'The dispatcher closed this step while your capture was waiting. It is kept on this phone.'
+
 const UNRECOGNISED_REASON = 'The server did not accept this. It is kept on this phone for review.'
 
-export function retainedAttention(code: SubstitutionErrorCode | null, status: number, message: string): RetainedAttention {
+export function retainedAttention(code: DriverConflictCode | null, status: number, message: string): RetainedAttention {
   return {
     code,
     status,
@@ -98,4 +103,13 @@ export function isCustodyConflict(attention: RetainedAttention): boolean {
   return attention.code === 'TRIP_HANDED_OVER'
     || attention.code === 'CUSTODY_CONTEXT_CHANGED'
     || attention.code === 'CUSTODY_CONTEXT_REQUIRED'
+}
+
+/**
+ * Dispatch overrode the phase this capture was for, so it never reached the ledger. Kept apart
+ * from isCustodyConflict on purpose: it is NOT offered as late evidence (that route needs a
+ * former custody period and would refuse it), and a live resend can only be refused again.
+ */
+export function isPhaseOverridden(attention: RetainedAttention): boolean {
+  return attention.code === 'PHASE_OVERRIDDEN'
 }

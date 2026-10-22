@@ -371,3 +371,74 @@ describe('failure notices', () => {
     dismissPhaseSubmissionFailure(LOADING_PE)
   })
 })
+
+// A dispatcher override closes a phase the driver could not complete. Evidence the driver
+// captured before that, and sends after it, was never recorded — so it must be kept, never
+// reported as recorded (backend A1: 409 PHASE_OVERRIDDEN).
+describe('startPhaseSubmission — phase overridden by dispatch', () => {
+  const SERVER_MESSAGE = 'The dispatcher closed this step while your capture was waiting. It is kept on this phone.'
+  const overriddenError = () => new ApiError(409, SERVER_MESSAGE, undefined, {
+    code: 'PHASE_OVERRIDDEN', requestId: null, currentVersion: null, evidenceId: null,
+  })
+
+  it('keeps the capture and says so when the server answers a coded PHASE_OVERRIDDEN', async () => {
+    mockSubmitPhase.mockRejectedValue(overriddenError())
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toEqual({ kind: 'retained', message: SERVER_MESSAGE, persisted: true, handedOver: false })
+    expect(h.enqueuePhase).toHaveBeenCalledTimes(1)
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({
+      code: 'PHASE_OVERRIDDEN', status: 409, reason: SERVER_MESSAGE, lateEligible: false,
+    })
+    expect(h.refetchTrip).not.toHaveBeenCalled()
+  })
+
+  it('reports persisted false when the retained capture could not be stored', async () => {
+    mockSubmitPhase.mockRejectedValue(overriddenError())
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(false)
+
+    startPhaseSubmission(h.request)
+
+    expect(await h.outcome).toMatchObject({ kind: 'retained', persisted: false })
+  })
+
+  it('does not report recorded when an older backend answers 200 for an overridden phase', async () => {
+    mockSubmitPhase.mockResolvedValue({ trip: makeTrip(makePhase('overridden')) })
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toMatchObject({ kind: 'retained', persisted: true, handedOver: false })
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({ code: 'PHASE_OVERRIDDEN' })
+  })
+
+  it('does not report recorded when an uncoded 409 refetch shows the phase overridden', async () => {
+    mockSubmitPhase.mockRejectedValue(new ApiError(409, 'already resolved'))
+    const h = harness()
+    h.refetchTrip.mockResolvedValue(makeTrip(makePhase('overridden')))
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toMatchObject({ kind: 'retained', persisted: true, handedOver: false })
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({ code: 'PHASE_OVERRIDDEN' })
+  })
+
+  it('still reports recorded for a completed phase', async () => {
+    mockSubmitPhase.mockResolvedValue({ trip: makeTrip(makePhase('completed')) })
+    const h = harness()
+
+    startPhaseSubmission(h.request)
+
+    expect((await h.outcome).kind).toBe('recorded')
+    expect(h.enqueuePhase).not.toHaveBeenCalled()
+  })
+})

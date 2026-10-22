@@ -20,11 +20,16 @@ const SESSION_TIMEOUT_MS = 8_000
 // error, so an evidence submit never settles and never reaches the backend.
 const REQUEST_TIMEOUT_MS = 12_000
 
+// Codes the backend sends that the shared driver-substitution contract does not list. PHASE_OVERRIDDEN
+// (a driver submission to a phase dispatch already overrode) lives here, not in `@shared`, because
+// it is a phase-ledger answer rather than part of the substitution contract.
+export type DriverConflictCode = SubstitutionErrorCode | 'PHASE_OVERRIDDEN'
+
 // The coded part of a domain-conflict `detail` object (driver substitution contract v1,
 // "Stable errors"). Kept separate from the message so a caller branches on the stable code,
 // never on wording the backend is free to change.
 export interface ApiErrorDetail {
-  code: SubstitutionErrorCode
+  code: DriverConflictCode
   requestId: string | null
   currentVersion: number | null
   evidenceId: string | null
@@ -45,7 +50,7 @@ export class ApiError extends Error {
     this.name = 'ApiError'
   }
 
-  get code(): SubstitutionErrorCode | undefined {
+  get code(): DriverConflictCode | undefined {
     return this.detail?.code
   }
 }
@@ -104,7 +109,7 @@ async function readError(res: Response): Promise<ParsedError> {
       detail: {
         // Not narrowed against the known list: a code this build doesn't know yet must
         // still reach the caller, which then treats it as an unrecognised conflict.
-        code: coded.code as SubstitutionErrorCode,
+        code: coded.code as DriverConflictCode,
         requestId: nullableString(coded.request_id),
         currentVersion: typeof coded.current_version === 'number' ? coded.current_version : null,
         evidenceId: nullableString(coded.evidence_id),

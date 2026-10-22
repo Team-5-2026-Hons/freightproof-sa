@@ -21,7 +21,10 @@ import { submitPhase } from '@/lib/api/phases'
 import { ApiError } from '@/lib/api/client'
 import { isQueueableFailure } from '@/lib/utils/is-queueable-failure'
 import { actorGeneration, captureCustody, isCurrentTripCustody, onCustodyActorChange, onTripCustodyChange, type CustodyStamp } from '@/lib/session/custody-context'
-import { classifyLiveWriteFailure, isCustodyConflict, type RetainedAttention } from '@/lib/offline/live-write-conflict'
+import {
+  classifyLiveWriteFailure, isCustodyConflict, isPhaseOverridden, PHASE_OVERRIDDEN_REASON, retainedAttention,
+  type RetainedAttention,
+} from '@/lib/offline/live-write-conflict'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { PhaseEvidence } from '@/lib/types/evidence-draft'
@@ -295,7 +298,8 @@ const running = new Set<string>()
 
 // Mirrors lib/phase/derive.ts's RESOLVED_STATUSES (private to that module): completed,
 // exception and overridden all mean the ledger is done with this row. Only pending and
-// in_progress leave room for a genuinely fresh attempt.
+// in_progress leave room for a genuinely fresh attempt. (Overridden is handled before this is
+// asked: it is resolved, but not by the driver's capture.)
 function isResolvedPhase(phase: PhaseDescriptor | null): boolean {
   return phase !== null && phase.status !== 'pending' && phase.status !== 'in_progress'
 }
@@ -315,6 +319,15 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
     kind: 'retained', message: 'Account changed; captured work is retained.', handedOver: false,
     persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, null, idempotencyKey),
   })
+  // Dispatch closed this phase, so the capture never reached the ledger. Kept on the phone for
+  // the driver, never reported as recorded: a "recorded" here would clear the draft and the
+  // evidence would be gone. Not custody-related, so it is not offered as late evidence.
+  const retainOverridden = (attention: RetainedAttention): PhaseSubmissionOutcome => ({
+    kind: 'retained', message: attention.reason, handedOver: false,
+    persisted: request.enqueuePhase(tripId, phaseEventId, phaseType, evidence, position, driverCapturedAt, acknowledgement, custody, attention, idempotencyKey),
+  })
+  // For an older backend that answers 200, or an uncoded 409, instead of the coded refusal.
+  const overriddenAttention = (): RetainedAttention => retainedAttention('PHASE_OVERRIDDEN', 409, PHASE_OVERRIDDEN_REASON)
   // The GPS promise belongs to the account that swiped, including an A→B→A return.
   if (actorGeneration() !== generation) return retainAfterAccountChange()
 
@@ -324,10 +337,12 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
       custody.custodySequence,
     )
     if (actorGeneration() !== generation) return retainAfterAccountChange()
+    const addressedPhase = addressedPhaseOf(result.trip, phaseEventId)
+    if (addressedPhase?.status === 'overridden') return retainOverridden(overriddenAttention())
     if (result.trip !== null && result.trip.status === 'exception_hold') {
       return { kind: 'hold', trip: result.trip }
     }
-    return { kind: 'recorded', trip: result.trip, addressedPhase: addressedPhaseOf(result.trip, phaseEventId) }
+    return { kind: 'recorded', trip: result.trip, addressedPhase }
   } catch (err) {
     if (actorGeneration() !== generation) return retainAfterAccountChange()
     // FP-83 coded answers come first: they are decided by their code, not by "409 means
@@ -338,6 +353,9 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
         // A proven actor-bound replay of this exact submission. No trip comes back — a
         // former driver is not shown current detail — so the phase is reported recorded.
         return { kind: 'recorded', trip: null, addressedPhase: null }
+      }
+      if (failure.kind === 'retain' && isPhaseOverridden(failure.attention)) {
+        return retainOverridden(failure.attention)
       }
       if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
         // Kept for review under its ORIGINAL custody period, so it can go as late
@@ -374,10 +392,13 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
 
       if (actorGeneration() !== generation) return retainAfterAccountChange()
 
+      // Read before the hold check and before "resolved": an overridden row IS resolved, but not
+      // by this capture, so treating it as an earlier success would discard the evidence.
+      const addressedPhase = addressedPhaseOf(fetched, phaseEventId)
+      if (addressedPhase?.status === 'overridden') return retainOverridden(overriddenAttention())
       if (fetched !== null && fetched.status === 'exception_hold') {
         return { kind: 'hold', trip: fetched }
       }
-      const addressedPhase = addressedPhaseOf(fetched, phaseEventId)
       if (isResolvedPhase(addressedPhase)) {
         return { kind: 'recorded', trip: fetched, addressedPhase }
       }

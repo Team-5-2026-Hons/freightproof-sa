@@ -46,6 +46,9 @@ export default function CheckpointPageClient() {
   const [isDeviation, setIsDeviation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
+  // The phone itself refused to keep the checkpoint (storage full or disabled). Distinct from
+  // submitError: the server never refused anything, and nothing is stored anywhere yet.
+  const [storageError, setStorageError] = useState(false)
   const clientReportIdRef = useRef<string | null>(null)
 
   // GPS is not a gate: it is captured silently at submit, and a checkpoint with a photo
@@ -56,6 +59,7 @@ export default function CheckpointPageClient() {
     if (!isReady || !trip) return
     setSubmitting(true)
     setSubmitError(false)
+    setStorageError(false)
     // FP-83: the custody period at the tap, before the GPS wait, travelling with the evidence.
     const custody = captureCustody(String(trip.id))
 
@@ -86,7 +90,12 @@ export default function CheckpointPageClient() {
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
         console.error('Failed to log checkpoint — queued for retry', err)
-        enqueueCheckpoint(String(trip.id), evidence)
+        if (!enqueueCheckpoint(String(trip.id), evidence)) {
+          // Not stored anywhere. Stay here with the photo and note still in state, so a retry
+          // costs the driver one swipe; leaving would lose the only copy of the evidence.
+          setStorageError(true)
+          return
+        }
         notify({
           kind: 'success',
           title: 'Checkpoint recorded',
@@ -98,7 +107,10 @@ export default function CheckpointPageClient() {
         // trip moved on. The checkpoint is kept for review (late evidence), not lost.
         const failure = classifyLiveWriteFailure(err)
         if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
-          enqueueCheckpoint(String(trip.id), evidence, failure.attention)
+          if (!enqueueCheckpoint(String(trip.id), evidence, failure.attention)) {
+            setStorageError(true)
+            return
+          }
           notify({ kind: 'error', title: 'Checkpoint not recorded on the trip', body: failure.attention.reason })
           router.push(ROUTES.home)
           return
@@ -172,6 +184,12 @@ export default function CheckpointPageClient() {
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
+
+        {storageError && (
+          <p role="alert" className="text-subhead text-error">
+            Couldn’t save on this phone — storage is full or unavailable. Try again.
+          </p>
+        )}
 
         {submitError && (
           // Only on a terminal 4xx — retrying with the same input cannot succeed, so
