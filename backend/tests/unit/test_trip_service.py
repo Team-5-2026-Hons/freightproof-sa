@@ -130,6 +130,7 @@ async def test_create_trip_empty_leg_does_not_call_sync() -> None:
         # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
         # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
@@ -172,6 +173,7 @@ async def test_create_trip_with_consignments_calls_sync() -> None:
         # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
         # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
@@ -220,6 +222,7 @@ async def test_create_trip_unknown_waybill_raises_ppsync_error() -> None:
         # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
         # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch(
             "app.orchestration.consignments.sync.fetch_and_sync_consignment",
@@ -280,6 +283,7 @@ async def test_create_trip_writes_full_pending_plan() -> None:
         # No database behind this mock: the crew lock and clash check (FP-139) are stubbed like
         # the fetches above. Their real behaviour is proved in the integration tests.
         patch("app.orchestration.trips.creation.lock_crew", new_callable=AsyncMock),
+        patch("app.orchestration.trips.creation._assert_precincts_visible", new_callable=AsyncMock),
         patch("app.orchestration.trips.creation.busy_crew_in_window", new_callable=AsyncMock, return_value=[]),
         patch("app.orchestration.trips.creation.anchor_subject", new_callable=AsyncMock) as mock_anchor,
         patch("app.orchestration.trips.creation.compute_journey_lock_hash", return_value="hash-abc"),
@@ -426,11 +430,15 @@ async def create_trip_seed(db_session):
         id=uuid.uuid4(), organization_id=operator_org.id, vehicle_type=VehicleType.HORSE,
         registration="ABC123GP", pulsit_device_id="PUL-1",
     )
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name="Origin", principal_organization_id=client_org.id,
         latitude="0", longitude="0",
     )
     dest = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name="Dest", principal_organization_id=client_org.id,
         latitude="1", longitude="1",
     )

@@ -263,6 +263,25 @@ async def raise_verification_exception(
     )
 
     try:
+        # Idempotent: the same finding on the same handover is one fact. A repeated resolve
+        # (a reload, a double tap) must not file it again. `trip_stop_id` may be NULL, which
+        # `==` would never match, hence the explicit IS NULL branch.
+        already_filed = (await db.execute(
+            select(TripException.id).where(
+                TripException.trip_id == trip.id,
+                TripException.phase_event_id == phase_event_id,
+                TripException.trip_stop_id.is_(None) if trip_stop_id is None
+                else TripException.trip_stop_id == trip_stop_id,
+                TripException.exception_type == verdict.exception_type,
+            ).limit(1)
+        )).first()
+        if already_filed is not None:
+            logger.info(
+                "Receiver verification exception %s already filed for trip=%s phase_event=%s; not repeating",
+                verdict.exception_type.value, trip.id, phase_event_id,
+            )
+            return
+
         await register_exception(db, TripException(
             trip_id=trip.id,
             phase_event_id=phase_event_id,

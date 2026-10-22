@@ -19,7 +19,7 @@ from app.blockchain.hedera import HederaReceipt
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.vehicles import Vehicle
-from app.db.models.trips import Consignment, TripStop
+from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.models.phases import PhaseEvent
 from app.db.models.enums import (
     AnchorStatus, IdvsStatus, OrganizationType, PhaseStatus, PhaseType, VehicleType,
@@ -63,15 +63,20 @@ async def seed_data(db_session: AsyncSession):
     db_session.add(user)
     await db_session.flush()
 
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name="Cape Town Depot",
         principal_organization_id=client_org.id, latitude="33.9249", longitude="18.4241",
     )
     midpoint = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name="Bloemfontein Depot",
         principal_organization_id=client_org.id, latitude="29.0852", longitude="26.1596",
     )
     destination = Precinct(
+        is_shared=True,
         id=uuid.uuid4(), name="Johannesburg Depot",
         principal_organization_id=client_org.id, latitude="26.2041", longitude="28.0473",
     )
@@ -414,3 +419,88 @@ async def test_create_trip_output_is_immediately_advanceable(client: AsyncClient
     assert h0_row.event_hash is not None
     assert h0_row.blockchain_receipt_id is not None
     assert h0_row.anchor_status == AnchorStatus.ANCHORED
+
+
+# ─── Precinct visibility (SEC-PRECINCT-1) ──────────────────────────────────
+
+async def _precinct(
+    db_session: AsyncSession, *, owner_org_id: uuid.UUID, name: str, is_shared: bool = False,
+) -> Precinct:
+    precinct = Precinct(
+        id=uuid.uuid4(), name=name, principal_organization_id=owner_org_id,
+        latitude="26.2041", longitude="28.0473", is_shared=is_shared,
+    )
+    db_session.add(precinct)
+    await db_session.flush()
+    return precinct
+
+
+async def _trip_count(db_session: AsyncSession, seed: dict) -> int:
+    return len((await db_session.execute(
+        select(Trip.id).where(Trip.operator_organization_id == seed["org"].id)
+    )).scalars().all())
+
+
+async def test_create_trip_with_another_orgs_private_precinct_is_rejected(
+    client: AsyncClient, seed_data, db_session,
+):
+    foreign_org = Organization(id=uuid.uuid4(), name="Foreign", org_type=OrganizationType.PRINCIPAL)
+    db_session.add(foreign_org)
+    await db_session.flush()
+    private = await _precinct(db_session, owner_org_id=foreign_org.id, name="Foreign private depot")
+    own = await _precinct(db_session, owner_org_id=seed_data["org"].id, name="Own depot")
+    payload = _single_leg_payload(seed_data)
+    payload["origin_precinct_id"] = str(own.id)
+    payload["destination_precinct_id"] = str(private.id)
+
+    resp = await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 404
+    # Word for word what an id that does not exist gets, so ownership is not revealed.
+    assert resp.json()["detail"] == f"Precinct with id='{private.id}' not found or inactive."
+    assert await _trip_count(db_session, seed_data) == 0
+
+
+async def test_create_trip_with_an_unknown_precinct_gets_the_same_rejection(
+    client: AsyncClient, seed_data, db_session,
+):
+    own = await _precinct(db_session, owner_org_id=seed_data["org"].id, name="Own depot")
+    payload = _single_leg_payload(seed_data)
+    payload["origin_precinct_id"] = str(own.id)
+    payload["destination_precinct_id"] = str(uuid.uuid4())
+
+    resp = await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 404
+    assert await _trip_count(db_session, seed_data) == 0
+
+
+async def test_create_trip_with_another_orgs_shared_precinct_is_allowed(
+    client: AsyncClient, seed_data, db_session,
+):
+    foreign_org = Organization(id=uuid.uuid4(), name="Foreign", org_type=OrganizationType.PRINCIPAL)
+    db_session.add(foreign_org)
+    await db_session.flush()
+    shared = await _precinct(db_session, owner_org_id=foreign_org.id, name="Shared depot", is_shared=True)
+    own = await _precinct(db_session, owner_org_id=seed_data["org"].id, name="Own depot")
+    payload = _single_leg_payload(seed_data)
+    payload["origin_precinct_id"] = str(own.id)
+    payload["destination_precinct_id"] = str(shared.id)
+
+    resp = await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 201
+
+
+async def test_create_trip_with_only_own_precincts_is_allowed(
+    client: AsyncClient, seed_data, db_session,
+):
+    origin = await _precinct(db_session, owner_org_id=seed_data["org"].id, name="Own origin")
+    destination = await _precinct(db_session, owner_org_id=seed_data["org"].id, name="Own destination")
+    payload = _single_leg_payload(seed_data)
+    payload["origin_precinct_id"] = str(origin.id)
+    payload["destination_precinct_id"] = str(destination.id)
+
+    resp = await client.post("/api/v1/trips", json=payload, headers=_auth_headers(seed_data))
+
+    assert resp.status_code == 201

@@ -3,7 +3,7 @@
 import asyncio
 from decimal import Decimal
 from typing import NoReturn
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -73,6 +73,8 @@ async def test_receiver_finding_propagates_database_availability_error(
 ) -> None:
     failure = DatabaseUnavailableError("command_timeout", "command")
     db = AsyncMock(spec=AsyncSession)
+    # The idempotence lookup runs first: report "nothing filed yet" so the write is attempted.
+    db.execute.return_value = MagicMock(first=MagicMock(return_value=None))
     monkeypatch.setattr(receiver_verification, "register_exception", AsyncMock(side_effect=failure))
     verdict = receiver_verification.resolve_verdict(status=IdvsDecisionStatus.DECLINED, identity_match=False)
 

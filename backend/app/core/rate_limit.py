@@ -16,6 +16,7 @@ authorisation and tenancy are enforced elsewhere and don't depend on this
 module, so failing open widens abuse-of-volume risk only, never data risk.
 """
 
+import hashlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -148,9 +149,11 @@ def rate_limit(limit: RateLimit) -> Callable[[Request], Awaitable[None]]:
 
         authorization = request.headers.get("authorization", "")
         if authorization.lower().startswith("bearer "):
-            # Raw token, truncated — never leaves Redis, so no need to hash;
-            # the leading 64 chars are already unique per session.
-            identity = f"token:{authorization[7:][:64]}"
+            # Hash of the whole token. A prefix is NOT unique per user: an ES256 token opens
+            # with a ~96-character base64 header (alg, kid, typ) identical for everyone, so
+            # a 64-character prefix put every authenticated caller in one shared bucket.
+            # Hashing also keeps token material out of Redis keys and the warning log below.
+            identity = f"token:{hashlib.sha256(authorization[7:].encode()).hexdigest()}"
         else:
             identity = f"ip:{_client_identity(request)}"
 

@@ -5,16 +5,15 @@ check order.
 
 import uuid
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import PhaseBlockedError, PhaseSequenceError
+from app.core.exceptions import PhaseBlockedError, PhaseOverriddenError, PhaseSequenceError
 from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_driver
-from app.orchestration.phases.state import _is_resolved
+from app.orchestration.phases.state import _is_resolved, first_unresolved_earlier_phase
 from app.orchestration.substitutions.access import get_current_custody
 from app.orchestration.trips.detail import get_trip_detail
 from app.schemas.trips import TripDetailResponse
@@ -30,9 +29,17 @@ async def _gate_and_load(
     trip = await _load_trip_for_driver(db, trip_id=trip_id, driver_id=driver_id, lock=True)
     event = await _load_phase_event(db, trip_id=trip_id, phase_event_id=phase_event_id)
 
+    if event.status == PhaseStatus.OVERRIDDEN:
+        # Never a replay. override_phase only closes a PENDING/IN_PROGRESS row, so no driver
+        # completion of an OVERRIDDEN row ever landed: whatever arrives now is new evidence
+        # captured before the dispatcher closed the step. Answering 200 told the driver it
+        # was recorded and let the app clear it — the evidence was silently lost. A coded
+        # 409 makes the app keep it. Checked before the generic replay below on purpose.
+        raise PhaseOverriddenError()
+
     if _is_resolved(event.status):
-        # Idempotent replay — COMPLETED, EXCEPTION, and OVERRIDDEN
-        # are all "already decided" per _is_resolved's own predicate, matched here so a
+        # Idempotent replay — COMPLETED and EXCEPTION are "already decided" per
+        # _is_resolved's own predicate (OVERRIDDEN is split out above), matched here so a
         # replayed completion that landed in EXCEPTION — e.g. a resent
         # offline-queue entry for a seal mismatch — is caught here too,
         # instead of falling through to re-execute the wrapper body and
@@ -78,13 +85,9 @@ async def _gate_and_load(
     # unloading — an arrival that was never attested to is exactly the gap this platform
     # exists to surface. A driver who cannot submit it (dead phone) is recovered by the
     # dispatcher's in_transit override, which resolves the row through the normal path.
-    lower_result = await db.execute(
-        select(PhaseEvent.status).where(
-            PhaseEvent.trip_id == trip_id,
-            PhaseEvent.sequence_number < event.sequence_number,
-        )
-    )
-    if any(not _is_resolved(PhaseStatus(status)) for (status,) in lower_result.all()):
+    if await first_unresolved_earlier_phase(
+        db, trip_id=trip_id, sequence_number=event.sequence_number,
+    ) is not None:
         # trip.status is usually just ACTIVE/CREATED here — it isn't the real
         # blocker, an unresolved earlier phase is, so the message says that
         # instead of misleadingly implying trip.status caused the 409.

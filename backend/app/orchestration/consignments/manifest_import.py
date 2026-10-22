@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -30,6 +30,7 @@ from app.db.models.trips import Consignment, Trip
 from app.integrations.parcel_perfect.errors import PPManifestNotFoundError, PPUnsupportedError
 from app.integrations.parcel_perfect.factory import get_pp_client
 from app.integrations.parcel_perfect.models import PPManifestResponse
+from app.orchestration.fleet.precinct_visibility import visible_to
 from app.orchestration.consignments.sync import incident_references_by_consignment, scanned_consignment_ids
 from app.orchestration.consignments.manifest_snapshot import (
     manifest_key,
@@ -58,17 +59,6 @@ from app.schemas.pp_manifest import (
 from app.schemas.trips import TripDetailResponse, TripStopCreate, validate_declared_schedule
 
 logger = logging.getLogger(__name__)
-
-
-def _visible_to(operator_organization_id: uuid.UUID) -> ColumnElement[bool]:
-    """The precinct read rule (SEC-PRECINCT-1, as in fleet.precincts.list_precincts):
-    a dispatcher sees their own organisation's precincts plus any marked is_shared. A
-    manifest must neither reveal a depot the dispatcher cannot see nor route a trip into
-    one, so both the hub lookup and the dispatcher's own pick apply it."""
-    return or_(
-        Precinct.principal_organization_id == operator_organization_id,
-        Precinct.is_shared.is_(True),
-    )
 
 
 @dataclass(frozen=True)
@@ -165,7 +155,7 @@ async def _build_context(
             select(Precinct).where(
                 Precinct.principal_organization_id == client.id,
                 Precinct.pp_hub_code.in_({header.origin_hub, header.destination_hub}),
-                _visible_to(operator_organization_id),
+                visible_to(operator_organization_id),
             )
         )
         hubs = {p.pp_hub_code: p for p in result.scalars().all() if p.pp_hub_code is not None}
@@ -332,7 +322,7 @@ async def _resolve_precinct(
         select(Precinct).where(
             Precinct.id == requested_id,
             Precinct.principal_organization_id == client.id,
-            _visible_to(operator_organization_id),
+            visible_to(operator_organization_id),
         )
     )).scalar_one_or_none()
     if precinct is None:

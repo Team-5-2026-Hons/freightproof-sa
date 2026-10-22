@@ -2,12 +2,13 @@
 current_phase/current_stop rebuilt from them. The ledger is the truth; position is derived.
 """
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.enums import PhaseStatus, TripStatus
+from app.db.models.enums import PhaseStatus, PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Trip, TripStop
 
@@ -29,6 +30,25 @@ def _is_resolved(status: PhaseStatus) -> bool:
     # for a future MANUAL dispatcher hold; nothing in app/ sets it today, so the
     # _gate_and_load check that reads it is currently unreachable.
     return status in RESOLVED_PHASE_STATUSES
+
+
+async def first_unresolved_earlier_phase(
+    db: AsyncSession, *, trip_id: uuid.UUID, sequence_number: int,
+) -> PhaseType | None:
+    """The earliest phase below `sequence_number` that is still open, or None.
+
+    The one ordering rule behind both the driver's completion gate and the dispatcher's
+    override: a phase may only be decided once everything before it in the plan has been.
+    """
+    result = await db.execute(
+        select(PhaseEvent.phase_type, PhaseEvent.status)
+        .where(PhaseEvent.trip_id == trip_id, PhaseEvent.sequence_number < sequence_number)
+        .order_by(PhaseEvent.sequence_number)
+    )
+    for phase_type, status in result.all():
+        if not _is_resolved(PhaseStatus(status)):
+            return PhaseType(phase_type)
+    return None
 
 
 async def recompute_position(db: AsyncSession, trip: Trip) -> None:

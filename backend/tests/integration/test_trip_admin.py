@@ -81,6 +81,22 @@ async def _make_trip(
     return trip
 
 
+async def _resolve_phases_before(db_session, trip: Trip, phase_type: PhaseType) -> None:
+    """Marks every phase ahead of `phase_type` COMPLETED, so a test can override a later phase
+    without tripping the plan-order rule (override_phase refuses while an earlier phase is open)."""
+    target = (await db_session.execute(
+        select(PhaseEvent).where(PhaseEvent.trip_id == trip.id, PhaseEvent.phase_type == phase_type)
+    )).scalar_one()
+    earlier = (await db_session.execute(
+        select(PhaseEvent).where(
+            PhaseEvent.trip_id == trip.id, PhaseEvent.sequence_number < target.sequence_number,
+        )
+    )).scalars().all()
+    for row in earlier:
+        row.status = PhaseStatus.COMPLETED
+    await db_session.flush()
+
+
 async def _phase_id(client: AsyncClient, trip_id, token, phase_type: str) -> str:
     """Resolve a row's id from a real GET /phases call — never a hardcoded id."""
     resp = await client.get(f"/api/v1/trips/{trip_id}/phases", headers=auth_header(token))
@@ -188,6 +204,7 @@ async def test_cancel_note_is_reviewed_by_its_author(client: AsyncClient, db_ses
 
 async def test_override_note_is_reviewed_by_its_author(client: AsyncClient, db_session, seed):
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-AUTHORED")
+    await _resolve_phases_before(db_session, trip, PhaseType.ARRIVAL)
     dispatcher_token = _dispatcher_token(seed)
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     arrival_id = await _phase_id(client, trip.id, driver_token, "arrival")
@@ -242,6 +259,54 @@ async def test_override_resolves_a_pending_phase_and_unblocks_the_next(client: A
     assert unblocked.status_code == 200
 
 
+async def test_override_rejects_a_phase_while_an_earlier_phase_is_unresolved(
+    client: AsyncClient, db_session, seed,
+):
+    """The same order rule the driver's gate applies: a later phase cannot be closed
+    while an earlier one is still open, or the ledger would show a gap nothing explains."""
+    trip = await _make_trip(db_session, seed, order_number="OVERRIDE-ORDER-1")
+    dispatcher_token = _dispatcher_token(seed)
+    driver_token = make_token(sub=str(seed["driver"].id), role="driver")
+    loading_id = await _phase_id(client, trip.id, driver_token, "loading")
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/override",
+        json={"note": "skipping ahead of an unresolved activation"},
+        headers=auth_header(dispatcher_token),
+    )
+
+    assert resp.status_code == 409
+    assert "activation" in resp.json()["detail"]
+    loading = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
+    await db_session.refresh(loading)
+    assert loading.status == PhaseStatus.PENDING
+    assert loading.dispatcher_override_user_id is None
+    exceptions = (await db_session.execute(
+        select(TripException).where(TripException.trip_id == trip.id)
+    )).scalars().all()
+    assert exceptions == []
+
+
+async def test_override_in_plan_order_succeeds_phase_by_phase(client: AsyncClient, db_session, seed):
+    trip = await _make_trip(db_session, seed, order_number="OVERRIDE-ORDER-2")
+    dispatcher_token = _dispatcher_token(seed)
+    driver_token = make_token(sub=str(seed["driver"].id), role="driver")
+    activation_id = await _phase_id(client, trip.id, driver_token, "activation")
+    loading_id = await _phase_id(client, trip.id, driver_token, "loading")
+
+    first = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/override",
+        json={"note": "phone lost before activation"}, headers=auth_header(dispatcher_token),
+    )
+    second = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{loading_id}/override",
+        json={"note": "phone still lost at loading"}, headers=auth_header(dispatcher_token),
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+
 async def test_override_rejects_a_completed_phase(client: AsyncClient, db_session, seed):
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-2")
     dispatcher_token = _dispatcher_token(seed)
@@ -277,6 +342,7 @@ async def test_override_leaves_anchor_status_untouched(client: AsyncClient, db_s
     which is exactly the laundering this test forbids. Only the PENDING case can fail.
     """
     trip = await _make_trip(db_session, seed, order_number="OVERRIDE-3")
+    await _resolve_phases_before(db_session, trip, PhaseType.DEPARTURE)
     dispatcher_token = _dispatcher_token(seed)
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
 
@@ -625,6 +691,7 @@ async def test_override_freezes_an_authored_review_event_and_none_for_the_system
 ):
     from app.orchestration.evidence_anchors import canonical
     trip = await _make_trip(db_session, seed, order_number="FP290-OVERRIDE")
+    await _resolve_phases_before(db_session, trip, PhaseType.ARRIVAL)
     driver_token = make_token(sub=str(seed["driver"].id), role="driver")
     arrival_id = await _phase_id(client, trip.id, driver_token, "arrival")
     note_text = "Gate log confirms arrival; phone dead."

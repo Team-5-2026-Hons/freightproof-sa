@@ -10,6 +10,7 @@ depends on (a lost race saves its attempt row BEFORE the 404). Errors are domain
 core/exceptions.py; the route owns the status codes and detail strings.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -54,6 +55,8 @@ from app.orchestration.handover.receiver_verification import (
     resolve_verification,
     start_verification,
 )
+
+logger = logging.getLogger(__name__)
 
 # The signature is a PNG the receiver drew; nothing else is ever stored from this surface.
 _SIGNATURE_MIME_TYPE = "image/png"
@@ -373,10 +376,25 @@ async def resolve_receiver_verification(
 
     Takes no session identifier from the caller: the session id comes from our own row,
     written before the redirect, so the client can only say "I am back".
+
+    The receiver's typed-identity cross-check runs once. The route is unauthenticated (whoever
+    holds the token), so letting it re-run would let them retype a matching name after a FAILED
+    verdict. The guard is `identity_match`, deliberately NOT the status: the vendor webhook can
+    set VERIFIED before the receiver returns, yet it never runs the cross-check or files an
+    exception, and a row that never got a vendor session is UNVERIFIED before this call — in
+    both cases this call is still owed.
     """
-    verification = await load_verification_for_token(db, token_id=token.id)
+    # Locked so two simultaneous calls cannot both run the cross-check.
+    verification = await load_verification_for_token(db, token_id=token.id, lock=True)
     if verification is None:
         raise HandoverLinkInvalidError()
+
+    if verification.identity_match is not None:
+        logger.info(
+            "Receiver verification=%s was already cross-checked; returning it unchanged",
+            verification.id,
+        )
+        return verification
 
     verdict = await resolve_verification(
         db,

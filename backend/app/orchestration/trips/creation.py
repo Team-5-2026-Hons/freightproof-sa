@@ -35,11 +35,13 @@ from app.db.models.enums import (
     TripType, VehicleType,
 )
 from app.db.models.phases import PhaseEvent
+from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.trips import (
     PP_MANIFEST_INDEX, Consignment, Trip, TripStop, TripTrailer,
 )
 from app.db.models.vehicles import Vehicle
+from app.orchestration.fleet.precinct_visibility import visible_to
 from app.orchestration.integrity import is_unique_violation, violated_constraint
 from app.orchestration.phases.blocking import blocked_on_by_stop
 from app.orchestration.phases.plan import ANCHORED_PHASES, PlanStop, build_phase_plan
@@ -117,6 +119,23 @@ async def _fetch_vehicle(
     if vehicle is None:
         raise ResourceNotFoundError(vehicle_type.value.capitalize(), str(vehicle_id))
     return vehicle
+
+
+async def _assert_precincts_visible(
+    db: AsyncSession, stops: list[TripStopCreate], organization_id: uuid.UUID,
+) -> None:
+    """Refuses a route through a precinct this dispatcher may not see (SEC-PRECINCT-1).
+
+    A foreign private precinct and a nonexistent id raise the same ResourceNotFoundError, so
+    the response never reveals whether another organisation owns a given depot — the same
+    stance _fetch_driver takes for another organisation's driver.
+    """
+    wanted = {spec.precinct_id for spec in stops}
+    found = set((await db.execute(
+        select(Precinct.id).where(Precinct.id.in_(wanted), visible_to(organization_id))
+    )).scalars().all())
+    for missing in sorted(wanted - found, key=str):
+        raise ResourceNotFoundError("Precinct", str(missing))
 
 
 async def _claim_crew(
@@ -433,6 +452,10 @@ async def persist_trip(
         PPSyncError: a waybill could not be pulled or written.
     """
     cargo = new_trip.manifest
+
+    # 0. Every stop's precinct must be one this dispatcher may see. The manifest path checked
+    #    its own two hubs, but a direct POST /trips copies whatever ids the body carries.
+    await _assert_precincts_visible(db, new_trip.stops, current_user.organization_id)
 
     # 1. Lock, validate and clash-check the crew before any writes (FP-139).
     driver, horse, trailers = await _claim_crew(db, new_trip, current_user.organization_id)

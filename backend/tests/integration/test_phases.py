@@ -31,6 +31,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
+from app.db.models.transit import TripException
 from app.db.models.trips import Consignment, Parcel, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -1045,8 +1046,10 @@ async def empty_leg_seed_data(db_session):
         id=uuid.uuid4(), organization_id=operator_org.id,
         email="el-dispatcher@test.co.za", full_name="EL Dispatcher", is_active=True,
     )
-    origin = Precinct(id=uuid.uuid4(), name="EL Origin", principal_organization_id=client_org.id, latitude="0", longitude="0")
-    dest = Precinct(id=uuid.uuid4(), name="EL Dest", principal_organization_id=client_org.id, latitude="1", longitude="1")
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
+    origin = Precinct(id=uuid.uuid4(), name="EL Origin", is_shared=True, principal_organization_id=client_org.id, latitude="0", longitude="0")
+    dest = Precinct(id=uuid.uuid4(), name="EL Dest", is_shared=True, principal_organization_id=client_org.id, latitude="1", longitude="1")
     driver = Driver(
         id=uuid.uuid4(), organization_id=operator_org.id, full_name="EL Driver",
         id_number="8001015009133", phone_number="+27821234533", license_number="DRV-EL2",
@@ -1977,11 +1980,13 @@ async def test_confirmation_accepts_unattributed_artifact_without_driver_id(
     assert resp.json()["status"] == "closed"
 
 
-async def test_completion_request_for_overridden_phase_returns_recorded_state(
+async def test_completion_request_for_overridden_phase_returns_409_and_leaves_row_unchanged(
     client: AsyncClient, db_session, seed_trip,
 ):
-    """D26: a resolved phase replays as 200 BEFORE any check, so the offline queue drains —
-    even when the request cites an artifact that would be rejected on an open phase."""
+    """Was D26 (an overridden phase replayed as 200 so the offline queue drained). Reversed:
+    override_phase only closes a PENDING/IN_PROGRESS row, so no driver completion of an
+    OVERRIDDEN row ever landed — a submission against it is new evidence, and a 200 told the
+    driver it was recorded while it was discarded. COMPLETED/EXCEPTION still replay as 200."""
     trip, driver = seed_trip
     token = make_token(sub=str(driver.id), role="driver")
     await _complete_activation(client, trip.id, token)
@@ -2001,11 +2006,56 @@ async def test_completion_request_for_overridden_phase_returns_recorded_state(
 
     resp = await _complete_loading(client, trip, token, linehaul_photo_artifact_id=contradictory)
 
-    assert resp.status_code == 200
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PHASE_OVERRIDDEN"
     await db_session.refresh(loading)
     assert loading.status == PhaseStatus.OVERRIDDEN
     assert loading.linehaul_photo_artifact_id is None
     assert loading.anchor_status == anchor_before
+
+
+async def test_complete_phase_after_override_returns_409_phase_overridden(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """A driver's queued capture arriving after the dispatcher closed the step must be refused
+    with a coded 409 so the app keeps the evidence, and must write nothing."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    activation_id = uuid.UUID(await _phase_id(client, trip.id, token, "activation"))
+    await override_phase(
+        db_session, trip_id=trip.id, phase_event_id=activation_id,
+        operator_organization_id=trip.operator_organization_id, user_id=trip.created_by_user_id,
+        note="Driver phone lost",
+    )
+    exceptions_before = (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+
+    resp = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{activation_id}/complete",
+        json={
+            "phase_type": "activation",
+            "driver_phone_lat": "0.0001", "driver_phone_lng": "0.0001",
+            "idempotency_key": str(uuid.uuid4()),
+        },
+        headers=auth_header(token),
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PHASE_OVERRIDDEN"
+    assert "kept on this phone" in resp.json()["detail"]["message"]
+    activation = await db_session.get(PhaseEvent, activation_id)
+    await db_session.refresh(activation)
+    assert activation.status == PhaseStatus.OVERRIDDEN
+    assert activation.performed_by_driver_id is None
+    exceptions_after = (await db_session.execute(
+        select(func.count()).select_from(TripException).where(TripException.trip_id == trip.id)
+    )).scalar_one()
+    assert exceptions_after == exceptions_before
+    artifacts = (await db_session.execute(
+        select(func.count()).select_from(EvidenceArtifact).where(EvidenceArtifact.trip_id == trip.id)
+    )).scalar_one()
+    assert artifacts == 0
 
 
 async def test_completion_request_for_completed_phase_with_new_key_returns_recorded_state(

@@ -446,6 +446,19 @@ class EvidenceAlreadyRecordedError(CustodyAccessError):
         self.evidence_id = evidence_id
 
 
+class PhaseOverriddenError(CustodyAccessError):
+    """A driver submitted evidence for a phase a dispatcher already overrode.
+
+    Sits under CustodyAccessError only to reuse its coded-409 rendering (custody_http_exception
+    and the `except CustodyAccessError` already on every phase route); it has nothing to do
+    with a change of driver. The driver app reads the code to keep the capture on the phone
+    instead of treating the step as recorded.
+    """
+
+    code = "PHASE_OVERRIDDEN"
+    message = "The dispatcher closed this step while your capture was waiting. It is kept on this phone."
+
+
 class IdempotencyKeyReusedError(CustodyAccessError):
     """A request id already used by a different driver's submission on this trip (409).
 
