@@ -6,10 +6,12 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from scripts.eval_analytics_chat import DEFAULT_QUESTIONS, grade, tool_matches
+from scripts.eval_analytics_chat import DEFAULT_QUESTIONS, grade, page_view_for, tool_matches
 
 from app.orchestration.analytics_chat.number_check import numbers_in, unmatched_numbers
 
+from app.integrations.ai_chat.provider import ToolCall
+from app.orchestration.analytics_chat.page_guide import TOPICS, guide_for
 from app.orchestration.analytics_chat.tools import TOOLS_BY_NAME
 from app.schemas.analytics_chat import Basis, ChatAnswer
 
@@ -120,3 +122,112 @@ def test_grade_vague_question_accepts_a_follow_up_or_a_right_now_snapshot_only()
     assert grade(item, _answer("Which period?", "follow_up"), [], _TODAY).status == "PASS"
     assert grade(item, _answer("4 live trips.", basis=[right_now]), [], _TODAY).status == "PASS"
     assert grade(item, _answer("Delays rose.", basis=[_RIGHT]), [], _TODAY).status == "FAIL"
+
+
+# ── Explanation questions (B45) ──────────────────────────────────────────────
+
+_EXPLAIN_FILE = Path(DEFAULT_QUESTIONS).with_name("analytics_chat_explain_questions.json")
+
+
+def _explain_item(topics: list[str], must_mention: list[Any], kind: str = "explanation") -> dict[str, Any]:
+    return {
+        "question": "How is operating cost worked out?",
+        # "explains" may add figures for the period on screen, so its tools are optional (e02).
+        "expect": {"kind": kind, "tools": "optional" if kind == "explains" else [], "explain": topics},
+        "must_mention": must_mention,
+        "must_not": ["for which period"],
+    }
+
+
+def _call(name: str, topic: str) -> ToolCall:
+    return ToolCall(id="c1", name=name, arguments={"topic": topic})
+
+
+def test_explain_questions_file_covers_every_topic_and_names_real_tools() -> None:
+    items = json.loads(_EXPLAIN_FILE.read_text())["questions"]
+
+    assert len(items) == 32
+    assert len({item["id"] for item in items}) == 32
+    topics = {topic for item in items for topic in item["expect"].get("explain", [])}
+    assert topics == set(TOPICS)
+    named = {tool["tool"] for item in items if isinstance(item["expect"]["tools"], list) for tool in item["expect"]["tools"]}
+    assert named <= set(TOOLS_BY_NAME)
+    for item in items:
+        if "page_view" in item:
+            assert page_view_for(item) is not None
+
+
+def test_grade_passes_an_explanation_from_the_right_topic_with_its_facts() -> None:
+    answer = _answer("Road distance times fuel at R 17.64 per km, plus driver hours.", kind="explanation")
+
+    result = grade(_explain_item(["cost"], [["17.64"], ["driver"]]), answer, [], _TODAY, [_call("explain", "cost")])
+
+    assert (result.status, result.reasons) == ("PASS", [])
+
+
+def test_grade_fails_an_explanation_that_read_the_wrong_topic_or_none() -> None:
+    answer = _answer("Road distance times fuel per km.", kind="explanation")
+
+    wrong = grade(_explain_item(["cost"], []), answer, [], _TODAY, [_call("explain", "on_time")])
+    none = grade(_explain_item(["cost"], []), answer, [], _TODAY, [])
+
+    assert wrong.reasons == ["didn't read the page guide for cost (read: ['on_time'])"]
+    assert none.reasons == ["didn't read the page guide for cost (read: none)"]
+
+
+def test_grade_fails_a_period_question_back_on_an_explanation() -> None:
+    # 22 Oct, the failure this round fixes.
+    answer = _answer("For which period: the last 12 weeks, or this year?", kind="follow_up")
+
+    result = grade(_explain_item(["cost"], []), answer, [], _TODAY, [])
+
+    assert result.status == "FAIL"
+    assert "says 'for which period', which it mustn't" in result.reasons
+    assert "kind follow_up, expected explanation" in result.reasons
+
+
+def test_grade_never_accepts_an_em_dash() -> None:
+    answer = _answer("Operating cost — an estimate.", kind="explanation")
+
+    result = grade(_explain_item(["cost"], []), answer, [], _TODAY, [_call("explain", "cost")])
+
+    assert result.reasons == ["says '—', which it mustn't"]
+
+
+def test_grade_explains_kind_takes_an_explanation_or_an_answer_with_figures() -> None:
+    item = _explain_item(["cost"], [], kind="explains")
+    calls = [_call("explain", "cost")]
+
+    assert grade(item, _answer("It's an estimate.", kind="explanation"), [], _TODAY, calls).status == "PASS"
+    assert grade(item, _answer("R 1 is an estimate.", kind="answer", basis=[_RIGHT]), [], _TODAY, calls).status == "PASS"
+
+
+def test_grade_not_answer_also_accepts_a_refusal_that_explains_its_reason() -> None:
+    item = _item("not_answer", [])
+
+    assert grade(item, _answer("The page ranks no driver, by design.", kind="explanation"), [], _TODAY).status == "PASS"
+
+
+def test_page_view_for_reads_the_screen_or_nothing() -> None:
+    view = page_view_for({"page_view": {"tab": "cost", "preset": "last_12_weeks", "grain": "week"}})
+
+    assert view is not None and (view.tab, view.preset, view.grain) == ("cost", "last_12_weeks", "week")
+    assert page_view_for({}) is None
+
+
+def test_every_fact_an_explanation_question_requires_is_in_the_guide_it_should_read() -> None:
+    # Otherwise a faithful answer could fail. Cost's current rates come from the database; the starting fuel rate
+    # (R 17.64 per km) stands in for them here.
+    items = json.loads(_EXPLAIN_FILE.read_text())["questions"]
+    missing = []
+    for item in items:
+        topics = item["expect"].get("explain", [])
+        if not topics:
+            continue
+        guide = json.dumps([guide_for(topic) for topic in topics], ensure_ascii=False).lower() + " 17.64"
+        missing += [
+            f"{item['id']}: {spellings}" for spellings in item["must_mention"]
+            if not any(spelling.lower() in guide for spelling in spellings)
+        ]
+
+    assert missing == []

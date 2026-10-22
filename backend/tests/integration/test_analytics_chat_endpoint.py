@@ -134,6 +134,35 @@ async def test_chat_answers_from_the_same_figures_as_the_on_time_tab(
     assert sum(bucket["arrivals_with_plan"] for bucket in page.json()["punctuality"]) == len(_RECENT_DAYS)
 
 
+async def test_chat_explains_cost_from_the_guide_for_the_tab_on_screen(
+    client: AsyncClient, operator: Operator, model: FakeProvider,
+) -> None:
+    # B45: Tom's question, with the Cost tab and last 12 weeks on screen. Explained from the guide, with the
+    # organisation's real rates, labelled as an explanation, and the screen's period passed to the model.
+    model.replies = [
+        tool_reply(("explain", {"topic": "cost"})),
+        text_reply("Operating cost is road distance times fuel (R 17.64 per km) and other running per km."),
+    ]
+    body = {**_body("How do we come up with operating cost?"), "page": {"tab": "cost", "preset": "last_12_weeks", "grain": "week"}}
+
+    response = await client.post(_CHAT, json=body, headers=headers(operator))
+
+    assert response.status_code == 200
+    answer = response.json()
+    assert (answer["kind"], answer["basis"]) == ("explanation", [])
+    assert "looking at the Cost tab" in model.sent[0].context
+    sent = json.loads(model.sent[1].messages[-1].results[0].content)  # type: ignore[union-attr]
+    assert "current_rates" in sent and "updated_by_name" not in sent["current_rates"]
+
+
+async def test_chat_rejects_a_page_view_with_an_unknown_tab(client: AsyncClient, operator: Operator) -> None:
+    body = {**_body(), "page": {"tab": "drivers", "preset": "last_12_weeks", "grain": "week"}}
+
+    response = await client.post(_CHAT, json=body, headers=headers(operator))
+
+    assert response.status_code == 422
+
+
 async def test_chat_follow_up_has_no_basis(client: AsyncClient, operator: Operator, model: FakeProvider) -> None:
     model.replies = [text_reply("For which period: the last 12 weeks, or this year?")]
 

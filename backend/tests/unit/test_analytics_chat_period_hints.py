@@ -6,8 +6,10 @@ from datetime import date
 import pytest
 
 from app.orchestration.analytics_chat.period_hints import (
+    EXPLANATION_HINT,
     FINANCIAL_YEAR_QUESTION,
     ambiguity_question,
+    asks_for_explanation,
     asks_about_right_now,
     hint_for,
     last_year_question,
@@ -326,3 +328,70 @@ def test_quarters_across_a_new_year() -> None:
 
     assert _one("Problems last quarter", new_year) == (PeriodPreset.CUSTOM, date(2026, 10, 1), date(2026, 12, 31))
     assert _one("Problems this quarter", new_year) == (PeriodPreset.CUSTOM, new_year, new_year)
+
+
+# ── Questions about the page itself need no period (B45) ─────────────────────
+
+_TOMS_FOLLOW_UP = (
+    "last year, but i am asking what the figures comprise of. so how do we come up with operating cost, where does "
+    "thart number come from and same with the other 2 numbers"
+)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        'what do the "Cost at a glance" figures tell us',  # Tom, 22 Oct
+        _TOMS_FOLLOW_UP,
+        "How is operating cost calculated?",
+        "What's the purpose of this graph?",
+        "why was it made and what does it show",
+        "Why is the last bar faded?",
+        "Where does the cargo value come from?",
+        "What is an override?",
+        "What counts as on time?",
+        "What does View by change?",
+        "How does the Lane risk chart work?",
+        "Explain the Risky times of day chart",
+        "What is the difference between operating cost and delay cost?",
+        "How did we get to R 124 430?",
+    ],
+)
+def test_questions_about_the_page_are_read_as_explanations(question: str) -> None:
+    assert asks_for_explanation(question)
+    hint = hint_for(question, _TODAY)
+    assert hint is not None
+    assert "call `explain`" in hint
+    assert "Call no tool" not in hint
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "How many trips did we run last month?",
+        "How did delays change over the past year?",
+        "What did delays cost us in the last 12 weeks?",
+        "Which lane costs the most to run?",
+        "How many critical problems are waiting for review right now?",
+        "What was operating cost in September?",
+        "How late were we last week?",
+    ],
+)
+def test_figure_questions_are_not_read_as_explanations(question: str) -> None:
+    assert not asks_for_explanation(question)
+
+
+def test_an_explanation_is_never_turned_into_a_period_question() -> None:
+    # 22 Oct: "last year" in Tom's follow-up forced "For which period…?" though he asked how the figures are made.
+    hint = hint_for(_TOMS_FOLLOW_UP, _TODAY)
+
+    assert hint is not None
+    assert hint.startswith(EXPLANATION_HINT)
+    assert "Only if it also wants figures" in hint
+    assert '"For which period: the last 12 months, or 2025 (the previous calendar year)?"' in hint
+
+
+def test_a_figure_question_with_last_year_is_still_asked_back() -> None:
+    hint = hint_for("How many trips did we run last year?", _TODAY)
+
+    assert hint is not None and hint.startswith("The question's period has two common meanings. Call no tool")

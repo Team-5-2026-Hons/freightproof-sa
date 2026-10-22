@@ -204,3 +204,20 @@ def _assert_leader(leader: dict[str, Any] | None, rows: list[tuple[str, float | 
     best = max(values)
     assert leader == {"value": best, "of": [label for label, value in rows if value == best]}
 
+
+
+async def test_explain_cost_reads_the_organisations_rates_and_gives_no_basis(
+    db_session: AsyncSession, operator: Operator,
+) -> None:
+    outcome = await run_tool(db_session, organization_id=operator.org.id, name="explain", arguments={"topic": "cost"})
+    basis = await basis_for(db_session, organization_id=operator.org.id, outcome=outcome)
+
+    assert outcome.error is None
+    assert outcome.result is not None
+    rates = outcome.result["current_rates"]
+    # No row saved for this organisation: the starting rates, said to be the starting ones (cost spec D2).
+    assert rates["is_default"] is True  # type: ignore[index]
+    assert round(rates["fuel_per_km"], 2) == 17.64  # type: ignore[index]  # 33.29 × 53 ÷ 100, as the rates card rounds it
+    assert "updated_by_name" not in rates  # type: ignore[operator]
+    # The page guide states no fleet figures, so nothing to base an answer on.
+    assert basis is None
