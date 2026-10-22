@@ -140,8 +140,12 @@ async def complete_phase(
     # After a handover the "resolved phase returns the current state" replay would hand any
     # key from any driver a success (and the current trip). Once custody has moved, only the
     # driver who recorded the completion, under the same key, may be answered that way.
+    # OVERRIDDEN is left to _gate_and_load: no driver completed that row, so "completed by
+    # another submission" would be false, and its coded PHASE_OVERRIDDEN is what tells the
+    # driver app (offline queue included) to keep the capture instead of stalling on it.
     if (
         custody.sequence > 0 and _is_resolved(PhaseStatus(event.status))
+        and PhaseStatus(event.status) != PhaseStatus.OVERRIDDEN
         and not (event.idempotency_key == payload.idempotency_key and event.performed_by_driver_id == driver_id)
     ):
         raise PhaseSequenceError("this phase was already completed by another submission", _phase_label(event))
