@@ -30,17 +30,19 @@ interface Props {
  */
 export function LateDriverEvidencePanel({ tripId, driverNames }: Props) {
   const fetchLate = useCallback(() => listLateEvidence(tripId), [tripId])
-  const { data: items, isLoading, error, refetch } = useAsyncData<LateEvidenceDetailRead[]>(fetchLate, EMPTY)
-  useLiveResource('trip', tripId, refetch, { kinds: ['late_driver_evidence_changed'] })
+  const { data: items, isLoading, error, refetch, refetchSilent } = useAsyncData<LateEvidenceDetailRead[]>(fetchLate, EMPTY)
+  // Silent: a spinner refetch makes the panel return null, which would unmount an open review
+  // note and lose what the dispatcher had typed.
+  useLiveResource('trip', tripId, refetchSilent, { kinds: ['late_driver_evidence_changed'] })
   useEffect(() => {
-    const onVisible = (): void => { if (document.visibilityState === 'visible') refetch() }
-    window.addEventListener('focus', refetch)
+    const onVisible = (): void => { if (document.visibilityState === 'visible') refetchSilent() }
+    window.addEventListener('focus', refetchSilent)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
-      window.removeEventListener('focus', refetch)
+      window.removeEventListener('focus', refetchSilent)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [refetch])
+  }, [refetchSilent])
 
   if (isLoading || (items.length === 0 && !error)) return null
   return (

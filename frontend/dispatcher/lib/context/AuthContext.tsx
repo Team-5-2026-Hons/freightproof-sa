@@ -141,7 +141,13 @@ export function AuthProvider({ children, port = supabasePasswordAuth }: AuthProv
   // silent on the return path — callers decide that, since a manual sign-out and an idle
   // expiry want opposite outcomes for it.
   const performSignOut = useCallback(async () => {
-    await port.signOut()
+    try {
+      await port.signOut()
+    } catch (error) {
+      // Logged, not rethrown: the server token expires on its own, but a live session left on
+      // a shared depot PC does not, so local state is cleared below whatever the network did.
+      console.error('AuthContext: sign-out call failed; clearing the local session anyway', error)
+    }
     // Clear before the state update so another tab's storage listener sees a signed-out
     // machine, not a live timestamp with no session behind it.
     clearActivity(window.localStorage)

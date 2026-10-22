@@ -180,6 +180,37 @@ describe('Trip History page', () => {
     }
   })
 
+  it('moves the default end date to the new SAST day without calling the list filtered', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-06T21:30:00Z'))
+
+    try {
+      renderPage()
+      expect(screen.getByText('No trip history')).toBeInTheDocument()
+
+      // 22:30Z is 00:30 SAST on the 7th. Any later render builds the query afresh.
+      vi.setSystemTime(new Date('2026-09-06T22:30:00Z'))
+      fireEvent.change(screen.getByDisplayValue('All routes'), { target: { value: 'origin-1' } })
+      fireEvent.change(screen.getByDisplayValue('Cape Town — Depot'), { target: { value: '' } })
+
+      expect(mockedUseTripHistory).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: '2026-09-07' }))
+      expect(screen.getByText('No trip history')).toBeInTheDocument()
+      expect(screen.queryByText('No results')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends the search trimmed, and treats a blank search as none', () => {
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: '  abc ' } })
+    expect(mockedUseTripHistory.mock.calls.at(-1)?.[0]).toMatchObject({ q: 'abc' })
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: '   ' } })
+    expect(mockedUseTripHistory.mock.calls.at(-1)?.[0].q).toBeUndefined()
+  })
+
   it('renders shared pagination from server page state and wires navigation', () => {
     const goToNextPage = vi.fn()
     mockedUseTripHistory.mockReturnValue(historyState({

@@ -134,3 +134,20 @@ it('new_receipt_appears_after_event_or_refocus', async () => {
   fireEvent(window, new Event('focus'))
   expect(await screen.findByText(/Fixture Driver Outgoing · checkpoint/)).toBeVisible()
 })
+
+it('keeps a half-typed review note when the window regains focus or becomes visible', async () => {
+  // Arrange
+  vi.mocked(listLateEvidence).mockResolvedValue([item])
+  renderPanel()
+  await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }))
+  fireEvent.change(screen.getByLabelText('Review note'), { target: { value: 'Half-typed note' } })
+
+  // Act
+  fireEvent(window, new Event('focus'))
+  fireEvent(document, new Event('visibilitychange'))
+  await waitFor(() => expect(listLateEvidence).toHaveBeenCalledTimes(2))
+
+  // Assert
+  expect(screen.getByLabelText('Review note')).toHaveValue('Half-typed note')
+  expect(screen.getByRole('heading', { name: 'Late driver evidence' })).toBeInTheDocument()
+})

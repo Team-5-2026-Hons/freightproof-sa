@@ -25,9 +25,11 @@ vi.mock('@/lib/hooks/useAuth', () => ({
 }))
 
 const push = vi.fn()
+// A stable object per test: the page re-parses its state whenever the string form changes.
+const searchParams = vi.hoisted(() => ({ current: '' }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, back: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(searchParams.current),
 }))
 
 vi.mock('@/lib/hooks/useExceptions', () => ({
@@ -134,6 +136,7 @@ function goToHistoryTab() {
 
 beforeEach(() => {
   mockMe()
+  searchParams.current = ''
   push.mockReset()
   mockedUseExceptionQueue.mockReset().mockReturnValue(queueState())
   mockedUseExceptionHistory.mockReset().mockReturnValue(historyState())
@@ -355,6 +358,27 @@ describe('History tab', () => {
 
     expect(screen.queryByText('No exception history yet.')).not.toBeInTheDocument()
     expect(screen.getByText('Server error')).toBeInTheDocument()
+  })
+
+  it('returns to the first page without wiping the filters', () => {
+    searchParams.current = 'tab=history&q=seal&severity=critical&cursor=c1&page=1'
+    mockedUseExceptionHistory.mockReturnValue(
+      historyState({ items: [], error: 'Server error', hasPrevious: true, page: 2 }),
+    )
+
+    renderPage()
+    expect(mockedUseExceptionHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: 'seal', severity: 'critical' }),
+      expect.objectContaining({ pageIndex: 1 }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Return to first page' }))
+
+    expect(screen.getByRole('searchbox', { name: /search description/i })).toHaveValue('seal')
+    expect(mockedUseExceptionHistory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ q: 'seal', severity: 'critical' }),
+      expect.objectContaining({ pageIndex: 0, cursorStack: [undefined] }),
+    )
   })
 
   it('keeps rows visible and shows a stale/retry banner when isStale is true', () => {

@@ -99,13 +99,14 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
               </div>
             </div>
 
+            {/* No autoFocus: it runs before Modal's showModal(), so a browser drops it (see
+                CancelTripAction). */}
             <TextArea
               label="Note"
               placeholder="Why couldn't the driver complete this phase?"
               value={note}
               onChange={e => setNote(e.target.value)}
               className="mb-4"
-              autoFocus
             />
 
             <div className="flex flex-col gap-2">

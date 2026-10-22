@@ -3,6 +3,7 @@
 // every figure says whether it is an estimate or comes from waybills.
 
 import type { DistanceSource } from '@shared/lib/types/cost-analytics'
+import type { Grain } from '@shared/lib/types/fleet-analytics'
 
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`
 
@@ -51,7 +52,8 @@ export const COST_COPY = {
       'Estimated: truck road distance between each trip’s stops (OpenRouteService), or the straight line × road factor '
       + 'where a route couldn’t be looked up, × your fuel and running rates, plus driving time (first departure to '
       + 'final arrival) × driver rate, plus the fixed rate. Closed trips only.',
-    basis: (trips: number): string => `${plural(trips, 'closed trip', 'closed trips')} with a recorded arrival, by week departed`,
+    basis: (trips: number, grain: Grain): string =>
+      `${plural(trips, 'closed trip', 'closed trips')} with a recorded arrival, by ${grain} departed`,
     fuel: 'Fuel',
     running: 'Other running',
     driver: 'Driver',

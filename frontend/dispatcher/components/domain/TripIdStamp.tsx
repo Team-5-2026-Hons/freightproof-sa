@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
 import { Copy, Check } from 'lucide-react'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { cn } from '@shared/lib/utils/cn'
 
 interface TripIdStampProps {
@@ -14,13 +14,11 @@ interface TripIdStampProps {
  * Uses Inter with wide tracking per DESIGN_SYSTEM.md §3 mono-id role.
  */
 export function TripIdStamp({ tripReference, className }: TripIdStampProps) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
 
-  const handleCopy = async (e: React.MouseEvent) => {
+  const handleCopy = (e: React.MouseEvent): void => {
     e.stopPropagation()
-    await navigator.clipboard.writeText(tripReference)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    void copy(tripReference)
   }
 
   return (

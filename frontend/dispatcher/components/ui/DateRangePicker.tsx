@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { Calendar } from 'lucide-react'
+import { addDays } from '@/lib/format/period'
 import { cn } from '@shared/lib/utils/cn'
+import { sastToday } from '@shared/lib/utils/datetime'
 import { Ic } from './Ic'
 import type { DateRange } from '@/lib/types/date-range'
 
@@ -17,16 +19,25 @@ interface DateRangePickerProps {
   className?: string
 }
 
-const today = new Date().toISOString().split('T')[0]
+const PRESET_WEEK_DAYS = 7
+const PRESET_MONTH_DAYS = 30
+const NO_PRESETS: Preset[] = []
 
-const DEFAULT_PRESETS: Preset[] = [
-  { label: 'Today',        range: { from: today, to: today } },
-  { label: 'Last 7 days',  range: { from: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0],  to: today } },
-  { label: 'Last 30 days', range: { from: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0], to: today } },
-]
+// Built when the picker opens, not at module load: a tab left open overnight would otherwise
+// keep offering yesterday as "Today". Days are the SAST calendar day, and the offsets are
+// arithmetic on that date string, so no browser time zone can shift them.
+function defaultPresets(): Preset[] {
+  const today = sastToday()
+  return [
+    { label: 'Today',        range: { from: today, to: today } },
+    { label: 'Last 7 days',  range: { from: addDays(today, -PRESET_WEEK_DAYS),  to: today } },
+    { label: 'Last 30 days', range: { from: addDays(today, -PRESET_MONTH_DAYS), to: today } },
+  ]
+}
 
-export function DateRangePicker({ value, onChange, presets = DEFAULT_PRESETS, className }: DateRangePickerProps) {
+export function DateRangePicker({ value, onChange, presets, className }: DateRangePickerProps) {
   const [open, setOpen] = useState(false)
+  const shownPresets = presets ?? (open ? defaultPresets() : NO_PRESETS)
 
   return (
     <div className={cn('relative shrink-0', className)}>
@@ -41,9 +52,9 @@ export function DateRangePicker({ value, onChange, presets = DEFAULT_PRESETS, cl
 
       {open && (
         <div className="absolute top-full mt-1 left-0 z-[10] bg-surf-lowest rounded-lg shadow-level-5 p-4 min-w-[280px]">
-          {presets.length > 0 && (
+          {shownPresets.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {presets.map((preset) => (
+              {shownPresets.map((preset) => (
                 <button
                   key={preset.label}
                   onClick={() => { onChange(preset.range); setOpen(false) }}

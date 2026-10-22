@@ -4,7 +4,7 @@
  * vendor events renamed, vendor errors passed through untouched.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AuthChangeListener } from '@shared/lib/auth/port'
 
@@ -120,5 +120,44 @@ describe('SupabasePasswordAuth.signOut', () => {
     await new SupabasePasswordAuth(fake.client).signOut()
 
     expect(fake.auth.signOut).toHaveBeenCalledTimes(1)
+  })
+
+  // The SDK returns the network error instead of throwing and leaves the stored session, which a
+  // reload would restore: a dispatcher who clicked Log out would be signed straight back in.
+  describe('when the vendor sign-out fails', () => {
+    const SESSION_KEY = 'sb-testproject-auth-token'
+    const VERIFIER_KEY = 'sb-testproject-auth-token-code-verifier'
+
+    afterEach(() => {
+      window.localStorage.clear()
+      vi.restoreAllMocks()
+    })
+
+    it('removes the persisted session so a reload cannot restore it, and logs the failure', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const fake = fakeClient()
+      const networkError = new Error('Failed to fetch')
+      fake.auth.signOut.mockResolvedValue({ error: networkError })
+      window.localStorage.setItem(SESSION_KEY, '{"access_token":"tok"}')
+      window.localStorage.setItem(VERIFIER_KEY, 'verifier')
+      window.localStorage.setItem('fp.forensicOn', 'true')
+
+      await new SupabasePasswordAuth(fake.client).signOut()
+
+      expect(window.localStorage.getItem(SESSION_KEY)).toBeNull()
+      expect(window.localStorage.getItem(VERIFIER_KEY)).toBeNull()
+      // Only the auth SDK's keys: dispatcher preferences are not the session.
+      expect(window.localStorage.getItem('fp.forensicOn')).toBe('true')
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining('sign-out'), networkError)
+    })
+
+    it('leaves storage to the SDK when the sign-out succeeded', async () => {
+      const fake = fakeClient()
+      window.localStorage.setItem(SESSION_KEY, '{"access_token":"tok"}')
+
+      await new SupabasePasswordAuth(fake.client).signOut()
+
+      expect(window.localStorage.getItem(SESSION_KEY)).not.toBeNull()
+    })
   })
 })

@@ -29,6 +29,11 @@ describe('Parcel Perfect presets', () => {
     expect(ppDate(now)).toBe('24/09/2026')
   })
 
+  it('formats the POD date in SAST, not UTC', () => {
+    // 23:30Z on the 22nd is 01:30 SAST on the 23rd.
+    expect(ppDate(new Date('2026-10-22T23:30:00Z'))).toBe('23/10/2026')
+  })
+
   it('builds a delivered request with today as POD date', () => {
     expect(ppRequestForPreset('trip-1', WB1, 'delivered', now)).toEqual({ trip_id: 'trip-1', parcel_perfect_reference: 'WB-1', poddate: '24/09/2026' })
   })

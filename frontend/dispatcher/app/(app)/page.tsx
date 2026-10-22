@@ -32,7 +32,7 @@ export default function DashboardPage() {
       <TopBar
         title="Dispatcher Dashboard"
         badge={user?.role === 'admin_dispatcher' ? (
-          <span className="inline-flex items-center gap-[4px] rounded-[var(--r-sm)] bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
+          <span className="inline-flex items-center gap-[4px] rounded-sm bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
             <Ic n="shield" s={11} className="text-on-surf-v shrink-0" />
             Admin
           </span>

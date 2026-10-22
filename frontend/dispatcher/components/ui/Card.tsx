@@ -2,7 +2,7 @@ import { type ReactNode } from 'react'
 import { cn } from '@shared/lib/utils/cn'
 
 interface CardProps {
-  variant?: 'default' | 'exception' | 'selected' | 'section'
+  variant?: 'default' | 'exception' | 'section'
   children: ReactNode
   className?: string
   onClick?: () => void
@@ -11,7 +11,6 @@ interface CardProps {
 const variantClasses: Record<NonNullable<CardProps['variant']>, string> = {
   default:   'bg-surface-container-lowest shadow-ambient',
   exception: 'bg-surface-container-lowest shadow-ambient border-l-4 border-error',
-  selected:  'bg-secondary-fixed shadow-ambient-sm',
   section:   'bg-surface-container-low',
 }
 

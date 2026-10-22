@@ -183,7 +183,7 @@ function OperatingCard({ cost, grain, today }: CardProps) {
       title={o.title}
       question={o.question}
       source={o.source}
-      basis={o.basis(costed)}
+      basis={o.basis(costed, grain)}
       timeAxis
       sampleSize={costed}
       legend={<ChartLegend items={series.map((s) => ({ label: s.label, color: s.color, mark: 'bar' as const }))} />}

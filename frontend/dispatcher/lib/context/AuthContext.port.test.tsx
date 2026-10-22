@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/lib/api/client'
 import { supabase } from '@/lib/supabase/client'
 import type { DispatcherUser } from '@/lib/types/user'
+import { LAST_ACTIVITY_KEY, recordActivity } from '@shared/lib/session/idle'
 import type {
   AuthChangeListener,
   AuthSession,
@@ -58,6 +59,7 @@ class FakePasswordAuth implements PasswordAuthPort {
   readonly unsubscribe = vi.fn()
   readonly signOutCalls = vi.fn()
   rejectSignInWith: Error | null = null
+  rejectSignOutWith: Error | null = null
 
   async getSession(): Promise<AuthSession | null> {
     return this.session
@@ -75,6 +77,7 @@ class FakePasswordAuth implements PasswordAuthPort {
 
   async signOut(): Promise<void> {
     this.signOutCalls()
+    if (this.rejectSignOutWith) throw this.rejectSignOutWith
     this.session = null
   }
 }
@@ -185,6 +188,23 @@ describe('AuthProvider with an injected port', () => {
     expect(port.signOutCalls).toHaveBeenCalledTimes(1)
     expect(result.current.user).toBeNull()
     expectVendorClientUntouched()
+  })
+
+  it('signs out locally even when the port call fails, and logs the failure', async () => {
+    const port = new FakePasswordAuth()
+    port.session = { userId: PROFILE.id }
+    port.rejectSignOutWith = new Error('network down')
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { result } = renderWith(port)
+    await waitFor(() => expect(result.current.user).toEqual(PROFILE))
+    recordActivity(window.localStorage)
+
+    await act(async () => { await result.current.signOut() })
+
+    expect(result.current.user).toBeNull()
+    expect(window.localStorage.getItem(LAST_ACTIVITY_KEY)).toBeNull()
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining('sign-out'), port.rejectSignOutWith)
+    logged.mockRestore()
   })
 
   it('removes its subscription when unmounted', async () => {

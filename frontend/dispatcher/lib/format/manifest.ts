@@ -1,3 +1,4 @@
+import { countLabel } from '@/lib/format/count'
 import type { PPManifestRef, PPManifestTotals } from '@shared/lib/types/pp-manifest'
 import type { TripType } from '@shared/lib/types/trip'
 
@@ -21,7 +22,7 @@ export function manifestKey(ref: PPManifestRef | null, tripType: TripType | null
 /** "2 waybills · 5 parcels · 180.5 kg": a manifest's cargo in one line. Weight is left out
  *  where space is short (a collapsed summary, the create panel's rows). */
 export function fmtManifestCargo(totals: PPManifestTotals, { withWeight = true }: { withWeight?: boolean } = {}): string {
-  const counts = `${totals.waybills} waybills · ${totals.parcels} parcels`
+  const counts = `${countLabel(totals.waybills, 'waybill')} · ${countLabel(totals.parcels, 'parcel')}`
   return withWeight ? `${counts} · ${totals.weight_kg} kg` : counts
 }
 

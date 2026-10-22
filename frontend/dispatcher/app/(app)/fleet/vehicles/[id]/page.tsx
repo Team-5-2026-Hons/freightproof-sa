@@ -91,7 +91,9 @@ export default function VehicleDetailPage() {
     )
   }
 
-  if (error || !vehicle) {
+  // Only an empty page is a load failure. With vehicle details on screen a failed background
+  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
+  if (!vehicle) {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Vehicle not found" left={backButton} />
@@ -177,7 +179,8 @@ export default function VehicleDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/vehicles/${vehicle!.id}`, body)
-      await refetchSilent()
+      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
+      refetchSilent()
       setIsEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
@@ -195,6 +198,12 @@ export default function VehicleDetailPage() {
       >
         <Chip type={vehicle.is_active ? 'complete' : 'pending'} label={vehicle.is_active ? 'Active' : 'Inactive'} />
       </TopBar>
+
+      {error && (
+        <p role="alert" className="shrink-0 bg-err-c px-6 py-2 text-[12px] text-on-err-c">
+          Could not refresh this vehicle ({error}). Showing the details last loaded.
+        </p>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
 
