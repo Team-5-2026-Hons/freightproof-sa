@@ -74,6 +74,53 @@
         ]
       }
     },
+    "/api/v1/dev/phone/move": {
+      "post": {
+        "description": "Stage where this trip's phone reports from, or hand it back to the handset.\n\n`release` is the off switch and the state of every trip that was never staged: the\ndevice's own fix is recorded again, stamped `device`.\n\nIdempotent by construction — staging replaces rather than merges, so pressing the\nsame panel option twice leaves identical state and returns an identical response.",
+        "operationId": "move_phone_api_v1_dev_phone_move_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MovePhoneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MovePhoneResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Place this trip's driver-phone position, or release it to the real device",
+        "tags": [
+          "dev-triggers"
+        ]
+      }
+    },
     "/api/v1/dev/pp/manifest": {
       "post": {
         "description": "Stage a header change on the mock manifest (FP-281), e.g. to demo MANIFEST_CHANGED.",
@@ -888,6 +935,130 @@
         "keys_deleted"
       ],
       "title": "FlushMockStateResponse",
+      "type": "object"
+    },
+    "MovePhoneRequest": {
+      "description": "Place one trip's DRIVER PHONE position, or hand it back to the real device.\n\nDeliberately independent of move-truck (Tim, 22 Oct 2026): the two are separate\ncontrols on the panel, so a demo can put the phone at a precinct while the tracker\nsits elsewhere — which is also what makes a genuine phone/tracker divergence\n(FP-145 GPS_MISMATCH) still stageable.\n\n`at_stop` is the cross-dock case and is the only placement that needs\n`trip_stop_id`; origin and destination resolve to the trip's first and last stop.\n`release` drops any staged position, after which the handset's own fix is recorded\nagain — which is also the state of every trip that was never staged.",
+      "properties": {
+        "placement": {
+          "enum": [
+            "at_origin",
+            "at_destination",
+            "at_stop",
+            "release"
+          ],
+          "title": "Placement",
+          "type": "string"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trip Stop Id"
+        }
+      },
+      "required": [
+        "trip_id",
+        "placement"
+      ],
+      "title": "MovePhoneRequest",
+      "type": "object"
+    },
+    "MovePhoneResponse": {
+      "description": "Where this trip's phone will now report from, and what it is measured against.\n\n`staged` is false only for `release`. The coordinates are the precinct centre the\nphone was placed at — the same geometry move-truck's `at_stop` scenario uses, so a\nphone and a truck placed at the same stop agree exactly rather than approximately.",
+      "properties": {
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Latitude"
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Longitude"
+        },
+        "placement": {
+          "enum": [
+            "at_origin",
+            "at_destination",
+            "at_stop",
+            "release"
+          ],
+          "title": "Placement",
+          "type": "string"
+        },
+        "placement_label": {
+          "title": "Placement Label",
+          "type": "string"
+        },
+        "precinct_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Precinct Name"
+        },
+        "recorded_as": {
+          "default": "simulated",
+          "title": "Recorded As",
+          "type": "string"
+        },
+        "staged": {
+          "title": "Staged",
+          "type": "boolean"
+        },
+        "trip_id": {
+          "format": "uuid",
+          "title": "Trip Id",
+          "type": "string"
+        },
+        "trip_stop_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Trip Stop Id"
+        }
+      },
+      "required": [
+        "trip_id",
+        "placement",
+        "placement_label",
+        "staged"
+      ],
+      "title": "MovePhoneResponse",
       "type": "object"
     },
     "MoveTruckRequest": {
