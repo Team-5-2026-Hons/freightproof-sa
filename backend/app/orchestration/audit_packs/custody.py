@@ -22,6 +22,7 @@ from app.db.models.driver_substitutions import (
     DriverSubstitutionCorrection,
     LateDriverEvidence, LateDriverEvidenceArtifact,
 )
+from app.db.models.enums import AnchorStatus
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.people import Driver, User
 from app.db.models.trips import DriverSubstitution
@@ -107,6 +108,28 @@ async def load_custody_facts(
     )
 
 
+_UNKNOWN_DRIVER = "Unknown driver"
+
+
+def _driver_name(drivers: dict[uuid.UUID, Driver], driver_id: uuid.UUID) -> str:
+    """A name for the pack, or a stated gap: one unresolvable row must not fail the whole report."""
+    return drivers[driver_id].full_name if driver_id in drivers else _UNKNOWN_DRIVER
+
+
+def _substitution_tier(substitution: DriverSubstitution) -> EvidenceTier:
+    """"anchored" only when the custody anchor actually completed.
+
+    A linked receipt alone is not proof: the status is the record of whether the anchor finished.
+    Legacy rows pre-date `anchor_status` (its migration added the column nullable and backfilled
+    nothing), so a NULL status with a linked receipt is a genuinely anchored legacy row.
+    """
+    if substitution.blockchain_receipt_id is None:
+        return "recorded"
+    if substitution.anchor_status is None or substitution.anchor_status == AnchorStatus.ANCHORED.value:
+        return "anchored"
+    return "recorded"
+
+
 def _seal_reading(check: dict[str, object]) -> str:
     number = check.get("seal_number") or "no number"
     return f"{check.get('vehicle_id')}: {check.get('condition')} ({number})"
@@ -120,7 +143,7 @@ def _declarations(
         return []
     return [
         HandoverDeclarationRecord(
-            role=row.role, driver_name=drivers[row.driver_id].full_name if row.driver_id in drivers else "Unknown driver",
+            role=row.role, driver_name=_driver_name(drivers, row.driver_id),
             captured_at=row.captured_at, received_at=row.received_at, location_recorded=row.latitude is not None,
             seal_readings=[_seal_reading(check) for check in row.seal_checks],
             photo_sha256=facts.photo_hashes.get(row.id, []), discrepancy_note=row.discrepancy_note,
@@ -145,13 +168,12 @@ def substitution_records(
     records: list[DriverSubstitutionRecord] = []
     for s in sorted(substitutions, key=lambda row: row.sequence_number):
         request = facts.requests.get(s.request_id) if s.request_id is not None else None
-        tier: EvidenceTier = "anchored" if s.blockchain_receipt_id is not None else "recorded"
         records.append(DriverSubstitutionRecord(
             substitution_id=s.id,
-            original_driver_name=drivers[s.original_driver_id].full_name,
-            substituting_driver_name=drivers[s.substituting_driver_id].full_name,
+            original_driver_name=_driver_name(drivers, s.original_driver_id),
+            substituting_driver_name=_driver_name(drivers, s.substituting_driver_id),
             exchange_location=s.exchange_location, is_planned=s.is_planned, substitution_at=s.substitution_at,
-            anchor_receipt_id=s.blockchain_receipt_id, tier=tier, sequence_number=s.sequence_number,
+            anchor_receipt_id=s.blockchain_receipt_id, tier=_substitution_tier(s), sequence_number=s.sequence_number,
             completion_mode=s.completion_mode,
             arranged_by_name=_name(facts.users, request.arranged_by_user_id) if request else None,
             completed_by="driver" if s.completed_by_driver_id else "dispatcher" if s.completed_by_user_id else None,
@@ -179,7 +201,7 @@ def substitution_records(
 def late_evidence_records(facts: CustodyFacts, drivers: dict[uuid.UUID, Driver]) -> list[LateEvidenceRecord]:
     return [
         LateEvidenceRecord(
-            evidence_id=e.id, driver_name=drivers[e.driver_id].full_name if e.driver_id in drivers else "Unknown driver",
+            evidence_id=e.id, driver_name=_driver_name(drivers, e.driver_id),
             custody_sequence=e.custody_sequence, kind=e.kind, captured_at=e.captured_at, received_at=e.received_at,
             status=e.status, payload_sha256=e.payload_sha256, photo_sha256=facts.late_photo_hashes.get(e.id, []),
             reviewed_at=e.reviewed_at,

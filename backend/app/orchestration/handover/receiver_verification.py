@@ -262,37 +262,42 @@ async def raise_verification_exception(
         )
     )
 
+    trip_id = trip.id  # plain value for the failure log; a rolled-back savepoint can expire `trip`
     try:
         # Idempotent: the same finding on the same handover is one fact. A repeated resolve
         # (a reload, a double tap) must not file it again. `trip_stop_id` may be NULL, which
         # `==` would never match, hence the explicit IS NULL branch.
-        already_filed = (await db.execute(
-            select(TripException.id).where(
-                TripException.trip_id == trip.id,
-                TripException.phase_event_id == phase_event_id,
-                TripException.trip_stop_id.is_(None) if trip_stop_id is None
-                else TripException.trip_stop_id == trip_stop_id,
-                TripException.exception_type == verdict.exception_type,
-            ).limit(1)
-        )).first()
-        if already_filed is not None:
-            logger.info(
-                "Receiver verification exception %s already filed for trip=%s phase_event=%s; not repeating",
-                verdict.exception_type.value, trip.id, phase_event_id,
-            )
-            return
+        # The dedupe read and the insert share one SAVEPOINT so the check-then-write is a unit
+        # that rolls back together, and so a database error here rolls back to this point
+        # instead of aborting the receiver's transaction (which also carries the verdict).
+        async with db.begin_nested():
+            already_filed = (await db.execute(
+                select(TripException.id).where(
+                    TripException.trip_id == trip.id,
+                    TripException.phase_event_id == phase_event_id,
+                    TripException.trip_stop_id.is_(None) if trip_stop_id is None
+                    else TripException.trip_stop_id == trip_stop_id,
+                    TripException.exception_type == verdict.exception_type,
+                ).limit(1)
+            )).first()
+            if already_filed is not None:
+                logger.info(
+                    "Receiver verification exception %s already filed for trip=%s phase_event=%s; not repeating",
+                    verdict.exception_type.value, trip.id, phase_event_id,
+                )
+                return
 
-        await register_exception(db, TripException(
-            trip_id=trip.id,
-            phase_event_id=phase_event_id,
-            trip_stop_id=trip_stop_id,
-            exception_type=verdict.exception_type,
-            source=ExceptionSource.SYSTEM,
-            severity=severity,
-            review_status=initial_review_status(severity),
-            description=description,
-        ))
-        await db.flush()
+            await register_exception(db, TripException(
+                trip_id=trip.id,
+                phase_event_id=phase_event_id,
+                trip_stop_id=trip_stop_id,
+                exception_type=verdict.exception_type,
+                source=ExceptionSource.SYSTEM,
+                severity=severity,
+                review_status=initial_review_status(severity),
+                description=description,
+            ))
+            await db.flush()
 
         enqueue_event(
             db, trip.operator_organization_id,
@@ -308,7 +313,7 @@ async def raise_verification_exception(
         logger.exception(
             "Could not record a receiver verification exception for trip=%s phase_event=%s "
             "— the verification row still carries the finding",
-            trip.id, phase_event_id,
+            trip_id, phase_event_id,
         )
 
 

@@ -274,6 +274,31 @@ def _snapshot_for_trailer(
     )
 
 
+async def _persist_trailer_snapshots(
+    db: AsyncSession, *, snapshots: list[TrailerGpsSnapshot], context: str,
+) -> None:
+    """Insert the trailer snapshots under their own SAVEPOINT, failing open on its own.
+
+    Separate from record_phase_corroboration's catch-all on purpose: that handler returns None,
+    which would discard the horse fix already obtained and written to the event. A failed
+    snapshot insert costs only the snapshots. The savepoint flushes on exit, so a database
+    error lands here instead of at the completion's later flush, where Postgres's aborted
+    transaction would have turned it into a 500 on a swipe the driver already performed.
+    """
+    if not snapshots:
+        return
+    try:
+        async with db.begin_nested():
+            db.add_all(snapshots)
+    except DatabaseUnavailableError:
+        raise
+    except Exception:
+        logger.exception(
+            "Could not record trailer position snapshots for %s — handshake continues, "
+            "trailer positions recorded as unavailable", context,
+        )
+
+
 async def record_phase_corroboration(
     db: AsyncSession, *, trip: Trip, event: PhaseEvent,
     driver_captured_at: Optional[datetime] = None,
@@ -396,6 +421,7 @@ async def record_phase_corroboration(
                 event.pulsit_geofence_confirmed = confirmed
 
         # ── FP-195: one snapshot row per trailer that actually reported ─────────
+        snapshots: list[TrailerGpsSnapshot] = []
         for (trailer_id, _device_id), trailer_fix in zip(trailers, trailer_fixes, strict=False):
             snapshot = _snapshot_for_trailer(
                 phase_event_id=event.id, trailer_id=trailer_id, fix=trailer_fix
@@ -415,8 +441,9 @@ async def record_phase_corroboration(
                 snapshot.geofence_confirmed = _geofence_verdict_to_column(
                     trailer_fix, precinct, context=f"{context} trailer_id={trailer_id}",
                 )
-            db.add(snapshot)
+            snapshots.append(snapshot)
 
+        await _persist_trailer_snapshots(db, snapshots=snapshots, context=context)
         return horse_fix
 
     except DatabaseUnavailableError:

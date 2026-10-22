@@ -40,6 +40,7 @@ from app.integrations.scan_feed import MockScanFeed, ScanDirection
 from app.main import app
 from app.orchestration.consignments.scans import ingest_scans
 from app.orchestration.phases.override import override_phase
+from app.orchestration.trips.administration import cancel_trip
 
 from tests.conftest import FakeMockStateStore, auth_header, make_token
 
@@ -2306,3 +2307,84 @@ async def test_loading_complete_rejects_a_linehaul_pdf_without_its_scan(
     assert resp.status_code == 422
     event = await db_session.get(PhaseEvent, uuid.UUID(loading_id))
     assert event.linehaul_pdf_artifact_id is None
+
+
+# ── WI-27 item 4: an own replay of an EXCEPTION-status completion is a 200 ──────────
+
+_ARRIVAL_SEAL_MISMATCH = "ZZ-9999"  # the fixture's departure seal is AB-1234
+
+
+async def _arrival_resolved_as_exception(client: AsyncClient, db_session, trip, token: str) -> tuple[str, str, dict]:
+    """Arrival whose seal number disagrees with the departure seal: SEAL_MISMATCH, row EXCEPTION.
+
+    Returns the arrival id, the idempotency key, and the exact request body so a replay can
+    resend byte-for-byte what the driver app would have queued.
+    """
+    key = str(uuid.uuid4())
+    arrival_id, resp = await _complete_arrival_with(
+        client, db_session, trip, token, seal_condition="intact",
+        seal_number_at_arrival=_ARRIVAL_SEAL_MISMATCH, idempotency_key=key,
+    )
+    assert resp.status_code == 200, resp.text
+    arrival = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    assert arrival.status == PhaseStatus.EXCEPTION
+    body = {
+        "phase_type": "arrival", "seal_condition": "intact",
+        "seal_number_at_arrival": _ARRIVAL_SEAL_MISMATCH,
+        "seal_photo_artifact_id": str(arrival.seal_photo_artifact_id), "idempotency_key": key,
+    }
+    return arrival_id, key, body
+
+
+async def _arrival_seal_exception_count(db_session, trip_id, arrival_id: str) -> int:
+    return (await db_session.execute(
+        select(func.count()).select_from(TripException).where(
+            TripException.trip_id == trip_id, TripException.phase_event_id == uuid.UUID(arrival_id),
+        )
+    )).scalar_one()
+
+
+async def test_own_replay_of_an_exception_completion_returns_200_and_files_no_second_exception(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """_is_resolved treats EXCEPTION like COMPLETED, so a resent offline-queue entry is answered
+    from the stored row instead of re-running the wrapper and filing the finding again."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    arrival_id, _key, body = await _arrival_resolved_as_exception(client, db_session, trip, token)
+    exceptions_before = await _arrival_seal_exception_count(db_session, trip.id, arrival_id)
+
+    replay = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete", json=body, headers=auth_header(token),
+    )
+
+    assert exceptions_before == 1
+    assert replay.status_code == 200, replay.text
+    assert await _arrival_seal_exception_count(db_session, trip.id, arrival_id) == 1
+    arrival = await db_session.get(PhaseEvent, uuid.UUID(arrival_id))
+    await db_session.refresh(arrival)
+    assert arrival.status == PhaseStatus.EXCEPTION
+
+
+async def test_own_replay_of_an_exception_completion_after_the_trip_was_cancelled_is_not_a_409(
+    client: AsyncClient, db_session, seed_trip,
+):
+    """The replay short-circuit runs BEFORE the trip-status check, for EXCEPTION as for COMPLETED
+    (test_phase_service pins the COMPLETED half): a queued entry for a decided phase must drain
+    even though the trip has since reached a terminal status."""
+    trip, driver = seed_trip
+    token = make_token(sub=str(driver.id), role="driver")
+    arrival_id, _key, body = await _arrival_resolved_as_exception(client, db_session, trip, token)
+    await cancel_trip(
+        db_session, trip_id=trip.id, operator_organization_id=trip.operator_organization_id,
+        user_id=trip.created_by_user_id, note="abandoned",
+    )
+    await db_session.refresh(trip)
+    assert TripStatus(trip.status) == TripStatus.CANCELLED
+
+    replay = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{arrival_id}/complete", json=body, headers=auth_header(token),
+    )
+
+    assert replay.status_code == 200, replay.text
+    assert await _arrival_seal_exception_count(db_session, trip.id, arrival_id) == 1

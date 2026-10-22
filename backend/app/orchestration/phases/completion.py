@@ -79,8 +79,9 @@ async def _finish_phase(
     # fails outside the database, the column stays NULL — the schema's "not
     # assessed" — the traceback is logged, and the completion still lands. A 500 here
     # would roll back a swipe the offline queue could then only ever replay into the
-    # same failure. The separation finding uses its own SAVEPOINT for its insert, so
-    # a failure inside it leaves the outer transaction usable for the flush below.
+    # same failure. Both findings (separation and driver-location) insert under their own
+    # SAVEPOINT inside action_location, so a database error in either leaves the outer
+    # transaction usable for the flush below.
     evaluated_at = datetime.now(UTC)
     try:
         assessment = await action_location.build_phase_assessment(

@@ -720,3 +720,33 @@ async def test_a_mismatching_resolve_files_one_exception_on_the_trip_and_commits
     ).scalars().all()
     assert rows == [ExceptionType.RECEIVER_ID_MISMATCH]
     assert commits == [1]
+
+
+async def test_a_database_error_filing_the_verification_exception_leaves_the_resolve_standing(
+    client, handover_trip, driver_auth, db_session, monkeypatch, caplog,
+):
+    """WI-22: filing the finding is fail-open, so a Postgres error inside it must not take the
+    receiver's resolve down. The value is made too long for its column so Postgres itself raises
+    (a genuinely aborted transaction); the savepoint is what keeps the verdict committable."""
+    token = await _started_session(client, handover_trip, driver_auth, db_session)
+    monkeypatch.setattr(
+        "app.orchestration.handover.receiver_verification.initial_review_status",
+        lambda _severity: "x" * 40,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        res = await client.post(
+            f"/api/v1/handover/{token}/verify/resolve",
+            json={"receiver_name": "Someone Else", "receiver_id_number": "8001015009087"},
+        )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["identity_match"] is False
+    assert res.json()["status"] == ReceiverVerificationStatus.FAILED.value  # the verdict itself stands
+    filed = (
+        await db_session.execute(
+            select(TripException.id).where(TripException.trip_id == handover_trip["trip"].id)
+        )
+    ).scalars().all()
+    assert filed == []
+    assert "Could not record a receiver verification exception" in caplog.text

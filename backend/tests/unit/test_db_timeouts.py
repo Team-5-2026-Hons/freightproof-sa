@@ -208,6 +208,32 @@ async def test_dependency_commits_success_and_closes_once(monkeypatch: pytest.Mo
     close.assert_awaited_once()
 
 
+async def test_dependency_rolls_back_without_committing_when_the_request_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """WI-27 item 1, the failure half: a handler error must discard the request's writes.
+
+    The test above covers the case where rollback itself fails; this is the ordinary path.
+    """
+    session = DatabaseSession()
+    commit, rollback, close = AsyncMock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(session, "commit", commit)
+    monkeypatch.setattr(session, "rollback", rollback)
+    monkeypatch.setattr(session, "close", close)
+    monkeypatch.setattr(session_module, "AsyncSessionLocal", lambda: session)
+    dependency: AsyncGenerator[AsyncSession, None] = get_db()
+    await anext(dependency)
+    failure = HTTPException(409, "conflict")
+
+    with pytest.raises(HTTPException) as caught:
+        await dependency.athrow(failure)
+
+    assert caught.value is failure
+    commit.assert_not_awaited()
+    rollback.assert_awaited_once()
+    close.assert_awaited_once()
+
+
 def _read_only_session(monkeypatch: pytest.MonkeyPatch, close: AsyncMock) -> tuple[DatabaseSession, AsyncMock]:
     session = DatabaseSession()
     commit = AsyncMock()

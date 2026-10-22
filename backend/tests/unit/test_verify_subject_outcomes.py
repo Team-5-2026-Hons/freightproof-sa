@@ -12,6 +12,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blockchain.hedera import HederaVerifyError
+from app.core.exceptions import HederaServiceError, HederaTimeoutError
 from app.db.models.blockchain import BlockchainReceipt
 from app.db.models.enums import (
     BlockchainReceiptType, DriverEventType, IdvsStatus, OrganizationType, SubjectType, VerifyStatus,
@@ -255,3 +257,41 @@ async def test_a_hedera_hash_that_disagrees_is_a_hedera_mismatch_with_expected_h
     assert outcome.receipt is receipt
     assert outcome.expected_hash == receipt.data_hash
     assert outcome.current_hash is None
+
+
+@pytest.mark.parametrize(
+    "failure", [HederaServiceError("mirror down"), HederaVerifyError("bad topic"), HederaTimeoutError("slow")],
+)
+async def test_a_hedera_service_error_is_an_error_not_a_mismatch(
+    db_session: AsyncSession, failure: HederaServiceError,
+) -> None:
+    """Infrastructure failure must not read as tamper: the UI tells ERROR from HEDERA_MISMATCH."""
+    event, receipt = await _driver_event_with_receipt(db_session)
+    stub = MagicMock()
+    stub.verify_hash.side_effect = failure
+
+    outcome = await verify_subject(
+        db_session, subject_type=SubjectType.DRIVER_EVENT, subject_id=event.id,
+        hedera_service=stub,
+    )
+
+    assert outcome.status == VerifyStatus.ERROR
+    assert outcome.receipt is receipt
+    assert outcome.expected_hash is None
+    assert outcome.current_hash is None
+    assert outcome.evidence_verified is False
+
+
+async def test_a_failure_that_is_not_a_hedera_service_error_is_not_swallowed(
+    db_session: AsyncSession,
+) -> None:
+    """The ERROR mapping is deliberately narrow: a programming error must surface, not hide."""
+    event, _receipt = await _driver_event_with_receipt(db_session)
+    stub = MagicMock()
+    stub.verify_hash.side_effect = RuntimeError("bug")
+
+    with pytest.raises(RuntimeError, match="bug"):
+        await verify_subject(
+            db_session, subject_type=SubjectType.DRIVER_EVENT, subject_id=event.id,
+            hedera_service=stub,
+        )
