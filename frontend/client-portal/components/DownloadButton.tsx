@@ -11,7 +11,7 @@ interface DownloadButtonProps {
   children: string
 }
 
-// A button, not a link: the download has to carry the viewer grant header (FP-291), which
+// A button, not a link: the download has to carry the viewer grant header, which
 // a plain <a href> cannot send.
 export function DownloadButton({ token, file, filename, className, children }: DownloadButtonProps) {
   const [busy, setBusy] = useState(false)
@@ -34,7 +34,7 @@ export function DownloadButton({ token, file, filename, className, children }: D
       <button type="button" className={className} disabled={busy} onClick={() => void download()}>
         {busy ? 'Preparing…' : children}
       </button>
-      {error && <span role="alert" className="text-[12px] text-err">{error}</span>}
+      {error && <span role="alert" className="text-meta text-err">{error}</span>}
     </span>
   )
 }

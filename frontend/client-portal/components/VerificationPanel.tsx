@@ -129,7 +129,7 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
 
   // Re-checks only what is not already confirmed: a verified row has nothing to gain from a second request.
   const unverifiedKeys = targets.filter((t) => checks[t.key]?.state !== 'verified').map((t) => t.key)
-  function rerunBrowserChecks() {
+  function rerunBrowserChecks(): void {
     const keys = new Set(unverifiedKeys)
     setChecks((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !keys.has(key))))
     void runChecks(keys)
@@ -143,7 +143,7 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
   const allVerified = sealResult?.state === 'verified' && recordsVerified === records.length
   const settled = targets.every((t) => checks[t.key] !== undefined)
 
-  async function runServer() {
+  async function runServer(): Promise<void> {
     setServer('checking')
     try {
       setServer(await runServerVerification(token))
@@ -190,27 +190,27 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
     return ANCHOR_STATE_TEXT[check.state]
   }
 
-  const buttonClass = 'min-h-11 rounded-md bg-surf-high px-3 py-2 text-[13px] font-semibold hover:bg-outline-v/50 disabled:opacity-50'
+  const buttonClass = 'min-h-11 rounded-md bg-surf-high px-3 py-2 text-small font-semibold hover:bg-outline-v/50 disabled:opacity-50'
 
   return (
     <section aria-labelledby="verify-title" className={`rounded-lg border-2 p-4 sm:p-5 ${tone}`}>
-      <h3 id="verify-title" aria-live="polite" className="text-[17px] font-extrabold">{plainHeadline}</h3>
-      <p className="num mt-0.5 text-[13px] font-semibold text-muted">{sealHeadline} · {recordsHeadline}</p>
-      <p className="mt-1 text-[14px] text-muted">
+      <h3 id="verify-title" aria-live="polite" className="text-head font-extrabold">{plainHeadline}</h3>
+      <p className="num mt-0.5 text-small font-semibold text-muted">{sealHeadline} · {recordsHeadline}</p>
+      <p className="mt-1 text-body text-muted">
         Your browser checks this pack&apos;s seal and each anchored record against the public Hedera ledger itself.
       </p>
       {/* The per-record rows are the proof, not the story: folded away until something fails, then shown. */}
       <details open={sealFailed || recordsFailed > 0} className="group mt-3">
-        <summary className="no-print flex min-h-11 cursor-pointer list-none items-center gap-2 text-[14px] font-semibold text-sec">
+        <summary className="no-print flex min-h-11 cursor-pointer list-none items-center gap-2 text-body font-semibold text-sec">
           <span aria-hidden className="inline-block transition-transform group-open:rotate-90">›</span>
           Show each check ({targets.length})
         </summary>
-        <p className="mt-2 text-[13px] text-muted">
+        <p className="mt-2 text-small text-muted">
           Your browser hashed each anchored payload itself and confirmed the Hedera {seal.hedera_network} ledger holds that
           hash at the recorded position. This proves those payloads existed unchanged at the times shown; it does not by
           itself prove every figure on this page came from them.
         </p>
-        <p className="num mt-1 text-[12px] text-muted">
+        <p className="num mt-1 text-meta text-muted">
           {mirrorBase
             ? `Mirror node: ${new URL(mirrorBase).host}`
             : `No trusted mirror node is known for the network “${seal.hedera_network}”, so the ledger cannot be checked.`}
@@ -221,9 +221,9 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
             const check = checks[t.key]
             const shown = check ? rowResult(t, check) : null
             return (
-              <li key={t.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[13px]">
+              <li key={t.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-small">
                 <span className="font-semibold">{t.label}</span>
-                <span className={`num text-[12px] font-semibold ${shown ? shown.tone : 'text-muted'}`}>
+                <span className={`num text-meta font-semibold ${shown ? shown.tone : 'text-muted'}`}>
                   {!check || !shown
                     ? 'Checking…'
                     : `${shown.text}${check.consensusTimestamp ? ` · ${consensusText(check.consensusTimestamp)}` : ''}`}
@@ -241,10 +241,10 @@ export function VerificationPanel({ token, seal, records, onSealCheck }: Props) 
           Check live records have not changed since issue
         </button>
       </div>
-      {server === 'checking' && <p className="mt-2 text-[13px] text-muted">Asking FreightProof to re-check its live records…</p>}
-      {server === 'failed' && <p className="mt-2 text-[13px] text-warn">The live re-check could not run. Try again later.</p>}
+      {server === 'checking' && <p className="mt-2 text-small text-muted">Asking FreightProof to re-check its live records…</p>}
+      {server === 'failed' && <p className="mt-2 text-small text-warn">The live re-check could not run. Try again later.</p>}
       {server && typeof server === 'object' && (
-        <div className="mt-2 text-[13px]" role="status">
+        <div className="mt-2 text-small" role="status">
           <p>
             Live check ({formatSast(server.checked_at)}): pack seal {SERVER_TEXT[server.seal_status]};{' '}
             {server.records.filter((r) => r.status === 'verified').length} of {server.records.length} anchored records unchanged.

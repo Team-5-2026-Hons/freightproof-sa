@@ -15,7 +15,7 @@ import type {
 } from '@/lib/types'
 import { sha256Hex } from '@/lib/verify'
 
-export const T0 = '2026-09-12T06:00:00Z'
+const T0 = '2026-09-12T06:00:00Z'
 
 export function makePhase(seq: number, phaseType: string, overrides: Partial<PhaseRecord> = {}): PhaseRecord {
   return {

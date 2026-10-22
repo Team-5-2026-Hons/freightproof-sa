@@ -129,7 +129,7 @@ export default function RouteMap({ manifest, items, selectedId, onSelect }: Prop
 
     // Operator-typed names: always through textTooltip. Labels stay off on a phone until tapped, or they cover the map.
     const stops = L.layerGroup(manifest.stops.map((s) =>
-      geofenceLayer(s).bindTooltip(textTooltip(`${s.sequence}. ${s.precinct_name}`), { permanent: !narrow, direction: 'right', className: 'text-[11px]' }),
+      geofenceLayer(s).bindTooltip(textTooltip(`${s.sequence}. ${s.precinct_name}`), { permanent: !narrow, direction: 'right', className: 'text-caption' }),
     ))
     const trail = trailLayers(manifest.location_trail, manifest.location_coverage.gaps)
     const trackers = L.layerGroup(manifest.location_trail
@@ -217,7 +217,7 @@ export default function RouteMap({ manifest, items, selectedId, onSelect }: Prop
       <div ref={container} role="region" aria-label="Route map" className="h-[380px] w-full rounded-md sm:h-[460px]" />
       {!hasPositions && (
         // Above Leaflet's panes (z-index up to 1000) so the empty map says why it is empty.
-        <p className="pointer-events-none absolute inset-x-4 top-4 z-[1000] rounded-md bg-surf-lowest/90 px-3 py-2 text-center text-[13px] text-muted shadow-card">
+        <p className="pointer-events-none absolute inset-x-4 top-4 z-[1000] rounded-md bg-surf-lowest/90 px-3 py-2 text-center text-small text-muted shadow-card">
           No positions recorded in this pack
         </p>
       )}
@@ -226,7 +226,7 @@ export default function RouteMap({ manifest, items, selectedId, onSelect }: Prop
           type="button"
           aria-pressed={panEnabled}
           onClick={() => setPanEnabled((enabled) => !enabled)}
-          className="no-print absolute bottom-8 left-2 z-[1000] min-h-11 rounded-md bg-surf-lowest px-3 py-2 text-[12px] font-semibold shadow-card"
+          className="no-print absolute bottom-8 left-2 z-[1000] min-h-11 rounded-md bg-surf-lowest px-3 py-2 text-meta font-semibold shadow-card"
         >
           {panEnabled ? 'Lock map to scroll the page' : 'Unlock map to move it'}
         </button>
