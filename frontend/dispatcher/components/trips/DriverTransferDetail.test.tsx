@@ -181,6 +181,38 @@ it('shows_a_skeleton_not_a_sentence_while_the_evidence_loads', () => {
   expect(screen.getByRole('status', { name: 'Loading transfer evidence' })).toBeInTheDocument()
 })
 
+it('moves_focus_to_the_first_field_when_the_clarification_form_opens', async () => {
+  vi.mocked(getCompletedSubstitution).mockResolvedValue(detail)
+  renderDetail()
+
+  await openClarificationForm()
+
+  expect(screen.getByLabelText('Reason')).toHaveFocus()
+})
+
+it('returns_focus_to_the_button_that_opened_the_form_when_it_is_closed_with_back', async () => {
+  vi.mocked(getCompletedSubstitution).mockResolvedValue(detail)
+  renderDetail()
+  await openClarificationForm()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+  expect(screen.getByRole('button', { name: 'Add clarification' })).toHaveFocus()
+})
+
+it('returns_focus_to_the_opening_button_after_a_clarification_is_saved', async () => {
+  vi.mocked(getCompletedSubstitution).mockResolvedValue(detail)
+  vi.mocked(correctSubstitution).mockResolvedValue(pack.clarification.pending)
+  renderDetail()
+  await openClarificationForm()
+  fill('Reason', 'Label misspelt')
+  fill('Clarification', 'It was the Engen.')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Add clarification' }))
+
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add clarification' })).toHaveFocus())
+})
+
 it('posts_a_clarification_with_reason_and_note_then_refreshes_the_detail_and_the_trip', async () => {
   vi.mocked(getCompletedSubstitution).mockResolvedValue(detail)
   vi.mocked(correctSubstitution).mockResolvedValue(pack.clarification.pending)

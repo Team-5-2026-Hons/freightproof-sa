@@ -564,6 +564,22 @@ describe('TripDetailPanel incidents summary chip', () => {
   })
 })
 
+describe('TripDetailPanel when the incidents failed to load', () => {
+  it('says_unavailable_and_retries_instead_of_claiming_the_trip_has_no_incidents', () => {
+    window.localStorage.setItem('fp.tripInfo.section.incidents', '1')
+    incidents([])
+    incidentState = { ...incidentState, error: 'Request timed out. Please try again.' }
+    try {
+      renderPanel(vi.fn(), activeTrip)
+
+      expect(screen.getByText('Unavailable')).toBeInTheDocument()
+      expect(screen.queryByText('No incidents on this trip.')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(incidentState.refetch).toHaveBeenCalledTimes(1)
+    } finally { window.localStorage.removeItem('fp.tripInfo.section.incidents') }
+  })
+})
+
 describe('TripDetailPanel incident focus', () => {
   const CLOSED_INCIDENT = { incident_id: 'i1', status: 'closed', reference: 'INC1', incident_type: 'hijacking', parcels_total: 0, parcels_unresolved: 0, exception_ids: [] } as unknown as IncidentSummary
 

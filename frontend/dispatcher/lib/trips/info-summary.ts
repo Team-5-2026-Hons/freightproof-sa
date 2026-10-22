@@ -12,6 +12,7 @@ export const NOT_DEPARTED = 'Not departed'
 export const TRANSFER_PENDING = 'Transfer pending'
 export const NO_INCIDENTS = 'None'
 export const INCIDENTS_LOADING = 'Loading…'
+export const INCIDENTS_UNAVAILABLE = 'Unavailable'
 export const AUDIT_SUMMARY = 'For insurers, clients and SAPS'
 
 const MINUTES_ON_TIME = 0
@@ -67,8 +68,9 @@ export function hasActiveIncident(incidents: readonly IncidentSummary[]): boolea
 }
 
 /** "1 open", "2 investigating", "1 open · 2 investigating", "3 closed" or "None". */
-export function incidentsSummary(incidents: readonly IncidentSummary[], isLoading: boolean): string {
-  if (incidents.length === 0) return isLoading ? INCIDENTS_LOADING : NO_INCIDENTS
+export function incidentsSummary(incidents: readonly IncidentSummary[], isLoading: boolean, failed = false): string {
+  // A failed load with nothing cached is unknown, not "None": the reader must not take it as all clear.
+  if (incidents.length === 0) return isLoading ? INCIDENTS_LOADING : failed ? INCIDENTS_UNAVAILABLE : NO_INCIDENTS
   const count = (status: IncidentSummary['status']): number => incidents.filter(incident => incident.status === status).length
   const open = count('open')
   const investigating = count('investigating')

@@ -59,4 +59,33 @@ describe('DashboardIncidentsPanel', () => {
     screen.getByRole('button', { name: 'Try again' }).click()
     expect(refetch).toHaveBeenCalledOnce()
   })
+
+  it('keeps_the_rows_and_says_the_refresh_failed_when_a_refresh_fails_behind_old_data', () => {
+    const refetch = vi.fn()
+    mockedIncidents.mockReturnValue(incidentsState({ data: [incident('live')], error: 'Request timed out.', refetch }))
+
+    render(<DashboardIncidentsPanel />)
+
+    expect(screen.getByText(/FP-live/)).toBeInTheDocument()
+    expect(screen.getByText(/Couldn't refresh · showing data from \d{2}:\d{2}/)).toBeInTheDocument()
+    expect(screen.queryByText('Failed to load incidents')).toBeNull()
+    screen.getByRole('button', { name: 'Try again' }).click()
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('does_not_claim_no_open_incidents_without_a_warning_when_the_refresh_failed', () => {
+    mockedIncidents.mockReturnValue(incidentsState({ data: [incident('done', { status: 'closed' })], error: 'Request timed out.' }))
+
+    render(<DashboardIncidentsPanel />)
+
+    expect(screen.getByText(/Couldn't refresh · showing data from/)).toBeInTheDocument()
+  })
+
+  it('shows_no_stale_note_when_nothing_failed', () => {
+    mockedIncidents.mockReturnValue(incidentsState({ data: [incident('live')] }))
+
+    render(<DashboardIncidentsPanel />)
+
+    expect(screen.queryByText(/Couldn't refresh/)).toBeNull()
+  })
 })

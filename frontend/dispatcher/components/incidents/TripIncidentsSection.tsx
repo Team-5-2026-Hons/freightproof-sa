@@ -11,6 +11,9 @@ import { IncidentStatusChip } from './IncidentStatusChip'
 interface Props {
   incidents: IncidentSummary[]
   isLoading: boolean
+  /** Why the last load failed, if it did. With nothing cached this is "unavailable", never "none". */
+  error?: string | null
+  onRetry?: () => void
   /** This trip's own URL, so an incident opened from here comes back here. */
   returnTo: string
   onReport: () => void
@@ -24,9 +27,23 @@ export const INCIDENT_ROW_ATTR = 'data-incident-row'
 /** A trip's incidents and the way to report one: the body of the Info tab's Incidents section,
  *  which supplies the heading. Its own section because an incident outlives the trip: a closed
  *  trip can still have an open shortage investigation. */
-export function TripIncidentsSection({ incidents, isLoading, returnTo, onReport, highlightedId = null }: Props): React.JSX.Element {
+export function TripIncidentsSection({ incidents, isLoading, error = null, onRetry, returnTo, onReport, highlightedId = null }: Props): React.JSX.Element {
   const report = <Button size="sm" variant="secondary" onClick={onReport}>Report incident</Button>
   if (isLoading && incidents.length === 0) return <SectionRowsSkeleton rows={2} label="Loading incidents" />
+  // An empty list after a failed load says nothing about the trip: "No incidents" here would be a
+  // false all-clear on a screen used for evidence. Reporting stays available, since a dispatcher
+  // who has just been told of a hijacking must not be blocked by a failed read.
+  if (incidents.length === 0 && error) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="alert" className="text-sm text-on-surf">Incidents couldn&apos;t be loaded.</p>
+          {onRetry && <Button size="sm" variant="ghost" onClick={onRetry}>Try again</Button>}
+        </div>
+        <div className="flex justify-end">{report}</div>
+      </div>
+    )
+  }
   // Nothing to list: the sentence and the one thing to do about it share a line.
   if (incidents.length === 0) {
     return (
@@ -38,6 +55,13 @@ export function TripIncidentsSection({ incidents, isLoading, returnTo, onReport,
   }
   return (
     <div className="flex flex-col gap-3">
+      {/* Cached rows stay, since old evidence beats none, but they may be out of date. */}
+      {error && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p role="status" className="text-xs text-on-surf-v">Couldn&apos;t refresh incidents.</p>
+          {onRetry && <Button size="sm" variant="ghost" onClick={onRetry}>Try again</Button>}
+        </div>
+      )}
       <ul className="flex flex-col gap-2">
         {incidents.map(i => (
           <li key={i.incident_id} {...{ [INCIDENT_ROW_ATTR]: i.incident_id }} tabIndex={-1}

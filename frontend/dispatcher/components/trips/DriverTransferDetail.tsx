@@ -6,6 +6,7 @@ import type { CompletedSubstitutionDetail, SubstitutionConfirmationDetail } from
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { useAsyncData } from '@/lib/hooks/useAsyncData'
+import { useOpenerFocus } from '@/lib/hooks/useOpenerFocus'
 import { correctSubstitution, getCompletedSubstitution, newClientRequestId } from '@/lib/api/driverSubstitutions'
 import { EvidencePhoto } from '@/components/domain/EvidencePhoto'
 import { Button } from '@/components/ui/Button'
@@ -187,8 +188,7 @@ function ClarificationForm({ tripId, substitutionId, onAdded }: { tripId: string
     }
   }
 
-  if (!open) return <div><Button size="sm" variant="ghost" onClick={start}>Add clarification</Button></div>
-  return (
+  const form = (
     <section aria-label="Add clarification" className="flex flex-col gap-2 rounded-lg border border-outline-v/30 p-3">
       <p className="text-[12px] text-on-surf-v">A clarification is appended to the record. It cannot change the drivers, the time or who holds the trip.</p>
       <TextArea label="Reason" value={reason} maxLength={1000} onChange={e => setReason(e.target.value)} />
@@ -200,4 +200,8 @@ function ClarificationForm({ tripId, substitutionId, onAdded }: { tripId: string
       {problem && <p role="alert" className="text-err">{problem}</p>}
     </section>
   )
+
+  const root = useOpenerFocus(open ? 'clarify' : null)
+
+  return <div ref={root}>{open ? form : <Button size="sm" variant="ghost" data-opener="clarify" onClick={start}>Add clarification</Button>}</div>
 }

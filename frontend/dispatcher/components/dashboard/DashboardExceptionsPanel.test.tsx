@@ -73,4 +73,25 @@ describe('DashboardExceptionsPanel', () => {
     screen.getByRole('button', { name: 'Try again' }).click()
     expect(refetch).toHaveBeenCalledOnce()
   })
+
+  it('keeps_the_rows_and_says_the_refresh_failed_when_a_refresh_fails_behind_old_data', () => {
+    const refetch = vi.fn()
+    mockedQueue.mockReturnValue(queueState({ items: [exception('abc')], error: 'Request timed out.', refetch }))
+
+    render(<DashboardExceptionsPanel />)
+
+    expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute('href', '/exceptions/abc?returnTo=%2F')
+    expect(screen.getByText(/Couldn't refresh · showing data from \d{2}:\d{2}/)).toBeInTheDocument()
+    expect(screen.queryByText('Failed to load exceptions')).toBeNull()
+    screen.getByRole('button', { name: 'Try again' }).click()
+    expect(refetch).toHaveBeenCalledOnce()
+  })
+
+  it('shows_no_stale_note_when_nothing_failed', () => {
+    mockedQueue.mockReturnValue(queueState({ items: [exception('abc')] }))
+
+    render(<DashboardExceptionsPanel />)
+
+    expect(screen.queryByText(/Couldn't refresh/)).toBeNull()
+  })
 })

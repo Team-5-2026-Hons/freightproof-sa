@@ -102,7 +102,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
   const [reportOpen, setReportOpen] = useState(false)
   const activeIncident = hasActiveIncident(tripIncidents.data)
   const leadingStatus = leadingActiveIncidentStatus(tripIncidents.data)
-  const incidentsText = incidentsSummary(tripIncidents.data, tripIncidents.isLoading)
+  const incidentsText = incidentsSummary(tripIncidents.data, tripIncidents.isLoading, tripIncidents.error !== null)
   // Mirrors the server's summarise_incident: a fact sheet needs a critical exception or a recorded
   // hijacking (a hijacking reported by phone never raised a panic). A shortage or damage record alone does not count.
   const canBuildSheet = hasCriticalException || tripIncidents.data.some(i => i.incident_type === HIJACKING_INCIDENT)
@@ -220,7 +220,7 @@ export function TripDetailPanel({ panel, trip, precincts, filter, artifactsById,
         </Disclosure>
         <Disclosure id="incidents" title="Incidents" defaultOpen={activeIncident} forceOpenKey={focusIncident?.requestId ?? null}
           summary={leadingStatus ? <Chip type={INCIDENT_STATUS_CHIP[leadingStatus]} label={incidentsText} /> : incidentsText}>
-          <TripIncidentsSection incidents={tripIncidents.data} isLoading={tripIncidents.isLoading} returnTo={returnTo} onReport={() => setReportOpen(true)} highlightedId={highlightedIncidentId} />
+          <TripIncidentsSection incidents={tripIncidents.data} isLoading={tripIncidents.isLoading} error={tripIncidents.error} onRetry={tripIncidents.refetch} returnTo={returnTo} onReport={() => setReportOpen(true)} highlightedId={highlightedIncidentId} />
           <TripPoliceDetails tripId={trip.id} tripReference={trip.trip_reference} showSection={tripIncidents.data.length > 0 || hasCriticalException} canBuildSheet={canBuildSheet} refreshKey={policeVersion}
             onDeclare={() => { rememberTrigger(); setDeclareOpen(true) }} />
         </Disclosure>

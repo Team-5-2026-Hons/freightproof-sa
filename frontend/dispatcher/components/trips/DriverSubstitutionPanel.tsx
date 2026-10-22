@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type {
   CustodyIntegrityStatus,
@@ -14,6 +14,7 @@ import { Ic } from '@/components/ui/Ic'
 import { Input } from '@/components/ui/Input'
 import { TextArea } from '@/components/ui/TextArea'
 import { ApiError } from '@/lib/api/client'
+import { useOpenerFocus } from '@/lib/hooks/useOpenerFocus'
 import {
   cancelSubstitution, completeSubstitution, newClientRequestId, substitutionErrorCode,
 } from '@/lib/api/driverSubstitutions'
@@ -117,6 +118,8 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   const [problem, setProblem] = useState<string | null>(null)
   // One key per intentional action; a fresh one when the dispatcher opens the form again.
   const [key, setKey] = useState(newClientRequestId)
+  // Complete and cancel each swap the action buttons for a form; focus follows into it and back out.
+  const root = useOpenerFocus(mode === 'idle' ? null : mode)
   const incomingOnly = request.request_format === 'immediate_v2'
   const missing = request.missing_confirmations.length > 0
   const mayAttestIdentity = request.permitted_actions.includes('attest_identity')
@@ -153,7 +156,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   }), 'Could not cancel the handover.')
 
   return (
-    <div className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-[13px]">
+    <div ref={root} className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-[13px]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-bold">{request.outgoing.full_name} → {request.incoming.full_name}</span>
         <Chip type="pending" label="Pending" />
@@ -173,9 +176,9 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
 
       {mode === 'idle' && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {can('complete_attested') && !(incomingOnly && missing) && <Button size="sm" variant="secondary" onClick={() => start('complete')}>Complete handover</Button>}
+          {can('complete_attested') && !(incomingOnly && missing) && <Button size="sm" variant="secondary" data-opener="complete" onClick={() => start('complete')}>Complete handover</Button>}
           {can('replace') && canReplace && <Button size="sm" variant="ghost" onClick={onReplace}>Replace</Button>}
-          {can('cancel') && <Button size="sm" variant="danger" onClick={() => start('cancel')}>Cancel handover</Button>}
+          {can('cancel') && <Button size="sm" variant="danger" data-opener="cancel" onClick={() => start('cancel')}>Cancel handover</Button>}
         </div>
       )}
       {mode === 'complete' && (
@@ -207,6 +210,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
 }
 
 function HistoryItem({ request, onOpenTransfer }: { request: SubstitutionRequestRead; onOpenTransfer: (substitutionId: string) => void }) {
+  const detailsId = useId()
   const names = `${request.outgoing.full_name} → ${request.incoming.full_name}`
   const completedId = request.state === 'completed' ? request.completed_substitution_id : null
   if (!completedId) {
@@ -217,12 +221,17 @@ function HistoryItem({ request, onOpenTransfer }: { request: SubstitutionRequest
   // The one thing to act on in a row is a handover whose incoming identity is not confirmed.
   const identityNotVerified = request.identity.status !== 'verified'
   return <li>
+    {/* aria-label names the button and so replaces its text for assistive tech; the outcome and the
+        warning are therefore pointed at as its description. */}
     <button type="button" onClick={() => onOpenTransfer(completedId)} aria-haspopup="dialog" aria-label={`View evidence for the transfer from ${request.outgoing.full_name} to ${request.incoming.full_name}`}
+      aria-describedby={detailsId}
       className="flex w-full items-start justify-between gap-3 rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-left hover:bg-surf focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
       <span className="min-w-0">
         <span className="block text-[13px] font-semibold text-on-surf">{names}</span>
-        <span className="mt-0.5 block text-xs text-on-surf-v">{when(request.effective_at)} · {fmtCompletionMode(request.completion_mode, request.request_format)}</span>
-        {identityNotVerified && <span className="mt-1.5 block"><Chip type="exception" label="Identity not verified" /></span>}
+        <span id={detailsId} className="block">
+          <span className="mt-0.5 block text-xs text-on-surf-v">{when(request.effective_at)} · {fmtCompletionMode(request.completion_mode, request.request_format)}</span>
+          {identityNotVerified && <span className="mt-1.5 block"><Chip type="exception" label="Identity not verified" /></span>}
+        </span>
       </span>
       <span aria-hidden className="flex shrink-0 items-center gap-1 pt-0.5 text-xs font-semibold text-sec">View evidence<Ic n="chev" s={12} /></span>
     </button>

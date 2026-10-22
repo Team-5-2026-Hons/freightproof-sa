@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { getIncident, getIncidentEvidence, listIncidents } from '@/lib/api/incidents'
 import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import type { RealtimeKind } from '@/lib/realtime/types'
@@ -19,6 +19,19 @@ export function useIncidents(filters: IncidentListFilters): AsyncState<IncidentS
     () => listIncidents({ status, incident_type, assigned_to }), [status, incident_type, assigned_to],
   )
   const state = useAsyncData<IncidentSummary[]>(fetchList, [])
+
+  // useAsyncData only refetches when it is told to; a new fetcher is picked up through its ref but
+  // never triggers a request. This is the one list whose fetcher changes with filters, so refetch
+  // here. Comparing against the filters last fetched (not an "is first run" flag) keeps the mount
+  // fetch from doubling up, including under StrictMode's repeated effect run.
+  const fetchedFor = useRef(fetchList)
+  const { refetch } = state
+  useEffect(() => {
+    if (fetchedFor.current === fetchList) return
+    fetchedFor.current = fetchList
+    refetch()
+  }, [fetchList, refetch])
+
   useLiveResource('trip', 'any', state.refetchSilent, { kinds: INCIDENT_KINDS })
   return state
 }

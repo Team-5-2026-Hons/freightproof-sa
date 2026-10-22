@@ -142,6 +142,15 @@ function label<T extends string>(labels: Record<T, string>, value: string | null
   return value !== null && value in labels ? labels[value as T] : (value ?? '—')
 }
 
+/** A folded run of identical entries as one sentence, e.g. "48 parcels named as affected". */
+export function describeUpdateRun(kind: IncidentUpdate['kind'], count: number): string {
+  switch (kind) {
+    case 'parcel_added': return `${count} parcels named as affected`
+    case 'exception_linked': return `${count} exceptions grouped under this incident`
+    default: return `${count} × ${describeUpdate({ kind } as IncidentUpdate)}`
+  }
+}
+
 /** One ledger entry as a sentence. `names` resolves an assignee id to a dispatcher's name. */
 export function describeUpdate(update: IncidentUpdate, names: ReadonlyMap<string, string> = new Map()): string {
   switch (update.kind) {

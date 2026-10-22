@@ -51,3 +51,9 @@ it('tells_a_legacy_two_confirmation_transfer_from_an_incoming_only_acceptance', 
   rerender(<DriverTransferTimelineEvent event={{ ...event, completion_mode: 'normal', anchor_status: 'anchored', request_format: 'immediate_v2' }} onOpen={vi.fn()} />)
   expect(screen.getByText('Driver accepted · Sealed on Hedera')).toBeInTheDocument()
 })
+
+it('describes_the_card_by_its_outcome_since_its_name_hides_the_text', () => {
+  render(<DriverTransferTimelineEvent event={{ ...event, completion_mode: 'dispatcher_attested', anchor_status: 'anchored' }} onOpen={vi.fn()} />)
+
+  expect(screen.getByRole('button')).toHaveAccessibleDescription('Completed by dispatcher · Sealed on Hedera')
+})

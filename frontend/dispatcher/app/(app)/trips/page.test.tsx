@@ -23,8 +23,13 @@ vi.mock('@/lib/hooks/useToast', () => ({
 }))
 
 const push = vi.fn()
+const replace = vi.fn()
+// The query the page is opened with, as the router would hand it back from the URL.
+const urlQuery = vi.hoisted(() => ({ current: '' }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push, back: vi.fn() }),
+  useRouter: () => ({ push, replace, back: vi.fn() }),
+  usePathname: () => '/trips',
+  useSearchParams: () => new URLSearchParams(urlQuery.current),
 }))
 
 vi.mock('@/lib/hooks/usePrecincts', () => ({ usePrecincts: vi.fn() }))
@@ -71,6 +76,8 @@ const rowRefs = (): string[] =>
 
 beforeEach(() => {
   push.mockReset()
+  replace.mockReset()
+  urlQuery.current = ''
   notify.mockReset()
   mockedUseTrips.mockReset().mockReturnValue(tripsState())
   mockedUsePrecincts.mockReset().mockReturnValue({
@@ -302,5 +309,45 @@ describe('Active Trips toasts', () => {
     renderPage()
 
     expect(notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Failed to load precincts' }))
+  })
+})
+
+describe('Active Trips filters in the URL', () => {
+  const mixed = () => tripsState({
+    trips: [
+      makeTrip('sched1', { status: 'created', trip_reference: 'FP-CPT-1' }),
+      makeTrip('run-cpt', { trip_reference: 'FP-CPT-2' }),
+      makeTrip('run-dbn', { trip_reference: 'FP-DBN-3' }),
+    ],
+  })
+
+  it('opens_with_the_tab_and_search_the_url_names', () => {
+    urlQuery.current = 'tab=active&q=CPT'
+    mockedUseTrips.mockReturnValue(mixed())
+
+    renderPage()
+
+    expect(tabNamed(/^In progress/)).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('searchbox', { name: /Search trip ID/ })).toHaveValue('CPT')
+    expect(rowRefs()).toEqual(['FP-CPT-2'])
+  })
+
+  it('opens_on_all_when_the_url_names_a_tab_that_does_not_exist', () => {
+    urlQuery.current = 'tab=bogus'
+    mockedUseTrips.mockReturnValue(mixed())
+
+    renderPage()
+
+    expect(tabNamed(/^All/)).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('writes_a_changed_tab_to_the_url_with_replace', () => {
+    mockedUseTrips.mockReturnValue(mixed())
+    renderPage()
+
+    fireEvent.click(tabNamed(/^Scheduled/))
+
+    expect(replace).toHaveBeenCalledWith('/trips?tab=created', { scroll: false })
+    expect(push).not.toHaveBeenCalled()
   })
 })

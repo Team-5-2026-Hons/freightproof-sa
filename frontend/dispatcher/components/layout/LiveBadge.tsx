@@ -4,11 +4,14 @@ import { cn } from '@shared/lib/utils/cn'
 import { useRealtimeStatus } from '@/lib/realtime/RealtimeProvider'
 import type { RealtimeStatus } from '@/lib/realtime/types'
 
-// Sits on the dark sidebar, so colours are tuned for that surface.
-const STATUS_META: Record<RealtimeStatus, { label: string; dot: string; pulse: boolean }> = {
-  live:         { label: 'Live',            dot: 'bg-ok',        pulse: true },
-  connecting:   { label: 'Connecting…',     dot: 'bg-white/40',  pulse: false },
-  reconnecting: { label: 'Reconnecting…',   dot: 'bg-warn',      pulse: false },
+// Sits on the dark sidebar, so colours are tuned for that surface. `label` is the short text on
+// screen; `detail` is the precise wording for the tooltip and screen readers. The badge reports the
+// realtime stream only, so `detail` says "live updates" rather than letting "Live" read as "the data
+// on screen is current": a data request can fail while the stream stays up (those screens say so).
+const STATUS_META: Record<RealtimeStatus, { label: string; detail: string; dot: string; pulse: boolean }> = {
+  live:         { label: 'Live',            detail: 'Live updates connected',        dot: 'bg-ok',        pulse: true },
+  connecting:   { label: 'Connecting…',     detail: 'Connecting to live updates',    dot: 'bg-white/40',  pulse: false },
+  reconnecting: { label: 'Reconnecting…',   detail: 'Reconnecting to live updates',  dot: 'bg-warn',      pulse: false },
 }
 
 interface LiveBadgeProps {
@@ -23,7 +26,7 @@ export function LiveBadge({ compact = false, className }: LiveBadgeProps) {
   const meta = STATUS_META[status]
 
   return (
-    <div className={cn('flex items-center gap-[6px]', className)} role="status" aria-live="polite" title={meta.label}>
+    <div className={cn('flex items-center gap-[6px]', className)} role="status" aria-live="polite" title={meta.detail}>
       {/* The ring matches the sidebar surface so a dot overlaid on an avatar reads as
           cut out of it rather than bleeding into it. */}
       <span className={cn(
@@ -32,9 +35,8 @@ export function LiveBadge({ compact = false, className }: LiveBadgeProps) {
         meta.dot,
         meta.pulse && 'animate-pulse',
       )} />
-      <span className={cn('text-[11px] font-[500] text-white/50', compact && 'sr-only')}>
-        {meta.label}
-      </span>
+      {!compact && <span aria-hidden="true" className="text-[11px] font-[500] text-white/50">{meta.label}</span>}
+      <span className="sr-only">{meta.detail}</span>
     </div>
   )
 }

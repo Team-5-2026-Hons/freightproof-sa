@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { IncidentSummary } from '@/lib/types/incident'
 import { TripIncidentsSection } from './TripIncidentsSection'
@@ -88,5 +88,43 @@ describe('TripIncidentsSection', () => {
     render(<TripIncidentsSection incidents={[{ ...INCIDENT, parcels_total: 0, parcels_unresolved: 0 }]} isLoading={false} returnTo="/trips/t1" onReport={vi.fn()} />)
 
     expect(screen.queryByText(/unresolved/)).not.toBeInTheDocument()
+  })
+
+  describe('when the incidents could not be loaded', () => {
+    const ERROR = 'Request timed out. Please try again.'
+
+    it('says_they_could_not_be_loaded_and_offers_a_retry_never_no_incidents', () => {
+      const onRetry = vi.fn()
+      render(<TripIncidentsSection incidents={[]} isLoading={false} error={ERROR} onRetry={onRetry} returnTo="/trips/t1" onReport={vi.fn()} />)
+
+      expect(screen.getByText("Incidents couldn't be loaded.")).toBeInTheDocument()
+      expect(screen.queryByText(/No incidents on this trip/)).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      expect(onRetry).toHaveBeenCalledTimes(1)
+    })
+
+    it('still_lets_the_dispatcher_report_an_incident_when_the_list_failed', () => {
+      const onReport = vi.fn()
+      render(<TripIncidentsSection incidents={[]} isLoading={false} error={ERROR} onRetry={vi.fn()} returnTo="/trips/t1" onReport={onReport} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Report incident' }))
+
+      expect(onReport).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps_the_rows_and_notes_the_refresh_failed_when_there_is_cached_data', () => {
+      render(<TripIncidentsSection incidents={[INCIDENT]} isLoading={false} error={ERROR} onRetry={vi.fn()} returnTo="/trips/t1" onReport={vi.fn()} />)
+
+      expect(screen.getByRole('link', { name: 'View incident INC1' })).toBeInTheDocument()
+      expect(screen.getByText("Couldn't refresh incidents.")).toBeInTheDocument()
+      expect(screen.queryByText("Incidents couldn't be loaded.")).toBeNull()
+    })
+
+    it('shows_the_loading_skeleton_rather_than_the_error_while_a_retry_is_running', () => {
+      render(<TripIncidentsSection incidents={[]} isLoading error={null} onRetry={vi.fn()} returnTo="/trips/t1" onReport={vi.fn()} />)
+
+      expect(screen.getByRole('status', { name: 'Loading incidents' })).toBeInTheDocument()
+      expect(screen.queryByText("Incidents couldn't be loaded.")).toBeNull()
+    })
   })
 })

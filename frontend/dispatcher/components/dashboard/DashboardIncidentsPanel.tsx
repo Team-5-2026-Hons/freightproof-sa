@@ -9,12 +9,14 @@ import { RecordLink } from '@/components/ui/RecordLink'
 import { SkeletonBar } from '@/components/ui/Skeleton'
 import { Table, type TableColumn } from '@/components/ui/Table'
 import { DashboardPanel } from '@/components/dashboard/DashboardPanel'
+import { RefreshFailedNote } from '@/components/dashboard/RefreshFailedNote'
 import { IncidentStatusChip } from '@/components/incidents/IncidentStatusChip'
 import { ROUTES } from '@/lib/constants/routes'
 import { openIncidents, PANEL_ROW_LIMIT } from '@/lib/dashboard/attention'
 import { INCIDENT_TYPE_LABELS } from '@/lib/format/incident'
 import { fmtAge } from '@/lib/format/period'
 import { useIncidents } from '@/lib/hooks/useIncidents'
+import { useLastLoadedAt } from '@/lib/hooks/useLastLoadedAt'
 import { useNow } from '@/lib/hooks/useNow'
 import type { IncidentSummary } from '@/lib/types/incident'
 import { fmtSastDateTime } from '@shared/lib/utils/datetime'
@@ -54,6 +56,10 @@ export function DashboardIncidentsPanel(): React.JSX.Element {
 
   const initialLoad = isLoading && data.length === 0
   const loadFailed = !!error && data.length === 0
+  // Old rows stay up through a failed refresh, but say so: this includes "No open incidents", which
+  // after a failed refresh is only what the last read found.
+  const refreshFailed = !!error && data.length > 0
+  const loadedAt = useLastLoadedAt(data)
 
   return (
     <DashboardPanel
@@ -63,6 +69,7 @@ export function DashboardIncidentsPanel(): React.JSX.Element {
       viewAllHref={ROUTES.incidents}
       help="incidents"
     >
+      {refreshFailed && <RefreshFailedNote loadedAt={loadedAt} onRetry={refetch} />}
       {loadFailed ? (
         <EmptyState
           className="py-8"

@@ -302,6 +302,18 @@ describe('DriverSubstitutionPanel — history', () => {
     expect(screen.queryByText(/Driver accepted/)).not.toBeInTheDocument()
   })
 
+  it('describes_a_handover_row_by_how_it_was_completed_and_any_identity_warning', () => {
+    renderPanel(tripWith({ driver_substitutions: [
+      { ...dispatcherAttestedCompleted, id: 'f8300000-0000-4000-8000-000000000199', identity: { ...dispatcherAttestedCompleted.identity, status: 'pending' } },
+    ] }))
+
+    // The button's name is its aria-label, which hides the row's text from assistive tech, so the
+    // outcome and the warning have to arrive as its description.
+    const row = screen.getByRole('button', { name: /View evidence/ })
+    expect(row).toHaveAccessibleDescription(/Completed by dispatcher/)
+    expect(row).toHaveAccessibleDescription(/Identity not verified/)
+  })
+
   it('lists completed and cancelled handovers together in time order', () => {
     const early = { ...cancelled, id: 'early', created_at: '2026-10-20T08:00:00Z', effective_at: null, outgoing: { ...cancelled.outgoing, full_name: 'Early Out' }, incoming: { ...cancelled.incoming, full_name: 'Early In' } }
     const middle = { ...normalCompleted, id: 'middle', effective_at: '2026-10-20T10:00:00Z', outgoing: { ...normalCompleted.outgoing, full_name: 'Middle Out' }, incoming: { ...normalCompleted.incoming, full_name: 'Middle In' } }
@@ -369,5 +381,43 @@ describe('DriverSubstitutionPanel — history', () => {
     renderPanel(tripWith({ driver_substitutions: [normalCompleted], custody_sequence: 2 }))
 
     expect(screen.queryByText('Custody period')).not.toBeInTheDocument()
+  })
+})
+
+describe('PendingHandover focus', () => {
+  const pending = () => tripWith({ pending_driver_substitution: pendingRequest({ missing_confirmations: [] }) })
+
+  it('moves_focus_into_the_complete_form_and_back_to_its_opening_button_on_back', async () => {
+    renderPanel(pending())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
+    expect(screen.getByLabelText(/Physical exchange time/)).toHaveFocus()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('button', { name: 'Complete handover' })).toHaveFocus()
+  })
+
+  it('moves_focus_to_the_reason_when_cancelling_and_back_to_the_cancel_button_on_back', async () => {
+    renderPanel(pending())
+
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel handover' }))
+    expect(screen.getByLabelText('Why cancel')).toHaveFocus()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('button', { name: 'Cancel handover' })).toHaveFocus()
+  })
+
+  it('focuses_the_first_field_that_is_actually_shown_when_a_missing_confirmation_needs_a_reason', async () => {
+    renderPanel(tripWith({ pending_driver_substitution: pendingRequest() }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Complete handover' }))
+
+    expect(screen.getByLabelText('Why complete without both confirmations')).toHaveFocus()
+  })
+
+  it('does_not_take_focus_on_first_render', () => {
+    renderPanel(pending())
+
+    expect(document.body).toHaveFocus()
   })
 })

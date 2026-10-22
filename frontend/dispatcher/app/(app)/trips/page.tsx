@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Suspense, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
@@ -9,12 +9,15 @@ import { Button }         from '@/components/ui/Button'
 import { Ic }             from '@/components/ui/Ic'
 import { EmptyState }     from '@/components/ui/EmptyState'
 import { Table }          from '@/components/ui/Table'
+import { Spinner }        from '@/components/ui/Spinner'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { SearchField }    from '@/components/ui/SearchField'
 import { ListToolbar }    from '@/components/ui/ListToolbar'
 import { buildTripColumns, tripRowClassName } from '@/components/trips/tripColumns'
 import { useActiveTrips } from '@/lib/hooks/useActiveTrips'
 import { useTableSort }   from '@/lib/hooks/useTableSort'
+import { useUrlListState } from '@/lib/hooks/useUrlListState'
+import { TRIP_LIST_CODEC, TRIP_TABS, type TripTab } from '@/lib/trips/list-view-state'
 import { matchesTripSearch } from '@/lib/trips/search'
 import { defaultTripSortDirection, sortTrips, TRIP_ATTENTION_SORT, TRIP_SORT_KEYS } from '@/lib/trips/sort'
 import { ROUTES }         from '@/lib/constants/routes'
@@ -27,24 +30,31 @@ const ACTIVE_TRIPS_TABLE_ID = 'active-trips'
 const TRIPS_CARD_MIN_HEIGHT = 'min-h-[18rem]'
 const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
 
-type TripTab = 'all' | 'created' | 'active'
 // `exception_hold` has no tab of its own (nothing sets it yet), so it appears under All only.
 const TAB_STATUS: Record<Exclude<TripTab, 'all'>, TripStatus> = { created: 'created', active: 'active' }
 const TAB_LABEL: Record<TripTab, string> = { all: 'All', created: 'Scheduled', active: 'In progress' }
-const TAB_ORDER: readonly TripTab[] = ['all', 'created', 'active']
 const TAB_EMPTY_TITLE: Record<Exclude<TripTab, 'all'>, string> = { created: 'No scheduled trips', active: 'No trips in progress' }
 const TAB_PANEL_ID = 'active-trips-panel'
 
 const inTab = (trip: TripSummary, tab: TripTab): boolean => tab === 'all' || trip.status === TAB_STATUS[tab]
 
+// useSearchParams (the filters live in the URL) needs a Suspense boundary above it in the App Router.
 export default function ActiveTripsPage() {
+  return (
+    <Suspense fallback={<div role="status" aria-label="Loading trips" className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
+      <ActiveTripsList />
+    </Suspense>
+  )
+}
+
+function ActiveTripsList() {
   const router = useRouter()
-  const [search, setSearch] = useState('')
-  const [tab, setTab] = useState<TripTab>('all')
+  // Held in the URL so the list is still filtered after opening a trip and coming back.
+  const { state: { tab }, update, search, setSearch } = useUrlListState(TRIP_LIST_CODEC)
   // Attention first by default: this is a monitoring screen, so a trip that has just raised a
   // critical must surface without anyone clicking a header, even though that means a live event can
   // move rows. A header click still takes over, and clicking Exceptions returns to attention order.
-  // Local state, because this page has no URL state to join.
+  // Sort stays local: it is not part of the filters the URL keeps.
   const { sort, tableSort, onSort } = useTableSort({
     keys: TRIP_SORT_KEYS,
     firstDir: defaultTripSortDirection,
@@ -55,7 +65,7 @@ export default function ActiveTripsPage() {
   // Counted over the whole active list, not the searched one, so a tab's number does not jitter
   // while typing and always matches what clicking it would show with an empty search.
   const tabs = useMemo<Tab[]>(
-    () => TAB_ORDER.map(id => ({ id, label: TAB_LABEL[id], badge: trips.filter(trip => inTab(trip, id)).length })),
+    () => TRIP_TABS.map(id => ({ id, label: TAB_LABEL[id], badge: trips.filter(trip => inTab(trip, id)).length })),
     [trips],
   )
 
@@ -90,7 +100,7 @@ export default function ActiveTripsPage() {
           <Tabs
             tabs={tabs}
             active={tab}
-            onChange={id => setTab(id as TripTab)}
+            onChange={id => update({ tab: id as TripTab })}
             panelId={TAB_PANEL_ID}
             ariaLabel="Trip status"
             size="sm"

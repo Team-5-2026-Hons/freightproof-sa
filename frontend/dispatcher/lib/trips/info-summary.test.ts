@@ -79,6 +79,10 @@ describe('incidentsSummary', () => {
     expect(incidentsSummary([], true)).toBe('Loading…')
   })
 
+  it('says_unavailable_not_none_when_the_load_failed_and_there_is_nothing_to_show', () => {
+    expect(incidentsSummary([], false, true)).toBe('Unavailable')
+  })
+
   it('counts_open_and_investigating_incidents', () => {
     expect(incidentsSummary([incident('open')], false)).toBe('1 open')
     expect(incidentsSummary([incident('investigating'), incident('investigating')], false)).toBe('2 investigating')

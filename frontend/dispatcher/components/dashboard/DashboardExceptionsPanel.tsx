@@ -10,11 +10,13 @@ import { Ic } from '@/components/ui/Ic'
 import { SkeletonBar } from '@/components/ui/Skeleton'
 import { Table, type TableColumn } from '@/components/ui/Table'
 import { DashboardPanel } from '@/components/dashboard/DashboardPanel'
+import { RefreshFailedNote } from '@/components/dashboard/RefreshFailedNote'
 import { ROUTES } from '@/lib/constants/routes'
 import { exceptionsNeedingAttention, PANEL_ROW_LIMIT } from '@/lib/dashboard/attention'
 import { exceptionReference, fmtExceptionRaised, fmtExceptionType } from '@/lib/format/exception'
 import { fmtAge } from '@/lib/format/period'
 import { useExceptionQueue } from '@/lib/hooks/useExceptions'
+import { useLastLoadedAt } from '@/lib/hooks/useLastLoadedAt'
 import { useNow } from '@/lib/hooks/useNow'
 import { withReturnTo } from '@/lib/navigation/returnTo'
 import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
@@ -82,6 +84,9 @@ export function DashboardExceptionsPanel(): React.JSX.Element {
   // Skeleton only on the first load: a live refetch swaps rows in place.
   const initialLoad = queue.isLoading && queue.items.length === 0
   const loadFailed = !!queue.error && queue.items.length === 0
+  // Old rows stay up through a failed refresh, but say so, as the Incidents panel does.
+  const refreshFailed = !!queue.error && queue.items.length > 0
+  const loadedAt = useLastLoadedAt(queue.items)
 
   return (
     <DashboardPanel
@@ -91,6 +96,7 @@ export function DashboardExceptionsPanel(): React.JSX.Element {
       viewAllHref={ROUTES.exceptions}
       help="exceptions"
     >
+      {refreshFailed && <RefreshFailedNote loadedAt={loadedAt} onRetry={queue.refetch} />}
       {loadFailed ? (
         <EmptyState
           className="py-8"

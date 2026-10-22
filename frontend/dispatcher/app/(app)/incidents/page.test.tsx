@@ -15,7 +15,14 @@ vi.mock('@/lib/supabase/client', () => ({
 // TopBar mounts ForensicControls, which reads the signed-in user; nothing asserted here depends on who.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'me' } }) }))
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => ({ notify: vi.fn() }) }))
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), back: vi.fn() }), usePathname: () => '/incidents' }))
+const replace = vi.fn()
+// The query the page is opened with, as the router would hand it back from the URL.
+const urlQuery = vi.hoisted(() => ({ current: '' }))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace, back: vi.fn() }),
+  usePathname: () => '/incidents',
+  useSearchParams: () => new URLSearchParams(urlQuery.current),
+}))
 vi.mock('@/lib/hooks/useIncidents', () => ({ useIncidents: vi.fn() }))
 
 const mockedUseIncidents = vi.mocked(useIncidents)
@@ -51,6 +58,8 @@ function lastFilters(): IncidentListFilters {
 describe('IncidentsPage', () => {
   beforeEach(() => {
     mockedUseIncidents.mockReset()
+    replace.mockReset()
+    urlQuery.current = ''
     mockedUseIncidents.mockReturnValue({ data: [ALPHA, BRAVO, CHARLIE], isLoading: false, error: null, refetch: vi.fn(), refetchSilent: vi.fn() })
   })
 
@@ -149,5 +158,35 @@ describe('IncidentsPage', () => {
 
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search incidents' }), { target: { value: 'FP-00' } })
     expect(screen.getByText('Page 1')).toBeInTheDocument()
+  })
+
+  it('opens_with_the_filters_the_url_names', () => {
+    urlQuery.current = 'status=closed&type=hijacking&owner=mine&q=FP-A'
+
+    renderPage()
+
+    expect(screen.getByRole('tab', { name: 'Closed' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('combobox', { name: 'Incident type' })).toHaveValue('hijacking')
+    expect(screen.getByRole('combobox', { name: 'Investigated by' })).toHaveValue('mine')
+    expect(screen.getByRole('searchbox', { name: 'Search incidents' })).toHaveValue('FP-A')
+    expect(lastFilters()).toEqual({ status: 'closed', incident_type: 'hijacking', assigned_to: 'me' })
+  })
+
+  it('writes_a_changed_filter_to_the_url_with_replace', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Investigating' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Incident type' }), { target: { value: 'hijacking' } })
+
+    expect(replace).toHaveBeenLastCalledWith('/incidents?status=investigating&type=hijacking', { scroll: false })
+  })
+
+  it('clears_the_url_with_the_filters', () => {
+    urlQuery.current = 'status=closed&q=zzz-no-such'
+    renderPage()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!)
+
+    expect(replace).toHaveBeenLastCalledWith('/incidents', { scroll: false })
   })
 })

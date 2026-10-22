@@ -1,8 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
-import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 import { TopBar } from '@/components/ui/TopBar'
 import { SecHead } from '@/components/ui/SecHead'
 import { Button } from '@/components/ui/Button'
@@ -11,26 +10,26 @@ import { FilterSelect } from '@/components/ui/FilterSelect'
 import { Ic } from '@/components/ui/Ic'
 import { ListToolbar } from '@/components/ui/ListToolbar'
 import { Pagination } from '@/components/ui/Pagination'
-import { RecordLink } from '@/components/ui/RecordLink'
 import { SearchField } from '@/components/ui/SearchField'
-import { Table, type TableColumn } from '@/components/ui/Table'
+import { Spinner } from '@/components/ui/Spinner'
+import { Table } from '@/components/ui/Table'
 import { Tabs } from '@/components/ui/Tabs'
-import { IncidentStatusChip } from '@/components/incidents/IncidentStatusChip'
+import { buildIncidentColumns } from '@/components/incidents/incidentColumns'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useIncidents } from '@/lib/hooks/useIncidents'
+import { useNow } from '@/lib/hooks/useNow'
 import { useTableSort } from '@/lib/hooks/useTableSort'
+import { useUrlListState } from '@/lib/hooks/useUrlListState'
 import { useToast } from '@/lib/hooks/useToast'
-import { ROUTES } from '@/lib/constants/routes'
 import { INCIDENT_TYPE_LABELS } from '@/lib/format/incident'
 import {
   DEFAULT_INCIDENT_SORT, defaultIncidentSortDirection, filterIncidents, INCIDENT_SORT_KEYS, paginate, sortIncidents,
   type OwnerFilter,
 } from '@/lib/incidents/incident-list'
+import { INCIDENT_LIST_CODEC, type TypeFilter } from '@/lib/incidents/list-view-state'
 import { readPreferences } from '@/lib/preferences'
-import type { IncidentStatus, IncidentSummary, IncidentType } from '@/lib/types/incident'
-
-type StatusView = IncidentStatus | 'all'
-type TypeFilter = IncidentType | 'all'
+import type { IncidentSummary, IncidentType } from '@/lib/types/incident'
+import type { StatusView } from '@/lib/incidents/list-view-state'
 
 // All first, and the default: closing an incident must not make it vanish from the list
 // the dispatcher is looking at. Its chip says Closed instead.
@@ -55,24 +54,25 @@ const OWNER_OPTIONS = [
 const INCIDENT_TABLE_ID = 'incidents'
 const REPORT_HINT = "Report an incident from a trip's Info tab, or from an exception."
 const FIRST_PAGE = 1
+// Received is an age ("3 h ago"), so one tick a minute keeps it honest without a refetch.
+const CLOCK_TICK_MS = 60_000
 
-const COLUMNS: readonly TableColumn<IncidentSummary>[] = [
-  { id: 'reference', label: 'Incident', width: 170, sortable: true, render: i => <RecordLink href={ROUTES.incidentDetail(i.incident_id)} className="tabular-nums">{i.trip_reference} · {i.reference}</RecordLink> },
-  { id: 'type', label: 'Type', width: 130, sortable: true, render: i => INCIDENT_TYPE_LABELS[i.incident_type] },
-  { id: 'status', label: 'Status', width: 140, sortable: true, render: i => <IncidentStatusChip status={i.status} /> },
-  { id: 'summary', label: 'What was reported', width: 320, render: i => <span className="line-clamp-2">{i.summary}</span> },
-  { id: 'cargo', label: 'Unresolved', width: 110, hideBelow: 900, sortable: true, render: i => i.parcels_total === 0 ? '—' : `${i.parcels_unresolved} of ${i.parcels_total}` },
-  { id: 'owner', label: 'Investigated by', width: 150, hideBelow: 1000, sortable: true, render: i => i.assigned_to_name ?? 'Unassigned' },
-  { id: 'received', label: 'Received', width: 150, hideBelow: 1100, sortable: true, render: i => <span className="tabular-nums">{fmtSastDateTime(i.received_at) ?? '—'}</span> },
-]
-
+// useSearchParams (the filters live in the URL) needs a Suspense boundary above it in the App Router.
 export default function IncidentsPage(): React.JSX.Element {
+  return (
+    <Suspense fallback={<div role="status" aria-label="Loading incidents" className="flex flex-1 items-center justify-center"><Spinner size="lg" /></div>}>
+      <IncidentsList />
+    </Suspense>
+  )
+}
+
+function IncidentsList(): React.JSX.Element {
   const { user } = useAuth()
   const { notify } = useToast()
-  const [status, setStatus] = useState<StatusView>('all')
-  const [incidentType, setIncidentType] = useState<TypeFilter>('all')
-  const [owner, setOwner] = useState<OwnerFilter>('anyone')
-  const [search, setSearch] = useState('')
+  const now = useNow(CLOCK_TICK_MS)
+  const columns = useMemo(() => buildIncidentColumns(now), [now])
+  // Held in the URL so the list is still filtered after opening an incident and coming back.
+  const { state: { status, type: incidentType, owner }, update, search, setSearch } = useUrlListState(INCIDENT_LIST_CODEC)
   const [page, setPage] = useState(FIRST_PAGE)
   // Read once per mount, as Trip History does: a changed preference applies on the next visit.
   const [pageSize] = useState(() => readPreferences().rowsPerPage)
@@ -96,15 +96,15 @@ export default function IncidentsPage(): React.JSX.Element {
   function startOver<V>(set: (value: V) => void): (value: V) => void {
     return value => { set(value); setPage(FIRST_PAGE) }
   }
-  const changeStatus = startOver(setStatus)
+  const changeStatus = startOver((value: StatusView) => update({ status: value }))
   const changeSearch = startOver(setSearch)
-  const changeType = startOver(setIncidentType)
-  const changeOwner = startOver(setOwner)
+  const changeType = startOver((value: TypeFilter) => update({ type: value }))
+  const changeOwner = startOver((value: OwnerFilter) => update({ owner: value }))
   const sortBy = (columnId: string): void => { onSort(columnId); setPage(FIRST_PAGE) }
 
   const hasActiveFilters = status !== 'all' || incidentType !== 'all' || owner !== 'anyone' || search.trim() !== ''
   const clearFilters = (): void => {
-    setStatus('all'); setIncidentType('all'); setOwner('anyone'); setSearch(''); setPage(FIRST_PAGE)
+    update({ status: 'all', type: 'all', owner: 'anyone', q: '' }); setPage(FIRST_PAGE)
   }
 
   const initialLoad = isLoading && data.length === 0
@@ -160,7 +160,7 @@ export default function IncidentsPage(): React.JSX.Element {
             <Table<IncidentSummary>
               tableId={INCIDENT_TABLE_ID}
               caption="Incidents"
-              columns={COLUMNS}
+              columns={columns}
               rows={slice.rows}
               getRowKey={i => i.incident_id}
               isLoading={initialLoad}

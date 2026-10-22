@@ -163,7 +163,7 @@ describe('Sidebar profile footer', () => {
 
     expect(screen.queryByText('Jane Dispatcher')).not.toBeInTheDocument()
     expect(screen.getByText('JD')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveAttribute('title', 'Live')
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Live updates connected')
   })
 })
 
