@@ -6,25 +6,11 @@ These tests read the page's own wording files, so a change on either side fails 
 - every explanatory line on the page is given to the chat, or listed below as left out, with why.
 """
 
-import re
-from pathlib import Path
-
 from app.orchestration.analytics_chat.definitions import ABOUT_BY_TOOL
 from app.orchestration.analytics_chat.tools import TOOLS
+from tests.page_copy import EXPLAINING_KEYS, page_lines, page_text
 
-_FLEET_COPY_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dispatcher" / "components" / "analytics" / "fleet"
-_COPY_FILES = (_FLEET_COPY_DIR / "copy.ts", _FLEET_COPY_DIR / "costCopy.ts")
-
-# The copy keys whose plain-string values explain what a figure counts. Function values (counts
-# filled in at run time) aren't plain strings, so they aren't read here.
-_EXPLAINING_KEYS = (
-    "scopeNote", "dataNote", "tabNote", "source", "sub", "caption", "intro", "note", "caveat", "live",
-    "fadedNote", "monthNeedsYear", "partialFootnote", "basis",
-)
-_LITERAL = r"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\""
-_ENTRY = re.compile(rf"\b({'|'.join(_EXPLAINING_KEYS)})\s*:\s*((?:{_LITERAL})(?:\s*\+\s*(?:{_LITERAL}))*)")
-
-# On the page but deliberately not given to the chat.
+# On the page but left out of the figure tools' `about` blocks (the page guide carries every one of them, B45).
 _LEFT_OUT = {
     # The general rule; every tool's description says it, and the tabs' own lines give the exceptions.
     "Trends count closed trips, grouped by the day they first departed (South African time). Tiles show right now.",
@@ -37,20 +23,12 @@ _LEFT_OUT = {
 }
 
 
-def _unquote(literal: str) -> str:
-    return re.sub(r"\\(.)", r"\1", literal[1:-1])
-
-
 def _page_explanations() -> set[str]:
-    found: set[str] = set()
-    for path in _COPY_FILES:
-        for match in _ENTRY.finditer(path.read_text(encoding="utf-8")):
-            found.add("".join(_unquote(literal) for literal in re.findall(_LITERAL, match.group(2))))
-    return found
+    return page_lines(EXPLAINING_KEYS)
 
 
 def _page_text() -> str:
-    return "\n".join(path.read_text(encoding="utf-8") for path in _COPY_FILES)
+    return page_text()
 
 
 def _chat_lines() -> set[str]:
@@ -86,7 +64,8 @@ def test_left_out_lines_are_still_on_the_page() -> None:
 
 
 def test_every_tool_has_the_pages_lines_and_the_page_level_data_note() -> None:
-    assert set(ABOUT_BY_TOOL) == {tool.name for tool in TOOLS}
+    # Every figure tool; explain returns the page guide instead (B45).
+    assert set(ABOUT_BY_TOOL) == {tool.name for tool in TOOLS if tool.gives_figures}
     for about in ABOUT_BY_TOOL.values():
         assert about["Every figure on the page"][0].startswith("Every figure comes from FreightProof's own records")
 

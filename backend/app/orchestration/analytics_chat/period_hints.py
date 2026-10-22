@@ -102,6 +102,29 @@ _PAST_MONTH = re.compile(r"\bpast\s+month\b", re.IGNORECASE)
 _PAST_WEEK = re.compile(r"\bpast\s+week\b", re.IGNORECASE)
 _LAST_YEAR = re.compile(r"\blast\s+year\b", re.IGNORECASE)
 _FINANCIAL_YEAR = re.compile(r"\b(?:financial|fiscal)\s+year\b|\bFY\s*\d{0,4}\b", re.IGNORECASE)
+# A question about what something on the page means, why it exists or how it is worked out (B45). It needs the
+# page guide, not a period: "how do we come up with operating cost?", "what do the Cost at a glance figures tell us?",
+# "why is the last bar faded?", "where does the cargo value come from?". "How did delays change?" and "how many
+# trips…" are figure questions and don't match.
+_EXPLANATION = re.compile(
+    r"\bhow\s+(?:is|are|was|were|do|does|did)\b[^?.]*?\b(?:calculated|calculate|worked\s+out|work\s+out|computed?|"
+    r"counted|measured|derived|come\s+up\s+with|arrived?\s+at|get\s+to|got\s+to|determined|figured\s+out)\b"
+    r"|\bhow\s+(?:does|do)\b[^?.]*?\bwork\b"
+    r"|\bwhat\s+(?:does|do|did)\b[^?.]*?\b(?:mean|show|tell|include|comprise|consist|count|measure|represent|"
+    r"stand\s+for|change|affect)\b"
+    r"|\bwhat\s+counts?\s+as\b|\bdifference\s+between\b"
+    r"|\bwhat\s+(?:is|are)\s+an?\s+\w"
+    r"|\bwhy\s+(?:is|are|does|do|did|was|were|isn'?t|aren'?t|doesn'?t|don'?t)\b"
+    r"|\bwhere\s+(?:does|do|did)\b[^?.]*?\bcome\s+from\b"
+    r"|\bmade\s+up\s+of\b|\bcompris|\bconsists?\s+of\b|\bdefin(?:e|ition)\b|\bpurpose\b|\bexplain\b"
+    r"|\bwhat\s+is\s+the\s+point\b|\bmeaning\s+of\b",
+    re.IGNORECASE,
+)
+EXPLANATION_HINT = (
+    "The question asks what something on the page means, shows or counts, why it exists, how it is worked out or "
+    "where its data comes from: call `explain` for its topic (no period is needed) and answer fully from the guide. "
+    "If it also asks for figures, get them as usual."
+)
 
 _PRESET_WEEKS = {4: PeriodPreset.LAST_4_WEEKS, 12: PeriodPreset.LAST_12_WEEKS, 26: PeriodPreset.LAST_26_WEEKS}
 _PRESET_MONTHS = {3: PeriodPreset.LAST_3_MONTHS, 6: PeriodPreset.LAST_6_MONTHS, 12: PeriodPreset.LAST_12_MONTHS}
@@ -456,13 +479,24 @@ def ambiguity_question(question: str, today: date) -> str | None:
     return None
 
 
+def asks_for_explanation(question: str) -> bool:
+    return bool(_EXPLANATION.search(question))
+
+
 def hint_for(question: str, today: date) -> str | None:
     """The line the model is given about this question's periods, or None when it names none."""
     ask = ambiguity_question(question, today)
-    if ask is not None:
+    explaining = asks_for_explanation(question)
+    if ask is not None and not explaining:
         return f'The question\'s period has two common meanings. Call no tool, and reply with exactly this question: "{ask}"'
-    periods = named_periods(question, today)
     lines: list[str] = []
+    if explaining:
+        # An explanation never waits on a period (22 Oct: "last year, but I am asking what the figures comprise of"
+        # was turned into a period question). The question back applies only to any figures it also wants.
+        lines.append(EXPLANATION_HINT)
+        if ask is not None:
+            lines.append(f'Only if it also wants figures: their period has two common meanings, so after explaining, ask exactly "{ask}"')
+    periods = named_periods(question, today)
     if periods:
         lines.append(
             "The question names these periods; the server has worked out the exact tool inputs. Use exactly "

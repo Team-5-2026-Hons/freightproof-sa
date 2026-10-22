@@ -1,0 +1,849 @@
+{
+  "about": "FP-295 B45 Stage 5: explanation questions from the coverage audit (2026-10-22-fp295-analytics-chat-coverage-audit.md §6). Each must be explained from the page guide (`explain`), with no period question. must_mention lists facts the guide holds; any one spelling in a list will do.",
+  "recorded_for": "2026-10-22",
+  "questions": [
+    {
+      "id": "e01",
+      "question": "How do we come up with operating cost?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Operating cost over time",
+      "page_shows": "Road distance × (fuel + other running per km) + driving hours × driver rate + fixed; today's rates (fuel R 17.64/km).",
+      "must_mention": [
+        [
+          "17.64",
+          "17,64"
+        ],
+        [
+          "distance",
+          "km"
+        ],
+        [
+          "driver"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ],
+      "page_view": {
+        "tab": "cost",
+        "preset": "last_12_weeks",
+        "grain": "week"
+      }
+    },
+    {
+      "id": "e02",
+      "question": "What do the \"Cost at a glance\" figures tell us?",
+      "expect": {
+        "kind": "explains",
+        "tools": "optional",
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Cost at a glance",
+      "page_shows": "Operating cost (estimate), delay cost on problem trips (estimate, beside, never added), cargo value exposed (from waybills).",
+      "must_mention": [
+        [
+          "estimate"
+        ],
+        [
+          "waybill"
+        ],
+        [
+          "never added",
+          "not added",
+          "beside",
+          "separately",
+          "separate"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ],
+      "page_view": {
+        "tab": "cost",
+        "preset": "last_12_weeks",
+        "grain": "week"
+      }
+    },
+    {
+      "id": "e03",
+      "question": "Where does the cargo value exposed come from?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Cargo value exposed",
+      "page_shows": "Declared value on Parcel Perfect waybills, every consignment on closed trips with a theft sign; the whole load counts.",
+      "must_mention": [
+        [
+          "waybill"
+        ],
+        [
+          "declared"
+        ],
+        [
+          "whole load",
+          "every consignment",
+          "all consignments",
+          "entire load",
+          "all the consignments"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e04",
+      "question": "Why isn't delay cost added to operating cost?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Cost at a glance note",
+      "page_shows": "The driver's late hours are already inside operating cost; adding would count them twice.",
+      "must_mention": [
+        [
+          "twice",
+          "double"
+        ],
+        [
+          "driver"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e05",
+      "question": "Where did the diesel price come from?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Cost rates",
+      "page_shows": "DMPR inland 50ppm, 7 Oct 2026: R 33.29 per litre (starting rate, unless an admin changed it).",
+      "must_mention": [
+        [
+          "DMPR"
+        ],
+        [
+          "33.29",
+          "33,29"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e06",
+      "question": "What does the Live trips tile count?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "tiles"
+        ]
+      },
+      "page": "Live trips tile",
+      "page_shows": "Trips created, underway or on hold: includes planned trips not yet departed.",
+      "must_mention": [
+        [
+          "created"
+        ],
+        [
+          "hold"
+        ],
+        [
+          "planned",
+          "not yet departed",
+          "haven't departed",
+          "not departed",
+          "hasn't departed",
+          "yet to depart"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e07",
+      "question": "Why are planned trips included in Live trips?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "tiles"
+        ]
+      },
+      "page": "Live trips tile",
+      "page_shows": "The tile counts status created (planned, not yet departed) as well as active and on hold.",
+      "must_mention": [
+        [
+          "created"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e08",
+      "question": "What counts as an unused vehicle?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "tiles"
+        ]
+      },
+      "page": "Unused vehicles tile",
+      "page_shows": "Active truck or trailer with no departure in the last 30 SAST days and not on a live trip.",
+      "must_mention": [
+        [
+          "30"
+        ],
+        [
+          "live trip"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e09",
+      "question": "What's the purpose of the Trips over time chart?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "activity"
+        ]
+      },
+      "page": "Activity → Trips over time",
+      "page_shows": "Answers 'Are we getting busier?'; closed trips by first departure, loaded and empty.",
+      "must_mention": [
+        [
+          "busier"
+        ],
+        [
+          "closed"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ],
+      "page_view": {
+        "tab": "activity",
+        "preset": "last_12_weeks",
+        "grain": "week"
+      }
+    },
+    {
+      "id": "e10",
+      "question": "Why are trips grouped by the day they departed and not by when they finished?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "page",
+          "activity"
+        ]
+      },
+      "page": "Scope note",
+      "page_shows": "So every figure agrees with the driver, vehicle and site detail pages (page spec D8).",
+      "must_mention": [
+        [
+          "driver",
+          "vehicle",
+          "detail page",
+          "other pages",
+          "consistent",
+          "agree"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e11",
+      "question": "How are cancellations counted?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "activity"
+        ]
+      },
+      "page": "Activity → Cancellations over time",
+      "page_shows": "By the day cancelled, against every trip that ended (cancelled + closed) in the bucket.",
+      "must_mention": [
+        [
+          "ended"
+        ],
+        [
+          "cancelled"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e12",
+      "question": "How is the busy patterns average worked out?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "activity"
+        ]
+      },
+      "page": "Activity → Busy patterns",
+      "page_shows": "Events ÷ number of such days in the period; the 31st only divided by months that have one.",
+      "must_mention": [
+        [
+          "per day",
+          "a day",
+          "each day"
+        ],
+        [
+          "31st",
+          "31"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e13",
+      "question": "What counts as on time?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "on_time"
+        ]
+      },
+      "page": "On time → On-time departures and arrivals",
+      "page_shows": "On or before the planned time, no grace minutes; only trips with planned times.",
+      "must_mention": [
+        [
+          "on or before"
+        ],
+        [
+          "grace",
+          "strict"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e14",
+      "question": "What does \"early\" mean in How late is late?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "on_time"
+        ]
+      },
+      "page": "On time → How late is late",
+      "page_shows": "More than 15 minutes ahead of plan.",
+      "must_mention": [
+        [
+          "15"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e15",
+      "question": "What does Plans vs reality show, and why was it made?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "on_time"
+        ]
+      },
+      "page": "On time → Plans vs reality",
+      "page_shows": "Actual trip time vs planned, early on the left, over on the right; answers 'Are our planned times realistic?'.",
+      "must_mention": [
+        [
+          "realistic"
+        ],
+        [
+          "plan"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e16",
+      "question": "Why aren't dispatcher notes counted as problems?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "problems"
+        ]
+      },
+      "page": "Problems tab note",
+      "page_shows": "One is recorded automatically for every cancellation and override; counting them would inflate problems.",
+      "must_mention": [
+        [
+          "cancellation",
+          "override"
+        ],
+        [
+          "automatic"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e17",
+      "question": "Which problem types count as theft signs, and why isn't \"seal unverified\" one?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "problems"
+        ]
+      },
+      "page": "Problems → Theft warning signs",
+      "page_shows": "8 types from THEFT_SIGNAL_TYPES; seal unverified is a paperwork gap, not tampering.",
+      "must_mention": [
+        [
+          "seal mismatch"
+        ],
+        [
+          "panic"
+        ],
+        [
+          "paperwork",
+          "no check",
+          "not checked",
+          "gap",
+          "wasn't checked",
+          "couldn't be checked",
+          "could not be checked"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e18",
+      "question": "Why does Problems over time show counts and not a rate per 100 trips?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "problems"
+        ]
+      },
+      "page": "Problems → Problems over time",
+      "page_shows": "'400 per 100' on two trips misled (page spec D25); the rate per trip is in the tooltip and table.",
+      "must_mention": [
+        [
+          "400"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e19",
+      "question": "How does Risky times of day decide a time of day is risky?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "problems"
+        ]
+      },
+      "page": "Problems → Risky times of day",
+      "page_shows": "Share of problems while driving vs share of driving time per SAST quarter-day.",
+      "must_mention": [
+        [
+          "share"
+        ],
+        [
+          "driving"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e20",
+      "question": "What does \"Not linked to a step\" mean in Where in the trip?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "problems"
+        ]
+      },
+      "page": "Problems → Where in the trip",
+      "page_shows": "A report raised outside any trip step.",
+      "must_mention": [
+        [
+          "step"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e21",
+      "question": "What goes into the review queue?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "review_desk"
+        ]
+      },
+      "page": "Review desk tab note",
+      "page_shows": "Every exception starts as needs review (since 29 Sep 2026); the queue charts follow the critical ones.",
+      "must_mention": [
+        [
+          "every",
+          "all"
+        ],
+        [
+          "critical"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e22",
+      "question": "Why is review speed shown as a median?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "review_desk"
+        ]
+      },
+      "page": "Review desk → How fast critical problems get reviewed",
+      "page_shows": "One problem left for a week would drag an average far from the usual wait.",
+      "must_mention": [
+        [
+          "median",
+          "typical"
+        ],
+        [
+          "average",
+          "mean"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e23",
+      "question": "What does a big \"data discrepancy\" share mean?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "review_desk"
+        ]
+      },
+      "page": "Review desk → What reviews concluded",
+      "page_shows": "Automatic checks are raising false alarms.",
+      "must_mention": [
+        [
+          "false alarm"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e24",
+      "question": "How is tracker agreement worked out, and is the tracker real?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "evidence"
+        ]
+      },
+      "page": "Evidence → Tracker agreement",
+      "page_shows": "Confirmed ÷ (confirmed + mismatch); simulated Pulsit feed.",
+      "must_mention": [
+        [
+          "confirmed"
+        ],
+        [
+          "mismatch"
+        ],
+        [
+          "simulated"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e25",
+      "question": "What's an override and why does it matter?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "evidence"
+        ]
+      },
+      "page": "Evidence → Overrides over time",
+      "page_shows": "A dispatcher completing a step for the driver; it skips photos, seal and tracker check.",
+      "must_mention": [
+        [
+          "dispatcher"
+        ],
+        [
+          "photo",
+          "seal",
+          "tracker"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e26",
+      "question": "Why does receiver sign-off look low before mid-September?",
+      "expect": {
+        "kind": "explains",
+        "tools": "optional",
+        "explain": [
+          "evidence"
+        ]
+      },
+      "page": "Evidence → Receiver sign-off",
+      "page_shows": "Receiver QR sign-off went live on 13 Sep 2026.",
+      "must_mention": [
+        [
+          "13 Sep",
+          "13 September"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e27",
+      "question": "What does the Lane risk chart show, and what do the faint lines mean?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "routes_and_sites"
+        ]
+      },
+      "page": "Routes & sites → Lane risk",
+      "page_shows": "Trips across, problems per trip up; faint lines = the average lane; top-right busy and risky.",
+      "must_mention": [
+        [
+          "average"
+        ],
+        [
+          "busy and risky",
+          "top-right",
+          "top right"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e28",
+      "question": "Why are some lanes faded in Driving time per lane?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "routes_and_sites"
+        ]
+      },
+      "page": "Routes & sites → Driving time per lane",
+      "page_shows": "Fewer than 5 trips: too few to compare fairly.",
+      "must_mention": [
+        [
+          "5",
+          "five"
+        ],
+        [
+          "too few"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e29",
+      "question": "Why is the last bar faded?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "page",
+          "activity"
+        ]
+      },
+      "page": "Faded bars",
+      "page_shows": "A part week/month/year, or one still running.",
+      "must_mention": [
+        [
+          "part",
+          "still running",
+          "so far",
+          "not finished",
+          "unfinished",
+          "incomplete",
+          "not complete",
+          "isn't complete",
+          "not over"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ],
+      "page_view": {
+        "tab": "activity",
+        "preset": "last_12_weeks",
+        "grain": "week"
+      }
+    },
+    {
+      "id": "e30",
+      "question": "What does View by change, and why can't I pick Week for all time?",
+      "expect": {
+        "kind": "explanation",
+        "tools": [],
+        "explain": [
+          "page"
+        ]
+      },
+      "page": "View by",
+      "page_shows": "Groups the bars; at most 53 bars, so a long period needs Month or Year.",
+      "must_mention": [
+        [
+          "53"
+        ],
+        [
+          "month"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ]
+    },
+    {
+      "id": "e31",
+      "question": "How did we get to the operating cost for the last 12 weeks?",
+      "expect": {
+        "kind": "answer",
+        "tools": [
+          {
+            "tool": "cost",
+            "preset": "last_12_weeks",
+            "grain": "any"
+          }
+        ],
+        "explain": [
+          "cost"
+        ]
+      },
+      "page": "Cost → Cost at a glance + rates",
+      "page_shows": "The figure for the last 12 weeks and how it is built from distance, hours and today's rates.",
+      "must_mention": [
+        [
+          "per km",
+          "17.64",
+          "17,64"
+        ]
+      ],
+      "must_not": [
+        "for which period"
+      ],
+      "page_view": {
+        "tab": "cost",
+        "preset": "last_12_weeks",
+        "grain": "week"
+      }
+    },
+    {
+      "id": "e32",
+      "question": "Which driver causes the most problems?",
+      "expect": {
+        "kind": "not_answer",
+        "tools": [],
+        "explain": []
+      },
+      "page": "Refusal",
+      "page_shows": "No driver ranking on the page by design (page spec D13); per-driver figures are on each driver's page.",
+      "must_mention": [
+        [
+          "driver page",
+          "own page",
+          "each driver",
+          "ranking",
+          "rank",
+          "score",
+          "single out"
+        ]
+      ],
+      "must_not": []
+    }
+  ]
+}

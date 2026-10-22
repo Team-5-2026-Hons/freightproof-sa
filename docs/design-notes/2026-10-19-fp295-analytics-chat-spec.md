@@ -932,6 +932,82 @@ recorded on 19 Oct; trips added since will move them) and fill in this table and
   on" lines are small chips, the waiting line is three dots pulsing in turn (still under reduced motion), the header has a
   full-strength line under it, and a new answer is scrolled to its start rather than its end, within the conversation only.
   +10 backend tests (punctuation, service, prompt), +11 frontend. Backend **4128 pass**, dispatcher **3012 pass**.
+- **B45 (Tom, 22 Oct): the chat must explain anything on the page, not only figures.** Tom asked "how do we come up
+  with operating cost?" and got "For which period…?" twice. Two causes: the page's explanations only reached the model
+  inside figure tools (which need a period), and B42's "last year" question back was forced by code whatever the
+  question. Tom's dispatcher assistant (`feature/dispatcher-assistant`) is strong because it began with a coverage
+  audit, so this round does too. Agreed stages: 0 audit, 1 page guide, 2 `explain` tool (no period; Cost adds the
+  organisation's current rates; answers labelled "Explained from the page's own notes"), 3 explanation questions read
+  in code (B42 ask-backs only for figure questions), 4 label, 4b page context (the tab and period on screen sent with
+  each question; Claude's call when Tom deferred, first to hold back if time runs short), 5 eval of ~30 new questions
+  only (~$0.35, Tom reads them), 6 checks.
+  - **Stage 0 DONE:** `2026-10-22-fp295-analytics-chat-coverage-audit.md`: 51 page elements × 8 kinds of question,
+    every one EXPLAIN, with sources; 32 eval questions; 4 findings (the review-queue rule changed on 29 Sep: every
+    exception now starts "needs review"; theft types grew to 8; Lane risk names are hover-only; severities wording).
+  - **Stage 1 DONE:** `analytics_chat/page_guide.py`: 45 entries over 9 topics (page, tiles and the 7 tabs) covering
+    the audit's 51 rows (a few small rows folded into neighbours). Each entry: purpose, shows, method, counted,
+    left_out, terms, odd_states, controls, and `page_says` (the page's own sentences, mostly borrowed from
+    `definitions.py`). Numbers are read from `fleet/constants.py` and `cost_model.DEFAULT_COST_RATES`; the
+    low-sample threshold is checked against the frontend's `period.ts`. No em dashes (it is quoted). Tests
+    (`test_analytics_chat_page_guide.py`, +15): every quoted line is on the page; every explanation, chart question
+    and rate origin on the page is in the guide (78 lines read); every chart and tile title has an entry (32); the
+    numbers match the code; the facts that went wrong on 21–22 Oct are stated. Checked by hand that a removed entry
+    fails both coverage tests. The page-wording reader moved to `tests/page_copy.py`, shared with the B43 drift test.
+    Chat tests 351 pass. Not used by the chat yet (Stage 2).
+  - **Stage 2 DONE: the `explain` tool.** `ExplainInput(topic)`; returns `guide_for(topic)`, no period, no `about`
+    block; for Cost also `current_rates` from `read_cost_profile` (the organisation's rates in force). Its menu of
+    topics and entries is built from the guide, so it can't fall behind. `ChatTool.gives_figures=False` → no "Based
+    on" chip (`basis.py`). Runners now also receive the checked input (only explain reads it). New answer kind
+    **`explanation`** (no basis, explain ran, not a question back). The no-invented-figures guard now counts tool
+    results as sources when no figure tool ran, so a guide threshold or rate may be quoted; an invented number is
+    still sent back and then replaced. **Found and fixed:** the Cost tool sent the name of the admin who last saved
+    the rates (`rates.updated_by_name`) to the provider; it was on the personal-data test's allowed list (my mistake
+    in the original build). Now stripped in `_cost` and in explain (`_rates_without_names`), with a test on what is
+    actually sent.
+  - **Stage 3 DONE: explanation questions read in code.** `period_hints.asks_for_explanation` ("how is … calculated
+    / worked out / come up with", "what does … mean / show / tell / include / comprise / change", "why is/does…",
+    "where does … come from", "what counts as", "purpose", "explain", "difference between", "what is an…").
+    `hint_for`: an explanation gets `EXPLANATION_HINT` (call `explain`, no period) and **is never turned into a
+    period question**; a B42 question back is kept only for figures it also asks for. Figure questions ("how many
+    trips…", "how did delays change…", "what did delays cost…") don't match. Prompt: an "Explaining the page" section
+    (call `explain`, answer fully in order: shows, why, method, sources, counted/left out; never from general
+    knowledge; these need no period) and the period rule now applies to figure questions only.
+  - **Stage 4 DONE:** `ChatMessage` shows "Explained from the page's own notes" for kind `explanation`.
+  - **Stage 4b DONE: page context.** `ChatRequest.page: PageView | None` (tab id, Period preset, custom dates, the
+    View by drawn; no personal data). `page_view.page_view_hint` turns it into exact tool inputs and the `explain`
+    topic for "this chart"; a backwards or future custom range gives no note. Prompt: a figure question with no
+    period uses the period on screen and says so; a period the question names wins. The page sends the active tab,
+    its Period and `query.grain` (null on Routes & sites). API snapshot regenerated: additions only (+92 lines:
+    `PageView`, `ChatRequest.page`, kind `explanation`).
+  - Tests: backend chat +37 (tools 6, service 9, hints 23 incl. Tom's exact follow-up, page view 7, scope 1, endpoint
+    2, minus updated); dispatcher +4. Backend **4752 pass**, import cycles 364; dispatcher **3115 pass**. ruff,
+    lint-imports clean; mypy and check_structure fail only in teammates' files merged from dev
+    (`test_incident_response_guide.py`; `trips/queries.py`, `evidence/action_location.py`).
+- **B46 (22 Oct): Stage 5 eval, 32 explanation questions, `gemini-3.8-flash`. 30/32 graded PASS, all 32 read by
+  Claude; cost $0.8953 at paid prices** (≈2.8 cents a question, about 2.5× a figure question: the guide in context
+  on two model calls, and long, complete answers). Questions in `tests/eval/analytics_chat_explain_questions.json`;
+  the grader gained the `explanation` and `explains` kinds, a page-guide topic check (`explain`), `must_not`
+  ("for which period", and never an em dash) and `page_view`; a test checks every required fact is in the guide the
+  question should read. Read by hand: every answer accurate to the guide and the code, in the order the prompt sets
+  (shows, why, method, sources, counted / left out), with the organisation's real rates for Cost; e02 and e31 used
+  the period on screen and gave its dates. The two FAILs:
+  - **e05 "Where did the diesel price come from?": the figure guard's bug, not the model.** The guide says "about
+    R 20 000" (Bruce's run); the guard read sources digit run by digit run (20 and 000), so the model's correct
+    "R 20 000" was taken for an invented figure and replaced. **Fixed at the root** (`number_check.py`): sources and
+    answers are read the same way: thousands in spaces (the page's style), thousands in commas ("R20,000", "R1,100.00":
+    a comma then exactly three digits), a decimal comma ("17,64"), and an amount straight after a rand sign. +4 tests.
+  - **e26 "Why does receiver sign-off look low before mid-September?": a correct answer the question was too strict
+    for.** It explained the 13 Sep 2026 go-live, then showed September's figures as evidence (all 0). The question now
+    accepts an explanation with or without figures (`explains`).
+  - Seen in the data, not the chat: e31's operating-cost breakdown has driver cost R 32 over 5 trips, because the
+    demo trips' departure-to-arrival times are minutes long. The page shows the same.
+  - **Re-run of e05 and e26 after the fixes: both PASS ($0.054).** Read by hand, e05 expanded "DMPR" from memory as
+    "Department of Mineral Resources and Energy" (the old department's name; DMPR is the Department of Mineral and
+    Petroleum Resources). The guide had no meaning for the term, so the model filled the gap despite the "never
+    from general knowledge" rule. Fixed by giving the guide the term (Cost rates `terms`: DMPR, and "Bruce's
+    figures" worded exactly as cost spec D3 records them, no guessed role), with a test. Not re-asked (no further
+    spend). Lesson for the guide: every abbreviation and name the page shows needs its meaning in the guide.
+    Backend **4766 pass**. Eval total spend this round: $0.95.
 - **Seen in Stage 1:** a test hook that runs the unit suite at the end of a turn can overlap a full pytest run and break
   both (shared test DB, rule 9). Stage 1's own full run was unaffected and the unit suite passes when run alone.
 
