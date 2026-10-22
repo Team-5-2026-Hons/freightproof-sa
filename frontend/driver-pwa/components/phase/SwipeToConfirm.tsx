@@ -12,7 +12,7 @@ import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 // Confirming a phase writes an immutable ledger row and can anchor to Hedera, so it must
 // never be reachable by a single accidental tap. Slide-to-confirm demands deliberate intent.
 //
-// This is also the app's one signature moment (design audit Q9): the same physical
+// This is also the app's one signature moment: the same physical
 // gesture closes every phase, so it is where the feel is spent — the thumb follows the
 // finger 1:1, springs with the finger's own velocity, resists at the ends, ticks at the
 // commit point, and lands as a ✓ on a filled track with a success haptic.
@@ -112,7 +112,7 @@ const VARIANT_CLASSES: Record<SwipeVariant, SwipeVariantClasses> = {
     thumb:         'bg-primary-on',
     glyph:         'text-primary',
   },
-  // Only ever rendered on the panic screen. Since overhaul 7.1 that page is white (D5),
+  // Only ever rendered on the panic screen. That page is white,
   // so the track is the app's red at full strength with a white thumb — the one red
   // control on the screen. The committed state stays red: "sent" is said by the screen
   // that follows, not by turning an emergency control green.
@@ -128,7 +128,7 @@ const VARIANT_CLASSES: Record<SwipeVariant, SwipeVariantClasses> = {
 }
 
 // The not-yet-ready look, shared by both variants (panic is never disabled in practice).
-// Overhaul 4.3: a fill track with a grey, locked thumb — the control is clearly there,
+// A fill track with a grey, locked thumb — the control is clearly there,
 // clearly not yet ready, and the label says why (waitingLabel).
 const WAITING_CLASSES = {
   track: 'bg-fill',
@@ -147,7 +147,7 @@ interface SwipeToConfirmProps {
   committedHint?: string
   /**
    * Told whenever a finger goes down on the track or lifts (or the system cancels the
-   * touch) — the panic screen's red pulse runs exactly while the finger is down (7.1b).
+   * touch) — the panic screen's red pulse runs exactly while the finger is down.
    */
   onPressChange?: (pressed: boolean) => void
   onConfirm: () => void | Promise<void>
@@ -266,7 +266,7 @@ export function SwipeToConfirm({
     (releaseVelocity: number) => {
       setShowHint(false)
       setIsCommitted(true)
-      // Same frame as the visual commit (emil-apple-design §13, harmony): the ✓ and the
+      // Same frame as the visual commit: the ✓ and the
       // haptic arrive together or the moment reads as two separate events.
       playHaptic(variant === 'danger' ? 'panic' : 'confirm')
       springTo(maxTravelRef.current, releaseVelocity, SPRING_SETTLE)

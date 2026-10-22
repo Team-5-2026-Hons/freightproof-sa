@@ -1,6 +1,5 @@
-// frontend/driver-pwa/lib/offline/queue-storage.ts
 // The localStorage half of the offline queue (phase, checkpoint and location captures), its
-// entry shapes and its FP-83 format migration. Split out of useOfflineQueue so the review
+// entry shapes and its format migration. Split out of useOfflineQueue so the review
 // screen and the late-evidence sender read and change the same records the queue sends from,
 // rather than keeping a second copy that could drift from it.
 import type { PhaseType } from '@shared/lib/types/phase'
@@ -12,7 +11,7 @@ import type { LegacyExceptionEntry } from './legacy-exception-migration'
 import type { RetainedAttention } from './live-write-conflict'
 
 export const QUEUE_KEY = 'fp_offline_queue'
-// Bumped once per incompatible entry format. 2 = FP-83: every entry records its capturing
+// Bumped once per incompatible entry format. 2: every entry records its capturing
 // account and custody period, and entries without an account are quarantined.
 const QUEUE_VERSION_KEY = 'fp_offline_queue_version'
 const QUEUE_VERSION = 2
@@ -26,7 +25,7 @@ const UNREADABLE_QUEUE_BACKUP_KEY = 'fp_offline_queue_unreadable'
  */
 export type QueueItemStatus = 'pending' | 'needs-attention' | 'quarantined'
 
-/** FP-83 fields on every queued capture. All optional only because version-1 entries lack them. */
+/** Custody fields on every queued capture. All optional only because version-1 entries lack them. */
 export interface QueueItemCustody {
   /** Capturing account. `undefined` = written before this field existed. */
   actorId?: string | null
@@ -229,14 +228,5 @@ export function clearUnreadableQueueBackup(): void {
     storage()?.removeItem(UNREADABLE_QUEUE_BACKUP_KEY)
   } catch (err) {
     console.warn('queue-storage: could not remove the unreadable queue backup', err)
-  }
-}
-
-/** Test-only: forget the migration marker so a test can seed version-1 data. */
-export function __resetQueueMigrationForTests(): void {
-  try {
-    storage()?.removeItem(QUEUE_VERSION_KEY)
-  } catch {
-    // Test environment without storage; nothing to reset.
   }
 }

@@ -33,9 +33,8 @@ export function Switch({ checked, onCheckedChange, id, disabled, ...props }: Swi
         className={cn(
           'relative inline-flex h-[31px] w-[51px] shrink-0 items-center rounded-full',
           'transition-colors duration-200',
-          // Off: a step darker than any card it sits on, plus a hairline ring. The old
-          // `bg-muted` was the exact colour of the Settings section card (1.0:1), so the
-          // off state rendered as a stray white dot with no track at all.
+          // Off: a step darker than any card it sits on, plus a hairline ring, so the
+          // off state always shows a track.
           checked
             ? 'bg-secondary'
             : 'bg-surface-container-highest ring-1 ring-inset ring-outline-variant',

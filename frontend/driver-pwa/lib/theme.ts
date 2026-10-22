@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/theme.ts
-//
 // The driver's light/dark preference: where it is stored, how it resolves against the
 // device, and how it reaches the DOM.
 //

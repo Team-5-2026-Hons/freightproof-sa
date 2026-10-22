@@ -2,8 +2,8 @@ import { Capacitor } from '@capacitor/core'
 import { mockPrecincts } from '@shared/lib/mocks/precincts'
 
 /**
- * A hand-off to the phone's own map app with directions to a precinct (overhaul 6.1
- * "Navigate"). FreightProof records the drive, it does not route it — this only opens the
+ * A hand-off to the phone's own map app with directions to a precinct ("Navigate").
+ * FreightProof records the drive, it does not route it — this only opens the
  * driver's navigation app at the destination.
  *
  * Coordinates come from the same local precinct lookup as the place names

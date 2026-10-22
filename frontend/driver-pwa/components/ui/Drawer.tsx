@@ -62,7 +62,7 @@ interface DragSample {
 // trigger the cleanup. That's a correctness regression, not a style one, so
 // this component stays hand-rolled.
 //
-// side="bottom" is an iOS sheet (audit H9): a grabber, drag-to-dismiss that follows the
+// side="bottom" is an iOS sheet: a grabber, drag-to-dismiss that follows the
 // finger 1:1 and hands its velocity to a spring, a scrim that fades with the drag, and a
 // close button kept as the way out for anyone who doesn't drag (HIG sheets: "Support
 // swiping to dismiss", "Include a grabber").
@@ -82,7 +82,7 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
   // the sheet and everything in it on every pointer move and every spring frame.
   const [dragOwned, setDragOwned] = useState(false)
   // The live drag offset in px, for the spring's starting point and a re-grab: both must
-  // read the on-screen value, not the last rendered one (emil-apple-design §3).
+  // read the on-screen value, not the last rendered one.
   const dragOffsetRef = useRef(0)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const scrimRef = useRef<HTMLDivElement | null>(null)
@@ -323,7 +323,7 @@ export function Drawer({ open, onClose, side = 'right', children, title }: Drawe
                   button keeps its place instead of being pushed off the sheet. */}
               <h2 id={titleId} className="min-w-0 break-words text-headline text-surface-on">{title}</h2>
               {/* w-11 (44px) meets the app's documented touch-target minimum (see
-                  Button/IconButton/Switch) — the old w-8 (32px) was under it. -m-1.5
+                  Button/Switch) — the old w-8 (32px) was under it. -m-1.5
                   cancels the extra 12px so the layout box stays the 32px it always was:
                   header height and icon position are unchanged, only the tappable area
                   grows (the same pad-don't-grow pattern Switch documents). */}

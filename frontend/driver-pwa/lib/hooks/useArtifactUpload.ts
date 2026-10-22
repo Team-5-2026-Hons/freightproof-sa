@@ -63,7 +63,7 @@ export function useArtifactUpload(tripId: string, phaseEventId: string): Artifac
       try {
         const artifact = await uploadArtifact({
           tripId, artifactType, dataUrl, capturedAt, attribution: { phaseEventId, role },
-          // Upload starts at capture, so this is the capture's own custody period (FP-83).
+          // Upload starts at capture, so this is the capture's own custody period.
           custodySequence: captureCustody(tripId).custodySequence,
         })
         const isSuperseded = latestRequest.current[role] !== requestNumber

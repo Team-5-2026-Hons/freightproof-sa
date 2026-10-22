@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/hooks/useSealOcr.ts
 'use client'
 
 // Runs seal OCR for a step and says whether the answer still matters when it arrives.

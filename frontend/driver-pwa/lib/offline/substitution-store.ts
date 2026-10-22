@@ -1,5 +1,4 @@
-// frontend/driver-pwa/lib/offline/substitution-store.ts
-// FP-83 durable local state, in native IndexedDB (same reasons and patterns as
+// Durable local state, in native IndexedDB (same reasons and patterns as
 // exception-store.ts: photos are too big for localStorage, and a capture must survive a dead
 // battery or a killed app):
 //   * `captures` — this driver's handover/takeover check for one arrangement, from the first
@@ -229,12 +228,6 @@ function putOne<T>(storeName: StoreName, value: T): Promise<void> {
   }, undefined)
 }
 
-function deleteOne(storeName: StoreName, key: string): Promise<void> {
-  return transact<void>(storeName, 'readwrite', (store) => {
-    store.delete(key)
-  }, undefined)
-}
-
 export function captureKey(actorId: string, requestId: string): string {
   return `${actorId}:${requestId}`
 }
@@ -250,9 +243,6 @@ export const listCaptures = (): Promise<SubstitutionCapture[]> => getAll<Substit
 export function saveCapture(capture: SubstitutionCapture): Promise<void> {
   return putOne(CAPTURES, { ...capture, updatedAt: new Date().toISOString() })
 }
-
-/** Only for a capture the server has acknowledged, or the driver's deliberate discard. */
-export const removeCapture = (key: string): Promise<void> => deleteOne(CAPTURES, key)
 
 /** Records one landed photo upload in place, so a crash right after never re-uploads it. */
 export function recordCapturePhotoUploaded(key: string, photoId: string, artifactId: string): Promise<void> {

@@ -30,8 +30,8 @@
     color-scheme: light;
 
     /* Neutrals. Elevation climbs from `surface` (the page) up through the container
-       ramp; `container-lowest` is this app's raised-card ground (see components/ui/Card
-       `default`), which is why the dark ramp below climbs rather than descends. */
+       ramp; `container-lowest` is this app's raised-card ground, which is why the
+       dark ramp below climbs rather than descends. */
     /* Pure white page (overhaul, Oct 2026). The old ground was a pink-cast #fcf8f9 that
        read as dated; the neutral ramp above it is now a true grey for the same reason. */
     --fp-surface:                    255 255 255;

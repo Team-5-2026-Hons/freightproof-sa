@@ -13,7 +13,7 @@ export interface ToastData {
   body?: string
   sticky?: boolean
   /**
-   * A phase receipt's Hedera state (overhaul 5.4). Only ever set from the server's own
+   * A phase receipt's Hedera state. Only ever set from the server's own
    * answer: 'anchored' once a receipt id exists, 'anchoring' before. Left unset for
    * anything that has not reached the backend (demo, offline queue).
    */
@@ -25,7 +25,7 @@ interface ToastItemProps {
   onDismiss: (id: string) => void
 }
 
-// A tinted disc per kind (overhaul 5.4): the colour says what kind of news it is before
+// A tinted disc per kind: the colour says what kind of news it is before
 // the words do, and the card itself stays white so a stack of them stays calm.
 const kindConfig: Record<ToastKind, { icon: ReactNode; disc: string; role: 'status' | 'alert' }> = {
   info:    { icon: <Info className="size-5" strokeWidth={2.2} />,          disc: 'bg-fill text-surface-on',                    role: 'status' },

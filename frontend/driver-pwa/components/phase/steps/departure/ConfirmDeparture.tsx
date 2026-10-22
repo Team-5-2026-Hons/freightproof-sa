@@ -16,7 +16,6 @@ import { formatTime } from '@/lib/utils/format-time'
 import type { DepartureEvidence } from '@/lib/types/evidence-draft'
 
 interface ConfirmDepartureProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: DepartureEvidence
@@ -47,7 +46,7 @@ export function ConfirmDeparture({ phase, stepIndex, draft, onComplete }: Confir
   const isReady = draft.sealNumber !== null && draft.sealPhotoDataUrl !== null
 
   // Edit and Retake both go back to the capture step, where the number and the photo
-  // live (overhaul 5.3) — one place to change either, the draft carried across.
+  // live — one place to change either, the draft carried across.
   function backToCapture() {
     markTransition('back')
     router.push(phaseStepRoute(phase.phase_type, STEP_SLUGS[phase.phase_type][0]))

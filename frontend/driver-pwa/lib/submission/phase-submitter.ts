@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/submission/phase-submitter.ts
-//
 // A phase submission that OUTLIVES the screen that started it.
 //
 // Before this module, `usePhaseStepController.submitAndAdvance` awaited the whole round
@@ -116,7 +114,7 @@ export type PhaseSubmissionOutcome =
   /** A terminal 4xx or a local validation throw. Retrying unchanged cannot help. */
   | { kind: 'failed'; message: string }
   /**
-   * FP-83: the server refused this capture because custody moved on (TRIP_HANDED_OVER,
+   * The server refused this capture because custody moved on (TRIP_HANDED_OVER,
    * CUSTODY_CONTEXT_CHANGED/REQUIRED). The evidence is kept for review in the offline queue
    * (`persisted`), never discarded and never resent live. `handedOver` asks the caller to
    * drop the trip as working context.
@@ -180,7 +178,7 @@ export interface PhaseSubmissionRequest {
   /** Driver context from a reliable preview warning; never an assessment verdict. */
   acknowledgement?: LocationWarningAcknowledgement | null
   /**
-   * FP-83: who swiped and in which custody period. Optional for callers; when absent it is
+   * Who swiped and in which custody period. Optional for callers; when absent it is
    * taken synchronously in startPhaseSubmission, i.e. at the swipe, never at send time.
    */
   custody?: CustodyStamp
@@ -220,10 +218,6 @@ function isCurrentScope(scope: SubmissionScope): boolean {
     && isCurrentTripCustody(scope.tripId, scope.custody)
 }
 
-// Frozen constant so useSyncExternalStore's server/hydration snapshot is referentially
-// stable — same trick useOfflineQueue uses for its own store.
-const SERVER_SNAPSHOT: PhaseSubmissionStoreState = EMPTY_STATE
-
 function publish(next: ScopedSubmissionState): void {
   state = {
     // Keep other trips' attempts: switching the selected trip hides them, but
@@ -260,8 +254,9 @@ onCustodyActorChange(() => {
 
 onTripCustodyChange(() => { listeners.forEach(listener => listener()) })
 
+// A module constant, so useSyncExternalStore's hydration snapshot is referentially stable.
 function getServerSnapshot(): PhaseSubmissionStoreState {
-  return SERVER_SNAPSHOT
+  return EMPTY_STATE
 }
 
 /** Live view of what is submitting and what has failed. Safe to mount many times. */
@@ -347,7 +342,7 @@ async function runSubmission(request: PhaseSubmissionRequest, generation: number
     return { kind: 'recorded', trip: result.trip, addressedPhase }
   } catch (err) {
     if (actorGeneration() !== generation) return retainAfterAccountChange()
-    // FP-83 coded answers come first: they are decided by their code, not by "409 means
+    // Coded answers come first: they are decided by their code, not by "409 means
     // maybe a duplicate". Uncoded 409s keep the existing refetch-and-read-the-plan check.
     if (err instanceof ApiError && err.code !== undefined) {
       const failure = classifyLiveWriteFailure(err)

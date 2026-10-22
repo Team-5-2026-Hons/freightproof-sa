@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/settings/ThemeSelect.tsx
 'use client'
 
 import { useSyncExternalStore } from 'react'
@@ -23,9 +22,6 @@ const THEME_OPTIONS: Record<ThemePreference, ThemeOption> = {
   dark:   { label: 'Dark' },
 }
 
-// Each tile's miniature screen — raw colours live in lib/tokens.ts (the hex-exempt file).
-const PREVIEW: Record<ThemePreference, string> = THEME_PREVIEW_CLASSES
-
 // Radio group name — one control per screen, but the attribute is what makes the three
 // inputs a single arrow-key-navigable group rather than three unrelated radios.
 const THEME_RADIO_NAME = 'theme-preference'
@@ -38,7 +34,7 @@ function useThemePref(): ThemePreference {
 }
 
 /**
- * System / Light / Dark as three preview tiles (overhaul 10.2).
+ * System / Light / Dark as three preview tiles.
  *
  * Real <input type="radio"> elements behind a styled label, not buttons with
  * aria-checked: it buys correct arrow-key navigation, screen-reader group semantics and
@@ -77,7 +73,7 @@ export function ThemeSelect() {
                   isSelected ? 'ring-[2.5px] ring-surface-on' : 'ring-1 ring-hairline',
                 )}
               >
-                <span className={cn('block h-full overflow-hidden rounded-xl', PREVIEW[pref])} />
+                <span className={cn('block h-full overflow-hidden rounded-xl', THEME_PREVIEW_CLASSES[pref])} />
               </span>
               <span
                 className={cn(

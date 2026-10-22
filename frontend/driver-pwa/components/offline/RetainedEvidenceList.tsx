@@ -58,7 +58,7 @@ function ItemRow({ item, onChanged }: ItemRowProps) {
   const { notify } = useToast()
   const [busy, setBusy] = useState(false)
   // Discard is the only irreversible action on this screen, so it takes a second,
-  // differently worded tap with the consequence stated (same pattern as OfflineBanner).
+  // differently worded tap with the consequence stated.
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
 
   const run = async (action: () => Promise<void>) => {
@@ -132,7 +132,7 @@ function ItemRow({ item, onChanged }: ItemRowProps) {
 const EMPTY_SNAPSHOT: RetainedEvidenceSnapshot = { items: [], heldForOtherAccounts: 0, receipts: [] }
 
 /**
- * FP-83 review screen for captures this phone is keeping: refused by the server, quarantined
+ * Review screen for captures this phone is keeping: refused by the server, quarantined
  * (capturer unknown) or retained drafts. Every action is explicit; nothing here is sent or
  * deleted without the driver choosing it, and a quarantined item is never presented as theirs.
  */

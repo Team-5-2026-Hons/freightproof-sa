@@ -176,13 +176,6 @@ function Probe() {
       >
         log-exception-without-photos
       </button>
-      <button
-        onClick={() =>
-          ctx.logException('cargo_damage', { description: 'Pallet damaged.', supporting_artifact_id: 'lone-legacy' })
-        }
-      >
-        log-exception-lone-legacy-photo
-      </button>
     </div>
   )
 }
@@ -361,13 +354,5 @@ describe('TripContext.logException (real mode) — photo ids reach raiseExceptio
     const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
     expect(body).not.toHaveProperty('supporting_artifact_ids')
     expect(body.supporting_artifact_id).toBeUndefined()
-  })
-
-  it('still honours a lone legacy supporting_artifact_id', async () => {
-    await click('log-exception-lone-legacy-photo')
-
-    const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
-    expect(body.supporting_artifact_id).toBe('lone-legacy')
-    expect(body).not.toHaveProperty('supporting_artifact_ids')
   })
 })

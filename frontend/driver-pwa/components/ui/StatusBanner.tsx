@@ -28,7 +28,7 @@ interface StatusBannerProps {
   className?: string
 }
 
-/** The overhaul's status line: tinted ground, dot, bold state, plain next step. */
+/** The status line: tinted ground, dot, bold state, plain next step. */
 export function StatusBanner({ tone, title, children, icon, live = false, className }: StatusBannerProps) {
   const t = TONE[tone]
   return (

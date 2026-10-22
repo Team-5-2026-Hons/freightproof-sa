@@ -60,7 +60,6 @@ function renderStep(overrides: {
   } = overrides
   return render(
     <VisualCount
-      tripId="t1"
       phase={phase}
       stepIndex={1}
       draft={draft}

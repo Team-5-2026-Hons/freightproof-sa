@@ -65,7 +65,7 @@ function Declaration({ declaration }: { declaration: SubstitutionConfirmationDet
 }
 
 /**
- * A driver's own part in a trip they handed over (FP-83 T1). Built only from the restricted
+ * A driver's own part in a trip they handed over. Built only from the restricted
  * participation read — never from trip detail — so it can show nothing the server did not
  * scope to this driver: no later live position, no other driver's details, no manifest. The
  * trip's status is the real one (often still Active for the next driver), stated as such.

@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/Input'
 import { EmptyState } from '@/components/ui/EmptyState'
 
 /**
- * Every past trip, by month (overhaul 3.5) — the scrolling list behind the Trips tab's
+ * Every past trip, by month — the scrolling list behind the Trips tab's
  * "See all". The place/date filter the old Past tab had lives here now.
  */
 export default function PastTripsPage() {

@@ -29,7 +29,7 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
   const phaseName = PHASE_NAMES[phase.phase_type]
   const total = slugs.length
 
-  // Where this phase sits in the whole trip (overhaul 4.x): "Phase 3 of 7". From the
+  // Where this phase sits in the whole trip: "Phase 3 of 7". From the
   // session trip's plan; without one (tests, a cold deep link mid-load) the header simply
   // leaves the trip context out rather than guessing it.
   const plan = session?.trip?.phases

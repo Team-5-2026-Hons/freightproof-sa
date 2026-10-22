@@ -1,8 +1,4 @@
-// frontend/driver-pwa/components/phase/steps/confirmation/PodPhoto.tsx
-// BQ2 resolved 2026-06-29: proof of delivery is a photo of the delivered cargo
-// AND an on-device signature from the receiver — both required, now captured as two
-// separate steps (this one, and PodSignature.tsx) instead of one combined screen, per
-// confirmation's recipe (STEP_SLUGS.confirmation: '1-pod-photo', '2-receiver-handover').
+// POD photo step; the receiver's signature is captured in ReceiverHandover.
 'use client'
 
 import { StepLayout } from '@/components/phase/StepLayout'

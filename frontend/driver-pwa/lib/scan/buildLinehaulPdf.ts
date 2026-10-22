@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/scan/buildLinehaulPdf.ts
-//
 // Wraps the scanned linehaul sheet in a one-page A4 PDF, on the phone, so dispatchers and
 // insurers get a document they can print and file. The image inside is the very scan
 // stored as linehaul_photo; the PDF adds nothing but the page, which is why both hashes

@@ -50,26 +50,6 @@ beforeEach(() => {
 })
 
 describe('usePushNotifications', () => {
-  it('simulateGateArrival routes to activation\'s first step (origin gate)', () => {
-    const { result } = renderHook(() => usePushNotifications())
-
-    act(() => result.current.simulateGateArrival('activation'))
-
-    expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/2-verification')
-    expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('/trip/undefined/'))
-  })
-
-  // in_transit has no driver steps left (its GPS-capture step is gone and the phase is
-  // auto-completed server-side), so a destination-arrival push must land somewhere real
-  // rather than composing a ".../step/undefined" URL.
-  it('simulateGateArrival falls back to the active trip when the phase has no steps', () => {
-    const { result } = renderHook(() => usePushNotifications())
-
-    act(() => result.current.simulateGateArrival('in_transit'))
-
-    expect(mockPush).toHaveBeenCalledWith('/trips/active')
-  })
-
   // Native only: a notification the driver taps from the shade arrives as
   // pushNotificationActionPerformed, not pushNotificationReceived.
   it('routes a tapped gate-arrival notification to the phase step', async () => {
@@ -80,6 +60,18 @@ describe('usePushNotifications', () => {
     act(() => listeners.get('pushNotificationActionPerformed')!({ actionId: 'tap', notification: { data: { type: 'GATE_ARRIVAL', phase_type: 'activation' } } }))
 
     expect(mockPush).toHaveBeenCalledWith('/trip/phase/activation/step/2-verification')
+  })
+
+  // in_transit has no driver steps (the phase is submitted from the in-transit hub), so a
+  // destination-arrival push must land somewhere real rather than on ".../step/undefined".
+  it('routes a tapped in_transit notification to the active trip when the phase has no steps', async () => {
+    native.value = true
+    renderHook(() => usePushNotifications())
+    await vi.waitFor(() => expect(listeners.has('pushNotificationActionPerformed')).toBe(true))
+
+    act(() => listeners.get('pushNotificationActionPerformed')!({ actionId: 'tap', notification: { data: { type: 'GATE_ARRIVAL', phase_type: 'in_transit' } } }))
+
+    expect(mockPush).toHaveBeenCalledWith('/trips/active')
   })
 
   it('ignores a payload with an unknown phase type instead of throwing', async () => {

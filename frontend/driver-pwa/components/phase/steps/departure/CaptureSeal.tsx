@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/departure/CaptureSeal.tsx
 'use client'
 
 import { useEffect, useRef } from 'react'

@@ -37,10 +37,10 @@ interface StepLayoutProps {
   children?: ReactNode
 }
 
-// The one frame every evidence step is built in (design audit step 6). Before this, ten
+// The one frame every evidence step is built in. Before this, ten
 // step components each hand-built the same header / intro / content / swipe stack, and the
 // swipe simply sat greyed out when something was missing — a driver had to work out for
-// themselves which of three fields was still empty (H8). Now the step declares its
+// themselves which of three fields was still empty. Now the step declares its
 // requirements and the footer says, live, what is done and what is not.
 export function StepLayout({
   phase, stepIndex, intro, requirements = [], action, centered = false, showTitle = true, children,
@@ -53,7 +53,7 @@ export function StepLayout({
     <main className="flex min-h-dvh flex-col bg-surface">
       <StepHeader phase={phase} stepIndex={stepIndex} />
 
-      {/* Title, then one or two sentences on why, then the step (overhaul 4.1): the driver
+      {/* Title, then one or two sentences on why, then the step: the driver
           reads what to do before anything asks for a tap. */}
       <div className={cn('flex flex-1 flex-col gap-6 px-5 pb-6 pt-6', centered && 'items-center justify-center text-center')}>
         {showTitle && (
@@ -79,7 +79,7 @@ export function StepLayout({
 
 /**
  * What a step still needs, as chips above its confirm. Kept under its old name for the
- * In Transit forms that share it; the look is RequirementChips (overhaul 0).
+ * In Transit forms that share it; the look is RequirementChips.
  */
 export function RequirementChecklist({ requirements }: { requirements: readonly StepRequirement[] }) {
   return <RequirementChips requirements={requirements} className="mb-3" />

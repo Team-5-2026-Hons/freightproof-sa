@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trips/active/ActiveTripPageClient.tsx
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -10,10 +9,7 @@ import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { TripDetailView } from '@/components/trip/TripDetailView'
 import { useBack } from '@/lib/navigation/useBack'
 
-// Route to the first step of the selected phase's own recipe. Mirrors
-// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
-// only export surface for sequencing, this is just route composition, kept local to
-// each caller the same way that file keeps its own.
+// Route to the first step of the selected phase.
 function firstStepRoute(phase: PhaseDescriptor): string {
   const steps = stepsFor(phase)
   return steps.length > 0 ? phaseStepRoute(phase.phase_type, steps[0].slug) : ROUTES.activeTripDetail

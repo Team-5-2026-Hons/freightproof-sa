@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/offline/legacy-exception-migration.ts
 // One-way move of exception reports queued in localStorage by the previous build into the
 // IndexedDB store. A driver can update the app with a report still queued; it must not be
 // lost or, worse, re-uploaded as a duplicate photo.
@@ -48,7 +47,7 @@ export function legacyEntryToEnvelope(entry: LegacyExceptionEntry): ExceptionEnv
     tripId: entry.tripId,
     body,
     photos,
-    // FP-83: a pre-substitution localStorage entry never recorded who captured it, so it is
+    // A pre-substitution localStorage entry never recorded who captured it, so it is
     // quarantined, not queued under whoever happens to be signed in when it migrates.
     status: 'quarantined',
     attentionReason: null,

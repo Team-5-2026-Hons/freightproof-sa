@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/page.tsx
 'use client'
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.

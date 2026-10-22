@@ -30,9 +30,6 @@ const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
 // a fresh session. Exported for the layout only.
 export const SUPPRESS_RETURN_SAVE_KEY = 'fp:suppress-return-save'
 
-// Re-exported so existing importers (tests) keep their path; it now belongs to the demo adapter.
-export { DEMO_SESSION_KEY } from '@/lib/auth/DemoOtpAuth'
-
 export const AuthContext = createContext<AuthState | null>(null)
 
 interface AuthProviderProps {
@@ -57,9 +54,6 @@ export function AuthProvider({ children, port: injectedPort, profiles: injectedP
   // which means "signed out" and is what sends a driver to /login.
   const [connectionFault, setConnectionFault] = useState(false)
 
-  // Tracks the currently-loaded driver id outside React state so the
-  // onAuthStateChange listener (subscribed once, see below) can compare
-  // against it without needing `user` in its dependency array.
   const fetchProfile = useCallback(() => profiles.loadProfile(), [profiles])
 
   // On app load, restore a session if one exists (a page refresh, or a demo walkthrough

@@ -43,10 +43,8 @@ function FactRow({ label, value, tone }: { label: string; value: string; tone?: 
 }
 
 /**
- * Blocking popup for the per-phase driver-vs-truck location check — replaces the old
- * bottom-of-page LocationCheckNotice, which rendered below the fold where a driver
- * could miss it entirely. Presents the SAME state machine as a modal: it never
- * computes a verdict client-side, only records what the SERVER's assessment said and
+ * Blocking popup for the per-phase driver-vs-truck location check, so a driver cannot
+ * miss it below the fold. It never computes a verdict client-side, only records what the SERVER's assessment said and
  * what the driver chose to do about it (final evidence is assembled by the backend at
  * submit time regardless of what this component shows).
  *
@@ -85,7 +83,7 @@ export function LocationCheckModal({
     onContinue(requiresReason ? trimmedReason : null)
   }
 
-  // Continue is the primary (ink) action; Retry is the quiet fill under it (overhaul 4.2).
+  // Continue is the primary (ink) action; Retry is the quiet fill under it.
   const retry = <Button variant="fill" size="pill" onClick={onRetry}>Retry Location</Button>
 
   if (loading) {

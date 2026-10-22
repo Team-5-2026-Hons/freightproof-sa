@@ -57,6 +57,48 @@ describe('useRotatingHandover', () => {
     expect(issueHandoverToken).toHaveBeenCalledTimes(2)
   })
 
+  it('follows a server cadence that differs from the fallback', async () => {
+    vi.useFakeTimers()
+    vi.mocked(issueHandoverToken).mockResolvedValue({
+      scan_url: 'https://r.test/h/aaa',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 5,
+      receiver_opened: false,
+    })
+    renderHook(() => useRotatingHandover(TRIP, EVENT))
+    await vi.waitFor(() => expect(issueHandoverToken).toHaveBeenCalledTimes(1))
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('adopts a new cadence the server announces on a later response', async () => {
+    vi.useFakeTimers()
+    vi.mocked(issueHandoverToken).mockResolvedValueOnce({
+      scan_url: 'https://r.test/h/aaa',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 5,
+      receiver_opened: false,
+    })
+    vi.mocked(issueHandoverToken).mockResolvedValue({
+      scan_url: 'https://r.test/h/bbb',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 30,
+      receiver_opened: false,
+    })
+    renderHook(() => useRotatingHandover(TRIP, EVENT))
+    await vi.waitFor(() => expect(issueHandoverToken).toHaveBeenCalledTimes(1))
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(3)
+  })
+
   it('stops re-issuing once the receiver has the link open', async () => {
     vi.useFakeTimers()
     vi.mocked(fetchHandoverStatus).mockResolvedValue({ ...UNCONFIRMED, receiver_opened: true })

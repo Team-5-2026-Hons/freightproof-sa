@@ -1,4 +1,4 @@
-// Renders a payload as a QR on a canvas (FP-238). Error-correction level H (highest,
+// Renders a payload as a QR on a canvas. Error-correction level H (highest,
 // ~30% more modules) since this code is scanned off a warehouse screen under poor conditions.
 'use client'
 

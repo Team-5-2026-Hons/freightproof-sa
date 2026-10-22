@@ -2,7 +2,7 @@
 
 // Route-level error boundary (Next.js App Router convention file). Catches render and
 // runtime errors from any page under the root layout, so a crash shows recovery UI
-// instead of a blank white screen mid-handshake. This is purely client-side React —
+// instead of a blank white screen mid-phase. This is purely client-side React —
 // exactly what output: 'export' supports, since a static export has no server error page.
 
 import { useEffect } from 'react'

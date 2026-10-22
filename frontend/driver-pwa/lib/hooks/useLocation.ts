@@ -33,7 +33,7 @@ export interface LocationState {
 
 // Dev-only convenience fallback — Linbro Park, JHB (FedEx origin depot). This exists
 // solely so a developer on a laptop browser (no GPS hardware, or geolocation blocked
-// by a corp policy) can exercise the handshake flow without a real device. It must
+// by a corp policy) can exercise the phase flow without a real device. It must
 // NEVER stand in for a real reading in production: FreightProof is an evidence
 // platform, and a fabricated coordinate that looks like a genuine capture is the
 // single worst defect this app can ship. The NODE_ENV === 'development' gate at the
@@ -45,8 +45,6 @@ const LINBRO_PARK: LocationCoords = {
 }
 
 // W3C GeolocationPositionError codes (https://w3c.github.io/geolocation/#position-error).
-// Named instead of inlined per the project's no-magic-numbers rule, and reused below
-// to defensively pattern-match native (Capacitor) rejections that don't carry them.
 const GEOLOCATION_PERMISSION_DENIED = 1
 const GEOLOCATION_POSITION_UNAVAILABLE = 2
 const GEOLOCATION_TIMEOUT = 3
@@ -157,8 +155,6 @@ export function useLocation(): LocationState {
       setStatus('captured')
       return { coords: result, errorReason: null }
     } catch (err) {
-      // Classify the failure so GpsCapture can show remediation instead of a bare
-      // "Retry GPS" — e.g. retrying is pointless when permission is denied.
       const reason = mapErrorReason(err)
       console.error(`[useLocation] capture failed (${reason}):`, err)
       setErrorReason(reason)
