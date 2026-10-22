@@ -78,4 +78,62 @@ describe('HijackResponseGuide', () => {
     expect(screen.queryByRole('button', { name: 'Record' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Download SAPS fact sheet' })).toBeInTheDocument()
   })
+
+  describe('who vouches for a step', () => {
+    const RECORDED = /Recorded by dispatcher/
+
+    it('labels a done step that rests on the dispatcher\'s say-so', () => {
+      // Arrange / Act
+      renderGuide({ steps: steps({ client_notified: 'done' }) })
+
+      // Assert
+      expect(within(step(/Notify the client/)).getByText(RECORDED)).toBeInTheDocument()
+    })
+
+    it('shows the recorded time beside the label when the step has one', () => {
+      // Arrange
+      const withTime = steps({ insurer_notified: 'done' }).map(s =>
+        s.key === 'insurer_notified' ? { ...s, done_at: '2026-10-21T12:02:00Z' } : s)
+
+      // Act
+      renderGuide({ steps: withTime })
+
+      // Assert
+      const row = step(/Notify the insurer/)
+      expect(within(row).getByText(RECORDED)).toBeInTheDocument()
+      expect(row.textContent).toMatch(/21 Oct/)
+    })
+
+    it('does not label the trip stop, which the system witnessed itself', () => {
+      // Arrange / Act
+      renderGuide({ steps: steps({ trip_stopped: 'done' }) })
+
+      // Assert
+      expect(within(step(/Stop the trip/)).queryByText(RECORDED)).not.toBeInTheDocument()
+    })
+
+    it('does not label the audit pack, which the system generated', () => {
+      // Arrange / Act
+      renderGuide({ steps: steps({ audit_pack_issued: 'done' }) })
+
+      // Assert
+      expect(within(step(/Issue the insurer audit pack/)).queryByText(RECORDED)).not.toBeInTheDocument()
+    })
+
+    it('labels nothing on a step that is not done', () => {
+      // Arrange / Act
+      renderGuide({ steps: steps({ client_notified: 'todo', driver_welfare_check: 'not_applicable' }) })
+
+      // Assert
+      expect(screen.queryByText(RECORDED)).not.toBeInTheDocument()
+    })
+
+    it('explains under the heading that steps are the dispatcher\'s record, not the parties\' confirmation', () => {
+      // Arrange / Act
+      renderGuide()
+
+      // Assert
+      expect(screen.getByText(/what the dispatcher recorded, not confirmations from the parties/i)).toBeInTheDocument()
+    })
+  })
 })

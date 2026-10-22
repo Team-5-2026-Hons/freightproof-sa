@@ -112,6 +112,10 @@ export const RESPONSE_STEP_ACTION: Partial<Record<ResponseStepKey, IncidentExter
   driver_welfare_check: 'driver_welfare_check',
 }
 
+/** Steps whose "done" the system established itself (the trip it stopped, the pack it issued).
+ *  Every other done step rests on what a dispatcher recorded. Mirrors response_guide.py. */
+export const SYSTEM_WITNESSED_STEPS: readonly ResponseStepKey[] = ['trip_stopped', 'audit_pack_issued']
+
 const FINISHED_TRIP: readonly TripStatus[] = ['closed', 'cancelled']
 
 export function tripIsLive(status: TripStatus): boolean {
