@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { AssistantBubble } from '@/components/assistant/AssistantBubble'
 import { DispatcherShell } from '@/components/layout/DispatcherShell'
 import { RealtimeProvider } from '@/lib/realtime/RealtimeProvider'
 import { ROUTES } from '@/lib/constants/routes'
@@ -47,6 +48,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <RealtimeProvider>
       <DispatcherShell>{children}</DispatcherShell>
+      {/* The helper bubble: mounted here, once, so its conversation follows the dispatcher across pages. */}
+      <AssistantBubble />
     </RealtimeProvider>
   )
 }

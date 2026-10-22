@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TopBar } from '@/components/ui/TopBar'
 import { Tabs } from '@/components/ui/Tabs'
@@ -15,6 +15,7 @@ import { ManifestWarnings } from '@/components/trips/new/ManifestWarnings'
 import { RouteFields, type RouteEnd } from '@/components/trips/new/RouteFields'
 import { ScheduleFields } from '@/components/trips/new/ScheduleFields'
 import { CrewFields } from '@/components/trips/new/CrewFields'
+import { PrefillNote } from '@/components/trips/new/PrefillNote'
 import { CreateTripSummary, type SummaryRow } from '@/components/trips/new/CreateTripSummary'
 import { createTrip, createTripFromPPManifest, findLiveTripForManifest } from '@/lib/api/client'
 import { useCrewAvailability } from '@/lib/hooks/useCrewAvailability'
@@ -34,6 +35,7 @@ import {
 import { availabilityWindow, validateCrewAvailability } from '@/lib/trips/crew-availability'
 import { classifyCreateError } from '@/lib/trips/trip-api-errors'
 import { trailerCombo } from '@/lib/trips/trailer-combo'
+import { useTripPrefill } from '@/lib/trips/useTripPrefill'
 import { COPY } from '@shared/lib/constants/copy'
 import { cn } from '@shared/lib/utils/cn'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
@@ -76,9 +78,9 @@ interface Notice {
 export default function TripNewPage(): React.JSX.Element {
   const router = useRouter()
   const { notify } = useToast()
-  const { drivers } = useDrivers()
-  const { horses, trailers } = useVehicles()
-  const { precincts, error: precinctsError } = usePrecincts()
+  const { drivers, isLoading: driversLoading } = useDrivers()
+  const { horses, trailers, isLoading: vehiclesLoading } = useVehicles()
+  const { precincts, error: precinctsError, isLoading: precinctsLoading } = usePrecincts()
   const lookup = useManifestPreview()
 
   const [mode, setMode] = useState<CreateMode>('manifest')
@@ -95,6 +97,17 @@ export default function TripNewPage(): React.JSX.Element {
   const [refusedAttempts, setRefusedAttempts] = useState(0)
   const noticeRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  // The assistant's "Open trip form" link (assistant spec §7.3): read once, only known ids used, nothing created.
+  const driverIds = useMemo(() => new Set(drivers.map(d => d.id)), [drivers])
+  const horseIds = useMemo(() => new Set(horses.map(h => h.id)), [horses])
+  const trailerIds = useMemo(() => new Set(trailers.map(t => t.id)), [trailers])
+  const precinctIds = useMemo(() => new Set(precincts.map(p => p.id)), [precincts])
+  const prefill = useTripPrefill({
+    driverIds, horseIds, trailerIds, precinctIds,
+    listsLoaded: !driversLoading && !vehiclesLoading && !precinctsLoading,
+    setMode, setManifestInput, lookUp: lookup.lookUp, setCrew, setPicks, setOverrides,
+  })
 
   // Without this the failure is invisible: the precinct pickers would just be empty.
   useEffect(() => {
@@ -339,6 +352,7 @@ export default function TripNewPage(): React.JSX.Element {
         <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6 lg:flex-row lg:items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-5">
             {notice && <NoticeBanner notice={notice} ref={noticeRef} />}
+            {prefill.notice && <PrefillNote notice={prefill.notice} onDismiss={prefill.dismiss} />}
 
             <Tabs tabs={MODE_TABS} active={mode} onChange={changeMode} panelId={PANEL_ID} ariaLabel="How to create this trip" />
 
