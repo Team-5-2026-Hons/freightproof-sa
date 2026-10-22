@@ -32,10 +32,10 @@ export function Timeline({ items, selectedId, onSelect }: Props) {
               className={`w-full rounded-md px-2.5 py-2 text-left transition-colors ${selected ? 'bg-sec-c' : 'hover:bg-surf-low'}`}
             >
               <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                <span className={`text-[13px] font-semibold ${item.pending ? 'text-muted' : ''}`}>{item.title}</span>
+                <span className={`text-small font-semibold ${item.pending ? 'text-muted' : ''}`}>{item.title}</span>
                 <TierBadge tier={item.tier} />
               </span>
-              <span className="num mt-0.5 block text-[11px] text-muted">
+              <span className="num mt-0.5 block text-caption text-muted">
                 {item.pending ? 'Not completed' : formatSast(item.at)}
               </span>
             </button>

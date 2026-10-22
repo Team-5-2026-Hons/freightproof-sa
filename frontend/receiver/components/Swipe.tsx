@@ -1,8 +1,5 @@
-// Slide-to-confirm for the receiver's single act. NOT a port of driver-pwa's
-// SwipeToConfirm — that component's design-system tokens and preferences don't apply to
-// a one-button page seen once by someone with no account. The safety property IS carried
-// over: confirming spends a single-use token and writes an immutable ledger row, so it
-// must never be reachable by one accidental tap.
+// Slide-to-confirm: confirming spends a single-use token and writes an immutable ledger
+// row, so one accidental tap must never trigger it.
 //
 // A drag has to START on the thumb. A press anywhere on the track used to snap the thumb
 // to the finger, so brushing the track while scrolling one-handed could complete the
@@ -196,10 +193,8 @@ export function Swipe({ label, disabled = false, busy = false, onConfirm }: Swip
     fire()
   }, [inert, fire])
 
-  // A disabled control must not stay parked at the far end of its track. Written during
-  // render, not an effect — the standard "adjusting state when a prop changes" pattern
-  // (https://react.dev/learn/you-might-not-need-an-effect). Applies to `disabled` only:
-  // while `busy` the parked thumb is the point.
+  // A disabled control must not stay parked at the end of its track. Applies to `disabled`
+  // only: while `busy` the parked thumb is the point.
   const [prevDisabled, setPrevDisabled] = useState(disabled)
   if (disabled !== prevDisabled) {
     setPrevDisabled(disabled)

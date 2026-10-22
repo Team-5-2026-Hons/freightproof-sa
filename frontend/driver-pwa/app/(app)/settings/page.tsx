@@ -8,7 +8,7 @@ import { ROUTES } from '@/lib/constants/routes'
 import { markTransition } from '@/lib/navigation/transition-direction'
 
 /**
- * Settings merged into Profile (Tim, 14 Oct — decision D2). The path is kept as a
+ * Settings merged into Profile. The path is kept as a
  * redirect so a bookmark, an installed PWA's saved state or a stale in-app link still
  * lands somewhere real. A static export cannot issue an HTTP redirect, hence the client
  * replace; replace (not push) so Back never returns to this empty hop.

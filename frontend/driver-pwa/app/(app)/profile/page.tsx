@@ -126,7 +126,7 @@ function SignOutControl({ onConfirm }: { onConfirm: () => Promise<void> }) {
 }
 
 /**
- * Profile — who the driver is, with the app's few settings merged in (overhaul 10.1).
+ * Profile — who the driver is, with the app's few settings merged in.
  * Replaces the Settings tab and the profile bottom sheet: one place for "me".
  */
 export default function ProfilePage() {

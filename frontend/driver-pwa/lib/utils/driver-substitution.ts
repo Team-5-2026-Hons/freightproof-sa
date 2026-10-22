@@ -1,4 +1,4 @@
-// Pure presentation rules for FP-83 driver substitution. No I/O, no React.
+// Pure presentation rules for driver substitution. No I/O, no React.
 //
 // Everything here READS the server's answer; nothing decides custody. Who is current, whether
 // a transfer completed and why it is blocked all come from the contract fields — this module

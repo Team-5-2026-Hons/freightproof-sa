@@ -1,7 +1,7 @@
 // The portal's only way to reach the API. No session, no bearer token: the share token
 // in the URL is the credential, sent only to our own API and never in a Referer header.
 //
-// A pack issued to an email address also needs a viewer grant (FP-291): earned once by
+// A pack issued to an email address also needs a viewer grant: earned once by
 // entering the code emailed to the recipient, kept in this browser, and sent as a header
 // on every request for that pack — a header, never the URL, which ends up in logs.
 import type {

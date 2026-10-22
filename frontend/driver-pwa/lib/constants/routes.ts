@@ -17,7 +17,7 @@ const TRIP_DETAIL_PATH = '/trips/detail'
 // and the route builder can never drift apart.
 export const TRIP_ID_PARAM = 'id'
 
-// FP-83 handover check. Static path with query-string ids for the same static-export reason
+// Handover check. Static path with query-string ids for the same static-export reason
 // as trip detail; both params are read by SubstitutionPageClient.
 export const SUBSTITUTION_PATH = '/trips/substitution'
 export const SUBSTITUTION_TRIP_PARAM = 'trip'
@@ -49,7 +49,7 @@ export const ROUTES = {
   profile:  '/profile',
   settings: '/settings',
   trips:    '/trips',
-  // "See all" from the Trips tab, which itself never scrolls (Tim, 14 Oct). Static
+  // "See all" from the Trips tab, which itself never scrolls. Static
   // segments, so they outrank /trips/[id] under output: 'export'.
   tripsPast:     '/trips/past',
   tripsUpcoming: '/trips/upcoming',
@@ -62,12 +62,12 @@ export const ROUTES = {
   tripDetailById: (tripId: string) => `${TRIP_DETAIL_PATH}?${TRIP_ID_PARAM}=${tripId}`,
   // The driver's one real active trip, sourced from TripContext.
   activeTripDetail: '/trips/active',
-  // FP-83: this driver's own handover/takeover check for one arrangement.
+  // This driver's own handover/takeover check for one arrangement.
   substitution: (tripId: string, requestId: string) => {
     const params = new URLSearchParams({ [SUBSTITUTION_TRIP_PARAM]: tripId, [SUBSTITUTION_REQUEST_PARAM]: requestId })
     return `${SUBSTITUTION_PATH}?${params.toString()}`
   },
-  // FP-83: captures kept on this phone for the driver's decision (refused, quarantined).
+  // Captures kept on this phone for the driver's decision (refused, quarantined).
   retainedEvidence: '/evidence',
 
   inTransit:  '/trip/in-transit',
@@ -89,6 +89,4 @@ export const ROUTES = {
     const query = params.toString()
     return query === '' ? PANIC_SUBMITTED_PATH : `${PANIC_SUBMITTED_PATH}?${query}`
   },
-
-  devTokens: '/dev/tokens',
 } as const

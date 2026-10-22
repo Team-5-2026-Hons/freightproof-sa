@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { dayTile, durationLabel, groupByMonth, pastOutcome, placeParts } from '../trip-display'
+import { dayTile, durationLabel, groupByMonth, pastOutcome, placeOf, placeParts } from '../trip-display'
+import { precinctName } from '../precinct-name'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
 function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
@@ -22,6 +23,20 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
     ...overrides,
   }
 }
+
+describe('placeOf', () => {
+  it('prefers the server-resolved name', () => {
+    expect(placeOf('FedEx JHB — Linbro Park', 'any-id')).toBe('FedEx JHB — Linbro Park')
+  })
+
+  it('falls back to the local precinct lookup when the server sent no name', () => {
+    expect(placeOf(null, 'some-precinct-id')).toBe(precinctName('some-precinct-id'))
+  })
+
+  it('says Unknown rather than showing nothing when there is neither', () => {
+    expect(placeOf(null, null)).toBe('Unknown')
+  })
+})
 
 describe('placeParts', () => {
   it('test_splits_a_precinct_name_into_place_and_area', () => {

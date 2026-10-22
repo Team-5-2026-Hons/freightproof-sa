@@ -1,8 +1,7 @@
-// frontend/driver-pwa/lib/offline/testing/fake-indexeddb.ts
 // Minimal in-memory IndexedDB for tests. jsdom ships none and we may not add the
-// fake-indexeddb package, so this implements only what lib/offline/exception-store.ts
-// uses (open/upgrade, transaction, objectStore get/put/delete/getAll) and lets the REAL
-// store code run. Data lives in the factory, so reopening via the same factory behaves
+// fake-indexeddb package, so this implements only what the offline stores
+// (exception-store, substitution-store) use (open/upgrade, transaction,
+// objectStore get/put/delete/getAll) and lets the REAL store code run. Data lives in the factory, so reopening via the same factory behaves
 // like an app restart.
 
 type Listener<E> = ((event: E) => void) | null

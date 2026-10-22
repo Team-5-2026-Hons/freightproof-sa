@@ -83,7 +83,7 @@ function CollectionDetails({ context }: { context: DriverSubstitutionContextRead
 }
 
 /**
- * One driver-handover arrangement as the server states it (FP-83 T1): where and when, who the
+ * One driver-handover arrangement as the server states it: where and when, who the
  * other driver is, which vehicles change hands, and what is still outstanding. It offers no
  * confirm control — recording the handover is its own evidence flow (T2) — and it never
  * presents a pending arrangement as a completed custody change.

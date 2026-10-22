@@ -58,7 +58,7 @@ interface PhaseListProps {
 }
 
 /**
- * Every phase of the plan as a list (overhaul 3.2 "All steps", 3.4 timeline). The plan's
+ * Every phase of the plan as a list. The plan's
  * length is data: a cross-dock plan simply has more rows, repeated phase types are kept,
  * and each row names its stop so two "Unloading" rows can be told apart.
  */

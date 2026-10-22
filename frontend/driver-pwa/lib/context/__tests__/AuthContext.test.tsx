@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { AuthProvider, DEMO_SESSION_KEY, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
+import { AuthProvider, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
+import { DEMO_SESSION_KEY } from '@/lib/auth/DemoOtpAuth'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { RETURN_PATH_KEY } from '@shared/lib/session/return-path'

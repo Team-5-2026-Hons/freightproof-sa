@@ -24,7 +24,7 @@ import {
  * present at the handset, and counting it would mean the timeout never fired for a
  * running app. The operational consequence is real and intended: a driver who does not
  * touch the phone for the length of the window signs back in (phone OTP) before their
- * next handshake.
+ * next phase.
  *
  * @param enabled  false while signed out, so the login screen carries no timer
  * @param onExpire called exactly once when the window elapses

@@ -190,7 +190,7 @@ export default function TripDetailByIdPageClient() {
   // The upcoming page already says when the trip starts and where; the notice is only
   // for what it can't know — the activation gate refusing this trip — and the brief
   // "Starting trip" moment after Start is tapped.
-  // FP-83 T2: a handover arranged on this trip is shown on the trip itself, with the link
+  // A handover arranged on this trip is shown on the trip itself, with the link
   // to this driver's own check. The role comes from the arrangement, never from this screen.
   const pendingSubstitution = trip.pending_driver_substitution ?? null
   const substitutionRole = pendingSubstitution !== null && driverId !== undefined

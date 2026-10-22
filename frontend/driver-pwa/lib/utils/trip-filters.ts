@@ -31,7 +31,7 @@ export interface CategorizedTrips<T> {
 }
 
 // Minimum a row must carry to be grouped into a tab. `participation` is optional so a full
-// Trip (which has none) and a pre-FP-83 row both still group by status alone.
+// Trip (which has none) and a row from before driver substitution both still group by status alone.
 interface HasStatus {
   status: CoarseTripStatus
   participation?: DriverParticipation

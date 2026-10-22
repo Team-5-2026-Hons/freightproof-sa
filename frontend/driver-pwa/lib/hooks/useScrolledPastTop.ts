@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 /**
  * True once the window has scrolled away from the very top: the moment content starts
  * passing under a sticky header. Drives the scroll-edge hairline, which iOS draws only when
- * there is something underneath the bar to separate from (emil-apple-design §12). Screens
+ * there is something underneath the bar to separate from. Screens
  * that never scroll never get the line.
  */
 export function useScrolledPastTop(): boolean {

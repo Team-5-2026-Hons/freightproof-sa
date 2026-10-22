@@ -327,7 +327,7 @@ function outcomeBanner(outcome: CaptureSendOutcome | null): { title: string; bod
 }
 
 /**
- * FP-83 T2: this driver records their OWN handover (outgoing) or takeover (incoming) check —
+ * This driver records their OWN handover (outgoing) or takeover (incoming) check —
  * vehicles, seals, photos, a note — on their own device. Saved before it is sent; the server
  * decides whether custody moved. A pending answer is shown as saved-and-waiting with the real
  * reason, never as a failure, and a completed transfer is shown only after the server's state
@@ -356,8 +356,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
   const counterpartDeclaration = context.confirmations.find((confirmation) => confirmation.driver_id === counterpart.id) ?? null
   const result = capture?.result ?? null
   // An operation receipt acknowledges that capture; the fresh read owns current state.
-  const latest = context
-  const completed = latest.state === 'completed'
+  const completed = context.state === 'completed'
   const canConfirm = context.state === 'pending'
     && context.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
 
@@ -397,13 +396,13 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
       </section>
 
       <StatusBanner
-        tone={completed ? 'success' : latest.completion_blocked_by !== null ? 'attention' : 'neutral'}
-        title={substitutionStatusLine(latest, role)}
+        tone={completed ? 'success' : context.completion_blocked_by !== null ? 'attention' : 'neutral'}
+        title={substitutionStatusLine(context, role)}
         className="mx-4"
         live
       >
-        {latest.state === 'pending' && latest.completion_blocked_by !== null
-          ? `Your check is saved. ${blockerMessage(latest.completion_blocked_by)}`
+        {context.state === 'pending' && context.completion_blocked_by !== null
+          ? `Your check is saved. ${blockerMessage(context.completion_blocked_by)}`
           : completed
             ? role === 'outgoing'
               ? 'You are no longer the driver on this trip. Everything you recorded is kept in your record.'

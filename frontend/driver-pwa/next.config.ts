@@ -6,6 +6,7 @@ import type { NextConfig } from "next";
 // Relative (not `@shared/*`) import — next.config.ts runs outside the app's path-alias
 // resolution, and phase-meta.ts's own import is type-only, erased at transpile time.
 import { STEP_SLUGS } from "../shared/lib/constants/phase-meta";
+import { discoverStaticPageRoutes } from "./lib/precache/static-page-routes";
 
 // `next build` always runs with NODE_ENV=production. With output: 'export' there's no
 // server to read env vars at request time — NEXT_PUBLIC_API_URL is baked into the bundle
@@ -47,37 +48,18 @@ const nextConfig: NextConfig = {
 };
 
 // @serwist/next's InjectManifest builds its precache manifest from webpack's emitted
-// assets plus, if supplied, `additionalPrecacheEntries` below — which REPLACES rather
-// than adds to the default public/ scan. Webpack's own assets exclude prerendered HTML,
-// so without this the SW precached JS/CSS/fonts but zero pages. The static export
-// (out/**) doesn't exist until after webpack compiles, so a glob can't work either — the
-// route list below is hand-maintained.
-//
-// Re-derive after adding/removing a page:
-//   next build && find out -iname '*.html' ! -name '404.html' | sed 's#^out##;s#\.html$##;s#/index$#/#'
-// PHASE_ROUTES is derived from STEP_SLUGS, not hand-copied. MOCK_TRIP_IDS mirrors
-// frontend/shared/lib/mocks/trips.ts and is mock-data-only — remove it once a real
-// trip-id-backed fetch replaces it (a route keyed on live data can't be static-precached).
-const STATIC_ROUTES = [
-  "/",
-  "/login",
-  "/otp",
-  "/settings",
-  "/trip/in-transit",
-  "/trip/in-transit/checkpoint",
-  "/trip/in-transit/exception",
-  "/trip/panic",
-  "/trip/panic/submitted",
-  "/trips",
-  "/trips/active",
-];
+// assets plus `additionalPrecacheEntries`, which REPLACES the default public/ scan.
+// Webpack's assets exclude prerendered HTML, so every page is listed here explicitly.
+// The static export (out/**) doesn't exist until after webpack compiles, so static
+// routes are read from the app/ tree instead of a hand-kept list.
+const STATIC_ROUTES = discoverStaticPageRoutes(path.join(__dirname, "app"));
 
-// Mirrors page.tsx's own generateStaticParams — every STEP_SLUGS combination, nothing
-// hand-typed.
 const PHASE_ROUTES = (Object.keys(STEP_SLUGS) as (keyof typeof STEP_SLUGS)[]).flatMap((type) =>
   STEP_SLUGS[type].map((slug) => `/trip/phase/${type}/step/${slug}`),
 );
 
+// MOCK_TRIP_IDS mirrors frontend/shared/lib/mocks/trips.ts; drop it once trip detail is
+// fetched by live id (a route keyed on live data can't be static-precached).
 const MOCK_TRIP_IDS = [
   "7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b",
   "8f9a0b1c-2d3e-4f4a-8b6c-7d8e9f0a1b2c",

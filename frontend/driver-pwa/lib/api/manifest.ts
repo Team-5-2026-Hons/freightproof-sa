@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/api/manifest.ts
 import { api, ApiError } from './client'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import type { Linehaul } from '@shared/lib/types/manifest'
@@ -7,13 +6,11 @@ import type { Linehaul } from '@shared/lib/types/manifest'
 // the response by caller role, so a driver token always gets Linehaul, never Manifest.
 //
 // Demo mode: IS_DEMO_MODE (NEXT_PUBLIC_DEMO_MODE=true/unset) returns a mock result
-// immediately, same short-circuit lib/api/handshakes.ts's submitHandshake uses.
-// components/handshake/steps/H2Linehaul.tsx already calls this directly (with its own
-// loading/error/retry states) — without this gate, opening H2's Confirm Linehaul step
-// in demo mode (the default) fired a real fetch at localhost:8000 that always failed.
+// immediately, so the Linehaul step in demo mode (the default) doesn't fire a real fetch
+// at localhost:8000 that always fails.
 // Returns null when the trip has no Linehaul document (backend 404s) — any trip created
 // without a Parcel Perfect reference, which is common. That is a normal state, not a
-// failure: H2Linehaul.tsx must let the driver proceed on their own visual count alone
+// failure: the Linehaul step must let the driver proceed on their own visual count alone
 // rather than treating it as a connection error and disabling the confirm button forever.
 // Any other error (network, 5xx, etc.) still throws so the real error+retry UI fires.
 export async function fetchLinehaul(tripId: string): Promise<Linehaul | null> {

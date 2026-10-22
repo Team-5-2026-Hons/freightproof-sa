@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/api/locations.ts
-//
 // The driver's per-trip location trail. Replaces the three manual "Capture GPS Location"
 // steps: instead of the driver tapping a button at three points in the journey, the app
 // records where they were every time they act on an open trip.
@@ -28,7 +26,7 @@ export interface LocationBatchResult {
 
 /**
  * Append fixes to one trip's trail. Batched so an offline backlog flushes in one call.
- * `custodySequence` is the period the fixes were TAKEN in (FP-83); a queued batch carries its
+ * `custodySequence` is the period the fixes were TAKEN in; a queued batch carries its
  * own, so it never adopts whatever period is current when signal returns.
  */
 export const recordLocations = (

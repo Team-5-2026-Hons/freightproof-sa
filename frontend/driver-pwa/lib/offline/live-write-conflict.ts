@@ -1,4 +1,4 @@
-// FP-83: what a failed send of queued driver evidence means, decided from the server's coded
+// What a failed send of queued driver evidence means, decided from the server's coded
 // answer — never from the HTTP status alone. Before driver substitution the queue read every
 // 409 as "an earlier attempt already landed" and dropped the entry. That is no longer true: a
 // 409 can now mean the driver handed the trip over, or the capture belongs to an earlier
@@ -42,7 +42,7 @@ const HTTP_TOO_MANY_REQUESTS = 429
 const HTTP_CLIENT_ERROR_MIN = 400
 const HTTP_SERVER_ERROR_MIN = 500
 // A 429 without Retry-After must still schedule a retry: a null delay would leave the item
-// waiting for an unrelated flush trigger. exception-sync and the queue re-export this one.
+// waiting for an unrelated flush trigger.
 export const DEFAULT_RATE_LIMIT_RETRY_MS = 60_000
 
 const CODED_REASONS: Partial<Record<DriverConflictCode, string>> = {

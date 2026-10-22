@@ -1,6 +1,6 @@
 'use client'
 
-// FP-83 T2: one driver's own handover (outgoing) or takeover (incoming) check, captured on
+// One driver's own handover (outgoing) or takeover (incoming) check, captured on
 // their own device, persisted before anything is sent, and sent so a retry is provably the
 // same request (contract v1, "Driver endpoints" and "Common wire rules").
 //

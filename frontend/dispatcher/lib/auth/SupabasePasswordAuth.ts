@@ -13,6 +13,18 @@ import { supabase } from '@/lib/supabase/client'
 // Structural, not the whole client: tests (and any future backend) only need to supply `auth`.
 type SupabaseAuthClient = Pick<SupabaseClient, 'auth'>
 
+// The SDK keeps its session under "sb-<project ref>-auth-token" (plus a "-code-verifier" twin).
+// Matched by shape because the project ref comes from the Supabase URL and is not ours to
+// hard-code; dispatcher preferences use other prefixes and never match.
+const SUPABASE_AUTH_STORAGE_KEY = /^sb-.+-auth-token(-code-verifier)?$/
+
+function clearPersistedSession(store: Storage): void {
+  const keys = Array.from({ length: store.length }, (_, index) => store.key(index))
+  for (const key of keys) {
+    if (key !== null && SUPABASE_AUTH_STORAGE_KEY.test(key)) store.removeItem(key)
+  }
+}
+
 function toSession(session: Session | null): AuthSession | null {
   return session ? { userId: session.user.id } : null
 }
@@ -48,7 +60,14 @@ export class SupabasePasswordAuth implements PasswordAuthPort {
   }
 
   async signOut(): Promise<void> {
-    await this.client.auth.signOut()
+    const { error } = await this.client.auth.signOut()
+    if (!error) return
+
+    // On a network failure the SDK RETURNS the error and leaves the stored session in place, so
+    // a reload would restore it and sign the dispatcher straight back in on a shared PC. Drop it
+    // ourselves. The server-side token expires on its own.
+    console.error('SupabasePasswordAuth: sign-out call failed; removing the stored session', error)
+    clearPersistedSession(window.localStorage)
   }
 }
 

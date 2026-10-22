@@ -4,7 +4,7 @@
 
 import type { Driver } from '@shared/lib/types/driver'
 
-// The driver session wraps the full Driver record so handshake screens can read
+// The driver session wraps the full Driver record so phase screens can read
 // identity fields (id_number, phone_number) without a separate fetch.
 export type DriverUser = Driver
 

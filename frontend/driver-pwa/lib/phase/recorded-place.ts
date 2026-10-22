@@ -5,7 +5,7 @@ import { placeParts } from '@/lib/utils/trip-display'
 import { phaseLocation } from './stop-label'
 
 /**
- * Where a phase was recorded, for its receipt ("10:02 · Linbro Park", overhaul 5.4): the
+ * Where a phase was recorded, for its receipt ("10:02 · Linbro Park"): the
  * area of the origin or destination precinct. Null for intermediate stops and for any
  * precinct this phone can't name — a receipt says nothing rather than print an id.
  */

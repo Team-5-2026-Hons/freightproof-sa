@@ -1,4 +1,4 @@
-// What each step asks of the driver, as the step's large title (overhaul 4.1–9.5). The
+// What each step asks of the driver, as the step's large title. The
 // shared STEP_NAMES ("Verification", "Linehaul") name steps for the system and the
 // dispatcher; a driver at a gate needs the action instead. Keyed by slug, the same key
 // the step routes use, so a recipe change is caught by the test that walks STEP_SLUGS.

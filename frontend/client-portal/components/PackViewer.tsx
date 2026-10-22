@@ -12,6 +12,7 @@ import { Card } from './Card'
 import { DownloadButton } from './DownloadButton'
 import { EmailCodeGate } from './EmailCodeGate'
 import { EventDetail } from './EventDetail'
+import { Eyebrow } from './Eyebrow'
 import { PdfCheck } from './PdfCheck'
 import { CHAPTERS, Chapter } from './Chapter'
 import { ChapterNav } from './ChapterNav'
@@ -111,7 +112,7 @@ export function PackViewer({ token }: { token: string }) {
 
   const { view } = load
   const { manifest, seal } = view
-  function select(id: string) {
+  function select(id: string): void {
     setSelectedId(id)
     if (!mediaMatches(STACKED_LAYOUT_QUERY)) return
     document.getElementById('evidence')?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' })
@@ -121,21 +122,21 @@ export function PackViewer({ token }: { token: string }) {
     <div>
       <header className="bg-ink px-4 pb-6 pt-5 text-white sm:px-8">
         <div className="mx-auto max-w-7xl">
-          <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/60">FreightProof audit pack · {humanise(view.purpose)}</p>
+          <Eyebrow tone="onDark">FreightProof audit pack · {humanise(view.purpose)}</Eyebrow>
           <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-[28px] font-extrabold leading-tight tracking-[-0.02em]">Trip {manifest.trip.trip_reference}</h1>
-              <p className="mt-1 text-[14px] text-white/80">
+              <h1 className="text-display font-extrabold leading-tight tracking-[-0.02em]">Trip {manifest.trip.trip_reference}</h1>
+              <p className="mt-1 text-body text-white/80">
                 <span className="num font-semibold text-white">{seal.pack_label}</span> · issued to {view.recipient_name}, {view.recipient_organization}
                 {view.external_reference && ` · ref ${view.external_reference}`}
               </p>
-              <p className="num text-[12px] text-white/60">Issued {formatSast(seal.issued_at)} · link valid until {formatSast(seal.expires_at)}</p>
+              <p className="num text-meta text-white/60">Issued {formatSast(seal.issued_at)} · link valid until {formatSast(seal.expires_at)}</p>
             </div>
             <DownloadButton
               token={token}
               file="pdf"
               filename={`${seal.pack_label}.pdf`}
-              className="min-h-11 rounded-md border border-white/20 bg-gradient-to-br from-ink to-ink-soft px-4 py-2 text-[14px] font-semibold hover:border-white/40 disabled:opacity-60"
+              className="min-h-11 rounded-md border border-white/20 bg-gradient-to-br from-ink to-ink-soft px-4 py-2 text-body font-semibold hover:border-white/40 disabled:opacity-60"
             >
               Download PDF
             </DownloadButton>
@@ -147,7 +148,7 @@ export function PackViewer({ token }: { token: string }) {
       <div className="mx-auto max-w-7xl px-4 sm:px-8 lg:grid lg:grid-cols-[200px_minmax(0,1fr)] lg:gap-10">
         <ChapterNav chapters={CHAPTER_LIST} />
         <main className="min-w-0 space-y-12 py-6">
-          {storageBlocked() && <p className="no-print text-[12px] text-muted">{STORAGE_BLOCKED_NOTICE}</p>}
+          {storageBlocked() && <p className="no-print text-meta text-muted">{STORAGE_BLOCKED_NOTICE}</p>}
 
           <Chapter chapter={CHAPTERS.summary} lede="Whether this pack checks out, what the record shows, and what happened if something went wrong.">
             <VerificationPanel token={token} seal={seal} records={manifest.anchored_records} onSealCheck={setSealCheck} />

@@ -21,7 +21,6 @@ export default function TripDetailPageClient() {
   const router = useRouter()
   // Back to where the driver came from (Home or Trips); Trips on a cold start.
   const goBack = useBack(ROUTES.trips)
-  // TODO Iter 2 backend: fetch from GET /driver/trips/{id}
   const trip = mockTrips.find((t) => (t.id as string) === id)
 
   if (!trip) {
@@ -38,7 +37,7 @@ export default function TripDetailPageClient() {
       onBack={goBack}
       onInTransitHub={() => router.push(ROUTES.inTransit)}
       onSelectPhase={(phase) => router.push(firstStepRoute(phase))}
-      // Collapsed like the live route (overhaul 3.2): the demo opens trips here, and a
+      // Collapsed like the live route: the demo opens trips here, and a
       // full list up front pushed Route below the fold. "All steps" reveals it.
       showAllPhases={false}
     />

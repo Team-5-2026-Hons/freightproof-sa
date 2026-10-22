@@ -20,7 +20,7 @@ interface NowCardProps {
   onViewTrip: () => void
 }
 
-// The card's one action: a white capsule on the ink card (overhaul 2.1/2.2).
+// The card's one action: a white capsule on the ink card.
 const CARD_ACTION = 'flex min-h-[52px] w-full items-center justify-center rounded-full bg-primary-on text-body font-semibold text-primary transition-transform duration-100 active:scale-[0.98]'
 
 function Exceptions({ exceptions }: { exceptions: readonly TripException[] }) {
@@ -50,7 +50,7 @@ function ViewTrip({ reference, onClick }: { reference: string; onClick: () => vo
 }
 
 /**
- * Home's "now" (overhaul 2.1, 2.2, 2.4): what is happening on the trip and the one thing to
+ * Home's "now": what is happening on the trip and the one thing to
  * do next. Three shapes — on hold (amber, no action: any submit while held 409s), assigned
  * but not started (the route and Start Trip), and underway (where it is, how far through,
  * and the next action).

@@ -8,8 +8,8 @@ interface DriverRecordProps {
 }
 
 /**
- * The driver's record from their own trips (overhaul 2.1): three grey tiles under a
- * section heading. The "on time means…" footnote is gone (Tim, 14 Oct); the rule itself
+ * The driver's record from their own trips: three grey tiles under a
+ * section heading. The "on time means…" footnote is gone; the rule itself
  * is unchanged — arriving by the planned time, no grace (lib/utils/driver-record).
  */
 export function DriverRecord({ record }: DriverRecordProps) {

@@ -1,6 +1,6 @@
 "use client"
 
-// FP-83: the driver's pending substitution arrangements and unread handover notices, loaded
+// The driver's pending substitution arrangements and unread handover notices, loaded
 // separately from TripContext. A driver with NO current trip can still be the incoming driver
 // on someone else's — so this must not hang off TripContext's current-trip polling, which
 // only runs while a trip is loaded and blocked.

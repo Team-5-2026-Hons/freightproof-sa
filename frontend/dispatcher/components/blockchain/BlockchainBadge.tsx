@@ -5,8 +5,9 @@
 // underneath for anyone who wants to manually cross-check the on-chain message.
 // Uses the chain tonal palette from the design system (§7.6: chain-c bg, hex icon, on-chain-c text).
 
-import { useState } from 'react'
 import { Ic } from '@/components/ui/Ic'
+import { isAnchoredTopic } from '@/lib/format/hashscan'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import type { BlockchainReceipt } from '@shared/lib/types/blockchain'
 
 type BadgeState = 'anchored' | 'pending' | 'failed' | 'unanchored'
@@ -25,20 +26,18 @@ function truncateHash(hash: string): string {
 }
 
 export function BlockchainBadge({ receipt, state, className = '' }: Props) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
   const resolvedState: BadgeState = state ?? (receipt ? 'anchored' : 'unanchored')
 
   function copyHash() {
     if (!receipt) return
-    navigator.clipboard.writeText(receipt.data_hash).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    void copy(receipt.data_hash)
   }
 
-  if (resolvedState === 'anchored' && receipt && receipt.hedera_topic_id) {
+  if (resolvedState === 'anchored' && receipt && isAnchoredTopic(receipt.hedera_topic_id)) {
     const hashscanUrl = `${HASHSCAN_BASE}/topic/${receipt.hedera_topic_id}`
     return (
-      <div className={`rounded-[var(--r-sm)] bg-chain-c px-[10px] py-[7px] ${className}`}>
+      <div className={`rounded-sm bg-chain-c px-[10px] py-[7px] ${className}`}>
         <div className="flex items-center gap-[5px]">
           <Ic n="check" s={12} className="text-chain shrink-0" />
           <span className="text-[11px] font-[600] tracking-[0.04em] text-chain-onc">
@@ -70,7 +69,7 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
 
   if (resolvedState === 'pending') {
     return (
-      <span className={`inline-flex items-center gap-[5px] rounded-[var(--r-sm)] bg-sec-c px-[10px] py-[5px] ${className}`}>
+      <span className={`inline-flex items-center gap-[5px] rounded-sm bg-sec-c px-[10px] py-[5px] ${className}`}>
         <span className="text-[11px] font-[500] tracking-[0.04em] text-on-sec-c">Anchoring…</span>
       </span>
     )
@@ -78,7 +77,7 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
 
   if (resolvedState === 'failed') {
     return (
-      <span className={`inline-flex items-center gap-[5px] rounded-[var(--r-sm)] bg-err-c px-[10px] py-[5px] ${className}`}>
+      <span className={`inline-flex items-center gap-[5px] rounded-sm bg-err-c px-[10px] py-[5px] ${className}`}>
         <Ic n="warn" s={11} className="text-err shrink-0" />
         <span className="text-[11px] font-[500] tracking-[0.04em] text-on-err-c">Anchor failed</span>
       </span>
@@ -87,7 +86,7 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
 
   // unanchored
   return (
-    <span className={`inline-flex items-center rounded-[var(--r-sm)] bg-surf-high px-[10px] py-[5px] ${className}`}>
+    <span className={`inline-flex items-center rounded-sm bg-surf-high px-[10px] py-[5px] ${className}`}>
       <span className="text-[11px] font-[500] tracking-[0.04em] text-on-surf-v">
         Not verified — minor change, skipped anchoring
       </span>

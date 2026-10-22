@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/constants/evidence-photo.ts
-//
 // The size and quality every evidence image is captured at: camera photos (CameraCapture)
 // and the linehaul scan (lib/scan/scanLinehaulSheet) share them so the two can't drift.
 

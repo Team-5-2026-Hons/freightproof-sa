@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/panic/PanicPageClient.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -33,7 +32,7 @@ export default function PanicPageClient() {
   const { enqueueException } = useOfflineQueue()
   const [sending, setSending] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
-  // A finger is on the swipe: the red pulse runs and the copy says how to back out (7.1b).
+  // A finger is on the swipe: the red pulse runs and the copy says how to back out.
   const [pressed, setPressed] = useState(false)
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('finding')
   const hasTrip = trip !== null
@@ -63,7 +62,7 @@ export default function PanicPageClient() {
   async function handlePanic() {
     setSending(true)
     setSaveFailed(false)
-    // FP-83: the custody period at the swipe, before the bounded GPS wait.
+    // The custody period at the swipe, before the bounded GPS wait.
     const custodySequence = trip !== null ? captureCustody(String(trip.id)).custodySequence : null
     // The alert must carry the driver's own position when the phone can give one —
     // it is the primary evidence of where the driver was when they pressed panic — but
@@ -71,7 +70,7 @@ export default function PanicPageClient() {
     // fix against REPORT_CAPTURE_BUDGET_MS: a fix inside that window travels with the
     // alert (live send and offline queue alike), a slower one is dropped and the alert
     // goes without location rather than waiting. No preview and no acknowledgement
-    // flow here, ever (P6): panic is sent, not checked.
+    // flow here, ever: panic is sent, not checked.
     const fix = await captureWithinBudget(capture, REPORT_CAPTURE_BUDGET_MS)
     const triggeredAt = new Date().toISOString()
     const description = 'Driver activated panic button.'
@@ -92,7 +91,7 @@ export default function PanicPageClient() {
       })
     } catch (err) {
       // Emergency action — don't strand the driver on this screen if the network call
-      // fails. Queue it for retry on reconnect (same mechanism handshakes use) instead
+      // fails. Queue it for retry on reconnect (same mechanism phase submits use) instead
       // of just logging and losing it, since this is the one alert that must land.
       // The captured GPS fix goes into the queued body too — the retry must carry the
       // same evidence the live send would have, or the "location will be included"
@@ -165,7 +164,7 @@ export default function PanicPageClient() {
   }
 
   return (
-    // White, with one red control (D5, Tim 14 Oct): the screen stays calm and readable;
+    // White, with one red control: the screen stays calm and readable;
     // the urgency lives in the swipe and, while a finger is on it, the pulse.
     <main className="relative flex min-h-dvh flex-col bg-surface">
       {pressed && (

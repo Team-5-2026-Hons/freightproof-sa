@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/panic/submitted/PanicSubmittedPageClient.tsx
 'use client'
 
 import type { ReactNode } from 'react'
@@ -21,7 +20,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * After a panic swipe (overhaul 7.2 sent, 7.3 saved): what happened to THIS alert, then
+ * After a panic swipe: what happened to THIS alert, then
  * the two things a driver can still do — call dispatch, or go back to the drive.
  */
 export default function PanicSubmittedPageClient() {

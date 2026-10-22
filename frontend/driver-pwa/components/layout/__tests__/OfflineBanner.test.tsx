@@ -23,8 +23,8 @@ import type { SubmitPhaseResult } from '@/lib/api/phases'
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 
-// OfflineBanner now mounts useOfflineQueue() itself (Fix 3) to read queueLength/
-// droppedCount, so its mount-time flush() needs the same network mocks
+// OfflineBanner mounts useOfflineQueue() itself to read queueLength/
+// attentionCount, so its mount-time flush() needs the same network mocks
 // useOfflineQueue.test.ts uses — otherwise these tests would hit a real fetch.
 // lib/api/handshakes.ts (submitHandshake) is deleted — useOfflineQueue's sendEntry
 // now calls submitPhase from lib/api/phases.ts for a 'phase'-kind queue entry.

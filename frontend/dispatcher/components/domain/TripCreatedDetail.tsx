@@ -2,6 +2,7 @@
 
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
 import { CopyField, Field, PhaseDetailCard, Section } from './PhaseDetailFields'
+import { isAnchoredTopic } from '@/lib/format/hashscan'
 import { manifestLabel } from '@/lib/format/manifest'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
@@ -33,7 +34,7 @@ export function TripCreatedDetail({ trip }: Props) {
   // created_at (resource_service.py) so the journey lock is usually first, but "usually"
   // is not a contract — and this panel labels whatever it finds as the journey lock hash.
   const receipt = trip.blockchain_receipts.find(r => r.receipt_type === 'journey_lock') ?? null
-  const isPending = !receipt?.hedera_topic_id || receipt.hedera_topic_id === 'None'
+  const isPending = !isAnchoredTopic(receipt?.hedera_topic_id)
 
   // Units (pallets) are dispatcher-entered and never come from a manifest (pallets are
   // deferred, FP-281 §14), so manifest trips have none. A total is shown only when every

@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from 'react'
 
-// The driver's profile photo lives on this phone only (Tim, 14 Oct — decision D1). The
+// The driver's profile photo lives on this phone only. The
 // Driver record has no photo column, and a face is personal data under POPIA: keeping it
 // on the device means it never leaves the phone, needs no migration and no upload. The
 // cost — it doesn't follow the driver to a new phone — is acceptable for an avatar.

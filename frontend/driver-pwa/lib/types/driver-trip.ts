@@ -28,13 +28,13 @@ export interface DriverTripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  // Unreviewed CRITICAL rows only (FP-146 follow-on, narrowed in FP-280 when every
-  // exception started needs_review) — the driver has no review workflow of their own.
+  // Unreviewed CRITICAL rows only: every exception starts needs_review, and the
+  // driver has no review workflow of their own.
   needs_review_count: number
-  // FP-83 (driver substitution contract v1, "Existing reads"). 'former' is a trip this
+  // Driver substitution contract v1, "Existing reads". 'former' is a trip this
   // driver handed over: history for them even while `status` is still 'active' for the
-  // driver who took it. Optional only until the backend sends them (C2) — absent means no
-  // substitution has happened, which is exactly how such a row must keep grouping.
+  // driver who took it. Absent or null means no substitution has happened, which is exactly
+  // how such a row must keep grouping.
   participation?: DriverParticipation
   last_participation_ended_at?: string | null
   custody_sequence?: number

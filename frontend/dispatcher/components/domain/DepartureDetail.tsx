@@ -28,7 +28,7 @@ export function DepartureDetail({ artifactLoading, artifactError, onRetryArtifac
           <div className="text-[10px] text-on-surf-v mb-[3px]">Seal number</div>
           {phase.seal_number ? (
             // Reuses the sidebar's seal badge exactly, translated off the legacy `bg-primary`/
-            // `text-white`/`var(--r-sm)` tokens onto their shorthand equivalents (same hex,
+            // `text-white` and an undefined radius variable onto their shorthand equivalents (same hex,
             // real radius scale) — see DepartureDetail report for the mapping.
             <span className="font-mono tracking-[0.06em] font-[700] text-[13px] bg-on-surf text-surf-lowest rounded-sm px-[10px] py-[3px]">
               {phase.seal_number}

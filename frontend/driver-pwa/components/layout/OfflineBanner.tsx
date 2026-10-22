@@ -18,7 +18,7 @@ const PROGRESS_ROW = 'bg-fill text-surface-on-variant'
 const ATTENTION_ROW = 'bg-attention-tint text-attention-ink'
 const ERROR_ROW = 'bg-error-tint text-error'
 // 44px hit area on the dismiss X (the app's documented touch-target minimum; see
-// Button/IconButton and Toast's own dismiss), padded outward so the row stays the
+// Button and Toast's own dismiss), padded outward so the row stays the
 // same height.
 const DISMISS_CLASS = '-my-2.5 flex size-11 shrink-0 items-center justify-center rounded-full active:bg-surface-on/10'
 
@@ -41,9 +41,9 @@ export function OfflineBanner() {
   // SECOND concurrently-mounted instance. That's why the flush mutex and queue state
   // live at module scope inside the hook (see useOfflineQueue.ts): without that, this
   // instance's mount-time flush could race the page instance's and double-submit
-  // evidence. Both instances read the same shared state, so queueLength/droppedCount
+  // evidence. Both instances read the same shared state, so queueLength
   // here always match what the page instance sees.
-  const { queueLength, droppedCount, dismissDropped, attentionCount, retryAttention } = useOfflineQueue()
+  const { queueLength, attentionCount, retryAttention } = useOfflineQueue()
   // Same module-scope-store reasoning, for the in-memory background submitter. AppShell
   // renders this on every screen, which is exactly why it is the right home for both
   // signals: a submission handed off on the step page finishes while the driver is on
@@ -53,7 +53,7 @@ export function OfflineBanner() {
   const hasBackgroundWork = inFlight.length > 0 || failures.length > 0
 
   // Nothing to show at all — hide the wrapper entirely so it doesn't reserve space.
-  if (online && queueLength === 0 && droppedCount === 0 && attentionCount === 0 && !hasBackgroundWork) return null
+  if (online && queueLength === 0 && attentionCount === 0 && !hasBackgroundWork) return null
 
   return (
     <div className="flex flex-col">
@@ -64,7 +64,7 @@ export function OfflineBanner() {
         </div>
       )}
 
-      {/* Workstream 1: the swipe now returns the driver Home immediately while the upload,
+      {/* The swipe returns the driver Home immediately while the upload,
           the POST and the Hedera anchor all continue in the background. Without this line
           that work would be completely invisible, and "recorded" would be the only thing
           the driver ever saw — including for evidence still in flight. */}
@@ -77,8 +77,8 @@ export function OfflineBanner() {
         </div>
       )}
 
-      {/* Fix 3a: queueLength was already tracked but rendered nowhere, so a driver who
-          goes back online had no way to tell whether captured evidence had actually sent
+      {/* Without this, a driver who
+          goes back online cannot tell whether captured evidence has actually sent
           yet. This shows any time entries are pending — including while online, mid-flush
           — and disappears the moment the queue empties. */}
       {queueLength > 0 && (
@@ -88,7 +88,7 @@ export function OfflineBanner() {
         </div>
       )}
 
-      {/* Workstream 1, terminal-failure notice. A 4xx or a local validation throw can
+      {/* Terminal-failure notice. A 4xx or a local validation throw can
           never succeed on retry, so it is not queued — and the driver is no longer
           standing on the step screen to see it fail. The error toast fades; this does not.
           Silence here would mean a driver believing evidence was recorded when it was not,
@@ -114,29 +114,7 @@ export function OfflineBanner() {
         </div>
       ))}
 
-      {/* Fix 3b: a terminal drop (not a 409 — that means the earlier attempt already
-          succeeded) used to be console.warn-only. That's silent data loss from the
-          driver's point of view: evidence they captured is gone and nothing tells them.
-          Surfaced here as a dismissible line instead; dismissDropped() resets the shared
-          count so it clears for every mounted instance, not just this one. */}
-      {droppedCount > 0 && (
-        <div role="alert" className={cn(ROW_CLASS, ERROR_ROW)}>
-          <span className="flex-1">
-            {droppedCount} {droppedCount === 1 ? 'item' : 'items'} could not be synced and{' '}
-            {droppedCount === 1 ? 'was' : 'were'} removed. Contact your dispatcher.
-          </span>
-          <button
-            type="button"
-            onClick={dismissDropped}
-            aria-label="Dismiss sync failure notice"
-            className={DISMISS_CLASS}
-          >
-            <X className="size-4" aria-hidden />
-          </button>
-        </div>
-      )}
-
-      {/* A capture the server refused, or one kept after a handover (FP-83), is kept and
+      {/* A capture the server refused, or one kept after a handover, is kept and
           never auto-deleted: it is the driver's evidence. Deleting is no longer offered here
           in bulk — the review screen does it one item at a time, with its own warning, and
           offers "Send as late evidence" where custody has moved on. */}

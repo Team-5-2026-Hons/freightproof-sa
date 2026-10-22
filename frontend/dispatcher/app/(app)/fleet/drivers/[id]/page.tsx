@@ -81,7 +81,9 @@ export default function DriverDetailPage() {
     )
   }
 
-  if (error || !driver) {
+  // Only an empty page is a load failure. With driver details on screen a failed background
+  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
+  if (!driver) {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Driver not found" left={backButton} />
@@ -160,7 +162,8 @@ export default function DriverDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/drivers/${driver!.id}`, body)
-      await refetchSilent()
+      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
+      refetchSilent()
       setIsEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
@@ -178,6 +181,12 @@ export default function DriverDetailPage() {
       >
         <Chip type={driver.is_active ? 'complete' : 'pending'} label={driver.is_active ? 'Active' : 'Inactive'} />
       </TopBar>
+
+      {error && (
+        <p role="alert" className="shrink-0 bg-err-c px-6 py-2 text-[12px] text-on-err-c">
+          Could not refresh this driver ({error}). Showing the details last loaded.
+        </p>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
 

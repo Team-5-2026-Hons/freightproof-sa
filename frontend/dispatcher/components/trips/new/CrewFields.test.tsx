@@ -38,6 +38,16 @@ describe('CrewFields', () => {
     expect(props.onChange).toHaveBeenCalledWith({ ...EMPTY_CREW, driverId: mockDrivers[0].id })
   })
 
+  it('shows the selected driver\'s licence and phone but never the SA ID number', () => {
+    const driver = mockDrivers[0]
+    renderCrew({ crew: { ...EMPTY_CREW, driverId: driver.id } })
+
+    expect(screen.getByText(driver.license_number)).toBeInTheDocument()
+    expect(screen.getByText(driver.phone_number)).toBeInTheDocument()
+    expect(screen.queryByText('ID number')).not.toBeInTheDocument()
+    expect(screen.queryByText(driver.id_number)).not.toBeInTheDocument()
+  })
+
   it('picks a horse', () => {
     const props = renderCrew()
 

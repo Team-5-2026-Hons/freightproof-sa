@@ -7,8 +7,8 @@ import {
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { STEP_NAMES } from '@shared/lib/constants/phase-meta'
 import {
-  actionablePhase, contextPhaseEventId, currentPhase, isAnchored, isDriving, isFinalPhase, planProgress,
-  stepsFor,
+  actionablePhase, contextPhaseEventId, currentPhase, isAnchored, isDriving, isFinalPhase, isPhaseBlocked,
+  planProgress, stepsFor,
 } from '../derive'
 
 // Marks every phase up to and including `through` (by sequence_number) as completed.
@@ -360,5 +360,20 @@ describe('isFinalPhase', () => {
 
   it('is false against an empty plan', () => {
     expect(isFinalPhase([], SINGLE_LEG_PHASE_PLAN[0])).toBe(false)
+  })
+})
+
+describe('isPhaseBlocked', () => {
+  const phase = SINGLE_LEG_PHASE_PLAN[0]
+
+  it('is true when the server names what the phase waits on', () => {
+    expect(isPhaseBlocked({ ...phase, blocked_on: 'warehouse_scan' })).toBe(true)
+  })
+
+  it('is false for null and for a fixture that omits the field', () => {
+    const { blocked_on: _omitted, ...withoutField } = phase
+
+    expect(isPhaseBlocked({ ...phase, blocked_on: null })).toBe(false)
+    expect(isPhaseBlocked(withoutField)).toBe(false)
   })
 })

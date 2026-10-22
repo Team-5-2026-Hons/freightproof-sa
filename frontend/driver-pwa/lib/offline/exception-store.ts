@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/offline/exception-store.ts
 // Durable queue for exception reports, in native IndexedDB. localStorage can't hold
 // photo bytes (~5MB cap, base64 bloat), and a report with photos must survive a dead
 // battery or a killed tab, so reports and their photo Blobs live here instead.
@@ -11,7 +10,7 @@ const STORE_NAME = 'reports'
 const KEY_PATH = 'clientReportId'
 const QUOTA_ERROR_NAME = 'QuotaExceededError'
 
-// 'quarantined' (FP-83): a report stored before this app recorded who captured it. Kept with
+// 'quarantined': a report stored before this app recorded who captured it. Kept with
 // its photos, never sent automatically and never attributed to whoever is signed in now.
 export type ExceptionReportStatus = 'pending' | 'needs-attention' | 'quarantined'
 
@@ -42,12 +41,12 @@ export interface ExceptionEnvelope {
   /** Which photo the server rejected, when it was a photo. */
   attentionPhotoId: string | null
   /**
-   * FP-83: the account that captured this report. `undefined` only on envelopes written
+   * The account that captured this report. `undefined` only on envelopes written
    * before this field existed — the migration quarantines those rather than guessing.
    * Its custody period travels inside `body.custody_sequence`, stamped at capture.
    */
   actorId?: string | null
-  /** FP-83: the coded refusal behind a needs-attention status, when the server gave one. */
+  /** The coded refusal behind a needs-attention status, when the server gave one. */
   attention?: RetainedAttention | null
   createdAt: string
   updatedAt: string
@@ -260,7 +259,7 @@ export function markExceptionNeedsAttention(
 }
 
 /**
- * FP-83 migration: envelopes written before the capturing account was recorded. One
+ * Migration: envelopes written before the capturing account was recorded. One
  * read-modify-write transaction, so the envelope is never absent between states, and a rerun
  * finds nothing left to do. Returns how many were quarantined.
  */

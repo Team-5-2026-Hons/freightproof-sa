@@ -78,7 +78,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     const currentTripId = tripIdRef.current
     // No trip open means nothing to attach a position to, and no reason to hold one.
     if (currentTripId === null || IS_DEMO_MODE) return
-    // Taken at the moment the driver acted, before the GPS wait (FP-83).
+    // Taken at the moment the driver acted, before the GPS wait.
     const custody = captureCustody(currentTripId)
     const lease = captureActorLease()
     if (lease === null) return
@@ -112,7 +112,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           enqueueLocation(currentTripId, [ping], custody)
           return
         }
-        // FP-83 exception to the drop: a custody conflict means the fix belongs to a period
+        // Exception to the drop: a custody conflict means the fix belongs to a period
         // the driver held, so it is kept for review (late evidence) rather than lost.
         const failure = classifyLiveWriteFailure(err)
         if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {

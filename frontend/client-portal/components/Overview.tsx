@@ -2,14 +2,15 @@ import { formatRand, formatSast, humanise, pluralise } from '@/lib/format'
 import { cargoTotals, incidentBreakAfter } from '@/lib/overview'
 import type { TimelineItem } from '@/lib/timeline'
 import type { AuditPackManifest } from '@/lib/types'
+import { Eyebrow } from './Eyebrow'
 import { tierLabel } from './TierBadge'
 
 function Tile({ label, value, sub, flag = false }: { label: string; value: string; sub: string; flag?: boolean }) {
   return (
     <div className="min-w-0 border-t border-white/20 pt-2.5">
-      <dt className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/60">{label}</dt>
-      <dd className={`mt-0.5 text-[17px] font-bold leading-snug ${flag ? 'text-err-c' : ''}`}>{value}</dd>
-      <dd className="mt-0.5 text-[12px] text-white/70">{sub}</dd>
+      <Eyebrow as="dt" tone="onDark">{label}</Eyebrow>
+      <dd className={`mt-0.5 text-head font-bold leading-snug ${flag ? 'text-err-c' : ''}`}>{value}</dd>
+      <dd className="mt-0.5 text-meta text-white/70">{sub}</dd>
     </div>
   )
 }
@@ -66,7 +67,7 @@ export function JourneyStrip({ manifest, items }: { manifest: AuditPackManifest;
   const phases = items
     .filter((i): i is Extract<TimelineItem, { kind: 'phase' }> => i.kind === 'phase')
     .sort((a, b) => a.record.sequence_number - b.record.sequence_number)
-  if (phases.length === 0) return <p className="text-[14px] text-muted">No custody phases recorded.</p>
+  if (phases.length === 0) return <p className="text-body text-muted">No custody phases recorded.</p>
   const breakAfter = incidentBreakAfter(manifest)
   const incident = manifest.incident
   // A segment is cut when it leads to a phase after the break, or every segment when the incident preceded them all.
@@ -90,9 +91,9 @@ export function JourneyStrip({ manifest, items }: { manifest: AuditPackManifest;
                   aria-hidden
                   className={`relative mx-auto block h-5 w-5 rounded-full border-2 ${DOT[state]} ${breakAfter === p.sequence_number ? 'ring-2 ring-err ring-offset-2' : ''}`}
                 />
-                <span className="num mt-2 block text-[11px] font-bold text-muted">P{p.sequence_number}</span>
-                <span className={`block text-[13px] leading-tight ${item.pending ? 'text-muted' : 'font-semibold'}`}>{humanise(p.phase_type)}</span>
-                <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+                <span className="num mt-2 block text-caption font-bold text-muted">P{p.sequence_number}</span>
+                <span className={`block text-small leading-tight ${item.pending ? 'text-muted' : 'font-semibold'}`}>{humanise(p.phase_type)}</span>
+                <span className="mt-0.5 block text-micro font-semibold uppercase tracking-[0.06em] text-muted">
                   {item.pending ? 'Pending' : tierLabel(item.tier)}
                 </span>
               </li>
@@ -100,7 +101,7 @@ export function JourneyStrip({ manifest, items }: { manifest: AuditPackManifest;
           })}
         </ol>
       </div>
-      <p className="mt-3 text-[12px] text-muted">
+      <p className="mt-3 text-meta text-muted">
         Filled: completed · teal: anchored on Hedera · hollow: not completed.
         {incident && (
           <span className="font-semibold text-err">

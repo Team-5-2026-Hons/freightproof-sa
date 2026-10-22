@@ -23,7 +23,7 @@ interface PhaseCompleteRequestBase {
   driver_captured_at: string
   location_warning_acknowledged_at?: string
   location_warning_reason?: string
-  // FP-83: the custody period the swipe happened in, captured with the evidence and replayed
+  // The custody period the swipe happened in, captured with the evidence and replayed
   // unchanged. Omitted when the server has sent none (only valid before any substitution).
   custody_sequence?: number
 }
@@ -220,7 +220,7 @@ async function artifactIdFor(request: ArtifactIdRequest, custodySequence: number
 
 /**
  * Where a phase body's artifact ids come from. The live submit uploads through /artifacts;
- * the FP-83 late-evidence path (lib/offline/late-evidence-sync.ts) uploads through its own
+ * the late-evidence path (lib/offline/late-evidence-sync.ts) uploads through its own
  * retained-for-review route. Injected so both build the identical body from one switch.
  */
 export type ArtifactResolver = (request: ArtifactIdRequest) => Promise<string>
@@ -264,7 +264,7 @@ export interface PhaseRequestInput {
 
 /**
  * The phase-complete body for a captured draft, without sending it. Throws the same local
- * validation errors submitPhase always has. Shared by the live submit and the FP-83
+ * validation errors submitPhase always has. Shared by the live submit and the
  * late-evidence path so a late phase report is exactly the body the live one would have been.
  */
 export async function buildPhaseCompleteRequest(
@@ -458,7 +458,7 @@ export async function buildPhaseCompleteRequest(
 // `position` is the driver's silent phone fix at submit time; null is legal for every
 // phase except activation, which the backend requires. `driverCapturedAt` is stamped
 // once per attempt and reused across retries, so a delayed resend still reports the
-// original swipe instant. `custodySequence` (FP-83) is likewise the swipe's own period.
+// original swipe instant. `custodySequence` is likewise the swipe's own period.
 export async function submitPhase(
   tripId: string,
   phaseEventId: string,

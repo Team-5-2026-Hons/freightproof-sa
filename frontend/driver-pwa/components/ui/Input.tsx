@@ -29,7 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         aria-invalid={showError ? true : undefined}
         aria-describedby={showError || helperText ? `${inputId}-note` : undefined}
         className={cn(
-          // Overhaul field (4.2, 5.1): a fill, no border — on a white page the fill is the
+          // Field: a fill, no border — on a white page the fill is the
           // edge, as with the grey buttons. 16px+ text, not smaller: iOS auto-zooms the
           // viewport on a focused input under 16px, and in a packaged app that zoom never
           // resets.

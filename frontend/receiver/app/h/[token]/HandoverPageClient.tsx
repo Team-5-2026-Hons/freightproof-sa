@@ -309,8 +309,7 @@ export function HandoverPageClient({ token }: { token: string }) {
   const [codeMayHaveExpired, setCodeMayHaveExpired] = useState(false)
   // Bumped by "Try again" to re-run the scan effect.
   const [scanAttempt, setScanAttempt] = useState(0)
-  // Busy flag for ConsentGate's `busy` prop: the consent-record call stays on this screen
-  // in flight rather than swapping pages.
+  // Consent-record call in flight; ConsentGate stays on screen.
   const [consentBusy, setConsentBusy] = useState(false)
 
   // The vendor round trip's stash is read and cleared exactly once per mount, then kept
@@ -539,8 +538,7 @@ export function HandoverPageClient({ token }: { token: string }) {
     setConsentBusy(true)
     try {
       await recordConsent(token, consentPayloadText(), false)
-      // No selfie step: one that was never stored proved nothing (FP-316), so a receiver
-      // with no ID goes straight to confirming, recorded as typed-only.
+      // No document: confirm as typed-only.
       setStatus('ready')
     } catch (err: unknown) {
       console.warn('[handover] consent record failed:', err)
@@ -565,7 +563,6 @@ export function HandoverPageClient({ token }: { token: string }) {
     }
   }, [token])
 
-  // Shared by both the consent screen and the ready screen.
   const showIdShapeHint = idNumber.trim().length > 0 && !looksLikeSaIdNumber(idNumber)
 
   if (status === 'loading') {

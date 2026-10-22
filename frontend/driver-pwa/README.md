@@ -15,8 +15,6 @@ npm install
 npm run dev          # http://localhost:3001
 ```
 
-Token preview (dev only): http://localhost:3001/dev/tokens
-
 ## Android build
 
 ```bash

@@ -246,7 +246,8 @@ describe('api client — superseded device', () => {
     })
     vi.stubGlobal('fetch', fetchSpy)
 
-    const { api, SIGNED_OUT_REASON_KEY } = await import('../client')
+    const { api } = await import('../client')
+    const { SIGNED_OUT_REASON_KEY } = await import('@/lib/session/signed-out-reason')
 
     await expect(api.get('/api/v1/trips/me/active')).rejects.toMatchObject({
       name: 'ApiError',

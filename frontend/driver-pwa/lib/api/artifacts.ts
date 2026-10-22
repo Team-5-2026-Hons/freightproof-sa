@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/api/artifacts.ts
 import { api, ApiError } from './client'
 import { actorGeneration, assertActorGeneration } from '@/lib/session/custody-context'
 import type { EvidenceRole } from '@shared/lib/types/evidence'
@@ -29,13 +28,13 @@ interface UploadArtifactParams {
   // Omitted by callers that have no phase slot (checkpoint and exception photos) and by
   // older app builds; the backend stores those unattributed, exactly as before.
   attribution?: ArtifactAttribution
-  // FP-83: the custody period the photo was CAPTURED in (never the period at upload time).
+  // The custody period the photo was CAPTURED in (never the period at upload time).
   // Omitted when unknown — the server accepts that only before any substitution.
   custodySequence?: number | null
 }
 
 // The fields every driver upload route shares: the ordinary /artifacts route and the two
-// FP-83 routes (handover check, late evidence) take "existing artifact multipart fields"
+// other routes (handover check, late evidence) take "existing artifact multipart fields"
 // plus their own extras, so all three build from this one shape.
 export interface ArtifactUpload {
   artifactType: ArtifactType
@@ -60,7 +59,7 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 const ARTIFACT_UPLOAD_TIMEOUT_MS = 30_000
 
 // Client-side mirror of the backend's artifact size cap. The backend is the source of
-// truth — backend/app/orchestration/artifact_service.py (MAX_FILE_SIZE_BYTES); keep the
+// truth — backend/app/orchestration/evidence/artifacts.py (MAX_FILE_SIZE_BYTES); keep the
 // two in sync if that limit ever changes. Checked BEFORE any network call so an
 // oversized photo fails in milliseconds instead of burning a full 30s mobile-data
 // upload into a guaranteed rejection.

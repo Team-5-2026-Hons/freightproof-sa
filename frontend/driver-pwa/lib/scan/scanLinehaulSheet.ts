@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/scan/scanLinehaulSheet.ts
-//
 // Opens the phone's own document scanner (VisionKit on iOS, ML Kit on Android): it finds
 // the page edges and flattens the perspective, which a plain camera photo cannot. Native
 // only; the browser keeps the plain camera input (CameraCapture's file picker).

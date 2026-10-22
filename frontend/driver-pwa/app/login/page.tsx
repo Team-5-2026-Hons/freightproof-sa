@@ -2,15 +2,16 @@
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { Logo } from '@/components/brand/LogoMark'
 import { AUTH_PRIMARY_PILL } from '@/components/auth/AuthFrame'
 import { ROUTES } from '@/lib/constants/routes'
 import { useStatusBarOverride } from '@/lib/hooks/useStatusBarOverride'
+import { consumeSignedOutReason } from '@/lib/session/signed-out-reason'
 
-// Full-bleed hero photo, served from public/. Set to null to fall back to the drawn dusk
-// road (DuskRoad) instead of requesting a file that isn't there.
+// Full-bleed hero photo, served from public/.
 //
 // Photo: Giovanni Spoletini, "A White Truck on the Road", Pexels (photo 12261472),
 // https://www.pexels.com/photo/a-white-truck-on-the-road-12261472/ — Pexels License: free
@@ -18,7 +19,7 @@ import { useStatusBarOverride } from '@/lib/hooks/useStatusBarOverride'
 // Chosen because it is already phone-shaped (9:16) and its composition matches the
 // screen: open storm sky behind the lockup, truck mid-frame, road under the button.
 // Resized to 1440px wide (≈3x a 430pt-wide iPhone) and re-encoded as WebP (~160 KB).
-const WELCOME_IMAGE_SRC: string | null = '/images/welcome-truck.webp'
+const WELCOME_IMAGE_SRC = '/images/welcome-truck.webp'
 
 // Mark edge in px; the wordmark scales from it (see Logo). Display size: on this screen
 // the lockup IS the headline, the way a bank app's welcome screen leads with its name.
@@ -28,6 +29,12 @@ export default function WelcomePage() {
   const router = useRouter()
   // The photo is dark at the top whatever the theme, so the status-bar glyphs stay light.
   useStatusBarOverride('dark')
+  // Read in an effect: sessionStorage doesn't exist during the static prerender.
+  const [signedOutReason, setSignedOutReason] = useState<string | null>(null)
+  useEffect(() => {
+    const reason = consumeSignedOutReason()
+    if (reason !== null) setSignedOutReason(reason)
+  }, [])
 
   return (
     // Always dark (see AuthFrame for the scoped-class mechanism). Not AuthFrame itself:
@@ -35,18 +42,14 @@ export default function WelcomePage() {
     <div className="dark">
       <main className="relative flex min-h-dvh flex-col overflow-hidden bg-surface text-surface-on">
         <div className="auth-dusk absolute inset-0" aria-hidden />
-        {WELCOME_IMAGE_SRC === null ? (
-          <DuskRoad />
-        ) : (
-          // A plain <img>: static export has no next/image optimiser at runtime.
-          // Decorative — the lockup and the button carry everything the screen says.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={WELCOME_IMAGE_SRC}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
+        {/* A plain <img>: static export has no next/image optimiser at runtime.
+            Decorative — the lockup and the button carry everything the screen says. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={WELCOME_IMAGE_SRC}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
         {/* Scrims, top and bottom, so the white lockup and the button read over any
             photo — including a bright sky — without a box behind either. */}
         <div
@@ -60,6 +63,11 @@ export default function WelcomePage() {
           </h1>
 
           <div className="mt-auto flex flex-col gap-4">
+            {signedOutReason !== null && (
+              <p role="status" className="rounded-xl bg-surface-container-high px-4 py-3 text-center text-subhead text-surface-on">
+                {signedOutReason}
+              </p>
+            )}
             <Button size="lg" className={AUTH_PRIMARY_PILL} onClick={() => router.push(ROUTES.loginPhone)}>
               Log In
             </Button>
@@ -73,28 +81,5 @@ export default function WelcomePage() {
         </div>
       </main>
     </div>
-  )
-}
-
-// The stand-in hero: a two-lane road running from the bottom edge to the horizon glow,
-// the same image the logo's shield holds. Drawn, so it costs no download and is sharp at
-// any pixel density. Sits on .auth-dusk (globals.css), whose horizon is at ~62% height.
-function DuskRoad() {
-  return (
-    <svg
-      className="absolute inset-0 h-full w-full"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      <path d="M49.2 62 50.8 62 78 100 22 100Z" className="fill-black/60" />
-      <path
-        d="M50 64v3M50 70.5v4.5M50 79v6"
-        className="stroke-white/50"
-        strokeWidth={2}
-        vectorEffect="non-scaling-stroke"
-        fill="none"
-      />
-    </svg>
   )
 }
