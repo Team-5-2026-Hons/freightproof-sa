@@ -423,6 +423,38 @@ describe('Analytics page', () => {
       expect(await within(panel).findByText('AI spend this month: $0.55 of $20.00')).toBeInTheDocument()
     })
 
+    it('sends what is on screen with each question, so "these figures" means this tab and period', async () => {
+      chatStatus = ON
+      mockedPost.mockResolvedValue({ answer: 'They show cost.', kind: 'explanation', basis: [], spend: ON.spend })
+      searchParams = new URLSearchParams('tab=cost')
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'How did delays change over the past year?' }))
+
+      await waitFor(() => expect(mockedPost).toHaveBeenCalledWith(
+        '/api/v1/analytics/chat',
+        expect.objectContaining({ page: { tab: 'cost', preset: 'last_12_weeks', grain: 'week' } }),
+        expect.anything(),
+      ))
+    })
+
+    it('sends no View by for Routes & sites', async () => {
+      chatStatus = ON
+      mockedPost.mockResolvedValue({ answer: 'Sites.', kind: 'explanation', basis: [], spend: ON.spend })
+      searchParams = new URLSearchParams('tab=routes')
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'How did delays change over the past year?' }))
+
+      await waitFor(() => expect(mockedPost).toHaveBeenCalledWith(
+        '/api/v1/analytics/chat',
+        expect.objectContaining({ page: expect.objectContaining({ tab: 'routes', grain: null }) }),
+        expect.anything(),
+      ))
+    })
+
     it('opens a Based on line\'s tab with the answer\'s exact dates', async () => {
       chatStatus = ON
       const answer: ChatAnswer = {
