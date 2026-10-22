@@ -14,6 +14,7 @@ from app.orchestration.substitutions.access import (
     CompletedCustodyLink,
     CurrentCustody,
     CustodyChainError,
+    custody_holders_from_links,
     derive_custody,
 )
 
@@ -158,3 +159,28 @@ def test_sequence_numbers_that_are_not_one_to_n_raise(numbers: list[int]) -> Non
 
     with pytest.raises(CustodyChainError, match="sequence"):
         derive_custody(a, links)
+
+
+def test_holders_from_links_name_every_custody_period() -> None:
+    original, b, c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    links = _chain([original, b, c, original])
+
+    holders = custody_holders_from_links(original, links)
+
+    assert holders == {0: original, 1: b, 2: c, 3: original}
+
+
+def test_holders_from_no_links_are_the_original_driver_alone() -> None:
+    original = uuid.uuid4()
+
+    holders = custody_holders_from_links(original, [])
+
+    assert holders == {0: original}
+
+
+def test_holders_from_a_broken_chain_raise_rather_than_guessing() -> None:
+    original, b, stranger = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    (link,) = _chain([stranger, b])
+
+    with pytest.raises(CustodyChainError):
+        custody_holders_from_links(original, [link])

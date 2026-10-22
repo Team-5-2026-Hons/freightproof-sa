@@ -5,7 +5,7 @@
 // blank, the instant must survive being read in another timezone, and a canvas that
 // refuses a context must fail rather than emit an empty artifact.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderAttestation, formatPosition, formatSignedAt, fitText } from '@shared/lib/utils/render-attestation'
+import { ATTESTATION_SUBTITLE, renderAttestation, formatPosition, formatSignedAt, fitText } from '@shared/lib/utils/render-attestation'
 
 const MOCK_PNG_DATA_URL = 'data:image/png;base64,YXR0ZXN0YXRpb24='
 const SIGNED_AT = '2026-08-04T18:14:33.000Z'
@@ -134,6 +134,20 @@ describe('renderAttestation', () => {
     expect(texts).toContain(RECIPIENT_ID)
     expect(texts).toContain('SIGNED BY')
     expect(texts).toContain('ID NUMBER')
+  })
+
+  it('names the driver\'s device by default, and the device the caller names otherwise', () => {
+    const base = { signedAt: SIGNED_AT, position: null, tripId: TRIP_ID, recipientName: RECIPIENT_NAME, recipientIdNumber: RECIPIENT_ID }
+    const byDefault = stubCanvas()
+    renderAttestation(base)
+    byDefault.restore()
+    const named = stubCanvas()
+
+    renderAttestation({ ...base, subtitle: ATTESTATION_SUBTITLE.receiverDevice })
+
+    expect(byDefault.texts).toContain(ATTESTATION_SUBTITLE.driverDevice)
+    expect(named.texts).toContain(ATTESTATION_SUBTITLE.receiverDevice)
+    expect(named.texts).not.toContain(ATTESTATION_SUBTITLE.driverDevice)
   })
 
   it('ellipsizes a name too long for the canvas rather than letting it run off the edge', () => {

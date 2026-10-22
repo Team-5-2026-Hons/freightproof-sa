@@ -1,6 +1,8 @@
 PODS:
   - Capacitor (7.6.9):
     - CapacitorCordova
+  - CapacitorApp (7.1.2):
+    - Capacitor
   - CapacitorCamera (7.0.5):
     - Capacitor
   - CapacitorCommunityImageToText (7.0.0):
@@ -21,6 +23,7 @@ PODS:
 
 DEPENDENCIES:
   - "Capacitor (from `../../node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../node_modules/@capacitor/app`)"
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
   - "CapacitorCommunityImageToText (from `../../node_modules/@capacitor-community/image-to-text`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
@@ -37,6 +40,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Capacitor:
     :path: "../../node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../node_modules/@capacitor/app"
   CapacitorCamera:
     :path: "../../node_modules/@capacitor/camera"
   CapacitorCommunityImageToText:
@@ -56,6 +61,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Capacitor: 46067d1c8df89760dbed78780d436327d588c726
+  CapacitorApp: f01a913211780e0718dae9750442c3e23f96e106
   CapacitorCamera: 9e952270be355797f769aa835bb7643a96c871fe
   CapacitorCommunityImageToText: b36b9e68f402633092f3761cecfe462da3e0b52c
   CapacitorCordova: 2080fc0d6bfbc9dcc0e6d88e77fa624190d343ca
@@ -66,6 +72,6 @@ SPEC CHECKSUMS:
   CapgoCapacitorDocumentScanner: 3242088f569b55758edca6dc86fb5523242214a6
   IONGeolocationLib: 20f9d0248a0b5264511fb57a37e25dd2badf797a
 
-PODFILE CHECKSUM: dbae784e0445d51638260b2ba6cea08211c17680
+PODFILE CHECKSUM: f8d187c14896295c8a977364eea6d81755acf27a
 
 COCOAPODS: 1.17.0

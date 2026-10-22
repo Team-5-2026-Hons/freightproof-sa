@@ -212,7 +212,7 @@ async def test_pack_html_renders_investigation_section(client, db_session, seed)
     assert "Never loaded at origin" in html
     assert parcels[0].barcode in html
     # The parcel's own row states the scan fact and that nothing was established — never theft.
-    investigations = html[html.index("<h2>Investigations"):]
+    investigations = html[html.index('id="investigations"'):]
     row = next(line for line in investigations.splitlines() if parcels[0].barcode in line)
     assert "No scan in recorded" in row and "not established" in row and "stolen" not in row.lower()
 

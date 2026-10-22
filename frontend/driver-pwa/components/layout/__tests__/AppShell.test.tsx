@@ -50,6 +50,46 @@ describe('AppShell', () => {
     expect(header.firstElementChild).toHaveClass('glass-nav')
   })
 
+  it('test_scroll_event_at_the_top_keeps_the_large_title', () => {
+    // A tab switch clamps the shared scrollport back to 0 and fires a scroll event there.
+    // At rest the large title already sits under the inline row, so a threshold measured
+    // from layout alone goes negative and collapsed the bar over the title at scrollTop 0.
+    // jsdom has no layout; give every box the 44px of the inline row so the title's
+    // midline (22) sits above the bar's bottom edge (88), as it does on a phone.
+    const height = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(44)
+    const { container } = render(<AppShell><p>content</p></AppShell>)
+    const scrollport = container.firstElementChild as HTMLDivElement
+
+    scrollport.scrollTop = 0
+    fireEvent.scroll(scrollport)
+
+    expect(screen.getByText('Trips', { selector: 'p' })).toHaveClass('opacity-0')
+    expect(container.querySelector('header')?.firstElementChild).not.toHaveClass('glass-nav')
+    height.mockRestore()
+  })
+
+  it('test_tab_switch_opens_the_next_tab_at_the_top_with_its_large_title', () => {
+    // The shell, its scrollport and its collapsed flag outlive the tab: Profile scrolled to
+    // Sign Out then a tap on Trips left Trips under a collapsed bar, which nothing on a
+    // non-scrolling screen could ever undo.
+    mockPathname = '/profile'
+    const { container, rerender } = render(<AppShell><p>profile</p></AppShell>)
+    const scrollport = container.firstElementChild as HTMLDivElement
+    mockPathname = '/trips'
+    rerender(<AppShell><p>trips</p></AppShell>)
+    scrollport.scrollTop = 40
+    fireEvent.scroll(scrollport)
+    mockPathname = '/profile'
+    rerender(<AppShell><p>profile</p></AppShell>)
+    scrollport.scrollTop = 600
+
+    mockPathname = '/'
+    rerender(<AppShell><p>home</p></AppShell>)
+
+    expect(scrollport.scrollTop).toBe(0)
+    expect(container.querySelector('header')?.firstElementChild).not.toHaveClass('glass-nav')
+  })
+
   it('falls back to the product name on an unmapped route', () => {
     // Arrange
     mockPathname = '/somewhere-else'

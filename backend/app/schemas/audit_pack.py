@@ -498,7 +498,8 @@ class InvestigationRecord(_Frozen):
 class TripSummary(_Frozen):
     trip_id: UUID
     trip_reference: str
-    order_number: str
+    # Nullable since FP-281: trips keyed by the PP manifest no longer carry an order number.
+    order_number: str | None
     trip_type: str
     status: str
     operator_name: str

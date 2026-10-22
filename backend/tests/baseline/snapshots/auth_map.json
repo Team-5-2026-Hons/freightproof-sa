@@ -675,6 +675,14 @@
       "rate_limit:fleet_mutation"
     ]
   },
+  "POST /api/v1/drivers/me/push-tokens": {
+    "access": "driver",
+    "dependencies": [
+      "app.auth.dependencies.get_current_driver",
+      "fastapi.security.http.HTTPBearer",
+      "rate_limit:push_token_register"
+    ]
+  },
   "POST /api/v1/exceptions/review-batch": {
     "access": "dispatcher",
     "dependencies": [

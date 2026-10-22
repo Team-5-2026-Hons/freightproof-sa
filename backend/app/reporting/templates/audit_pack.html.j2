@@ -1,9 +1,21 @@
 <!DOCTYPE html>
 {#- Audit pack PDF. Layout only: every value comes from the manifest, every free-text
-    value is autoescaped. Section letters match docs/design-notes/2026-09-23-insurer-audit-trail-plan.md §5. -#}
+    value is autoescaped. Section letters match docs/design-notes/2026-09-23-insurer-audit-trail-plan.md §5.
+    Chapters are numbered 1–7 and the insurer web viewer uses the same numbers for 1–6, so a reader
+    on a call with someone holding the other copy can say "section 3" and mean the same thing. -#}
 {% from '_exception_evidence.html.j2' import exception_evidence %}
 {% macro tier(t) %}<span class="tier tier-{{ t }}">{{ tiers[t][0] }}</span>{% endmacro %}
 {% macro fix(f) %}{% if f %}{{ '%.5f'|format(f.lat) }}, {{ '%.5f'|format(f.lng) }}{% if f.accuracy_metres %} (±{{ f.accuracy_metres|round|int }} m){% endif %}{% else %}—{% endif %}{% endmacro %}
+{% macro rand(v) %}R {{ '{:,.2f}'.format(v) }}{% endmacro %}
+{#- The running header reads the hidden marker, not the h2: the h2 also holds the chapter number in its own box. -#}
+{% macro chapter(n, title, lede) %}
+<div class="running running-chapter">{{ n }} · {{ title }}</div>
+<header class="chapter-head">
+  <p class="ch-num">Section {{ n }}</p>
+  <h2>{{ title }}</h2>
+  {% if lede %}<p class="lede">{{ lede }}</p>{% endif %}
+</header>
+{% endmacro %}
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -15,30 +27,141 @@
 <div class="running running-trip">Trip {{ m.trip.trip_reference }}</div>
 <div class="running running-issued">{% if issue %}Issued to {{ issue.recipient_name }}, {{ issue.recipient_organization }} for {{ purpose_label }} · {{ issue.pack_label }}{% else %}PREVIEW — not an issued pack{% endif %}</div>
 
-{# ── §A Cover and verification summary ───────────────────────────────────── #}
+{#- Cover figures. Totals are plain sums of manifest values, shown so the reader sees the size of the
+    claim before any table; nothing here is a finding. -#}
+{% set cargo = namespace(value=0, valued=0, parcels=0) %}
+{% for c in m.consignments %}
+  {% if c.declared_value is not none %}{% set cargo.value = cargo.value + c.declared_value %}{% set cargo.valued = cargo.valued + 1 %}{% endif %}
+  {% set cargo.parcels = cargo.parcels + c.parcels|length %}
+{% endfor %}
+{% set broken = m.anchored_records|rejectattr('payload_matches_hash')|list %}
+{#- The strip marks where the critical event sits against the ledger: after the last phase completed
+    before it was raised. That is an ordering fact, not a claim about where the truck was. -#}
+{% set brk = namespace(after=none) %}
+{% if m.incident %}
+  {% for p in m.phases if p.completed_at and p.completed_at <= m.incident.first_raised_at %}{% set brk.after = p.sequence_number %}{% endfor %}
+{% endif %}
+
+{# ── Cover ───────────────────────────────────────────────────────────────── #}
 <section id="cover">
   {% if not issue %}
   <div class="preview-banner">PREVIEW — this is not an issued pack. It is not sealed on Hedera and must not be relied on as evidence.</div>
   {% endif %}
-  <h1>Trip Audit Trail</h1>
-  <p class="muted">FreightProof evidence pack · generated {{ m.generated_at|sast }} · manifest v{{ m.manifest_version }}</p>
+  <p class="eyebrow">FreightProof · Trip audit pack{% if issue %} · {{ purpose_label }}{% endif %}</p>
+  <h1>Trip {{ m.trip.trip_reference }}</h1>
+  <p class="subtitle">{% if issue %}{{ issue.pack_label }} · issued to {{ issue.recipient_name }}, {{ issue.recipient_organization }}{% else %}Preview{% endif %} · generated {{ m.generated_at|sast }}</p>
 
-  <table class="kv">
-    <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td></tr>
-    <tr><th>Order number</th><td>{{ m.trip.order_number }}</td></tr>
-    <tr><th>Operator</th><td>{{ m.trip.operator_name }}</td></tr>
-    <tr><th>Client(s)</th><td>{{ m.trip.client_names|join(', ') or '—' }}</td></tr>
-    <tr><th>Scope</th><td>{% if m.options.scope_consignment_id %}Single consignment: {{ m.consignments[0].parcel_perfect_reference if m.consignments else '—' }}{% else %}Whole trip{% endif %}</td></tr>
-    <tr><th>Trip status</th><td>{{ m.trip.status|humanise }}</td></tr>
+  <table class="glance">
+    <tr>
+      <td>
+        <p class="g-label">Route</p>
+        {% if m.stops %}
+        <p class="g-value">{{ m.stops[0].precinct_name }}{% if m.stops|length > 1 %} → {{ m.stops[-1].precinct_name }}{% endif %}</p>
+        <p class="g-sub">{{ m.stops|length }} stop(s) · {{ m.trip.trip_type|humanise }}</p>
+        {% else %}<p class="g-value">—</p><p class="g-sub">No stops recorded</p>{% endif %}
+      </td>
+      <td>
+        <p class="g-label">Cargo</p>
+        <p class="g-value">{% if cargo.valued %}{{ rand(cargo.value) }}{% else %}Value not declared{% endif %}</p>
+        <p class="g-sub">{{ m.consignments|length }} consignment(s) · {{ cargo.parcels }} parcel(s){% if cargo.valued and cargo.valued < m.consignments|length %} · {{ m.consignments|length - cargo.valued }} without a value{% endif %}</p>
+      </td>
+      <td>
+        <p class="g-label">Trip status</p>
+        <p class="g-value{% if m.incident %} g-flag{% endif %}">{{ m.trip.status|humanise }}</p>
+        <p class="g-sub">{% if m.incident %}{{ m.incident.first_exception_type|humanise }} reported {{ m.incident.first_raised_at|sast }}{% elif m.trip.closed_at %}Closed {{ m.trip.closed_at|sast }}{% else %}Not closed when generated{% endif %}</p>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <p class="g-label">Driver and vehicle</p>
+        <p class="g-value">{{ m.driver.full_name }}</p>
+        <p class="g-sub">{% for v in m.vehicles %}{{ v.registration }}{% if not loop.last %} · {% endif %}{% else %}No vehicle recorded{% endfor %}{% if m.driver.substitutions %} · {{ m.driver.substitutions|length }} substitution(s){% endif %}</p>
+      </td>
+      <td>
+        <p class="g-label">Exceptions</p>
+        <p class="g-value">{{ m.exceptions|length }} raised</p>
+        <p class="g-sub">{{ critical|length }} critical · {{ m.observations|selectattr('level', 'equalto', 'attention')|list|length }} observation(s) need attention</p>
+      </td>
+      <td>
+        <p class="g-label">Records unchanged</p>
+        <p class="g-value{% if broken %} g-flag{% endif %}">{% if m.anchored_records %}{{ m.anchored_records|length - broken|length }} of {{ m.anchored_records|length }}{% else %}None published{% endif %}</p>
+        <p class="g-sub">{% if broken %}{{ broken|length }} changed after publication · see section 5{% else %}Checked against the public Hedera ledger{% endif %}</p>
+      </td>
+    </tr>
+  </table>
+
+  {% if m.phases %}
+  <h3 class="cover-h">Custody journey</h3>
+  {#- Drawn as SVG, not table cells: WeasyPrint cannot overlap a dot on a rule reliably in a cell, and a
+      viewBox keeps 7 or 11 phases evenly spaced across the page. -#}
+  {% set n = m.phases|length %}
+  {% set step = 1000 / n %}
+  <svg class="journey" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 96" role="img" aria-label="Custody phases in ledger order">
+    {% for p in m.phases %}
+    {% set x = (loop.index0 + 0.5) * step %}
+    {% if not loop.last %}
+    {% set nxt = m.phases[loop.index] %}
+    {% set cut = m.incident and (brk.after is none or nxt.sequence_number > brk.after) %}
+    <line x1="{{ x }}" y1="16" x2="{{ x + step }}" y2="16" stroke="{{ '#b71c1c' if cut else '#1a1a1a' }}" stroke-width="2.4"{% if cut %} stroke-dasharray="8 5"{% endif %}/>
+    {% endif %}
+    {% endfor %}
+    {% for p in m.phases %}
+    {% set x = (loop.index0 + 0.5) * step %}
+    {% set pending = p.status == 'pending' %}
+    {% if brk.after == p.sequence_number %}<circle cx="{{ x }}" cy="16" r="14" fill="#fff" stroke="#b71c1c" stroke-width="2.4"/>{% endif %}
+    <circle cx="{{ x }}" cy="16" r="9" fill="{{ '#fff' if pending else ('#1b5e20' if p.tier == 'anchored' else '#1a1a1a') }}" stroke="{{ '#999' if pending else ('#1b5e20' if p.tier == 'anchored' else '#1a1a1a') }}" stroke-width="2"/>
+    <text x="{{ x }}" y="48" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#555">P{{ p.sequence_number }}</text>
+    <text x="{{ x }}" y="66" text-anchor="middle" font-family="DejaVu Sans" font-size="13" font-weight="{{ 'normal' if pending else 'bold' }}" fill="{{ '#777' if pending else '#1a1a1a' }}">{{ p.phase_type|humanise }}</text>
+    <text x="{{ x }}" y="84" text-anchor="middle" font-family="DejaVu Sans" font-size="10.5" letter-spacing="0.5" fill="#555">{{ 'PENDING' if pending else tiers[p.tier][0]|upper }}</text>
+    {% endfor %}
+  </svg>
+  <p class="small muted">Filled: completed · green: anchored on Hedera · hollow: not completed.
+    {% if m.incident %}<span class="flag">Red break: {{ m.incident.first_exception_type|humanise }} reported {{ m.incident.first_raised_at|sast }}{% if brk.after is not none %}, after P{{ brk.after }} was completed{% else %}, before any phase was completed{% endif %}.</span>{% endif %}</p>
+  {% endif %}
+
+  <table class="cover-split">
+    <tr>
+      <td>
+        <h3 class="cover-h">Contents</h3>
+        <ol class="toc">
+          <li><a href="#ch-summary">Summary and findings</a></li>
+          <li><a href="#ch-journey">Journey and custody</a></li>
+          <li><a href="#ch-exceptions">Exceptions and response</a></li>
+          <li><a href="#ch-details">Trip, vehicles, driver and cargo</a></li>
+          <li><a href="#ch-verification">Verification</a></li>
+          <li><a href="#ch-data-protection">Data protection</a></li>
+          <li><a href="#ch-certificate">Certificate of correct extract</a></li>
+        </ol>
+      </td>
+      <td>
+        <h3 class="cover-h">How to read this pack</h3>
+        <table class="legend">
+          {% for key, (label, meaning) in tiers.items() %}
+          <tr><td class="legend-tier">{{ tier(key) }}</td><td>{{ meaning }}</td></tr>
+          {% endfor %}
+        </table>
+        <p class="small muted">All times are South African Standard Time (SAST, UTC+2). Observations state what the record shows;
+          they are not findings of fault.</p>
+      </td>
+    </tr>
+  </table>
+
+  <h3 class="cover-h">Pack details</h3>
+  <table class="kv kv-compact">
+    <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td><th>Order number</th><td>{{ m.trip.order_number or '—' }}</td></tr>
+    <tr><th>Operator</th><td>{{ m.trip.operator_name }}</td><th>Client(s)</th><td>{{ m.trip.client_names|join(', ') or '—' }}</td></tr>
+    <tr><th>Scope</th><td>{% if m.options.scope_consignment_id %}Single consignment: {{ m.consignments[0].parcel_perfect_reference if m.consignments else '—' }}{% else %}Whole trip{% endif %}</td><th>Manifest</th><td>v{{ m.manifest_version }}</td></tr>
     {% if issue %}
-    <tr><th>Pack</th><td>{{ issue.pack_label }}</td></tr>
-    <tr><th>Issued to</th><td>{{ issue.recipient_name }}, {{ issue.recipient_organization }}</td></tr>
-    <tr><th>Purpose</th><td>{{ purpose_label }}{% if issue.external_reference %} · ref {{ issue.external_reference }}{% endif %}</td></tr>
-    <tr><th>Issued by</th><td>{{ issue.issued_by_name }}, {{ issue.issued_at|sast }}</td></tr>
-    <tr><th>Link valid until</th><td>{{ issue.expires_at|sast }}</td></tr>
-    {% if issue.verify_url %}<tr><th>Verify online</th><td class="mono">{{ issue.verify_url }}</td></tr>{% endif %}
+    <tr><th>Pack</th><td>{{ issue.pack_label }}</td><th>Purpose</th><td>{{ purpose_label }}{% if issue.external_reference %} · ref {{ issue.external_reference }}{% endif %}</td></tr>
+    <tr><th>Issued to</th><td>{{ issue.recipient_name }}, {{ issue.recipient_organization }}</td><th>Issued by</th><td>{{ issue.issued_by_name }}, {{ issue.issued_at|sast }}</td></tr>
+    <tr><th>Link valid until</th><td>{{ issue.expires_at|sast }}</td><th>Verify online</th><td class="mono">{{ issue.verify_url or '—' }}</td></tr>
     {% endif %}
   </table>
+</section>
+
+{# ── 1 Summary: integrity at generation, observations, incident (§A–C) ──── #}
+<section id="ch-summary" class="chapter">
+  {{ chapter(1, 'Summary and findings', 'What the record shows at a glance. Detail and evidence for each point follow in sections 2 to 4.') }}
 
   <div class="summary-box">
     {% set phase_anchors = m.phases|selectattr('anchor_status', 'equalto', 'anchored')|list %}
@@ -46,417 +169,475 @@
     {% set exception_owed = [] %}
     {% for e in m.exceptions %}{% for a in e.anchors if a.anchor_status in ['pending', 'failed'] %}{% set _ = exception_owed.append(a) %}{% endfor %}{% endfor %}
     {% set owed = phase_owed + exception_owed %}
-    {% set broken = m.anchored_records|rejectattr('payload_matches_hash')|list %}
-    <strong>Integrity at generation:</strong>
+    <p class="box-title">Integrity at generation</p>
     {{ m.anchored_records|length }} Hedera receipt(s) for this trip ·
     {{ phase_anchors|length }} anchored phase(s) ·
     {% if owed %}<span class="flag">{{ owed|length }} anchor(s) pending or failed</span> (phases {{ phase_owed|length }}, exception actions {{ exception_owed|length }}; the issuer's system keeps retrying them){% else %}no anchors owed{% endif %} ·
     {% if broken %}<span class="flag">{{ broken|length }} receipt payload(s) no longer match their hash</span>{% else %}every stored receipt payload matches its anchored hash{% endif %}.
     <p class="small muted">Checked against FreightProof's stored receipts when this pack was generated. Each hash can be
-      re-checked independently against the public Hedera ledger using the steps in the integrity appendix.</p>
+      re-checked independently against the public Hedera ledger using the steps in section 5.2.</p>
   </div>
 
-  <h3>How to read this pack</h3>
-  <table>
-    {% for key, (label, meaning) in tiers.items() %}
-    <tr><td style="width: 30mm">{{ tier(key) }}</td><td>{{ meaning }}</td></tr>
-    {% endfor %}
-  </table>
-  <p class="small muted">All times are South African Standard Time (SAST, UTC+2). Observations state what the record shows;
-    they are not findings of fault.</p>
-</section>
-
-{# ── §B Observations ─────────────────────────────────────────────────────── #}
-<section id="observations" class="page">
-  <h2>Observations</h2>
-  {% for o in m.observations %}
-  <div class="obs obs-{{ o.level }}">{{ o.text }} <span class="code">[{{ o.code }}]</span></div>
-  {% else %}
-  <p class="muted">No observations.</p>
-  {% endfor %}
-</section>
-
-{# ── §C Incident summary ─────────────────────────────────────────────────── #}
-{% if critical %}
-<section id="incident">
-  <h2>Incident summary</h2>
-  {% set inc = m.incident %}
-  <table class="kv">
-    {% if inc %}
-    <tr><th>First critical event</th><td>{{ inc.first_exception_type|humanise }}, {{ inc.first_raised_at|sast }} {{ tier('recorded') }}</td></tr>
-    <tr><th>Where it was raised</th><td>{{ fix(inc.position) }}</td></tr>
-    <tr><th>Last known position at or before it</th><td>{{ fix(inc.last_known_position) }}{% if inc.last_known_position %} · {{ inc.last_known_position.source|humanise }} · {{ inc.last_known_position.recorded_at|sast }}{% endif %}</td></tr>
-    <tr><th>First dispatcher review</th><td>{% if inc.first_reviewed_at %}{{ inc.first_reviewed_at|sast }} ({{ inc.minutes_to_first_review }} min after){% else %}<span class="flag">No review recorded</span>{% endif %}</td></tr>
-    {% endif %}
-    <tr><th>Vehicle(s)</th><td>{% for v in m.vehicles %}{{ v.registration }} ({{ v.role }}){% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
-    <tr><th>Driver</th><td>{{ m.driver.full_name }} · ID {{ m.driver.id_number }}</td></tr>
-    <tr><th>Tracking devices</th><td>{% for v in m.vehicles %}{{ v.tracker_device_id }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
-    <tr><th>Cargo</th><td>{% for c in m.consignments %}{{ c.parcel_perfect_reference }}{% if c.declared_value is not none %} (declared R {{ '{:,.2f}'.format(c.declared_value) }}){% endif %}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}</td></tr>
-  </table>
-  <h3>Critical exceptions</h3>
-  <table>
-    <tr><th>#</th><th>Type</th><th>Raised</th><th>Description</th><th>Review</th></tr>
-    {% for e in critical %}
-    <tr><td>E{{ exception_numbers[e.exception_id] }}</td><td>{{ e.exception_type|humanise }}</td><td>{{ e.raised_at|sast }}</td>
-      <td>{{ e.description }}</td><td>{{ e.review_status|humanise }}{% if e.review_note %}: {{ e.review_note }}{% endif %}</td></tr>
-    {% endfor %}
-  </table>
-  <h3>Police report and notifications {{ tier('declared') }}</h3>
-  {% if m.declarations %}
-  <table>
-    <tr><th>Declared</th><th>SAPS</th><th>Reported</th><th>Notified</th><th>Claim ref / note</th></tr>
-    {% for d in m.declarations %}
-    <tr>
-      <td>{{ d.declared_at|sast }}<br><span class="small muted">by {{ d.declared_by_name or 'unknown' }}</span></td>
-      <td>{{ d.saps_station or '—' }}{% if d.saps_cas_number %}<br>CAS {{ d.saps_cas_number }}{% endif %}{% if d.saps_officer %}<br>{{ d.saps_officer }}{% endif %}</td>
-      <td>{{ d.reported_to_saps_at|sast }}</td>
-      <td class="small">
-        {% if d.client_notified_at %}Client {{ d.client_notified_at|sast }}<br>{% endif %}
-        {% if d.insurer_notified_at %}Insurer {{ d.insurer_notified_at|sast }}<br>{% endif %}
-        {% if d.tracking_company_notified_at %}Tracking co. {{ d.tracking_company_notified_at|sast }}{% endif %}
-      </td>
-      <td>{{ d.insurer_claim_reference or '' }}{% if d.note %}<br><span class="small">{{ d.note }}</span>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </table>
-  <p class="small muted">Entered by the operator after the event; FreightProof did not capture these facts. Later
-    declarations correct earlier ones and both are kept.</p>
-  {% else %}
-  <p class="small muted">No police report or notification times have been declared. A claim will need the SAPS station,
-    case (CAS) number and the times the client, insurer and tracking company were told.</p>
-  {% endif %}
-</section>
-{% endif %}
-
-{# ── §D Parties and trip plan ────────────────────────────────────────────── #}
-<section id="plan" class="page">
-  <h2>Trip plan and parties</h2>
-  <table class="kv">
-    <tr><th>Trip type</th><td>{{ m.trip.trip_type|humanise }}</td></tr>
-    <tr><th>Created</th><td>{{ m.trip.created_at|sast }}</td></tr>
-    <tr><th>Planned departure / arrival</th><td>{{ m.trip.planned_departure_at|sast }} / {{ m.trip.planned_arrival_at|sast }}</td></tr>
-    <tr><th>Actual departure / arrival</th><td>{{ m.trip.actual_departure_at|sast }} / {{ m.trip.actual_arrival_at|sast }}</td></tr>
-    <tr><th>Closed</th><td>{{ m.trip.closed_at|sast }}</td></tr>
-    <tr><th>Tracking trip reference</th><td>{{ m.trip.pulsit_trip_reference_id or '—' }}</td></tr>
-    <tr><th>Journey lock hash</th><td class="mono">{{ m.trip.journey_lock_hash or '—' }}</td></tr>
-  </table>
-  <h3>Stops</h3>
-  <table>
-    <tr><th>#</th><th>Precinct</th><th>Address</th><th>Slot</th><th>Geofence</th></tr>
-    {% for s in m.stops %}
-    <tr><td>{{ s.sequence }}</td><td>{{ s.precinct_name }}</td><td>{{ s.address or '—' }}</td><td>{{ s.slot_time|sast }}</td><td>{% if s.geofence_polygon %}Property outline ({{ s.geofence_polygon|length }} corners){% else %}{{ s.geofence_radius_metres }} m radius{% endif %}</td></tr>
+  <div id="observations">
+    <h3><span class="sub-num">1.1</span>Observations</h3>
+    {% for o in m.observations %}
+    <div class="obs obs-{{ o.level }}">{% if o.level == 'attention' %}<span class="obs-tag">Attention</span>{% endif %}{{ o.text }} <span class="code">[{{ o.code }}]</span></div>
     {% else %}
-    <tr><td colspan="5" class="muted">No stops recorded.</td></tr>
+    <p class="muted">No observations.</p>
     {% endfor %}
-  </table>
+  </div>
 
-  {# ── §E Vehicles ── #}
-  <h2>Vehicles</h2>
-  <table>
-    <tr><th>Role</th><th>Registration</th><th>Make / model / year</th><th>VIN</th><th>Licence disc</th><th>Tracker</th></tr>
-    {% for v in m.vehicles %}
-    <tr><td>{{ v.role|humanise }}</td><td>{{ v.registration }}</td>
-      <td>{{ v.make or '—' }} {{ v.model or '' }} {{ v.year or '' }}</td><td class="mono">{{ v.vin_number or '—' }}</td>
-      <td>{{ v.licence_disc_expiry or 'not recorded' }}{% if v.licence_disc_valid_on_trip_date is true %} <span class="ok">valid on trip date</span>{% elif v.licence_disc_valid_on_trip_date is false %} <span class="flag">expired on trip date</span>{% endif %}</td>
-      <td>{{ v.tracker_device_id }}</td></tr>
-    {% endfor %}
-  </table>
-  {% if m.record_changes %}
-  <h3>Driver and vehicle record changes during the trip</h3>
-  <table>
-    <tr><th>When</th><th>Record</th><th>Change</th><th>Fields</th><th>Tier</th></tr>
-    {% for c in m.record_changes %}
-    <tr><td>{{ c.changed_at|sast }}</td><td>{{ c.subject|humanise }}</td><td>{{ c.event_type|humanise }}</td><td>{{ c.changed_fields|join(', ') or '—' }}</td><td>{{ tier(c.tier) }}</td></tr>
-    {% endfor %}
-  </table>
-  {% endif %}
+  {% if critical or m.incident %}
+  <div id="incident">
+    <h3><span class="sub-num">1.2</span>Incident summary</h3>
+    {% set inc = m.incident %}
+    <table class="kv">
+      {% if inc %}
+      {#- A hijacking the dispatcher recorded from a phone call has no critical exception behind it: it is the
+          operator's report, labelled and tiered as one, with no driver review to be missing. -#}
+      {% set declared = inc.basis == 'investigation' %}
+      <tr><th>{{ 'Reported event (declared by the operator)' if declared else 'First critical event' }}</th><td><strong>{{ inc.first_exception_type|humanise }}</strong>, {{ inc.first_raised_at|sast }} {{ tier('declared' if declared else 'recorded') }}</td></tr>
+      <tr><th>Where it was raised</th><td>{{ fix(inc.position) }}</td></tr>
+      <tr><th>Last known position at or before it</th><td>{{ fix(inc.last_known_position) }}{% if inc.last_known_position %} · {{ inc.last_known_position.source|humanise }} · {{ inc.last_known_position.recorded_at|sast }}{% endif %}</td></tr>
+      {% if inc.first_reviewed_at or not declared %}
+      <tr><th>First dispatcher review</th><td>{% if inc.first_reviewed_at %}{{ inc.first_reviewed_at|sast }} ({{ inc.minutes_to_first_review }} min after){% else %}<span class="flag">No review recorded</span>{% endif %}</td></tr>
+      {% endif %}
+      {% endif %}
+      <tr><th>Vehicle(s)</th><td>{% for v in m.vehicles %}{{ v.registration }} ({{ v.role }}){% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>Driver</th><td>{{ m.driver.full_name }} · ID {{ m.driver.id_number }}</td></tr>
+      <tr><th>Tracking devices</th><td>{% for v in m.vehicles %}{{ v.tracker_device_id }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+      <tr><th>Cargo</th><td>{% for c in m.consignments %}{{ c.parcel_perfect_reference }}{% if c.declared_value is not none %} (declared {{ rand(c.declared_value) }}){% endif %}{% if not loop.last %}; {% endif %}{% else %}—{% endfor %}</td></tr>
+    </table>
 
-  {# ── §F Driver ── #}
-  <h2>Driver</h2>
-  <table class="kv">
-    <tr><th>Name</th><td>{{ m.driver.full_name }}</td></tr>
-    <tr><th>Identity number</th><td>{{ m.driver.id_number }}{% if m.driver.id_number_masked %} <span class="muted small">(masked)</span>{% endif %}</td></tr>
-    <tr><th>Licence number</th><td>{{ m.driver.license_number }}</td></tr>
-    <tr><th>Licence expiry</th><td>{{ m.driver.license_expiry or 'not recorded' }}{% if m.driver.license_valid_on_trip_date is true %} <span class="ok">valid on trip date</span>{% elif m.driver.license_valid_on_trip_date is false %} <span class="flag">expired on trip date</span>{% endif %}</td></tr>
-    <tr><th>Professional driving permit (PrDP)</th><td class="muted">Not recorded by FreightProof</td></tr>
-    <tr><th>Identity check for this trip{% if m.driver.substitutions %} (original driver, at the start){% endif %}</th><td>{{ m.driver.trip_idvs_status|humanise }}{% if m.driver.trip_idvs_checked_at %}, {{ m.driver.trip_idvs_checked_at|sast }}{% endif %}</td></tr>
-  </table>
-  {% if m.driver.substitutions %}
-  <h3>Driver substitutions</h3>
-  <table>
-    <tr><th>#</th><th>When</th><th>From</th><th>To</th><th>Where</th><th>Planned</th><th>Tier</th></tr>
-    {% for s in m.driver.substitutions %}
-    <tr><td>{{ s.sequence_number if s.sequence_number is not none else '—' }}</td><td>{{ s.substitution_at|sast }}</td><td>{{ s.original_driver_name }}</td><td>{{ s.substituting_driver_name }}</td><td>{{ s.exchange_location if s.exchange_location is not none else 'No planned exchange point' }}</td><td>{{ ('Yes' if s.is_planned else 'No') if s.is_planned is not none else 'Not supplied' }}</td><td>{{ tier(s.tier) }}</td></tr>
-    {% if s.sequence_number is not none %}
-    <tr><td></td><td colspan="6" class="muted">
-      Arranged by {{ s.arranged_by_name or 'unknown' }}; completed by {{ s.completed_by_name or 'unknown' }} ({{ s.completed_by or 'actor not recorded' }}){% if s.completed_by_driver_id %} · driver {{ s.completed_by_driver_id }}{% endif %}{% if s.completed_by_user_id %} · dispatcher {{ s.completed_by_user_id }}{% endif %}{% if s.completion_mode %} ({{ s.completion_mode|humanise }}){% endif %}.
-      Incoming driver identity at completion: {{ (s.incoming_identity_status or 'not recorded')|humanise }}{% if s.identity_attested_by_name %}; unavailable verification attested by {{ s.identity_attested_by_name }}{% if s.identity_attested_at %}, {{ s.identity_attested_at|sast }}{% endif %}{% endif %}.
-      {% if s.confirmation_policy == 'incoming_acceptance_v2' %}<br>Dispatcher authorised; incoming driver acceptance required. Outgoing driver: Not requested — notification only.{% endif %}
-      {% if s.identity_attestation_reason %}<br>Identity attestation reason: {{ s.identity_attestation_reason }}{% endif %}
-      {% if s.missing_confirmation_reason %}Missing driver confirmation: {{ s.missing_confirmation_reason }}.{% endif %}
-      {% for d in s.declarations %}<br>{{ d.role|humanise }} declaration by {{ d.driver_name }}, captured {{ d.captured_at|sast }} (received {{ d.received_at|sast }}){% if not d.location_recorded %}, position unavailable ({{ d.location_unavailable_reason or 'reason not recorded' }}){% else %}, phone {{ d.latitude }}, {{ d.longitude }} (accuracy {{ d.accuracy_metres }} m){% endif %}; observed {{ d.location_observed_at|sast if d.location_observed_at else 'time not recorded' }}; observation metadata {{ 'covered by custody commitment' if d.location_observation_committed else 'not covered by legacy custody commitment' }}: {{ d.seal_readings|join('; ') or 'no seal readings' }}{% if d.photo_sha256 %}; {{ d.photo_sha256|length }} photo(s){% endif %}{% if d.discrepancy_note %}; note: {{ d.discrepancy_note }}{% endif %}{% endfor %}
-      {% for c in s.corrections %}<br>Clarification {{ c.recorded_at|sast }} by {{ c.recorded_by_name or 'unknown' }} ({{ c.recorded_by_user_id }}): {{ c.reason }} — {{ c.correction_note }}. Hash <code>{{ c.event_hash or 'not recorded' }}</code>; anchor {{ c.anchor_status or 'not recorded' }}{% if c.receipt_id %}; receipt {{ c.receipt_id }}{% endif %}.{% endfor %}
-      {% if s.commitment_sha256 %}<br>Commitment: <code>{{ s.commitment_sha256 }}</code>{% endif %}
-    </td></tr>
+    {% if critical %}
+    <h4>Critical exceptions</h4>
+    <table class="grid fixed">
+      <thead><tr><th class="w-num">#</th><th class="w-type">Type</th><th class="w-time">Raised</th><th>Description</th><th class="w-review">Review</th></tr></thead>
+      {% for e in critical %}
+      <tr><td>E{{ exception_numbers[e.exception_id] }}</td><td>{{ e.exception_type|humanise }}</td><td>{{ e.raised_at|sast }}</td>
+        <td>{{ e.description }}</td><td>{{ e.review_status|humanise }}{% if e.review_note %}: {{ e.review_note }}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
     {% endif %}
-    {% endfor %}
-  </table>
-  {% endif %}
-  {% if m.late_evidence %}
-  <h3>Late driver evidence</h3>
-  <p class="muted">Captured in an earlier custody period and retained for review. It completed no phase; its hash is a local commitment, not a Hedera receipt.</p>
-  <table>
-    <tr><th>Driver</th><th>Period</th><th>Kind</th><th>Captured</th><th>Received</th><th>Status</th></tr>
-    {% for e in m.late_evidence %}
-    <tr><td>{{ e.driver_name }}</td><td>{{ e.custody_sequence }}</td><td>{{ e.kind|humanise }}</td><td>{{ e.captured_at|sast }}</td><td>{{ e.received_at|sast }}</td><td>{{ e.status|humanise }}</td></tr>
-    {% endfor %}
-  </table>
-  {% endif %}
-</section>
+    {% if m.investigations %}<p class="small muted">The operator's investigation of this incident is in section 3.2.</p>{% endif %}
 
-{# ── §G Cargo ────────────────────────────────────────────────────────────── #}
-<section id="cargo" class="page">
-  <h2>Cargo and consignments</h2>
-  {% for c in m.consignments %}
-  <h3>{{ c.parcel_perfect_reference }}{% if c.client_name %} · {{ c.client_name }}{% endif %}</h3>
-  <table class="kv">
-    <tr><th>Declared value</th><td>{% if c.declared_value is not none %}R {{ '{:,.2f}'.format(c.declared_value) }}{% else %}not declared{% endif %}</td></tr>
-    <tr><th>Parcels expected</th><td>{{ c.parcel_count_expected if c.parcel_count_expected is not none else '—' }}</td></tr>
-    <tr><th>Units expected</th><td>{{ c.unit_count_expected if c.unit_count_expected is not none else '—' }}</td></tr>
-  </table>
-  {% if c.parcels %}
-  <table>
-    <tr><th>Barcode</th><th>Status</th><th>Scanned out</th><th>Scanned in</th></tr>
-    {% for p in c.parcels %}
-    <tr><td class="mono">{{ p.barcode }}</td><td>{{ p.status|humanise }}</td><td>{{ p.pp_scan_out_at|sast }}</td><td>{{ p.pp_scan_in_at|sast }}</td></tr>
-    {% endfor %}
-  </table>
-  {% endif %}
-  {% else %}
-  <p class="muted">No consignments are linked to this trip.</p>
-  {% endfor %}
-</section>
-
-{# ── §H Custody chain ────────────────────────────────────────────────────── #}
-<section id="custody" class="page">
-  <h2>Custody chain</h2>
-  <p class="small muted">One row per phase of the committed trip plan, in ledger order.</p>
-  {% for p in m.phases %}
-  <h3>P{{ p.sequence_number }} · {{ p.phase_type|humanise }}{% if p.precinct_name %} · {{ p.precinct_name }}{% endif %} {{ tier(p.tier) }}</h3>
-  <table class="kv">
-    <tr><th>Status</th><td>{{ p.status|humanise }}{% if p.overridden_by_dispatcher %} <span class="flag">dispatcher override</span>{% if p.override_note %}: {{ p.override_note }}{% endif %}{% endif %}</td></tr>
-    <tr><th>Completed</th><td>{{ p.completed_at|sast }}{% if p.slot_time %} · slot {{ p.slot_time|sast }}{% endif %}</td></tr>
-    {% if p.driver_phone or p.vehicle_tracker %}
-    <tr><th>Driver phone</th><td>{{ fix(p.driver_phone) }}</td></tr>
-    <tr><th>Vehicle tracker</th><td>{{ fix(p.vehicle_tracker) }}</td></tr>
-    {% endif %}
-    {% if p.location_assessment %}
-    <tr><th>Location check</th><td>{{ p.location_assessment.proximity|humanise }}{% if p.location_assessment.separation_metres is not none %} · {{ p.location_assessment.separation_metres|round|int }} m apart{% endif %}{% if p.location_assessment.driver_in_precinct is not none %} · driver {{ 'inside' if p.location_assessment.driver_in_precinct else 'outside' }} precinct{% endif %}</td></tr>
-    {% endif %}
-    {% if p.location_warning_acknowledged_at %}
-    <tr><th>Location warning acknowledged</th><td>{{ p.location_warning_acknowledged_at|sast }}{% if p.location_warning_reason %}: {{ p.location_warning_reason }}{% endif %}</td></tr>
-    {% endif %}
-    {% if p.seal_number %}<tr><th>Seal number</th><td>{{ p.seal_number }}</td></tr>{% endif %}
-    {% if p.seal_condition %}<tr><th>Seal condition</th><td>{% if p.seal_condition != 'intact' %}<strong>{{ p.seal_condition|humanise }}</strong>{% else %}{{ p.seal_condition|humanise }}{% endif %}</td></tr>{% endif %}
-    {% if p.parcel_count_origin is not none %}<tr><th>Parcels scanned out</th><td>{{ p.parcel_count_origin }}</td></tr>{% endif %}
-    {% if p.parcel_count_destination is not none %}<tr><th>Parcels scanned in</th><td>{{ p.parcel_count_destination }}</td></tr>{% endif %}
-    {% if p.driver_visual_count is not none %}<tr><th>Driver's count</th><td>{{ p.driver_visual_count }}</td></tr>{% endif %}
-    {% for e in p.evidence %}
-    <tr><th>{{ e.role|humanise }}</th><td>{{ tier(e.tier) }} <span class="mono">sha256 {{ e.sha256 }}</span></td></tr>
-    {% endfor %}
-    {% for f in p.anchored_fields %}
-    <tr><th>Anchored {{ f.name }}</th><td>{% if f.matches_anchor %}<span class="ok">matches Hedera</span>{% else %}<span class="flag">differs from Hedera</span>{% endif %}</td></tr>
-    {% endfor %}
-    <tr><th>Anchor</th><td>{{ p.anchor_status|humanise }}</td></tr>
-  </table>
-  {% endfor %}
-</section>
-
-{# ── §J In-transit record and §K Exceptions ──────────────────────────────── #}
-<section id="transit" class="page">
-  <h2>In-transit record</h2>
-  <h3>Checkpoints</h3>
-  <table>
-    <tr><th>When</th><th>Type</th><th>Driver phone</th><th>Deviation</th><th>Note</th><th>Evidence</th></tr>
-    {% for c in m.checkpoints %}
-    <tr><td>{{ c.recorded_at|sast }}</td><td>{{ c.checkpoint_type|humanise }}</td><td>{{ fix(c.driver_phone) }}</td>
-      <td>{{ 'Yes' if c.is_deviation else 'No' }}</td><td>{{ c.note or '—' }}</td><td>{{ c.evidence|length }} file(s)</td></tr>
+    <h4>Police report and notifications {{ tier('declared') }}</h4>
+    {% if m.declarations %}
+    <table class="grid fixed">
+      <thead><tr><th class="w-time">Declared</th><th>SAPS</th><th class="w-time">Reported</th><th>Notified</th><th>Claim ref / note</th></tr></thead>
+      {% for d in m.declarations %}
+      <tr>
+        <td>{{ d.declared_at|sast }}<br><span class="small muted">by {{ d.declared_by_name or 'unknown' }}</span></td>
+        <td>{{ d.saps_station or '—' }}{% if d.saps_cas_number %}<br>CAS {{ d.saps_cas_number }}{% endif %}{% if d.saps_officer %}<br>{{ d.saps_officer }}{% endif %}</td>
+        <td>{{ d.reported_to_saps_at|sast }}</td>
+        <td class="small">
+          {% if d.client_notified_at %}Client {{ d.client_notified_at|sast }}<br>{% endif %}
+          {% if d.insurer_notified_at %}Insurer {{ d.insurer_notified_at|sast }}<br>{% endif %}
+          {% if d.tracking_company_notified_at %}Tracking co. {{ d.tracking_company_notified_at|sast }}{% endif %}
+        </td>
+        <td>{{ d.insurer_claim_reference or '' }}{% if d.note %}<br><span class="small">{{ d.note }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="small muted">Entered by the operator after the event; FreightProof did not capture these facts. Later
+      declarations correct earlier ones and both are kept.</p>
     {% else %}
-    <tr><td colspan="6" class="muted">No checkpoints recorded.</td></tr>
-    {% endfor %}
-  </table>
+    <p class="small muted">No police report or notification times have been declared. A claim will need the SAPS station,
+      case (CAS) number and the times the client, insurer and tracking company were told.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
 
-  <h2>Exceptions and response log</h2>
-  <table>
-    <tr><th>#</th><th>Raised</th><th>Type / severity</th><th>Source</th><th>Description</th><th>Review</th></tr>
+{# ── 2 Journey: custody chain, checkpoints, location (§H, §J, §L) ───────── #}
+<section id="ch-journey" class="chapter">
+  {{ chapter(2, 'Journey and custody', 'Each custody phase of the committed trip plan in ledger order, the stops made on the road, and where the phone and tracker placed the vehicle.') }}
+
+  <div id="custody">
+    <h3><span class="sub-num">2.1</span>Custody chain</h3>
+    <table class="grid custody">
+      <thead><tr><th class="w-phase">Phase</th><th class="w-time">Completed</th><th>What was recorded</th><th class="w-tier">Tier</th></tr></thead>
+      {% for p in m.phases %}
+      <tr class="{{ 'row-pending' if p.status == 'pending' else '' }}">
+        <td><strong>P{{ p.sequence_number }} · {{ p.phase_type|humanise }}</strong>{% if p.precinct_name %}<br><span class="small muted">{{ p.precinct_name }}</span>{% endif %}</td>
+        <td>{% if p.completed_at %}{{ p.completed_at|sast }}{% else %}{{ p.status|humanise }}{% endif %}{% if p.slot_time %}<br><span class="small muted">slot {{ p.slot_time|sast }}</span>{% endif %}</td>
+        <td class="facts">
+          {% if p.status not in ['completed', 'pending'] %}<div>Status: {{ p.status|humanise }}</div>{% endif %}
+          {% if p.overridden_by_dispatcher %}<div><span class="flag">dispatcher override</span>{% if p.override_note %}: {{ p.override_note }}{% endif %}</div>{% endif %}
+          {% if p.seal_number %}<div>Seal <strong>{{ p.seal_number }}</strong></div>{% endif %}
+          {% if p.seal_condition %}<div>Seal condition: {% if p.seal_condition != 'intact' %}<strong>{{ p.seal_condition|humanise }}</strong>{% else %}{{ p.seal_condition|humanise }}{% endif %}</div>{% endif %}
+          {% if p.parcel_count_origin is not none %}<div>Parcels scanned out: {{ p.parcel_count_origin }}</div>{% endif %}
+          {% if p.parcel_count_destination is not none %}<div>Parcels scanned in: {{ p.parcel_count_destination }}</div>{% endif %}
+          {% if p.driver_visual_count is not none %}<div>Driver's count: {{ p.driver_visual_count }}</div>{% endif %}
+          {% if p.driver_phone or p.vehicle_tracker %}<div class="small">Driver phone {{ fix(p.driver_phone) }} · vehicle tracker {{ fix(p.vehicle_tracker) }}</div>{% endif %}
+          {% if p.location_assessment %}<div class="small">Location check: {{ p.location_assessment.proximity|humanise }}{% if p.location_assessment.separation_metres is not none %} · {{ p.location_assessment.separation_metres|round|int }} m apart{% endif %}{% if p.location_assessment.driver_in_precinct is not none %} · driver {{ 'inside' if p.location_assessment.driver_in_precinct else 'outside' }} precinct{% endif %}</div>{% endif %}
+          {% if p.location_warning_acknowledged_at %}<div class="small">Location warning acknowledged {{ p.location_warning_acknowledged_at|sast }}{% if p.location_warning_reason %}: {{ p.location_warning_reason }}{% endif %}</div>{% endif %}
+          <div class="small muted">Anchor: {{ p.anchor_status|humanise }}</div>
+        </td>
+        <td>{{ tier(p.tier) }}</td>
+      </tr>
+      {% if p.evidence or p.anchored_fields %}
+      <tr class="sub-row">
+        <td></td>
+        <td colspan="3">
+          {% for e in p.evidence %}
+          <div>{{ e.role|humanise }} {{ tier(e.tier) }} <span class="mono">sha256 {{ e.sha256 }}</span></div>
+          {% endfor %}
+          {% for f in p.anchored_fields %}
+          <div>Anchored {{ f.name }}: {% if f.matches_anchor %}<span class="ok">matches Hedera</span>{% else %}<span class="flag">differs from Hedera</span>{% endif %}</div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="4" class="muted">No phases recorded.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div id="transit">
+    <h3><span class="sub-num">2.2</span>Checkpoints on the road</h3>
+    <table class="grid">
+      <thead><tr><th class="w-time">When</th><th>Type</th><th>Driver phone</th><th>Deviation</th><th>Note</th><th>Evidence</th></tr></thead>
+      {% for c in m.checkpoints %}
+      <tr><td>{{ c.recorded_at|sast }}</td><td>{{ c.checkpoint_type|humanise }}</td><td>{{ fix(c.driver_phone) }}</td>
+        <td>{% if c.is_deviation %}<strong>Yes</strong>{% else %}No{% endif %}</td><td>{{ c.note or '—' }}</td><td>{{ c.evidence|length }} file(s)</td></tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">No checkpoints recorded.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div id="location">
+    <h3><span class="sub-num">2.3</span>Location evidence</h3>
+    <div class="route">{{ route_svg|safe }}</div>
+    <p class="small muted">Green circles and outlines: route precincts (geofence to scale). Blue line: driver-phone trail. Grey dashes:
+      periods with no position. Purple squares: tracker fixes. Blue dots: checkpoints. Red diamonds: exceptions (E-numbers
+      as in section 3). No third-party map service was used to draw this.</p>
+    {% set cov = m.location_coverage %}
+    <table class="kv">
+      <tr><th>Window assessed</th><td>{{ cov.window_start|sast }} → {{ cov.window_end|sast }}</td></tr>
+      <tr><th>Fixes by source</th><td>{% for source, n in cov.fix_counts.items() %}{{ source|humanise }}: {{ n }}{% if not loop.last %} · {% endif %}{% else %}none{% endfor %}</td></tr>
+      <tr><th>First / last fix</th><td>{{ cov.first_fix_at|sast }} / {{ cov.last_fix_at|sast }}</td></tr>
+      <tr><th>Coverage gaps</th><td>{{ cov.gaps|length }}</td></tr>
+    </table>
+    {% if cov.gaps %}
+    <table class="grid">
+      <thead><tr><th>Gap from</th><th>To</th><th>Length</th></tr></thead>
+      {% for g in cov.gaps %}<tr><td>{{ g.start|sast }}</td><td>{{ g.end|sast }}</td><td>{{ g.minutes }} min</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+    {% if cov.stationary_periods %}
+    <h4>Stationary periods outside route precincts</h4>
+    <table class="grid">
+      <thead><tr><th>From</th><th>To</th><th>Length</th><th>Near</th></tr></thead>
+      {% for s in cov.stationary_periods %}<tr><td>{{ s.start|sast }}</td><td>{{ s.end|sast }}</td><td>{{ s.minutes }} min</td><td>{{ '%.4f'|format(s.lat) }}, {{ '%.4f'|format(s.lng) }}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+    <p class="caveat">Phone positions are recorded only while the driver app is in use; the vehicle tracker is queried at
+      handshakes and checkpoints. The absence of a position is not evidence that the vehicle was stationary, and a straight
+      line between two positions is not evidence of the route driven.</p>
+  </div>
+</section>
+
+{# ── 3 Exceptions and response (§K, investigations) ─────────────────────── #}
+<section id="ch-exceptions" class="chapter">
+  {{ chapter(3, 'Exceptions and response', 'Every exception raised on the trip, who reviewed it and how, and the operator\'s investigation of each incident.') }}
+
+  <div id="exceptions">
+    <h3><span class="sub-num">3.1</span>Exception log</h3>
     {% for e in m.exceptions %}
-    <tr><td>E{{ exception_numbers[e.exception_id] }}</td><td>{{ e.raised_at|sast }}</td>
-      <td>{{ e.exception_type|humanise }} · {{ e.severity }}</td><td>{{ e.source|humanise }}</td><td>{{ e.description }}</td>
-      <td>{{ e.review_status|humanise }}{% if e.reviewed_at %}, {{ e.reviewed_at|sast }}{% endif %}{% if e.reviewer_name %} by {{ e.reviewer_name }}{% endif %}{% if e.contact_method %} via {{ e.contact_method }}{% endif %}{% if e.review_outcome %} · {{ e.review_outcome|humanise }}{% endif %}{% if e.review_note %} · “{{ e.review_note }}”{% endif %}</td></tr>
-    {% if e.anchors or e.photos %}
-    <tr><td></td><td colspan="5">{{ exception_evidence(e, tiers) }}</td></tr>
-    {% endif %}
+    <div class="exc{% if e.severity == 'critical' %} exc-critical{% endif %}">
+      <table class="exc-head">
+        <tr>
+          <td class="exc-id">E{{ exception_numbers[e.exception_id] }}</td>
+          <td><strong>{{ e.exception_type|humanise }}</strong> · <span class="sev">{{ e.severity }}</span>
+            <br><span class="small muted">Raised {{ e.raised_at|sast }} · source: {{ e.source|humanise }}</span></td>
+          <td class="exc-tier">{{ tier(e.tier) }}</td>
+        </tr>
+      </table>
+      <p class="exc-desc">{{ e.description }}</p>
+      <p class="small"><span class="muted">Review:</span> {{ e.review_status|humanise }}{% if e.reviewed_at %}, {{ e.reviewed_at|sast }}{% endif %}{% if e.reviewer_name %} by {{ e.reviewer_name }}{% endif %}{% if e.contact_method %} via {{ e.contact_method }}{% endif %}{% if e.review_outcome %} · {{ e.review_outcome|humanise }}{% endif %}{% if e.review_note %} · “{{ e.review_note }}”{% endif %}</p>
+      {% if e.anchors or e.photos %}<div class="exc-evidence">{{ exception_evidence(e, tiers) }}</div>{% endif %}
+    </div>
     {% else %}
-    <tr><td colspan="6" class="muted">No exceptions recorded.</td></tr>
+    <p class="muted">No exceptions recorded.</p>
     {% endfor %}
-  </table>
-  <p class="small muted">Each exception carries its own tier. A critical report is {{ tier('anchored') }} only when its
-    raise receipt is on Hedera and today's record and every photo still hash to what it committed; a review or
-    cancellation receipt anchors that action alone and never raises the report's tier. An exception raised before
-    anchoring began, or one whose receipt is pending, failed or no longer matches, is {{ tier('recorded') }}. GPS
-    positions are never part of a receipt and stay {{ tier('recorded') }}. A matching receipt shows these records were
-    not changed after anchoring; it does not prove the incident happened as described, where it happened, or who is
-    liable.</p>
+    <p class="small muted">Each exception carries its own tier. A critical report is {{ tier('anchored') }} only when its
+      raise receipt is on Hedera and today's record and every photo still hash to what it committed; a review or
+      cancellation receipt anchors that action alone and never raises the report's tier. An exception raised before
+      anchoring began, or one whose receipt is pending, failed or no longer matches, is {{ tier('recorded') }}. GPS
+      positions are never part of a receipt and stay {{ tier('recorded') }}. A matching receipt shows these records were
+      not changed after anchoring; it does not prove the incident happened as described, where it happened, or who is
+      liable.</p>
+  </div>
 
   {% if m.investigations %}
-  <h2>Investigations {{ tier('declared') }}</h2>
-  {% for i in m.investigations %}
-  {% set unresolved = i.parcels|selectattr('latest_finding', 'none')|list %}
-  <table class="kv">
-    <tr><th>Incident</th><td><strong>{{ i.reference }}</strong> · {{ i.incident_type|humanise }} · {{ i.confidence|humanise }}</td></tr>
-    <tr><th>What was reported</th><td>{{ i.summary }}</td></tr>
-    <tr><th>Reported by</th><td>{{ i.reporter_role|humanise }} via {{ i.report_channel|humanise }}</td></tr>
-    <tr><th>Reportedly happened</th><td>{{ i.reported_occurred_at|sast if i.reported_occurred_at else 'not stated by the reporter' }}</td></tr>
-    <tr><th>Received by FreightProof</th><td>{{ i.received_at|sast }}</td></tr>
-    {% if i.trip_stopped_at %}<tr><th>Trip stopped</th><td>{{ i.trip_stopped_at|sast }}</td></tr>{% endif %}
-    <tr><th>Investigated by</th><td>{{ i.assigned_to_name or 'unassigned' }}</td></tr>
-    <tr><th>Status / outcome</th><td>{% if i.status == 'closed' %}Closed {{ i.closed_at|sast }} as <strong>{{ i.outcome|humanise }}</strong>: {{ i.closure_reason }}{% else %}<strong>{{ i.status|humanise }}</strong> — not concluded when this pack was generated{% endif %}</td></tr>
-    <tr><th>Affected parcels</th><td>{{ i.parcels|length }}{% if unresolved %}, {{ unresolved|length }} with no finding yet{% endif %}</td></tr>
-  </table>
-  {% if i.parcels %}
-  <table>
-    <tr><th>Parcel</th><th>Scans</th><th>Finding</th></tr>
-    {% for p in i.parcels %}
-    <tr><td class="mono">{{ p.barcode }}</td><td>{{ p.scan_state|humanise }}</td><td>{{ p.latest_finding|humanise if p.latest_finding else 'not established' }}</td></tr>
+  <div id="investigations">
+    <h3><span class="sub-num">3.2</span>Investigations {{ tier('declared') }}</h3>
+    {% for i in m.investigations %}
+    {% set unresolved = i.parcels|selectattr('latest_finding', 'none')|list %}
+    <table class="kv">
+      <tr><th>Incident</th><td><strong>{{ i.reference }}</strong> · {{ i.incident_type|humanise }} · {{ i.confidence|humanise }}</td></tr>
+      <tr><th>What was reported</th><td>{{ i.summary }}</td></tr>
+      <tr><th>Reported by</th><td>{{ i.reporter_role|humanise }} via {{ i.report_channel|humanise }}</td></tr>
+      <tr><th>Reportedly happened</th><td>{{ i.reported_occurred_at|sast if i.reported_occurred_at else 'not stated by the reporter' }}</td></tr>
+      <tr><th>Received by FreightProof</th><td>{{ i.received_at|sast }}</td></tr>
+      {% if i.trip_stopped_at %}<tr><th>Trip stopped</th><td>{{ i.trip_stopped_at|sast }}</td></tr>{% endif %}
+      <tr><th>Investigated by</th><td>{{ i.assigned_to_name or 'unassigned' }}</td></tr>
+      <tr><th>Status / outcome</th><td>{% if i.status == 'closed' %}Closed {{ i.closed_at|sast }} as <strong>{{ i.outcome|humanise }}</strong>: {{ i.closure_reason }}{% else %}<strong>{{ i.status|humanise }}</strong> — not concluded when this pack was generated{% endif %}</td></tr>
+      <tr><th>Affected parcels</th><td>{{ i.parcels|length }}{% if unresolved %}, {{ unresolved|length }} with no finding yet{% endif %}</td></tr>
+    </table>
+    {% if i.parcels %}
+    <table class="grid">
+      <thead><tr><th>Parcel</th><th>Scans</th><th>Finding</th></tr></thead>
+      {% for p in i.parcels %}
+      <tr><td class="mono">{{ p.barcode }}</td><td>{{ p.scan_state|humanise }}</td><td>{{ p.latest_finding|humanise if p.latest_finding else 'not established' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    <h4>Investigation log</h4>
+    <table class="grid">
+      <thead><tr><th class="w-num">#</th><th class="w-time">Recorded</th><th>By</th><th>Entry</th></tr></thead>
+      {% for e in i.entries %}
+      <tr><td>{{ e.sequence }}</td><td>{{ e.recorded_at|sast }}</td><td>{{ e.recorded_by_name or '—' }}</td>
+        <td>{{ e.kind|humanise }}{% if e.external_action %}: {{ e.external_action|humanise }}{% if e.action_at %} at {{ e.action_at|sast }}{% endif %}{% endif %}{% if e.to_value and e.kind not in ['assigned', 'opened'] %} → {{ e.to_value|humanise }}{% endif %}{% if e.note %} · “{{ e.note }}”{% endif %}</td></tr>
+      {% endfor %}
+    </table>
     {% endfor %}
-  </table>
+    <p class="small muted">Investigations are the operator's own record, entered after the events they describe. Each entry
+      is appended, never edited, so the first assessment and everything learned since stand side by side. A missing scan is
+      shown as "no scan in recorded", which is a scan fact, not a finding that a parcel was stolen.</p>
+  </div>
   {% endif %}
-  <table>
-    <tr><th>#</th><th>Recorded</th><th>By</th><th>Entry</th></tr>
-    {% for e in i.entries %}
-    <tr><td>{{ e.sequence }}</td><td>{{ e.recorded_at|sast }}</td><td>{{ e.recorded_by_name or '—' }}</td>
-      <td>{{ e.kind|humanise }}{% if e.external_action %}: {{ e.external_action|humanise }}{% if e.action_at %} at {{ e.action_at|sast }}{% endif %}{% endif %}{% if e.to_value and e.kind not in ['assigned', 'opened'] %} → {{ e.to_value|humanise }}{% endif %}{% if e.note %} · “{{ e.note }}”{% endif %}</td></tr>
+</section>
+
+{# ── 4 Trip, vehicles, driver and cargo (§D–G) ───────────────────────────── #}
+<section id="ch-details" class="chapter">
+  {{ chapter(4, 'Trip, vehicles, driver and cargo', 'Who and what was on this trip, as committed when it was created and as changed during it.') }}
+
+  <div id="plan">
+    <h3><span class="sub-num">4.1</span>Trip plan</h3>
+    <table class="kv">
+      <tr><th>Trip type</th><td>{{ m.trip.trip_type|humanise }}</td></tr>
+      <tr><th>Created</th><td>{{ m.trip.created_at|sast }}</td></tr>
+      <tr><th>Planned departure / arrival</th><td>{{ m.trip.planned_departure_at|sast }} / {{ m.trip.planned_arrival_at|sast }}</td></tr>
+      <tr><th>Actual departure / arrival</th><td>{{ m.trip.actual_departure_at|sast }} / {{ m.trip.actual_arrival_at|sast }}</td></tr>
+      <tr><th>Closed</th><td>{{ m.trip.closed_at|sast }}</td></tr>
+      <tr><th>Tracking trip reference</th><td>{{ m.trip.pulsit_trip_reference_id or '—' }}</td></tr>
+      <tr><th>Journey lock hash</th><td class="mono">{{ m.trip.journey_lock_hash or '—' }}</td></tr>
+    </table>
+    <h4>Stops</h4>
+    <table class="grid">
+      <thead><tr><th class="w-num">#</th><th>Precinct</th><th>Address</th><th class="w-time">Slot</th><th>Geofence</th></tr></thead>
+      {% for s in m.stops %}
+      <tr><td>{{ s.sequence }}</td><td>{{ s.precinct_name }}</td><td>{{ s.address or '—' }}</td><td>{{ s.slot_time|sast }}</td><td>{% if s.geofence_polygon %}Property outline ({{ s.geofence_polygon|length }} corners){% else %}{{ s.geofence_radius_metres }} m radius{% endif %}</td></tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">No stops recorded.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div id="vehicles">
+    <h3><span class="sub-num">4.2</span>Vehicles</h3>
+    <table class="grid">
+      <thead><tr><th>Role</th><th>Registration</th><th>Make / model / year</th><th>VIN</th><th>Licence disc</th><th>Tracker</th></tr></thead>
+      {% for v in m.vehicles %}
+      <tr><td>{{ v.role|humanise }}</td><td><strong>{{ v.registration }}</strong></td>
+        <td>{{ v.make or '—' }} {{ v.model or '' }} {{ v.year or '' }}</td><td class="mono">{{ v.vin_number or '—' }}</td>
+        <td>{{ v.licence_disc_expiry or 'not recorded' }}{% if v.licence_disc_valid_on_trip_date is true %} <span class="ok">valid on trip date</span>{% elif v.licence_disc_valid_on_trip_date is false %} <span class="flag">expired on trip date</span>{% endif %}</td>
+        <td>{{ v.tracker_device_id }}</td></tr>
+      {% endfor %}
+    </table>
+    {% if m.record_changes %}
+    <h4>Driver and vehicle record changes during the trip</h4>
+    <table class="grid">
+      <thead><tr><th class="w-time">When</th><th>Record</th><th>Change</th><th>Fields</th><th class="w-tier">Tier</th></tr></thead>
+      {% for c in m.record_changes %}
+      <tr><td>{{ c.changed_at|sast }}</td><td>{{ c.subject|humanise }}</td><td>{{ c.event_type|humanise }}</td><td>{{ c.changed_fields|join(', ') or '—' }}</td><td>{{ tier(c.tier) }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+
+  <div id="driver">
+    <h3><span class="sub-num">4.3</span>Driver</h3>
+    <table class="kv">
+      <tr><th>Name</th><td>{{ m.driver.full_name }}</td></tr>
+      <tr><th>Identity number</th><td>{{ m.driver.id_number }}{% if m.driver.id_number_masked %} <span class="muted small">(masked)</span>{% endif %}</td></tr>
+      <tr><th>Licence number</th><td>{{ m.driver.license_number }}</td></tr>
+      <tr><th>Licence expiry</th><td>{{ m.driver.license_expiry or 'not recorded' }}{% if m.driver.license_valid_on_trip_date is true %} <span class="ok">valid on trip date</span>{% elif m.driver.license_valid_on_trip_date is false %} <span class="flag">expired on trip date</span>{% endif %}</td></tr>
+      <tr><th>Professional driving permit (PrDP)</th><td class="muted">Not recorded by FreightProof</td></tr>
+      <tr><th>Identity check for this trip{% if m.driver.substitutions %} (original driver, at the start){% endif %}</th><td>{{ m.driver.trip_idvs_status|humanise }}{% if m.driver.trip_idvs_checked_at %}, {{ m.driver.trip_idvs_checked_at|sast }}{% endif %}</td></tr>
+    </table>
+    {% if m.driver.substitutions %}
+    <h4>Driver substitutions</h4>
+    {% for s in m.driver.substitutions %}
+    <div class="handover">
+      <table class="exc-head">
+        <tr>
+          <td class="exc-id">{{ s.sequence_number if s.sequence_number is not none else '—' }}</td>
+          <td><strong>{{ s.original_driver_name }} → {{ s.substituting_driver_name }}</strong>
+            <br><span class="small muted">{{ s.substitution_at|sast }} · {{ s.exchange_location if s.exchange_location is not none else 'No planned exchange point' }} · planned: {{ ('Yes' if s.is_planned else 'No') if s.is_planned is not none else 'Not supplied' }}</span></td>
+          <td class="exc-tier">{{ tier(s.tier) }}</td>
+        </tr>
+      </table>
+      {% if s.sequence_number is not none %}
+      <div class="handover-body small">
+        <p>Arranged by {{ s.arranged_by_name or 'unknown' }}; completed by {{ s.completed_by_name or 'unknown' }} ({{ s.completed_by or 'actor not recorded' }}){% if s.completed_by_driver_id %} · driver {{ s.completed_by_driver_id }}{% endif %}{% if s.completed_by_user_id %} · dispatcher {{ s.completed_by_user_id }}{% endif %}{% if s.completion_mode %} ({{ s.completion_mode|humanise }}){% endif %}.
+          Incoming driver identity at completion: {{ (s.incoming_identity_status or 'not recorded')|humanise }}{% if s.identity_attested_by_name %}; unavailable verification attested by {{ s.identity_attested_by_name }}{% if s.identity_attested_at %}, {{ s.identity_attested_at|sast }}{% endif %}{% endif %}.</p>
+        {% if s.confirmation_policy == 'incoming_acceptance_v2' %}<p>Dispatcher authorised; incoming driver acceptance required. Outgoing driver: Not requested — notification only.</p>{% endif %}
+        {% if s.identity_attestation_reason %}<p>Identity attestation reason: {{ s.identity_attestation_reason }}</p>{% endif %}
+        {% if s.missing_confirmation_reason %}<p>Missing driver confirmation: {{ s.missing_confirmation_reason }}.</p>{% endif %}
+        {% for d in s.declarations %}<p>{{ d.role|humanise }} declaration by {{ d.driver_name }}, captured {{ d.captured_at|sast }} (received {{ d.received_at|sast }}){% if not d.location_recorded %}, position unavailable ({{ d.location_unavailable_reason or 'reason not recorded' }}){% else %}, phone {{ d.latitude }}, {{ d.longitude }} (accuracy {{ d.accuracy_metres }} m){% endif %}; observed {{ d.location_observed_at|sast if d.location_observed_at else 'time not recorded' }}; observation metadata {{ 'covered by custody commitment' if d.location_observation_committed else 'not covered by legacy custody commitment' }}: {{ d.seal_readings|join('; ') or 'no seal readings' }}{% if d.photo_sha256 %}; {{ d.photo_sha256|length }} photo(s){% endif %}{% if d.discrepancy_note %}; note: {{ d.discrepancy_note }}{% endif %}</p>{% endfor %}
+        {% for c in s.corrections %}<p>Clarification {{ c.recorded_at|sast }} by {{ c.recorded_by_name or 'unknown' }} ({{ c.recorded_by_user_id }}): {{ c.reason }} — {{ c.correction_note }}. Hash <code>{{ c.event_hash or 'not recorded' }}</code>; anchor {{ c.anchor_status or 'not recorded' }}{% if c.receipt_id %}; receipt {{ c.receipt_id }}{% endif %}.</p>{% endfor %}
+        {% if s.commitment_sha256 %}<p>Commitment: <code>{{ s.commitment_sha256 }}</code></p>{% endif %}
+      </div>
+      {% endif %}
+    </div>
     {% endfor %}
-  </table>
-  {% endfor %}
-  <p class="small muted">Investigations are the operator's own record, entered after the events they describe. Each entry
-    is appended, never edited, so the first assessment and everything learned since stand side by side. A missing scan is
-    shown as "no scan in recorded", which is a scan fact, not a finding that a parcel was stolen.</p>
-  {% endif %}
+    {% endif %}
+    {% if m.late_evidence %}
+    <h4>Late driver evidence</h4>
+    <p class="small muted">Captured in an earlier custody period and retained for review. It completed no phase; its hash is a local commitment, not a Hedera receipt.</p>
+    <table class="grid">
+      <thead><tr><th>Driver</th><th>Period</th><th>Kind</th><th class="w-time">Captured</th><th class="w-time">Received</th><th>Status</th></tr></thead>
+      {% for e in m.late_evidence %}
+      <tr><td>{{ e.driver_name }}</td><td>{{ e.custody_sequence }}</td><td>{{ e.kind|humanise }}</td><td>{{ e.captured_at|sast }}</td><td>{{ e.received_at|sast }}</td><td>{{ e.status|humanise }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+
+  <div id="cargo">
+    <h3><span class="sub-num">4.4</span>Cargo and consignments</h3>
+    {% for c in m.consignments %}
+    <div class="consignment">
+      <h4>{{ c.parcel_perfect_reference }}{% if c.client_name %} · {{ c.client_name }}{% endif %}</h4>
+      <p class="small">Declared value <strong>{% if c.declared_value is not none %}{{ rand(c.declared_value) }}{% else %}not declared{% endif %}</strong>
+        · parcels expected {{ c.parcel_count_expected if c.parcel_count_expected is not none else '—' }}
+        · units expected {{ c.unit_count_expected if c.unit_count_expected is not none else '—' }}</p>
+      {% if c.parcels %}
+      <table class="grid">
+        <thead><tr><th>Barcode</th><th>Status</th><th>Scanned out</th><th>Scanned in</th></tr></thead>
+        {% for p in c.parcels %}
+        <tr><td class="mono">{{ p.barcode }}</td><td>{{ p.status|humanise }}</td><td>{{ p.pp_scan_out_at|sast }}</td><td>{{ p.pp_scan_in_at|sast }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="muted">No consignments are linked to this trip.</p>
+    {% endfor %}
+  </div>
 </section>
 
-{# ── §L Location evidence ────────────────────────────────────────────────── #}
-<section id="location" class="page">
-  <h2>Location evidence</h2>
-  <div class="route">{{ route_svg|safe }}</div>
-  <p class="small muted">Green circles and outlines: route precincts (geofence to scale). Blue line: driver-phone trail. Grey dashes:
-    periods with no position. Purple squares: tracker fixes. Blue dots: checkpoints. Red diamonds: exceptions (E-numbers
-    as in the exception log). No third-party map service was used to draw this.</p>
-  {% set cov = m.location_coverage %}
-  <table class="kv">
-    <tr><th>Window assessed</th><td>{{ cov.window_start|sast }} → {{ cov.window_end|sast }}</td></tr>
-    <tr><th>Fixes by source</th><td>{% for source, n in cov.fix_counts.items() %}{{ source|humanise }}: {{ n }}{% if not loop.last %} · {% endif %}{% else %}none{% endfor %}</td></tr>
-    <tr><th>First / last fix</th><td>{{ cov.first_fix_at|sast }} / {{ cov.last_fix_at|sast }}</td></tr>
-    <tr><th>Coverage gaps</th><td>{{ cov.gaps|length }}</td></tr>
-  </table>
-  {% if cov.gaps %}
-  <table>
-    <tr><th>From</th><th>To</th><th>Length</th></tr>
-    {% for g in cov.gaps %}<tr><td>{{ g.start|sast }}</td><td>{{ g.end|sast }}</td><td>{{ g.minutes }} min</td></tr>{% endfor %}
-  </table>
-  {% endif %}
-  {% if cov.stationary_periods %}
-  <h3>Stationary periods outside route precincts</h3>
-  <table>
-    <tr><th>From</th><th>To</th><th>Length</th><th>Near</th></tr>
-    {% for s in cov.stationary_periods %}<tr><td>{{ s.start|sast }}</td><td>{{ s.end|sast }}</td><td>{{ s.minutes }} min</td><td>{{ '%.4f'|format(s.lat) }}, {{ '%.4f'|format(s.lng) }}</td></tr>{% endfor %}
-  </table>
-  {% endif %}
-  <p class="caveat">Phone positions are recorded only while the driver app is in use; the vehicle tracker is queried at
-    handshakes and checkpoints. The absence of a position is not evidence that the vehicle was stationary, and a straight
-    line between two positions is not evidence of the route driven.</p>
+{# ── 5 Verification: integrity appendix and methodology (§M, §N) ────────── #}
+<section id="ch-verification" class="chapter">
+  {{ chapter(5, 'Verification', 'Whether any record has been changed since it was made, how anyone can check that independently, and how the records were produced.') }}
+
+  <div id="unchanged">
+    <h3><span class="sub-num">5.1</span>Has anything been changed?</h3>
+    <p>When each of these records was made, its fingerprint was published on Hedera, a public ledger FreightProof cannot
+      alter. A record that still matches its fingerprint has not been changed since.</p>
+    <table class="grid">
+      <thead><tr><th class="w-num">#</th><th>Record</th><th class="w-time">Published</th><th class="w-status">Status</th></tr></thead>
+      {% for r in anchored %}
+      <tr><td>R{{ loop.index }}</td><td>{{ receipt_label(r.receipt_type, r.subject_type) }}</td><td>{{ r.hedera_consensus_at|sast if r.hedera_consensus_at else 'not yet on the ledger' }}</td>
+        <td>{% if r.payload_matches_hash %}<span class="ok">Unchanged</span>{% else %}<span class="flag">Changed after it was published</span>{% endif %}</td></tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No records from this trip were published to the ledger.</td></tr>
+      {% endfor %}
+    </table>
+    <p class="small muted">An unchanged record shows it was not altered after it was published. It does not prove the
+      events happened as described, or who is at fault. Anyone can repeat this check with the steps in 5.2.</p>
+  </div>
+
+  <div id="integrity">
+    <h3><span class="sub-num">5.2</span>Technical appendix: integrity receipts</h3>
+    <p>For independent verification. Each record below was reduced to a SHA-256 fingerprint and that fingerprint alone was published to the Hedera
+      Consensus Service. No personal information is published. To check any record without relying on FreightProof:</p>
+    <ol class="steps">
+      <li>Take the canonical payload exactly as printed (compact JSON, keys in alphabetical order).</li>
+      <li>Compute its SHA-256 hash, encoded as UTF-8. It must equal the data hash shown.</li>
+      <li>Open the Hedera mirror-node address shown and base64-decode the <span class="mono">message</span> field.
+        It must equal the same data hash. The consensus timestamp shows when Hedera received it.</li>
+    </ol>
+    {% for r in anchored %}
+    <div class="receipt">
+      <p class="receipt-title"><span class="receipt-num">R{{ loop.index }}</span>{{ receipt_label(r.receipt_type, r.subject_type) }} <span class="small muted">({{ r.receipt_type|humanise }} · {{ r.subject_type|humanise }})</span>
+        <span class="receipt-state">{% if r.payload_matches_hash %}<span class="ok">Stored payload matches hash: Yes</span>{% else %}<span class="flag">Stored payload matches hash: No — stored record altered after anchoring</span>{% endif %}</span></p>
+      <table class="kv kv-compact">
+        <tr><th>Data hash (SHA-256)</th><td colspan="3" class="mono">{{ r.data_hash }}</td></tr>
+        <tr><th>Hedera topic / sequence</th><td>{{ r.hedera_topic_id or '—' }} / {{ r.hedera_sequence_number if r.hedera_sequence_number is not none else '—' }}</td><th>Consensus time</th><td>{{ r.hedera_consensus_at|sast }}</td></tr>
+        <tr><th>Transaction</th><td colspan="3" class="mono">{{ r.hedera_tx_id or '—' }}</td></tr>
+        <tr><th>Mirror node</th><td colspan="3" class="mono">{{ mirror_urls[r.receipt_id] or '—' }}</td></tr>
+      </table>
+      <pre class="payload">{{ r.canonical_payload }}</pre>
+    </div>
+    {% else %}
+    <p class="muted">No Hedera receipts are linked to this trip.</p>
+    {% endfor %}
+  </div>
+
+  {# §N Methodology (ECT Act s15(3)) #}
+  <div id="methodology">
+    <h3><span class="sub-num">5.3</span>How these records were produced</h3>
+    <p class="small muted">Structured around the factors section 15(3) of the Electronic Communications and Transactions Act
+      25 of 2002 directs a court to consider when weighing a data message.</p>
+    <h4>How the records were generated</h4>
+    <p>Custody events are captured by the driver in the FreightProof app at each handshake, with the phone's position and
+      time. The vehicle's tracker (Pulsit) is queried independently at the same moment. Parcel scans come from Parcel
+      Perfect. Driver identity checks come from an identity verification service. Each record carries the time the device
+      captured it and the time the server received it.</p>
+    <h4>How the records were stored</h4>
+    <p>Records are held in a PostgreSQL database hosted in South Africa (af-south-1). Photos and documents are held in
+      object storage, each with the SHA-256 hash of its bytes recorded at upload. The phase ledger is append-only: phases are
+      completed, never rewritten.</p>
+    <h4>How their integrity was maintained</h4>
+    <p>At trip creation, departure and delivery confirmation, a canonical summary of the record — including the hashes of the
+      seal, waybill and proof-of-delivery images — is hashed and published to the Hedera Consensus Service, a public ledger
+      FreightProof cannot alter. A later change to any committed value no longer matches its published hash, and this pack
+      reports every such mismatch. Records marked Recorded are not published and rely on FreightProof's own controls.</p>
+    <h4>How originators were identified</h4>
+    <p>Drivers and dispatchers sign in with individual accounts; every record stores the account that made it. Dispatcher
+      overrides are recorded with the dispatcher and their stated reason.</p>
+  </div>
 </section>
 
-{# ── §M Integrity appendix ───────────────────────────────────────────────── #}
-<section id="integrity" class="page">
-  <h2>Integrity appendix</h2>
-  <p>Each record below was reduced to a SHA-256 fingerprint and that fingerprint alone was published to the Hedera
-    Consensus Service. No personal information is published. To check any record without relying on FreightProof:</p>
-  <ol>
-    <li>Take the canonical payload exactly as printed (compact JSON, keys in alphabetical order).</li>
-    <li>Compute its SHA-256 hash, encoded as UTF-8. It must equal the data hash shown.</li>
-    <li>Open the Hedera mirror-node address shown and base64-decode the <span class="mono">message</span> field.
-      It must equal the same data hash. The consensus timestamp shows when Hedera received it.</li>
-  </ol>
-  {% for r in anchored %}
-  <h3>{{ r.receipt_type|humanise }} · {{ r.subject_type|humanise }}</h3>
-  <table class="kv">
-    <tr><th>Data hash (SHA-256)</th><td class="mono">{{ r.data_hash }}</td></tr>
-    <tr><th>Stored payload matches hash</th><td>{% if r.payload_matches_hash %}<span class="ok">Yes</span>{% else %}<span class="flag">No — stored record altered after anchoring</span>{% endif %}</td></tr>
-    <tr><th>Hedera topic / sequence</th><td>{{ r.hedera_topic_id or '—' }} / {{ r.hedera_sequence_number if r.hedera_sequence_number is not none else '—' }}</td></tr>
-    <tr><th>Transaction</th><td class="mono">{{ r.hedera_tx_id or '—' }}</td></tr>
-    <tr><th>Consensus time</th><td>{{ r.hedera_consensus_at|sast }}</td></tr>
-    <tr><th>Mirror node</th><td class="mono">{{ mirror_urls[r.receipt_id] or '—' }}</td></tr>
-  </table>
-  <pre class="payload">{{ r.canonical_payload }}</pre>
-  {% else %}
-  <p class="muted">No Hedera receipts are linked to this trip.</p>
-  {% endfor %}
+{# ── 6 Data protection (§P) ──────────────────────────────────────────────── #}
+<section id="ch-data-protection" class="chapter">
+  {{ chapter(6, 'Data protection', none) }}
+  <div id="data-protection">
+    <p>This pack contains personal information processed under the Protection of Personal Information Act 4 of 2013{% if issue %}
+      and was issued to {{ issue.recipient_name }} ({{ issue.recipient_organization }}) solely for the purpose of
+      {{ purpose_label|lower }}{% endif %}. Only fingerprints of records, never personal information, are published to Hedera.</p>
+    <h4>Withheld from this pack</h4>
+    <ul>
+      {% for r in m.redactions %}<li>{{ r }}</li>{% else %}<li>Nothing was withheld.</li>{% endfor %}
+    </ul>
+  </div>
 </section>
 
-{# ── §N Methodology (ECT Act s15(3)) ─────────────────────────────────────── #}
-<section id="methodology" class="page">
-  <h2>How these records were produced</h2>
-  <p class="small muted">Structured around the factors section 15(3) of the Electronic Communications and Transactions Act
-    25 of 2002 directs a court to consider when weighing a data message.</p>
-  <h3>How the records were generated</h3>
-  <p>Custody events are captured by the driver in the FreightProof app at each handshake, with the phone's position and
-    time. The vehicle's tracker (Pulsit) is queried independently at the same moment. Parcel scans come from Parcel
-    Perfect. Driver identity checks come from an identity verification service. Each record carries the time the device
-    captured it and the time the server received it.</p>
-  <h3>How the records were stored</h3>
-  <p>Records are held in a PostgreSQL database hosted in South Africa (af-south-1). Photos and documents are held in
-    object storage, each with the SHA-256 hash of its bytes recorded at upload. The phase ledger is append-only: phases are
-    completed, never rewritten.</p>
-  <h3>How their integrity was maintained</h3>
-  <p>At trip creation, departure and delivery confirmation, a canonical summary of the record — including the hashes of the
-    seal, waybill and proof-of-delivery images — is hashed and published to the Hedera Consensus Service, a public ledger
-    FreightProof cannot alter. A later change to any committed value no longer matches its published hash, and this pack
-    reports every such mismatch. Records marked Recorded are not published and rely on FreightProof's own controls.</p>
-  <h3>How originators were identified</h3>
-  <p>Drivers and dispatchers sign in with individual accounts; every record stores the account that made it. Dispatcher
-    overrides are recorded with the dispatcher and their stated reason.</p>
-</section>
-
-{# ── §O Certificate (ECT Act s15(4)) ─────────────────────────────────────── #}
-<section id="certificate" class="page">
-  <h2>Certificate of correct extract</h2>
-  <p class="small muted">TEMPLATE — this wording has not been reviewed by a legal practitioner and should be confirmed before
-    the pack is relied on in proceedings.</p>
-  <p>In terms of section 15(4) of the Electronic Communications and Transactions Act 25 of 2002, I, the undersigned, in my
-    capacity as an officer in the service of <strong>{{ m.trip.operator_name }}</strong>, certify that this document
-    {% if issue %}({{ issue.pack_label }}){% endif %} is a correct printout of and extract from data messages made in the
-    ordinary course of business by {{ m.trip.operator_name }} relating to trip {{ m.trip.trip_reference }}.</p>
-  <table class="kv">
-    <tr><th>Full name</th><td><div class="signature-line"></div></td></tr>
-    <tr><th>Position</th><td><div class="signature-line"></div></td></tr>
-    <tr><th>Signature</th><td><div class="signature-line"></div></td></tr>
-    <tr><th>Date and place</th><td><div class="signature-line"></div></td></tr>
-  </table>
-  <p class="small muted">Commissioner of oaths (optional):</p>
-  <div class="signature-line"></div>
-</section>
-
-{# ── §P Data protection ──────────────────────────────────────────────────── #}
-<section id="data-protection">
-  <h2>Data protection</h2>
-  <p>This pack contains personal information processed under the Protection of Personal Information Act 4 of 2013{% if issue %}
-    and was issued to {{ issue.recipient_name }} ({{ issue.recipient_organization }}) solely for the purpose of
-    {{ purpose_label|lower }}{% endif %}. Only fingerprints of records, never personal information, are published to Hedera.</p>
-  <h3>Withheld from this pack</h3>
-  <ul>
-    {% for r in m.redactions %}<li>{{ r }}</li>{% else %}<li>Nothing was withheld.</li>{% endfor %}
-  </ul>
+{# ── 7 Certificate (ECT Act s15(4), §O) — last, so it is the page that gets signed ── #}
+<section id="ch-certificate" class="chapter chapter-tail">
+  {{ chapter(7, 'Certificate of correct extract', none) }}
+  <div id="certificate">
+    <p class="small muted">TEMPLATE — this wording has not been reviewed by a legal practitioner and should be confirmed before
+      the pack is relied on in proceedings.</p>
+    <p>In terms of section 15(4) of the Electronic Communications and Transactions Act 25 of 2002, I, the undersigned, in my
+      capacity as an officer in the service of <strong>{{ m.trip.operator_name }}</strong>, certify that this document
+      {% if issue %}({{ issue.pack_label }}){% endif %} is a correct printout of and extract from data messages made in the
+      ordinary course of business by {{ m.trip.operator_name }} relating to trip {{ m.trip.trip_reference }}.</p>
+    <table class="kv signatures">
+      <tr><th>Full name</th><td><div class="signature-line"></div></td></tr>
+      <tr><th>Position</th><td><div class="signature-line"></div></td></tr>
+      <tr><th>Signature</th><td><div class="signature-line"></div></td></tr>
+      <tr><th>Date and place</th><td><div class="signature-line"></div></td></tr>
+    </table>
+    <p class="small muted">Commissioner of oaths (optional):</p>
+    <div class="signature-line"></div>
+  </div>
 </section>
 </body>
 </html>

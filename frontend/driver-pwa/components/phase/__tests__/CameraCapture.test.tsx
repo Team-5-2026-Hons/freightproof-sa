@@ -2,6 +2,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CameraCapture } from '../CameraCapture'
+import { __resetRestoredPhotoForTests, captureKey, markCapturePending, receiveRestoredPhoto } from '@/lib/camera/restored-photo'
 
 const SAMPLE_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -336,5 +337,86 @@ describe('CameraCapture retake', () => {
     fireEvent.click(screen.getByText('Retake'))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith(RETAKEN))
+  })
+})
+
+describe('CameraCapture after Android reclaimed the WebView mid-capture', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    __resetRestoredPhotoForTests()
+  })
+
+  it('test_claims_the_restored_photo_into_its_own_draft_on_mount', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).toHaveBeenCalledWith(SAMPLE_DATA_URL)
+  })
+
+  it('test_does_not_take_another_controls_restored_photo', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="POD photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).not.toHaveBeenCalled()
+  })
+
+  it('test_marks_the_capture_pending_while_the_camera_is_open_and_clears_it_after', async () => {
+    mockIsNativePlatform.mockReturnValue(true)
+    let pendingWhileOpen: string | null = null
+    mockGetPhoto.mockImplementation(async () => {
+      pendingWhileOpen = window.localStorage.getItem('fp:pending-camera-capture')
+      return { dataUrl: SAMPLE_DATA_URL }
+    })
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Take Photo/ }))
+
+    await waitFor(() => expect(mockGetPhoto).toHaveBeenCalled())
+    expect(pendingWhileOpen).toContain('Seal photo')
+    await waitFor(() => expect(window.localStorage.getItem('fp:pending-camera-capture')).toBeNull())
+  })
+})
+
+// Tim, 21 Oct: after the linehaul scan the sheet sat there looking finished while the PDF
+// was still building, and the only sign of the wait was the swipe's label — which the
+// driver is not looking at. The veil puts the wait on the thing causing it.
+describe('CameraCapture busy veil', () => {
+  it('test_lays_a_veil_and_a_spinner_over_the_capture_while_it_is_being_processed', () => {
+    render(
+      <CameraCapture
+        label="Linehaul sheet"
+        dataUrl={SAMPLE_DATA_URL}
+        onCapture={vi.fn()}
+        busy
+        busyLabel="Preparing the PDF"
+      />,
+    )
+
+    const veil = screen.getByRole('status', { name: 'Preparing the PDF' })
+
+    expect(veil).toBeInTheDocument()
+    // Faint, not opaque: the driver must still be able to read the sheet they captured.
+    expect(veil.className).toContain('bg-black/35')
+  })
+
+  it('test_the_capture_and_its_retake_stay_readable_through_the_veil', () => {
+    render(
+      <CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} busy />,
+    )
+
+    expect(screen.getByAltText('Linehaul sheet')).toBeInTheDocument()
+    expect(screen.getByText('Retake')).toBeInTheDocument()
+  })
+
+  it('test_no_veil_once_the_step_is_done_with_the_capture', () => {
+    render(<CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

@@ -7,7 +7,8 @@ import {
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import { STEP_NAMES } from '@shared/lib/constants/phase-meta'
 import {
-  actionablePhase, contextPhaseEventId, currentPhase, isAnchored, isDriving, planProgress, stepsFor,
+  actionablePhase, contextPhaseEventId, currentPhase, isAnchored, isDriving, isFinalPhase, planProgress,
+  stepsFor,
 } from '../derive'
 
 // Marks every phase up to and including `through` (by sequence_number) as completed.
@@ -333,5 +334,31 @@ describe('contextPhaseEventId', () => {
 
   it('is null on an empty plan', () => {
     expect(contextPhaseEventId([])).toBeNull()
+  })
+})
+
+describe('isFinalPhase', () => {
+  it('is true only for the last row of a single-leg plan', () => {
+    const last = SINGLE_LEG_PHASE_PLAN[SINGLE_LEG_PHASE_PLAN.length - 1]
+
+    expect(isFinalPhase(SINGLE_LEG_PHASE_PLAN, last)).toBe(true)
+    expect(SINGLE_LEG_PHASE_PLAN.filter((p) => isFinalPhase(SINGLE_LEG_PHASE_PLAN, p))).toHaveLength(1)
+  })
+
+  it('is false for the FIRST confirmation of a cross-dock plan', () => {
+    // The regression this helper exists to prevent: "phase_type === confirmation" would
+    // end the trip at the first drop-off of a multi-stop plan.
+    const firstConfirmation = CROSS_DOCK_PHASE_PLAN.find((p) => p.phase_type === 'confirmation')
+    const last = CROSS_DOCK_PHASE_PLAN[CROSS_DOCK_PHASE_PLAN.length - 1]
+
+    expect(firstConfirmation).toBeDefined()
+    expect(isFinalPhase(CROSS_DOCK_PHASE_PLAN, last)).toBe(true)
+    if (firstConfirmation !== undefined && firstConfirmation.sequence_number !== last.sequence_number) {
+      expect(isFinalPhase(CROSS_DOCK_PHASE_PLAN, firstConfirmation)).toBe(false)
+    }
+  })
+
+  it('is false against an empty plan', () => {
+    expect(isFinalPhase([], SINGLE_LEG_PHASE_PLAN[0])).toBe(false)
   })
 })

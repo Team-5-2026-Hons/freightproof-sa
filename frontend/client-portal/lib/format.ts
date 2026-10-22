@@ -12,7 +12,11 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 export function formatSast(iso: string | null | undefined): string {
   if (!iso) return '—'
-  const parts = Object.fromEntries(SAST.formatToParts(new Date(iso)).map((p) => [p.type, p.value]))
+  const instant = new Date(iso)
+  // formatToParts throws a RangeError on an invalid date, which would blank the whole page
+  // for one malformed timestamp; a dash says "no usable time" and the rest still renders.
+  if (Number.isNaN(instant.getTime())) return '—'
+  const parts = Object.fromEntries(SAST.formatToParts(instant).map((p) => [p.type, p.value]))
   return `${parts.day} ${MONTHS[Number(parts.month) - 1]} ${parts.year} ${parts.hour}:${parts.minute} SAST`
 }
 
@@ -32,4 +36,9 @@ export function formatRand(value: string | null): string {
   if (value == null) return 'not declared'
   // Grouping fixed to match the PDF's "R 125,000.00" — the same pack must print one figure.
   return `R ${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** "1 record" / "3 records": counts in prose must agree with their noun. */
+export function pluralise(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
 }

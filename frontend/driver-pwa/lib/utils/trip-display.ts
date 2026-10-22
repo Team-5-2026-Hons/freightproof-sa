@@ -64,17 +64,27 @@ export function pastOutcome(trip: DriverTripSummary): PastOutcome {
   return { tone: 'neutral', text: `Delivered · ${late} late` }
 }
 
-const WEEKDAY = new Intl.DateTimeFormat('en-ZA', { weekday: 'short' })
-const DAY = new Intl.DateTimeFormat('en-ZA', { day: 'numeric' })
+// Built on first use, not at import: this module is on every screen's load path and the
+// two formatters were a measurable slice of the cold-start module-evaluation task (see
+// lib/utils/format-time.ts for the same reasoning).
+let weekdayFormat: Intl.DateTimeFormat | null = null
+let dayFormat: Intl.DateTimeFormat | null = null
 
 /** The date tile on a trip row: "SAT" over "9". Null for an unscheduled trip. */
 export function dayTile(iso: string | null): { weekday: string; day: string } | null {
   if (iso === null) return null
+  weekdayFormat ??= new Intl.DateTimeFormat('en-ZA', { weekday: 'short' })
+  dayFormat ??= new Intl.DateTimeFormat('en-ZA', { day: 'numeric' })
   const date = new Date(iso)
-  return { weekday: WEEKDAY.format(date).toUpperCase().replace('.', ''), day: String(Number(DAY.format(date))) }
+  return { weekday: weekdayFormat.format(date).toUpperCase().replace('.', ''), day: String(Number(dayFormat.format(date))) }
 }
 
-const MONTH = new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' })
+// Built on first use, like the tile formatters above.
+let monthFormat: Intl.DateTimeFormat | null = null
+function monthLabel(iso: string): string {
+  monthFormat ??= new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' })
+  return monthFormat.format(new Date(iso))
+}
 const UNSCHEDULED = 'Unscheduled'
 
 export interface MonthGroup {
@@ -96,7 +106,7 @@ export function groupByMonth(trips: readonly DriverTripSummary[]): MonthGroup[] 
       unscheduled.push(trip)
       continue
     }
-    const label = MONTH.format(new Date(at))
+    const label = monthLabel(at)
     const last = groups[groups.length - 1]
     if (last?.label === label) last.trips.push(trip)
     else groups.push({ label, trips: [trip] })

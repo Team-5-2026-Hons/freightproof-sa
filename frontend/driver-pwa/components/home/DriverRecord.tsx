@@ -19,7 +19,11 @@ export function DriverRecord({ record }: DriverRecordProps) {
     <section aria-labelledby="driver-record-heading" className="flex flex-col gap-3">
       <SectionHeading id="driver-record-heading" title="Your record" className="px-1" />
       {/* A description list: each figure is announced with its label, not as a bare number. */}
-      <dl className="grid grid-cols-3 gap-2.5">
+      {/* auto-fit, not grid-cols-3: that is minmax(0, 1fr), which let a tile be narrower than
+          its figure — "100%" overran its tile and the next tile painted over the "%". The
+          6rem floor scales with Dynamic Type, so three tiles sit in a row at normal sizes
+          and drop to fewer per row, rather than clip, once the figures grow. */}
+      <dl className="grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] gap-2.5">
         <Figure value={String(record.completed)} label="Trips done" />
         <Figure value={onTime} label="On time" />
         <Figure value={String(record.underReview)} label="Under review" />

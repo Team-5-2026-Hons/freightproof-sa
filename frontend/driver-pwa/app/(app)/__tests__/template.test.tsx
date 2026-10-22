@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import AppTemplate from '../template'
 import { markTransition, peekTransition, resetTransition } from '@/lib/navigation/transition-direction'
 import { useEdgeBackHandler } from '@/lib/navigation/edge-back'
+import { RESUME_SCREEN_KEY, __resetColdStartForTests, rememberScreen } from '@/lib/navigation/resume'
+import { __resetCustodyContextForTests } from '@/lib/session/custody-context'
 
 // jsdom ships no PointerEvent, so Testing Library would fall back to a bare Event and drop
 // clientX — every swipe would read as "didn't move" and the negative tests below would pass
@@ -20,8 +22,10 @@ class PointerEventPolyfill extends MouseEvent {
 window.PointerEvent = PointerEventPolyfill
 
 let mockPathname = '/trips'
+const mockReplace = vi.fn()
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
+  useRouter: () => ({ replace: mockReplace, push: vi.fn(), back: vi.fn() }),
 }))
 
 function wrapper(): HTMLElement {
@@ -31,6 +35,12 @@ function wrapper(): HTMLElement {
 beforeEach(() => {
   resetTransition()
   mockPathname = '/trips'
+  mockReplace.mockClear()
+  window.localStorage.clear()
+  __resetCustodyContextForTests()
+  // Every test is its own launch; the suites below mount screens mid-session on purpose.
+  __resetColdStartForTests()
+  render(<AppTemplate><p>warm-up</p></AppTemplate>).unmount()
 })
 
 describe('AppTemplate screen transitions', () => {
@@ -202,5 +212,62 @@ describe('AppTemplate left-edge swipe back', () => {
     render(<AppTemplate><p>screen</p></AppTemplate>)
 
     expect(wrapper()).not.toHaveClass('touch-pan-y')
+  })
+})
+
+// Android recreates the WebView after the document scanner or camera; the app then starts
+// on Home and the driver's step is gone. The first screen of a session puts them back.
+describe('AppTemplate cold-start resume (linehaul scan drop-out)', () => {
+  const STEP = '/trip/phase/loading/step/1-linehaul'
+
+  beforeEach(() => {
+    __resetColdStartForTests()
+  })
+
+  it('test_a_cold_start_on_home_replays_the_remembered_step', () => {
+    // Arrange — the previous session left the driver on the linehaul step (no account in
+    // this harness, so the record is bound to a null actor, as the check below is).
+    rememberScreen(STEP, null)
+    mockPathname = '/'
+    markTransition('none')
+
+    // Act
+    render(<AppTemplate><p>screen</p></AppTemplate>)
+
+    // Assert — replaced, not pushed: Home is never left on the back stack under the step.
+    expect(mockReplace).toHaveBeenCalledWith(STEP)
+    expect(window.localStorage.getItem(RESUME_SCREEN_KEY)).toBeNull()
+  })
+
+  it('test_home_within_a_session_is_just_home', () => {
+    mockPathname = STEP
+    render(<AppTemplate><p>step</p></AppTemplate>).unmount()
+    mockPathname = '/'
+    markTransition('none')
+
+    render(<AppTemplate><p>home</p></AppTemplate>)
+
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  it('test_a_step_screen_is_remembered_and_a_tab_root_forgets_it', () => {
+    mockPathname = STEP
+    render(<AppTemplate><p>step</p></AppTemplate>).unmount()
+    expect(window.localStorage.getItem(RESUME_SCREEN_KEY)).toContain(STEP)
+
+    mockPathname = '/trips'
+    markTransition('none')
+    render(<AppTemplate><p>trips</p></AppTemplate>)
+
+    expect(window.localStorage.getItem(RESUME_SCREEN_KEY)).toBeNull()
+  })
+
+  it('test_a_cold_start_on_a_deep_link_is_left_alone', () => {
+    rememberScreen(STEP, null)
+    mockPathname = '/trip/in-transit'
+
+    render(<AppTemplate><p>screen</p></AppTemplate>)
+
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 })

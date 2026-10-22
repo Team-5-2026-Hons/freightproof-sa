@@ -25,7 +25,7 @@ from app.db.models.driver_substitutions import (
     DriverSubstitutionConfirmation, DriverSubstitutionConfirmationArtifact, DriverSubstitutionNotice,
     DriverSubstitutionRequest, DriverSubstitutionUpload,
 )
-from app.db.models.enums import ArtifactType, DispatcherRole, IdvsStatus, TripStatus, TripType
+from app.db.models.enums import ArtifactType, DispatcherRole, IdvsStatus, PhaseType, TripStatus, TripType
 from app.db.models.evidence import EvidenceArtifact
 from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
@@ -750,6 +750,29 @@ async def test_a_loaded_trip_needs_a_real_seal_and_only_the_drivers_own_photo(db
     assert read.missing_confirmations == [SubstitutionRole.INCOMING]
     link = (await db_session.execute(select(DriverSubstitutionConfirmationArtifact))).scalar_one()
     assert (link.artifact_id, link.vehicle_id, link.position) == (own_photo, w.horse_id, 0)
+
+
+async def test_a_loaded_trip_before_departure_accepts_not_applicable(db_session: AsyncSession):
+    w, pending = await armed(db_session)
+    trip = await get_row(db_session, Trip, w.trip_id)
+    trip.trip_type, trip.current_phase = TripType.LOADED.value, PhaseType.LOADING.value
+    await db_session.flush()
+
+    read = await confirm(db_session, w, pending, w.a)
+
+    assert read.missing_confirmations == [SubstitutionRole.INCOMING]
+
+
+async def test_a_loaded_trip_in_transit_still_rejects_not_applicable(db_session: AsyncSession):
+    w, pending = await armed(db_session)
+    trip = await get_row(db_session, Trip, w.trip_id)
+    trip.trip_type, trip.current_phase = TripType.LOADED.value, PhaseType.IN_TRANSIT.value
+    await db_session.flush()
+
+    with pytest.raises(SubstitutionInvalidError, match="once it has departed"):
+        await confirm(db_session, w, pending, w.a)
+
+    assert await count(db_session, DriverSubstitutionConfirmationArtifact) == 0
 
 
 async def test_a_photo_cannot_support_two_captures(db_session: AsyncSession):

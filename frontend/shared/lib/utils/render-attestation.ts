@@ -41,7 +41,15 @@ const LABEL_TO_VALUE_PX = 30
 const COORD_DECIMALS = 6
 
 const TITLE = 'DIGITAL PROOF OF DELIVERY'
-const SUBTITLE = 'Swipe attestation taken on the driver’s device'
+
+// Whose phone the swipe was made on, printed under the title. It is part of the evidence,
+// so each caller names its own device rather than inheriting another surface's wording:
+// the receiver app used to print "the driver's device" on a signature made on the
+// receiver's own phone.
+export const ATTESTATION_SUBTITLE = {
+  driverDevice: 'Swipe attestation taken on the driver’s device',
+  receiverDevice: 'Swipe attestation taken on the receiver’s own phone',
+} as const
 const LOCATION_UNAVAILABLE = 'Location unavailable'
 
 export interface AttestationFields {
@@ -59,6 +67,8 @@ export interface AttestationFields {
    * phase-completion request, canonical payload, or anything anchored to Hedera.
    */
   recipientIdNumber: string
+  /** Where the swipe was made. Defaults to the driver's device, the original surface. */
+  subtitle?: string
 }
 
 /**
@@ -123,7 +133,7 @@ export function renderAttestation(fields: AttestationFields): string | null {
 
   ctx.fillStyle = COLOUR_LABEL
   ctx.font = FONT_LABEL
-  ctx.fillText(SUBTITLE, PADDING_PX, PADDING_PX + 54)
+  ctx.fillText(fields.subtitle ?? ATTESTATION_SUBTITLE.driverDevice, PADDING_PX, PADDING_PX + 54)
 
   ctx.strokeStyle = COLOUR_RULE
   ctx.beginPath()

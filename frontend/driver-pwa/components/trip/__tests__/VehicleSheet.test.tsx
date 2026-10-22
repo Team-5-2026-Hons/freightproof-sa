@@ -37,7 +37,10 @@ describe('VehicleSheet', () => {
         open
         onClose={vi.fn()}
         horse={vehicle({})}
-        trailers={[vehicle({ registration: 'KZN T 5678', vehicle_type: 'trailer' }), vehicle({ registration: 'GP T 9012', vehicle_type: 'trailer' })]}
+        trailers={[
+          vehicle({ id: 't-1' as Vehicle['id'], registration: 'KZN T 5678', vehicle_type: 'trailer' }),
+          vehicle({ id: 't-2' as Vehicle['id'], registration: 'GP T 9012', vehicle_type: 'trailer' }),
+        ]}
       />,
     )
 

@@ -2,7 +2,7 @@
 
 import { formatCoord, formatSast, humanise } from '@/lib/format'
 import type { TimelineItem } from '@/lib/timeline'
-import type { EvidenceFile, ExceptionPhoto } from '@/lib/types'
+import type { EvidenceFile, ExceptionPhoto, LocationAssessment } from '@/lib/types'
 import { Field } from './Card'
 import { ExceptionAnchorList } from './ExceptionAnchorList'
 import { EvidencePhoto } from './EvidencePhoto'
@@ -17,6 +17,23 @@ function photoFile(photo: ExceptionPhoto): EvidenceFile {
   }
 }
 
+function LocationCheck({ assessment }: { assessment: LocationAssessment }) {
+  // Packs frozen before reasons existed omit it, so it is read defensively despite its type.
+  const reasons = assessment.reasons ?? []
+  return (
+    <Field label="Location check">
+      {humanise(assessment.proximity)}
+      {assessment.separation_metres != null && ` · ${Math.round(assessment.separation_metres)} m apart`}
+      {assessment.driver_in_precinct != null && ` · driver ${assessment.driver_in_precinct ? 'inside' : 'outside'} precinct`}
+      {assessment.truck_in_precinct != null && ` · truck ${assessment.truck_in_precinct ? 'inside' : 'outside'} precinct`}
+      {reasons.length > 0 && (
+        // Why a check was "unverified" (stale fix, poor accuracy…): a verdict without its reason reads as a failure.
+        <span className="block text-[12px] text-muted">{reasons.map(humanise).join('; ')}</span>
+      )}
+    </Field>
+  )
+}
+
 export function EventDetail({ token, item }: { token: string; item: TimelineItem | null }) {
   if (!item) {
     return <p className="text-[13px] text-muted">Select an event on the timeline to see its evidence.</p>
@@ -29,6 +46,12 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
         <h3 className="text-[15px] font-extrabold">{item.title}</h3>
         <TierBadge tier={item.tier} />
       </div>
+      {item.anchorWarning && (
+        // The server's tier is overridden in buildTimeline; say why, or the missing badge looks like an omission.
+        <p role="alert" className="mb-2 text-[13px] font-semibold text-err">
+          One or more anchored fields differ from Hedera; the Anchored badge is withheld.
+        </p>
+      )}
       <dl>
         {item.kind === 'phase' && (
           <>
@@ -42,13 +65,7 @@ export function EventDetail({ token, item }: { token: string; item: TimelineItem
             {item.record.slot_time && <Field label="Slot"><span className="num">{formatSast(item.record.slot_time)}</span></Field>}
             {item.record.driver_phone && <Field label="Driver phone"><span className="num">{formatCoord(item.record.driver_phone)}</span></Field>}
             {item.record.vehicle_tracker && <Field label="Vehicle tracker"><span className="num">{formatCoord(item.record.vehicle_tracker)}</span></Field>}
-            {item.record.location_assessment && (
-              <Field label="Location check">
-                {humanise(item.record.location_assessment.proximity)}
-                {item.record.location_assessment.separation_metres != null && ` · ${Math.round(item.record.location_assessment.separation_metres)} m apart`}
-                {item.record.location_assessment.driver_in_precinct != null && ` · driver ${item.record.location_assessment.driver_in_precinct ? 'inside' : 'outside'} precinct`}
-              </Field>
-            )}
+            {item.record.location_assessment && <LocationCheck assessment={item.record.location_assessment} />}
             {item.record.location_warning_acknowledged_at && (
               <Field label="Location warning acknowledged">
                 {formatSast(item.record.location_warning_acknowledged_at)}

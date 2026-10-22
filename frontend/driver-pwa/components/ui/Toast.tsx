@@ -55,6 +55,9 @@ function AnchorRow({ state }: { state: 'anchoring' | 'anchored' }) {
   )
 }
 
+// How long a non-sticky, non-error toast stays before it leaves on its own.
+export const AUTO_DISMISS_MS = 4_000
+
 // Fallback delay if the exit transition's `transitionend` never fires (e.g. a parent
 // re-render removes the element from the DOM before the browser dispatches it) — matches
 // the leave transition's own duration below so a stuck toast never lingers past it.
@@ -75,7 +78,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
 
   useEffect(() => {
     if (toast.sticky || toast.kind === 'error') return
-    const timer = setTimeout(startLeave, 4000)
+    const timer = setTimeout(startLeave, AUTO_DISMISS_MS)
     return () => clearTimeout(timer)
   }, [toast, startLeave])
 

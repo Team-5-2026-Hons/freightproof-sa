@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon, Check } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/lib/hooks/useToast'
 import { fileToCompressedJpegDataUrl } from '@/lib/utils/image'
 import { EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT, EVIDENCE_PHOTO_MAX_EDGE_PX } from '@/lib/constants/evidence-photo'
 import { formatTime } from '@/lib/utils/format-time'
+import {
+  captureKey, claimRestoredPhoto, clearCapturePending, markCapturePending, subscribeRestoredPhoto,
+} from '@/lib/camera/restored-photo'
 
 interface CameraCaptureProps {
   /** What the photo is — the field label and the captured image's alt text. */
@@ -33,6 +37,15 @@ interface CameraCaptureProps {
    * back to the file picker exactly like a camera failure. The browser ignores it.
    */
   nativeSource?: () => Promise<string | null>
+  /**
+   * The capture is taken but the step is still doing something with it (the linehaul's
+   * PDF build). Lays a faint veil and a spinner over the preview, so the wait is visible
+   * on the thing being waited on. Tile variant only — the row variant has no preview big
+   * enough to carry it.
+   */
+  busy?: boolean
+  /** What the veil is waiting for, announced in place of the spinner. */
+  busyLabel?: string
 }
 
 type CameraFailure = 'cancelled' | 'permission-denied' | 'other'
@@ -52,6 +65,7 @@ function classifyCameraFailure(err: unknown): CameraFailure {
 
 export function CameraCapture({
   label, actionLabel = 'Take Photo', hint, dataUrl, capturedAt = null, variant = 'tile', capturedHint, onCapture, nativeSource,
+  busy = false, busyLabel = 'Processing',
 }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
   // Latches once the native camera has refused (permission denied, or no camera on the
@@ -59,6 +73,22 @@ export function CameraCapture({
   // button that reopens the same refusal every time it is tapped.
   const [nativeCameraUnavailable, setNativeCameraUnavailable] = useState(false)
   const { notify } = useToast()
+  // Latest onCapture without re-subscribing below: callers pass inline closures.
+  const onCaptureRef = useRef(onCapture)
+  onCaptureRef.current = onCapture
+
+  // A photo taken while Android killed the WebView comes back through CapacitorBridge,
+  // not through getPhoto(). Claim it on mount (resume.ts has just put the driver back on
+  // this step) or whenever it arrives while this control is already on screen.
+  useEffect(() => {
+    const key = captureKey(window.location.pathname, label)
+    const claim = (): void => {
+      const restored = claimRestoredPhoto(key)
+      if (restored !== null) onCaptureRef.current(restored)
+    }
+    claim()
+    return subscribeRestoredPhoto(claim)
+  }, [label])
 
   const notifyCaptureFailed = useCallback(() => {
     notify({
@@ -130,6 +160,9 @@ export function CameraCapture({
         if (dataUrl !== null) onCapture(dataUrl)
         return
       }
+      // Marked before the camera opens: if Android reclaims the WebView behind it, this
+      // marker is the only thing that says which control the restored photo belongs to.
+      markCapturePending(captureKey(window.location.pathname, label))
       const photo = await Camera.getPhoto({
         resultType: CameraResultType.DataUrl,
         source: CameraSource.Camera,
@@ -166,9 +199,11 @@ export function CameraCapture({
           notifyCaptureFailed()
       }
     } finally {
+      // The camera answered this session, so there is nothing left to restore.
+      clearCapturePending()
       setIsCapturing(false)
     }
-  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable, nativeSource])
+  }, [onCapture, notify, notifyCaptureFailed, openFilePicker, nativeCameraUnavailable, nativeSource, label])
 
   const verb = isCapturing ? 'Opening Camera…' : nativeCameraUnavailable ? 'Choose a Photo Instead' : actionLabel
 
@@ -216,6 +251,24 @@ export function CameraCapture({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
+          {/* Faint on purpose: the capture itself succeeded and the driver should still be
+              able to read it. The veil only says a readable copy is still being made —
+              which is also what the swipe is waiting for, so showing it here puts the
+              wait on the thing causing it instead of only in the button's label. Placed
+              before the chips so "Captured 21:39" and Retake stay legible over it. */}
+          {busy && (
+            <div
+              role="status"
+              aria-label={busyLabel}
+              className="absolute inset-0 flex items-center justify-center bg-black/35"
+            >
+              {/* The spinner's own role="status" would be announced alongside the
+                  wrapper's; hidden so the label above is said once. */}
+              <span aria-hidden>
+                <Spinner size="lg" className="border-white/40 border-t-white" />
+              </span>
+            </div>
+          )}
           {/* Scrim chips, not page tokens: they sit on an arbitrary photo, so they carry
               their own contrast whatever the theme. */}
           <span className="absolute bottom-3 left-3 inline-flex h-[30px] items-center gap-1.5 rounded-full bg-black/60 px-3 text-footnote font-semibold text-white">

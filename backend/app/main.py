@@ -29,8 +29,11 @@ from app.api.v1.endpoints.checkpoints import router as checkpoints_router
 from app.dev.endpoints.pulsit import move_truck_enabled
 from app.dev.endpoints.pulsit import router as dev_pulsit_router
 from app.dev.endpoints.tracker import router as dev_tracker_router
+from app.dev.endpoints.phone import router as dev_phone_router
 from app.dev.endpoints.triggers import dev_panel_enabled
 from app.dev.endpoints.triggers import router as dev_triggers_router
+from app.dev.services import demo_phone as dev_demo_phone
+from app.orchestration.phases.demo_position import configure_demo_position_provider
 from app.api.v1.endpoints.drivers import router as drivers_router
 from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_dispatcher_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router
@@ -159,6 +162,14 @@ if move_truck_enabled():
     app.include_router(dev_pulsit_router, prefix="/api/v1")
     # Same two guards: rig scenarios stage the Pulsit mock too. See dev_tracker.py.
     app.include_router(dev_tracker_router, prefix="/api/v1")
+    # "Move the phone" — the driver-side counterpart, a separate control from the truck.
+    app.include_router(dev_phone_router, prefix="/api/v1")
+    # "Move the phone", the driver-side counterpart. Installing the provider HERE, behind
+    # the same guard as the routes that stage a position, is what keeps the phase paths
+    # free of any import of app/dev — and what guarantees a deployment without these
+    # flags has no provider at all, so no phase can read a staged position. See
+    # orchestration/phases/demo_position.py.
+    configure_demo_position_provider(dev_demo_phone.staged_position)
 
 # Publishes queued realtime events once a request's transaction is durable
 # (see app/core/realtime.py). Idempotent.

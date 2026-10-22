@@ -215,15 +215,18 @@ export default function PanicPageClient() {
         )}
       </div>
 
+      {/* minmax(min-content, 1fr), not minmax(0, 1fr): the label column may not shrink below
+          its longest word. With a 0 floor, a long value (the trip reference) at accessibility
+          text sizes took the whole row and left "Trip" zero width, printed over the value. */}
       <dl className="mx-5 mt-7 divide-y divide-hairline rounded-[18px] bg-fill px-4">
-        <div className="grid min-h-12 grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+        <div className="grid min-h-12 grid-cols-[22px_minmax(min-content,1fr)_auto] items-center gap-x-3 py-2">
           <MapPin className="size-5 text-surface-on" strokeWidth={1.9} aria-hidden />
           <dt className="text-body text-surface-on">Your location</dt>
           <dd className={cn('text-subhead', locationStatus === 'found' ? 'font-semibold text-success-ink' : 'text-surface-on-variant')}>
             {LOCATION_LABEL[locationStatus]}
           </dd>
         </div>
-        <div className="grid min-h-12 grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-x-3 py-2">
+        <div className="grid min-h-12 grid-cols-[22px_minmax(min-content,1fr)_auto] items-center gap-x-3 py-2">
           <Route className="size-5 text-surface-on" strokeWidth={1.9} aria-hidden />
           <dt className="text-body text-surface-on">Trip</dt>
           <dd className="text-subhead tabular-nums text-surface-on-variant">{trip.trip_reference}</dd>

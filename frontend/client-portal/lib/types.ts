@@ -1,6 +1,9 @@
 // Mirrors backend/app/schemas/audit_pack.py — the manifest every rendering is built from.
 // Kept local to this app (not @shared): nothing else in the frontend reads audit packs,
 // and a portal that outsiders open should not move when the dispatcher's types do.
+//
+// Covers manifest v4. A pack is frozen under the contract it was issued with and served as
+// stored (response_model_exclude_unset), so every field added after v1 is optional here.
 
 export type EvidenceTier = 'anchored' | 'corroborated' | 'recorded' | 'declared'
 export type PositionSource = 'driver_phone' | 'vehicle_tracker' | 'trailer_tracker'
@@ -47,6 +50,8 @@ export interface StopRecord {
   lat: number
   lng: number
   geofence_radius_metres: number
+  // [lat, lng] corners. When set the outline was the fence and the radius is not used.
+  geofence_polygon?: [number, number][] | null
   slot_time: string | null
 }
 
@@ -64,6 +69,37 @@ export interface VehicleRecord {
   tracker_device_id: string
 }
 
+/** One driver's own capture at a handover (FP-83): what they declared, on their device. */
+export interface HandoverDeclarationRecord {
+  role: string
+  driver_name: string
+  captured_at: string
+  received_at: string
+  location_recorded: boolean
+  seal_readings: string[]
+  photo_sha256: string[]
+  discrepancy_note: string | null
+  driver_id?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  accuracy_metres?: number | null
+  location_observed_at?: string | null
+  location_unavailable_reason?: string | null
+  location_observation_committed?: boolean
+}
+
+export interface SubstitutionClarificationRecord {
+  id: string
+  recorded_by_user_id: string
+  recorded_by_name: string | null
+  recorded_at: string
+  reason: string
+  correction_note: string
+  event_hash: string | null
+  anchor_status: string | null
+  receipt_id: string | null
+}
+
 export interface DriverSubstitutionRecord {
   substitution_id: string
   original_driver_name: string
@@ -73,6 +109,40 @@ export interface DriverSubstitutionRecord {
   substitution_at: string
   anchor_receipt_id: string | null
   tier: EvidenceTier
+  // v3 (FP-83 custody facts). Absent on packs frozen before them.
+  sequence_number?: number | null
+  completion_mode?: string | null
+  arranged_by_name?: string | null
+  completed_by?: 'driver' | 'dispatcher' | null
+  missing_confirmation_reason?: string | null
+  incoming_identity_status?: string | null
+  identity_attested_by_name?: string | null
+  identity_attested_at?: string | null
+  incoming_licence_expiry?: string | null
+  commitment_sha256?: string | null
+  declarations?: HandoverDeclarationRecord[]
+  request_format?: string | null
+  confirmation_policy?: string | null
+  required_confirmation_roles?: string[] | null
+  completed_by_driver_id?: string | null
+  completed_by_user_id?: string | null
+  completed_by_name?: string | null
+  identity_attestation_reason?: string | null
+  corrections?: SubstitutionClarificationRecord[]
+}
+
+/** Evidence a driver captured in an earlier custody period, kept for review (FP-83). */
+export interface LateEvidenceRecord {
+  evidence_id: string
+  driver_name: string
+  custody_sequence: number
+  kind: string
+  captured_at: string
+  received_at: string
+  status: string
+  payload_sha256: string
+  photo_sha256: string[]
+  reviewed_at: string | null
 }
 
 export interface DriverRecord {
@@ -165,7 +235,8 @@ export interface CheckpointRecord {
   tier: EvidenceTier
 }
 
-// manifest v2 (FP-290). The three anchorable actions on an exception.
+// Manifest v2 (FP-290) added per-photo receipts and per-action anchors on an exception.
+// These are the three anchorable actions on an exception.
 export type AnchorAction = 'raised' | 'reviewed' | 'cancelled'
 
 // One photo of an exception report, tied to the receipt that committed its hash. `tier` is
@@ -265,6 +336,8 @@ export interface Observation {
 export interface IncidentDeclarationRecord {
   declaration_id: string
   exception_id: string | null
+  // v4: the investigation this declaration belongs to.
+  incident_id?: string | null
   saps_station: string | null
   saps_cas_number: string | null
   saps_officer: string | null
@@ -287,12 +360,61 @@ export interface IncidentSummary {
   last_known_position: PositionFix | null
   first_reviewed_at: string | null
   minutes_to_first_review: number | null
+  // v4. 'investigation' = a dispatcher-recorded hijacking with no earlier critical exception;
+  // absent or 'exception' = anchored on the first critical exception.
+  basis?: 'exception' | 'investigation'
+}
+
+export interface AffectedParcelRecord {
+  parcel_id: string
+  barcode: string
+  consignment_id: string
+  scan_state: 'scanned_in' | 'no_scan_in_recorded' | 'no_scan_recorded'
+  latest_finding: string | null
+}
+
+/** One entry of an incident's append-only ledger, as recorded by a dispatcher. */
+export interface InvestigationEntryRecord {
+  sequence: number
+  kind: string
+  note: string | null
+  from_value: string | null
+  to_value: string | null
+  parcel_id: string | null
+  exception_id: string | null
+  external_action: string | null
+  action_at: string | null
+  recorded_by_name: string | null
+  recorded_at: string
+}
+
+/** An incident the operator investigated. Declared tier throughout: nothing in it was captured by FreightProof. */
+export interface InvestigationRecord {
+  incident_id: string
+  reference: string
+  incident_type: string
+  summary: string
+  reporter_role: string
+  report_channel: string
+  reported_occurred_at: string | null
+  received_at: string
+  confidence: string
+  status: string
+  outcome: string | null
+  closure_reason: string | null
+  closed_at: string | null
+  trip_stopped_at: string | null
+  assigned_to_name: string | null
+  exception_ids: string[]
+  parcels: AffectedParcelRecord[]
+  entries: InvestigationEntryRecord[]
+  tier: 'declared'
 }
 
 export interface TripSummary {
   trip_id: string
   trip_reference: string
-  order_number: string
+  order_number: string | null
   trip_type: string
   status: string
   operator_name: string
@@ -330,6 +452,9 @@ export interface AuditPackManifest {
   incident: IncidentSummary | null
   // Absent on packs issued before declarations existed.
   declarations?: IncidentDeclarationRecord[]
+  // Absent on packs frozen before FP-83 (late_evidence) and v4 (investigations).
+  late_evidence?: LateEvidenceRecord[]
+  investigations?: InvestigationRecord[]
   observations: Observation[]
   redactions: string[]
 }
@@ -378,6 +503,22 @@ export interface LiveVerification {
   seal_status: LiveCheckStatus
   records: LiveRecordCheck[]
   records_added_since_issue: number
+}
+
+// ── API error bodies ───────────────────────────────────────────────────────────────
+
+// FastAPI's 422: one item per invalid field.
+export interface ValidationItem {
+  loc?: (string | number)[]
+  msg: string
+  type?: string
+}
+
+export interface ErrorBody {
+  // A string for our own HTTPException/JSONResponse bodies, a list for a 422.
+  detail?: string | ValidationItem[]
+  verification_required?: boolean
+  email_hint?: string
 }
 
 // ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────

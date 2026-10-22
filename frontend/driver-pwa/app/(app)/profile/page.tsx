@@ -2,7 +2,7 @@
 
 // Required: output: 'export' (Capacitor APK) is incompatible with Server Components.
 
-import { useState, useSyncExternalStore, type ReactNode } from 'react'
+import { memo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Camera, Contrast, Hand, Mail, MapPin, Phone, RefreshCw, ShieldCheck } from 'lucide-react'
 import { DriverAvatar } from '@/components/profile/DriverAvatar'
@@ -44,6 +44,16 @@ const PERMISSION: Record<PermissionStatus, { text: string; className: string }> 
   ask: { text: 'Asks when needed', className: 'text-surface-on-variant' },
 }
 
+// Built once: rows are memoised, and a fresh icon element each render would defeat that.
+const ICONS = {
+  appearance: <Contrast className={ICON} strokeWidth={1.9} />,
+  location: <MapPin className={ICON} strokeWidth={1.9} />,
+  camera: <Camera className={ICON} strokeWidth={1.9} />,
+  queue: <RefreshCw className={ICON} strokeWidth={1.9} />,
+  phone: <Phone className={ICON} strokeWidth={1.9} />,
+  email: <Mail className={ICON} strokeWidth={1.9} />,
+} as const
+
 function useTapToConfirm(): boolean {
   return useSyncExternalStore(subscribeTapToConfirmPref, getTapToConfirmPref, () => false)
 }
@@ -53,17 +63,19 @@ function useThemeLabel(): string {
   return THEME_LABEL[pref]
 }
 
-function Tile({ label, value, detail }: { label: string; value: ReactNode; detail: ReactNode }) {
+const Tile = memo(function Tile({ label, value, detail }: { label: string; value: ReactNode; detail: ReactNode }) {
   return (
     <div className="min-w-0 rounded-xl bg-fill p-3.5">
       <p className="text-footnote text-surface-on-variant">{label}</p>
-      <p className="truncate text-headline tabular-nums text-surface-on">{value}</p>
-      <p className="truncate text-footnote text-surface-on-variant">{detail}</p>
+      {/* break-words, not truncate: a licence or plate cut to "DL-7…" is useless, and at
+          accessibility text sizes the tile is narrower than the value. It wraps instead. */}
+      <p className="break-words text-headline tabular-nums text-surface-on">{value}</p>
+      <p className="break-words text-footnote text-surface-on-variant">{detail}</p>
     </div>
   )
-}
+})
 
-function PermissionRow({ icon, label, detail, status }: {
+const PermissionRow = memo(function PermissionRow({ icon, label, detail, status }: {
   icon: ReactNode; label: string; detail?: string; status: PermissionStatus | null
 }) {
   // A platform that cannot report the permission shows no row rather than a guess.
@@ -76,6 +88,40 @@ function PermissionRow({ icon, label, detail, status }: {
       detail={status === 'denied' ? 'Turn on in your phone’s Settings' : detail}
       trailing={<span className={className}>{text}</span>}
     />
+  )
+})
+
+// Each sheet's open state lives in the small component that opens it, not in the page: a
+// page-level flag re-rendered the whole profile on every open and close (14 tasks of
+// 66-191 ms at 4x CPU throttling), when only the row and its sheet change.
+function AppearanceRow() {
+  const themeLabel = useThemeLabel()
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <ListRow icon={ICONS.appearance} value="Appearance" trailing={themeLabel} chevron onClick={() => setOpen(true)} />
+      <AppearanceSheet open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
+function SignOutControl({ onConfirm }: { onConfirm: () => Promise<void> }) {
+  const [open, setOpen] = useState(false)
+  async function confirm(): Promise<void> {
+    await onConfirm()
+    setOpen(false)
+  }
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-11 items-center rounded-full bg-error-tint px-6 text-body font-semibold text-error transition-transform duration-100 active:scale-95"
+      >
+        Sign Out
+      </button>
+      <SignOutSheet open={open} onClose={() => setOpen(false)} onConfirm={confirm} />
+    </>
   )
 }
 
@@ -91,11 +137,8 @@ export default function ProfilePage() {
   const router = useRouter()
   const photo = useDriverPhoto(user?.id ?? null)
   const tapToConfirm = useTapToConfirm()
-  const themeLabel = useThemeLabel()
   const location = usePermissionStatus('location')
   const camera = usePermissionStatus('camera')
-  const [appearanceOpen, setAppearanceOpen] = useState(false)
-  const [signOutOpen, setSignOutOpen] = useState(false)
 
   if (!user) return null
 
@@ -121,7 +164,6 @@ export default function ProfilePage() {
     // A face is personal data (POPIA): it leaves this phone with the driver.
     clearDriverPhoto(user.id)
     await signOut()
-    setSignOutOpen(false)
     router.replace(ROUTES.login)
   }
 
@@ -134,7 +176,9 @@ export default function ProfilePage() {
             type="button"
             onClick={choosePhoto}
             aria-label={photo === null ? 'Add photo' : 'Change photo'}
-            className="absolute -bottom-0.5 -right-0.5 flex size-11 items-center justify-center rounded-full border-[3px] border-surface bg-primary text-primary-on transition-transform duration-100 active:scale-95"
+            // size-[44px], not size-11: the avatar beside it is fixed px artwork, and a rem
+            // badge grew to 77px at accessibility text sizes and covered the initials.
+            className="absolute -bottom-0.5 -right-0.5 flex size-[44px] items-center justify-center rounded-full border-[3px] border-surface bg-primary text-primary-on transition-transform duration-100 active:scale-95"
           >
             <Camera className="size-[18px]" strokeWidth={2.25} aria-hidden />
           </button>
@@ -163,13 +207,7 @@ export default function ProfilePage() {
       <div aria-hidden className="mt-6 h-2 bg-fill" />
 
       <ListSection title="Preferences" className="mt-5">
-        <ListRow
-          icon={<Contrast className={ICON} strokeWidth={1.9} />}
-          value="Appearance"
-          trailing={themeLabel}
-          chevron
-          onClick={() => setAppearanceOpen(true)}
-        />
+        <AppearanceRow />
         <div className="flex min-h-[56px] items-center gap-4 px-5 py-2">
           <Hand className={cn(ICON, 'shrink-0 text-surface-on')} strokeWidth={1.9} aria-hidden />
           <label htmlFor="tap-to-confirm" className="min-w-0 flex-1">
@@ -181,10 +219,10 @@ export default function ProfilePage() {
       </ListSection>
 
       <ListSection title="This phone" className="mt-5">
-        <PermissionRow icon={<MapPin className={ICON} strokeWidth={1.9} />} label="Location" detail="Needed for every record" status={location} />
-        <PermissionRow icon={<Camera className={ICON} strokeWidth={1.9} />} label="Camera" status={camera} />
+        <PermissionRow icon={ICONS.location} label="Location" detail="Needed for every record" status={location} />
+        <PermissionRow icon={ICONS.camera} label="Camera" status={camera} />
         <ListRow
-          icon={<RefreshCw className={ICON} strokeWidth={1.9} />}
+          icon={ICONS.queue}
           value="Waiting to send"
           detail="Records saved without signal"
           trailing={
@@ -198,14 +236,14 @@ export default function ProfilePage() {
       <ListSection title="Help" className="mt-5">
         {SUPPORT_PHONE !== null && (
           <ListRow
-            icon={<Phone className={ICON} strokeWidth={1.9} />}
+            icon={ICONS.phone}
             value="Call support"
             detail={SUPPORT_PHONE}
             href={`tel:${SUPPORT_PHONE.replace(/\s/g, '')}`}
           />
         )}
         <ListRow
-          icon={<Mail className={ICON} strokeWidth={1.9} />}
+          icon={ICONS.email}
           value="Email support"
           detail={SUPPORT_EMAIL}
           href={`mailto:${SUPPORT_EMAIL}`}
@@ -213,18 +251,10 @@ export default function ProfilePage() {
       </ListSection>
 
       <div className="mt-6 flex flex-col items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setSignOutOpen(true)}
-          className="inline-flex min-h-11 items-center rounded-full bg-error-tint px-6 text-body font-semibold text-error transition-transform duration-100 active:scale-95"
-        >
-          Sign Out
-        </button>
+        <SignOutControl onConfirm={confirmSignOut} />
         <p className="text-footnote tabular-nums text-surface-on-variant">FreightProof Driver {APP_VERSION}</p>
       </div>
 
-      <AppearanceSheet open={appearanceOpen} onClose={() => setAppearanceOpen(false)} />
-      <SignOutSheet open={signOutOpen} onClose={() => setSignOutOpen(false)} onConfirm={confirmSignOut} />
     </div>
   )
 }

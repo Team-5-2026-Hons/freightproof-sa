@@ -29,6 +29,12 @@ class TripStatus(str, enum.Enum):
     EXCEPTION_HOLD   = "exception_hold"
 
 
+class PushPlatform(str, enum.Enum):
+    """The native shell a push token came from; the sender picks the FCM/APNs path by it."""
+    ANDROID = "android"
+    IOS     = "ios"
+
+
 class TripType(str, enum.Enum):
     """Loaded = normal cargo run; empty_leg = repositioning, no consignments."""
     LOADED    = "loaded"
@@ -92,6 +98,23 @@ class AnchorStatus(str, enum.Enum):
     PENDING      = "pending"
     ANCHORED     = "anchored"
     FAILED       = "failed"
+
+
+class DriverPositionSource(str, enum.Enum):
+    """Where a phase event's `driver_phone_lat/lng` pair actually came from.
+
+    Exists so a demo-staged position can never be mistaken for a reading the handset
+    took. The dev trigger panel can place a trip's phone at a precinct (see
+    app/dev/services/demo_phone.py) so a walkthrough recorded far from any depot does
+    not raise a location warning on every phase; a row staged that way is stamped
+    `SIMULATED` and stays distinguishable forever.
+
+    `DEVICE` on every real capture, and NULL on rows written before this column
+    existed — absence means "not recorded", never "verified real".
+    """
+
+    DEVICE    = "device"
+    SIMULATED = "simulated"
 
 
 class ExceptionType(str, enum.Enum):

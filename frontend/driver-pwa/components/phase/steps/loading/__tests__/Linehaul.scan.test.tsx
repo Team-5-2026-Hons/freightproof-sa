@@ -24,13 +24,19 @@ vi.mock('@/lib/hooks/useArtifactUpload', () => ({ useArtifactUpload: () => ({ up
 // CameraCapture stubbed as in the seal suites, but it honours nativeSource so the
 // scanner wiring is what the test exercises.
 vi.mock('@/components/phase/CameraCapture', () => ({
-  CameraCapture: ({ label, onCapture, nativeSource }: {
+  CameraCapture: ({ label, onCapture, nativeSource, busy, busyLabel }: {
     label: string; onCapture: (d: string) => void; nativeSource?: () => Promise<string | null>
+    busy?: boolean; busyLabel?: string
   }) => (
-    <button onClick={() => {
-      void (nativeSource ? nativeSource() : Promise.resolve(`data:image/jpeg;base64,${label}`))
-        .then((d) => { if (d !== null) onCapture(d) })
-    }}>{label}</button>
+    <>
+      <button onClick={() => {
+        void (nativeSource ? nativeSource() : Promise.resolve(`data:image/jpeg;base64,${label}`))
+          .then((d) => { if (d !== null) onCapture(d) })
+      }}>{label}</button>
+      {/* The real control lays a veil over the preview; the stub only has to prove the
+          step asks for one, and with what wording. */}
+      {busy === true && <span data-testid="capture-busy">{busyLabel}</span>}
+    </>
   ),
 }))
 
@@ -137,6 +143,21 @@ describe('Linehaul — scan and PDF', () => {
     expect(swipe()).toHaveAttribute('aria-disabled', 'false')
   })
 
+  it('test_marks_the_scan_itself_busy_while_the_pdf_builds', async () => {
+    // Tim, 21 Oct: the sheet looked finished the instant the scanner closed, while the
+    // build ran on — the only sign of the wait was the swipe's label, which a driver
+    // looking at their scan never reads.
+    const build = deferred<string>()
+    mockBuildPdf.mockReturnValue(build.promise)
+    render(<LiveDraft onUpdate={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Linehaul sheet' }))
+
+    await waitFor(() => expect(screen.getByTestId('capture-busy')).toHaveTextContent('Preparing the PDF'))
+    await act(async () => { build.resolve('data:application/pdf;base64,PDF') })
+    expect(screen.queryByTestId('capture-busy')).toBeNull()
+  })
+
   it('releases the swipe when the PDF build fails', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const build = deferred<string>()
@@ -183,5 +204,60 @@ describe('Linehaul — scan and PDF', () => {
 
     await waitFor(() => expect(mockBuildPdf).toHaveBeenCalledWith('data:image/jpeg;base64,Linehaul sheet'))
     expect(mockScan).not.toHaveBeenCalled()
+  })
+})
+
+// Android recreates the WebView after the document scanner on a low-memory phone. The
+// draft kept the scan (usePhaseDraft), but the PDF the step builds from it was lost with
+// the JavaScript heap, so a returning driver would have submitted the loading without it.
+describe('Linehaul PDF rebuilt on resume', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('test_a_resumed_draft_with_a_scan_but_no_pdf_rebuilds_and_uploads_the_pdf', async () => {
+    // Arrange
+    mockIsNative.mockReturnValue(false)
+    mockBuildPdf.mockResolvedValue('data:application/pdf;base64,REBUILT')
+    mockUploadNow.mockResolvedValue('pdf-artifact')
+    const onUpdate = vi.fn()
+
+    // Act
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={makePhase('loading', { blocked_on: null })}
+        stepIndex={0}
+        linehaul={LINEHAUL}
+        draft={{ ...EMPTY_DRAFT, linehaulPhotoDataUrl: 'data:image/jpeg;base64,SCAN', capturedAt: '2026-10-21T08:00:00Z' }}
+        onUpdate={onUpdate}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    // Assert
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfDataUrl: 'data:application/pdf;base64,REBUILT' }))
+    expect(mockBuildPdf).toHaveBeenCalledTimes(1)
+    expect(mockBuildPdf).toHaveBeenCalledWith('data:image/jpeg;base64,SCAN')
+    expect(mockUploadNow).toHaveBeenCalledWith('data:application/pdf;base64,REBUILT', 'document', '2026-10-21T08:00:00Z', 'linehaul_pdf')
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ linehaulPdfArtifactId: 'pdf-artifact' }))
+  })
+
+  it('test_a_draft_whose_pdf_already_exists_is_left_alone', () => {
+    mockIsNative.mockReturnValue(false)
+
+    render(
+      <Linehaul
+        tripId="trip-1"
+        phase={makePhase('loading', { blocked_on: null })}
+        stepIndex={0}
+        linehaul={LINEHAUL}
+        draft={{ ...EMPTY_DRAFT, linehaulPhotoDataUrl: 'data:image/jpeg;base64,SCAN', linehaulPdfDataUrl: 'data:application/pdf;base64,HAVE', capturedAt: '2026-10-21T08:00:00Z' }}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    expect(mockBuildPdf).not.toHaveBeenCalled()
   })
 })

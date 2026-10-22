@@ -19,7 +19,17 @@ interface TabSubpageProps {
 // Room for the floating tab bar (62px pill + gaps), plus the floating action when there is
 // one. px like the bar: it does not scale with Dynamic Type.
 const CLEAR_TAB_BAR = 'pb-[calc(96px+env(safe-area-inset-bottom))]'
-const CLEAR_TAB_BAR_AND_ACTION = 'pb-[calc(168px+env(safe-area-inset-bottom))]'
+
+// The floating action sits 16px above the bar's pill. The pill itself sits max(inset, 16px)
+// above the screen edge (.pb-safe in globals.css), so these are written against that max(),
+// not against `inset + a constant`: with no home indicator (Android gesture bar, browser PWA)
+// the inset reads 0, the 16px floor wins, and an `N px + inset` offset comes out 16px short —
+// which left the action 2px above the bar, reading as touching it.
+//   action bottom = pill top (max + 62) + 16 gap          = max + 78
+//   scroll padding = action top (bottom + 56 button) + 32 = max + 166, so the last row ends
+//   a clear 32px above the action instead of behind it.
+const ACTION_BOTTOM = 'bottom-[calc(max(env(safe-area-inset-bottom),16px)+78px)]'
+const CLEAR_TAB_BAR_AND_ACTION = 'pb-[calc(max(env(safe-area-inset-bottom),16px)+166px)]'
 
 /**
  * A screen pushed from a tab that keeps the tab bar (HIG tab-bars: "Make sure the tab bar
@@ -32,7 +42,7 @@ export function TabSubpage({ title, subtitle, backLabel, onBack, right, action, 
       <SubpageHeader title={title} subtitle={subtitle} backLabel={backLabel} onBack={onBack} right={right} />
       {children}
       {action !== undefined && (
-        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(80px+env(safe-area-inset-bottom))] z-sticky">
+        <div className={cn('pointer-events-none fixed inset-x-4 z-sticky', ACTION_BOTTOM)}>
           <div className="pointer-events-auto">{action}</div>
         </div>
       )}

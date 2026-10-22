@@ -2,7 +2,7 @@
  * Typed fetch wrapper for the FreightProof FastAPI backend.
  */
 
-import { supabase, getAccessToken } from '@/lib/supabase'
+import { getSupabase, getAccessToken } from '@/lib/supabase'
 import { actorGeneration } from '@/lib/session/custody-context'
 import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
@@ -119,7 +119,7 @@ async function signOutSupersededDevice(): Promise<void> {
     window.sessionStorage.setItem(SIGNED_OUT_REASON_KEY, SESSION_SUPERSEDED_MESSAGE)
   }
   try {
-    await supabase.auth.signOut()
+    await getSupabase().auth.signOut()
   } catch (err) {
     // Even if Supabase can't be reached, the local session is what gates the app —
     // AuthContext's own listener sees the sign-out and the (app) layout redirects.
@@ -153,7 +153,7 @@ async function resolveToken(): Promise<string | null> {
   const cached = getAccessToken()
   if (cached !== null) return cached
   const { data: { session } } = await withTimeout(
-    supabase.auth.getSession(),
+    getSupabase().auth.getSession(),
     SESSION_TIMEOUT_MS,
     'Auth session lookup',
   )
@@ -249,7 +249,7 @@ async function request<T>(
     let freshToken: string | null = null
     try {
       const { data, error } = await withTimeout(
-        supabase.auth.refreshSession(),
+        getSupabase().auth.refreshSession(),
         SESSION_TIMEOUT_MS,
         'Auth session refresh',
       )

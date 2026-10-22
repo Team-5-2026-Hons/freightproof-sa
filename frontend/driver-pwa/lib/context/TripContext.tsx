@@ -3,13 +3,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Trip } from '@shared/lib/types/trip'
-import type { PhaseStatus } from '@shared/lib/types/phase'
+import type { PhaseDescriptor, PhaseStatus } from '@shared/lib/types/phase'
 import type { TripException, ExceptionType } from '@shared/lib/types/exception'
 import type { VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { ROUTES } from '@/lib/constants/routes'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
-import { TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
+import { TRIP_POLL_INTERVAL_MS, UNASSIGNED_TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
 import { ApiError } from '@/lib/api/client'
 import { isTripHandedOver } from '@/lib/api/driver-substitutions'
@@ -149,6 +149,21 @@ export interface TripState {
   // may not be in the driver's hands, so it must never learn an incident was reported.
   endedByDispatch: EndedByDispatch | null
   dismissEndedByDispatch: () => void
+  // The plan this driver just finished, snapshotted at the moment of the final hand-off.
+  // A snapshot and not a `trip` read, because closing the trip removes it from
+  // GET /trips/me/active — by the time the server confirms, there is nothing left to
+  // render a completion screen from. See components/trip/TripCompleteOverlay.tsx.
+  completedTrip: CompletedTrip | null
+  noteTripCompleted: (completed: CompletedTrip) => void
+  dismissTripCompleted: () => void
+}
+
+export interface CompletedTrip {
+  tripId: string
+  tripReference: string
+  // Optimistic: the final phase's own row still shows its submission in flight, which is
+  // what PhaseList renders honestly rather than claiming a receipt that has not landed.
+  phases: readonly PhaseDescriptor[]
 }
 
 export interface EndedByDispatch {
@@ -207,6 +222,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   const [selectedTripId, setSelectedTripId] = useState<string | null>(() => readSelectedTripId())
   const [handedOverTripId, setHandedOverTripId] = useState<string | null>(null)
   const [endedByDispatch, setEndedByDispatch] = useState<EndedByDispatch | null>(null)
+  const [completedTrip, setCompletedTrip] = useState<CompletedTrip | null>(null)
   // The last trip the server handed this phone as its working trip. When the server's own
   // pick stops returning it, this is the one to ask about: was it ended by dispatch?
   const workingTripIdRef = useRef<string | null>(null)
@@ -417,6 +433,19 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   const dismissHandedOver = useCallback(() => setHandedOverTripId(null), [])
   const dismissEndedByDispatch = useCallback(() => setEndedByDispatch(null), [])
 
+  const noteTripCompleted = useCallback((completed: CompletedTrip) => {
+    if (!isCurrentAccount()) return
+    setCompletedTrip(completed)
+  }, [isCurrentAccount])
+
+  // Closing the completion screen is also the moment to ask what this driver is on now:
+  // the finished trip has left /trips/me/active, so Home needs a refresh to offer the
+  // next assignment instead of an empty state. Quiet, so Home does not flash a spinner.
+  const dismissTripCompleted = useCallback(() => {
+    setCompletedTrip(null)
+    void refreshQuietly()
+  }, [refreshQuietly])
+
   // Every path that adopts a trip (selection, adoption after a submit, a refresh) names the
   // working trip here, so the next load can tell when the server stops returning it.
   useEffect(() => {
@@ -426,16 +455,29 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   // Derived fresh every render from `trip` (never cached) — the whole point is that this
   // must flip false the instant the server's own recomputation says so.
   const actionable = trip !== null ? actionablePhase(trip.phases) : null
+
+  // A driver with no trip is waiting to be given one, and nothing else on Home will tell
+  // them it arrived: the foreground refresh fires when the app comes BACK, and a phone
+  // propped on the dash never leaves the foreground. Until this arm existed, the only way
+  // to see a new assignment was to kill and relaunch the app, which is exactly what a
+  // driver had to do (Tim, 21 Oct). It also recovers a Home whose first load failed and
+  // left `trip` null, which otherwise reads as "No trip assigned" until the next launch.
+  //
+  // Gated on isLoading so the hook's leading-edge refresh does not duplicate the mount
+  // effect's own first load, and on demo mode because refreshQuietly is a no-op there.
+  const hasNoTrip = trip === null && !isLoading && !IS_DEMO_MODE
   // `?? null` first is mandatory: `blocked_on` is optional on the shared PhaseDescriptor
   // type, so `undefined !== null` would be permanently true and polling would never turn
   // off. Mirrors the exact guard in Linehaul.tsx (`isBlocked`) — match its style.
   const pollingEnabled =
-    trip !== null &&
-    ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold')
+    hasNoTrip ||
+    (trip !== null && ((actionable?.blocked_on ?? null) !== null || trip.status === 'exception_hold'))
 
   useTripAutoRefresh({
     pollingEnabled,
-    intervalMs: TRIP_POLL_INTERVAL_MS,
+    // See UNASSIGNED_TRIP_POLL_INTERVAL_MS: waiting for an assignment is a slower
+    // question than waiting on a gate the driver is standing at.
+    intervalMs: hasNoTrip ? UNASSIGNED_TRIP_POLL_INTERVAL_MS : TRIP_POLL_INTERVAL_MS,
     onRefresh: refreshQuietly,
   })
 
@@ -633,6 +675,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
         refreshQuietly, isRefreshing, lastRefreshedAt,
         handedOverTripId, noteTripHandedOver, dismissHandedOver,
         endedByDispatch, dismissEndedByDispatch,
+        completedTrip, noteTripCompleted, dismissTripCompleted,
       }}
     >
       {children}

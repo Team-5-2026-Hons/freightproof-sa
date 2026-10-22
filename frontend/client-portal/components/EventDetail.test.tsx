@@ -1,12 +1,15 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { buildTimeline } from '@/lib/timeline'
-import type { ExceptionAnchorRecord, ExceptionPhoto, ExceptionRecord } from '@/lib/types'
+import type { ExceptionAnchorRecord, ExceptionPhoto, ExceptionRecord, LocationAssessment } from '@/lib/types'
 import { makeException, makeManifest, makePhase } from '@/test/factories'
 import { EventDetail } from './EventDetail'
 
 // Evidence bytes are fetched through the authorised artifact endpoint; here they are just bytes.
-vi.mock('@/lib/api', () => ({ fetchArtifactBytes: () => Promise.resolve(new ArrayBuffer(8)) }))
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  fetchArtifactBytes: () => Promise.resolve(new ArrayBuffer(8)),
+}))
 
 function phaseItem(...args: Parameters<typeof makePhase>) {
   const [item] = buildTimeline(makeManifest({ phases: [makePhase(...args)] }))
@@ -140,5 +143,82 @@ describe('EventDetail — exception photos and anchors', () => {
 
     expect(await screen.findAllByRole('figure')).toHaveLength(1)
     expect(screen.queryByText('Record anchors')).not.toBeInTheDocument()
+  })
+})
+
+describe('EventDetail — anchored fields that differ from Hedera', () => {
+  it('says why the Anchored badge is withheld, in the error tone', () => {
+    // Arrange
+    const item = phaseItem(3, 'departure', {
+      tier: 'anchored',
+      anchored_fields: [{ name: 'seal_number', value: 'SEAL-001', matches_anchor: false }],
+    })
+
+    // Act
+    render(<EventDetail token="t" item={item} />)
+
+    // Assert
+    const warning = screen.getByText('One or more anchored fields differ from Hedera; the Anchored badge is withheld.')
+    expect(warning).toHaveClass('text-err')
+    expect(screen.queryByText('Anchored', { selector: 'span.tier-badge' })).not.toBeInTheDocument()
+    expect(screen.getByText('Recorded', { selector: 'span.tier-badge' })).toBeInTheDocument()
+  })
+
+  it('shows no such line when every anchored field matches', () => {
+    // Arrange
+    const item = phaseItem(3, 'departure', {
+      tier: 'anchored', anchored_fields: [{ name: 'seal_number', value: 'SEAL-001', matches_anchor: true }],
+    })
+
+    // Act
+    render(<EventDetail token="t" item={item} />)
+
+    // Assert
+    expect(screen.queryByText(/differ from Hedera; the Anchored badge/)).not.toBeInTheDocument()
+    expect(screen.getByText('Anchored', { selector: 'span.tier-badge' })).toBeInTheDocument()
+  })
+})
+
+describe('EventDetail — location check', () => {
+  const assessment = (overrides: Partial<LocationAssessment> = {}): LocationAssessment => ({
+    proximity: 'unverified', separation_metres: null, driver_in_precinct: true, truck_in_precinct: false,
+    reasons: ['stale_fix', 'poor_accuracy'], ...overrides,
+  })
+
+  it('shows where the truck was and why the check could not reach a verdict, in plain words', () => {
+    // Arrange
+    const item = phaseItem(3, 'arrival', { location_assessment: assessment() })
+
+    // Act
+    render(<EventDetail token="t" item={item} />)
+
+    // Assert
+    const field = screen.getByText('Location check').closest('div')!
+    expect(field).toHaveTextContent('Unverified · driver inside precinct · truck outside precinct')
+    expect(field).toHaveTextContent('Stale fix; Poor accuracy')
+  })
+
+  it('leaves out the truck and the reasons when the assessment has none', () => {
+    // Arrange
+    const item = phaseItem(3, 'arrival', {
+      location_assessment: assessment({ truck_in_precinct: null, reasons: [], proximity: 'within_limit' }),
+    })
+
+    // Act
+    render(<EventDetail token="t" item={item} />)
+
+    // Assert
+    const field = screen.getByText('Location check').closest('div')!
+    expect(field).toHaveTextContent('Within limit')
+    expect(field).not.toHaveTextContent('truck')
+  })
+
+  it('copes with an older pack whose assessment carries no reasons at all', () => {
+    // Arrange
+    const old = { ...assessment(), reasons: undefined } as unknown as LocationAssessment
+    const item = phaseItem(3, 'arrival', { location_assessment: old })
+
+    // Act / Assert
+    expect(() => render(<EventDetail token="t" item={item} />)).not.toThrow()
   })
 })

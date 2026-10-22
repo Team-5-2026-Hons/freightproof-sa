@@ -94,10 +94,13 @@ vi.mock('@/lib/hooks/useMyTrips', () => ({
   }),
 }))
 
+// It also renders the `extraAction` the hub hands it (Navigate), which is how the real map
+// places that action — the hub no longer floats it itself.
 vi.mock('@/components/map/DriverMap', () => ({
-  DriverMap: ({ position, route }: { position: { lat: number; lng: number } | null; route?: readonly unknown[] | null }) => (
+  DriverMap: ({ position, route, extraAction }: { position: { lat: number; lng: number } | null; route?: readonly unknown[] | null; extraAction?: React.ReactNode }) => (
     <div data-testid="driver-map" data-route-points={route?.length ?? 0}>
       {position === null ? 'no-fix' : `${position.lat},${position.lng}`}
+      {extraAction}
     </div>
   ),
 }))
@@ -732,6 +735,27 @@ describe('InTransitPageClient at accessibility text sizes', () => {
 
     const navigate = screen.getByRole('link', { name: /navigate/i })
     expect(navigate.closest('section[aria-label="Your position"]')).toBeNull()
+  })
+
+  // Regression: the rem-sized sheet is taller than the screen's lower two thirds at these
+  // sizes and, being pinned, left the map slot no room and hid its content with no way to
+  // scroll to it. The sheet scrolls inside itself instead; at normal sizes it never needs to.
+  it('test_caps_the_sheet_and_lets_it_scroll_at_large_text', () => {
+    document.documentElement.style.fontSize = '28px'
+
+    render(<InTransitPageClient />)
+
+    const sheet = screen.getByText('Heading to').closest('div.rounded-t-\\[28px\\]')
+    expect(sheet).toHaveClass('overflow-y-auto')
+    expect(sheet?.className).toMatch(/max-h-\[\d+dvh\]/)
+  })
+
+  it('test_leaves_the_sheet_uncapped_at_normal_sizes', () => {
+    render(<InTransitPageClient />)
+
+    const sheet = screen.getByText('Heading to').closest('div.rounded-t-\\[28px\\]')
+    expect(sheet).not.toBeNull()
+    expect(sheet).not.toHaveClass('overflow-y-auto')
   })
 
   it('test_keeps_navigate_on_the_map_at_normal_sizes', () => {

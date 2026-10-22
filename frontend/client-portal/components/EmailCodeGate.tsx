@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { PackError, requestEmailCode, verifyEmailCode } from '@/lib/api'
+import { useEffect, useRef, useState } from 'react'
+import { PackError, STORAGE_BLOCKED_NOTICE, requestEmailCode, storageBlocked, verifyEmailCode } from '@/lib/api'
 
 // Shown instead of the pack when it was issued to an email address and this browser has
 // not yet entered the code sent there (FP-291). The code is never sent automatically on
@@ -9,6 +9,16 @@ import { PackError, requestEmailCode, verifyEmailCode } from '@/lib/api'
 // recipient's code allowance or fill their inbox.
 
 const CODE_LENGTH = 6
+const HTTP_TOO_MANY_REQUESTS = 429
+// The backend refuses a second code inside 60 s (RESEND_COOLDOWN in email_codes.py), and its
+// per-IP limiter works in one-minute windows, so a minute is the right wait either way. The
+// server's Retry-After header would be better, but the API does not expose it to browsers (CORS).
+const RESEND_COOLDOWN_MS = 60_000
+// A 429 means two different things and only the body tells them apart. This opening is the
+// backend's EmailCodeRequestTooSoon detail ("A code was sent a moment ago. …"); the per-IP
+// limiter's body ("Too many requests. …") does not start with it.
+const CODE_ALREADY_SENT_PREFIX = 'A code was sent'
+const WAIT_HINT = 'Try again in about a minute.'
 
 type Step =
   | { kind: 'start' }
@@ -26,22 +36,49 @@ function messageFor(err: unknown, fallback: string): string {
   return err instanceof PackError ? err.message : fallback
 }
 
+function isCodeAlreadySent(err: unknown): boolean {
+  return err instanceof PackError && err.status === HTTP_TOO_MANY_REQUESTS && err.message.startsWith(CODE_ALREADY_SENT_PREFIX)
+}
+
 export function EmailCodeGate({ token, emailHint, onVerified }: EmailCodeGateProps) {
   const [step, setStep] = useState<Step>({ kind: 'start' })
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [coolingDown, setCoolingDown] = useState(false)
+  const cooldownTimer = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (cooldownTimer.current !== null) window.clearTimeout(cooldownTimer.current)
+  }, [])
+
+  function startCooldown(): void {
+    if (cooldownTimer.current !== null) window.clearTimeout(cooldownTimer.current)
+    setCoolingDown(true)
+    cooldownTimer.current = window.setTimeout(() => setCoolingDown(false), RESEND_COOLDOWN_MS)
+  }
 
   async function send(): Promise<void> {
+    // Where to return if this send fails: a recipient already looking at the code box keeps it,
+    // because the code they were sent earlier is still the live one.
+    const before: Step = step.kind === 'sent' || step.kind === 'verifying' ? { kind: 'sent', emailHint: step.emailHint } : { kind: 'start' }
     setError(null)
     setStep({ kind: 'sending' })
     try {
       const sent = await requestEmailCode(token)
       setStep({ kind: 'sent', emailHint: sent.email_hint })
+      startCooldown()
     } catch (err: unknown) {
-      // A 429 means a code is already on its way, so the entry box is still the right screen.
-      const alreadySent = err instanceof PackError && err.status === 429
-      setStep(alreadySent ? { kind: 'sent', emailHint } : { kind: 'start' })
+      console.warn('Could not request an emailed code', err)
       setError(messageFor(err, 'The code could not be sent. Check your connection and try again.'))
+      if (isCodeAlreadySent(err)) {
+        // The backend says a code is already on its way, so the entry box is the right screen.
+        setStep({ kind: 'sent', emailHint: before.kind === 'sent' ? before.emailHint : emailHint })
+        startCooldown()
+        return
+      }
+      setStep(before)
+      // The generic per-IP limit: asking again straight away would only be refused again.
+      if (err instanceof PackError && err.status === HTTP_TOO_MANY_REQUESTS) startCooldown()
     }
   }
 
@@ -53,6 +90,7 @@ export function EmailCodeGate({ token, emailHint, onVerified }: EmailCodeGatePro
       await verifyEmailCode(token, code)
       onVerified()
     } catch (err: unknown) {
+      console.warn('The emailed code was not accepted', err)
       setStep({ kind: 'sent', emailHint: step.emailHint })
       setCode('')
       setError(messageFor(err, 'The code could not be checked. Check your connection and try again.'))
@@ -95,32 +133,37 @@ export function EmailCodeGate({ token, emailHint, onVerified }: EmailCodeGatePro
           </label>
           <button
             type="submit"
-            className="rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
+            className="min-h-11 rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
             disabled={code.length !== CODE_LENGTH || step.kind === 'verifying'}
           >
             {step.kind === 'verifying' ? 'Checking…' : 'Open pack'}
           </button>
           <button
             type="button"
-            className="text-sm font-semibold text-sec underline disabled:opacity-40"
-            disabled={step.kind === 'verifying'}
+            className="min-h-11 py-2 text-sm font-semibold text-sec underline disabled:opacity-40"
+            disabled={step.kind === 'verifying' || coolingDown}
             onClick={() => void send()}
           >
             Send a new code
           </button>
+          {coolingDown && <p className="text-xs text-muted">You can ask for another code in about a minute.</p>}
         </form>
       ) : (
-        <button
-          type="button"
-          className="rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
-          disabled={step.kind === 'sending'}
-          onClick={() => void send()}
-        >
-          {step.kind === 'sending' ? 'Sending…' : 'Email me a code'}
-        </button>
+        <>
+          <button
+            type="button"
+            className="min-h-11 rounded-md bg-ink px-4 py-3 text-sm font-semibold text-white disabled:opacity-40"
+            disabled={step.kind === 'sending' || coolingDown}
+            onClick={() => void send()}
+          >
+            {step.kind === 'sending' ? 'Sending…' : 'Email me a code'}
+          </button>
+          {coolingDown && <p className="text-xs text-muted">{WAIT_HINT}</p>}
+        </>
       )}
 
       {error && <p role="alert" className="text-sm text-err">{error}</p>}
+      {storageBlocked() && <p className="text-xs text-muted">{STORAGE_BLOCKED_NOTICE}</p>}
     </main>
   )
 }

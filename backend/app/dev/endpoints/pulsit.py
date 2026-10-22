@@ -357,3 +357,4 @@ async def move_truck(
         expected_trip_stop_id=expected_stop.id,
         expected_precinct_name=expected_precinct.name,
     )
+

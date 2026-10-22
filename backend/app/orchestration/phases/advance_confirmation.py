@@ -38,7 +38,7 @@ async def advance_confirmation(
         return gated
     trip, event = gated
 
-    _record_driver_position(event, payload)
+    await _record_driver_position(event, payload)
     horse_fix = await corroboration.record_phase_corroboration(
         db, trip=trip, event=event, driver_captured_at=payload.driver_captured_at,
     )

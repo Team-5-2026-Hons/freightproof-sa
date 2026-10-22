@@ -1,0 +1,86 @@
+diff --git a/backend/app/reporting/templates/audit_pack.html.j2 b/backend/app/reporting/templates/audit_pack.html.j2
+index bcdcd91..3c2badb 100644
+--- a/backend/app/reporting/templates/audit_pack.html.j2
++++ b/backend/app/reporting/templates/audit_pack.html.j2
+@@ -25,7 +25,7 @@
+ 
+   <table class="kv">
+     <tr><th>Trip reference</th><td>{{ m.trip.trip_reference }}</td></tr>
+-    <tr><th>Order number</th><td>{{ m.trip.order_number }}</td></tr>
++    <tr><th>Order number</th><td>{{ m.trip.order_number or '—' }}</td></tr>
+     <tr><th>Operator</th><td>{{ m.trip.operator_name }}</td></tr>
+     <tr><th>Client(s)</th><td>{{ m.trip.client_names|join(', ') or '—' }}</td></tr>
+     <tr><th>Scope</th><td>{% if m.options.scope_consignment_id %}Single consignment: {{ m.consignments[0].parcel_perfect_reference if m.consignments else '—' }}{% else %}Whole trip{% endif %}</td></tr>
+diff --git a/backend/app/reporting/templates/incident_sheet.html.j2 b/backend/app/reporting/templates/incident_sheet.html.j2
+index a54f766..4cecfe6 100644
+--- a/backend/app/reporting/templates/incident_sheet.html.j2
++++ b/backend/app/reporting/templates/incident_sheet.html.j2
+@@ -22,7 +22,7 @@
+ <div class="running running-issued">FreightProof · generated {{ m.generated_at|sast }}</div>
+ 
+ <h1>Incident fact sheet</h1>
+-<p class="muted">Trip {{ m.trip.trip_reference }} · order {{ m.trip.order_number }} · operator {{ m.trip.operator_name }} ·
++<p class="muted">Trip {{ m.trip.trip_reference }} · order {{ m.trip.order_number or '—' }} · operator {{ m.trip.operator_name }} ·
+   generated {{ m.generated_at|sast }}. Times are SAST.</p>
+ 
+ <h2>What happened, where and when</h2>
+diff --git a/backend/app/schemas/audit_pack.py b/backend/app/schemas/audit_pack.py
+index 191d34f..2e9d306 100644
+--- a/backend/app/schemas/audit_pack.py
++++ b/backend/app/schemas/audit_pack.py
+@@ -436,7 +436,8 @@ class IncidentSummary(_Frozen):
+ class TripSummary(_Frozen):
+     trip_id: UUID
+     trip_reference: str
+-    order_number: str
++    # Nullable since FP-281: trips keyed by the PP manifest no longer carry an order number.
++    order_number: str | None
+     trip_type: str
+     status: str
+     operator_name: str
+diff --git a/backend/tests/integration/test_audit_pack_builder.py b/backend/tests/integration/test_audit_pack_builder.py
+index 3f61e3f..622b921 100644
+--- a/backend/tests/integration/test_audit_pack_builder.py
++++ b/backend/tests/integration/test_audit_pack_builder.py
+@@ -352,3 +352,15 @@ async def test_build_audit_manifest_includes_the_anchored_linehaul_pdf(db_sessio
+     linehaul_pdf = next(e for e in record.evidence if e.role == "linehaul_pdf")
+     assert linehaul_pdf.tier == "anchored"
+     assert linehaul_pdf.mime_type == "application/pdf"
++
++
++async def test_build_audit_manifest_trip_without_order_number_succeeds(db_session, audit_trip):
++    # Arrange — FP-281 stopped writing order_number, so new trips have none.
++    audit_trip.trip.order_number = None
++    await db_session.flush()
++
++    # Act
++    manifest = await _build(db_session, audit_trip)
++
++    # Assert
++    assert manifest.trip.order_number is None
+diff --git a/frontend/client-portal/components/Sections.tsx b/frontend/client-portal/components/Sections.tsx
+index 5f1f7c2..9e6b071 100644
+--- a/frontend/client-portal/components/Sections.tsx
++++ b/frontend/client-portal/components/Sections.tsx
+@@ -114,7 +114,7 @@ export function Parties({ manifest }: { manifest: AuditPackManifest }) {
+       <dl>
+         <Field label="Operator">{trip.operator_name}</Field>
+         <Field label="Client(s)">{trip.client_names.join(', ') || '—'}</Field>
+-        <Field label="Order number"><span className="num">{trip.order_number}</span></Field>
++        <Field label="Order number"><span className="num">{trip.order_number ?? '—'}</span></Field>
+         <Field label="Created / closed"><span className="num">{formatSast(trip.created_at)} / {formatSast(trip.closed_at)}</span></Field>
+         <Field label="Status">{humanise(trip.status)}</Field>
+       </dl>
+diff --git a/frontend/client-portal/lib/types.ts b/frontend/client-portal/lib/types.ts
+index a92ea02..586196b 100644
+--- a/frontend/client-portal/lib/types.ts
++++ b/frontend/client-portal/lib/types.ts
+@@ -292,7 +292,7 @@ export interface IncidentSummary {
+ export interface TripSummary {
+   trip_id: string
+   trip_reference: string
+-  order_number: string
++  order_number: string | null
+   trip_type: string
+   status: string
+   operator_name: string
