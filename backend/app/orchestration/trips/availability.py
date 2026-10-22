@@ -12,7 +12,10 @@ The rule (spec 2026-10-14 D3-D5):
   * windows are half-open [start, end), so a trip ending at 16:00 and one starting at 16:00 do not
     clash;
   * a live trip that has overrun its planned end, or any trip with no end at all, is busy until it
-    is closed or cancelled. Nobody can promise when a truck still on the road comes back.
+    is closed or cancelled. Nobody can promise when a truck still on the road comes back;
+  * a live trip started before its planned departure (loading at 18:30 for a 20:00 departure) holds
+    its crew from now, not from the plan: it is already in use, exactly as activation treats it
+    (phases.scheduling._reject_if_another_trip_underway). Found by the dispatcher assistant, 21 Oct.
 
 FP-83: a live trip occupies its CURRENT driver (the highest completed handover's incoming driver),
 and a pending takeover reserves the incoming driver from the exchange time to the trip's end. The
@@ -117,6 +120,14 @@ def busy_until(status: TripStatus, planned_end: datetime | None, now: datetime) 
     if status in LIVE_STATUSES and planned_end <= now:
         return None
     return planned_end
+
+
+def hold_start(status: TripStatus, planned_start: datetime, now: datetime) -> datetime:
+    """When a trip starts holding its crew: its planned start, or now for a live trip that began
+    before it. A booked trip still waits for its plan, so booking ahead never blocks anyone early."""
+    if status in LIVE_STATUSES and as_utc(planned_start) > as_utc(now):
+        return as_utc(now)
+    return planned_start
 
 
 def windows_overlap(
@@ -247,7 +258,7 @@ def _occupied_window(
         if status not in LIVE_STATUSES:
             return None
         start = trip.created_at
-    return start, busy_until(status, planned_end, now), planned_end
+    return hold_start(status, start, now), busy_until(status, planned_end, now), planned_end
 
 
 _Held = tuple[datetime, datetime | None, datetime | None]  # (busy_from, busy_until, planned_end)

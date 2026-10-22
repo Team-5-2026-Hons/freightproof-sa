@@ -28,6 +28,8 @@ interface AnalyticsChatPanelProps {
   onRecheckStatus: () => void
   /** Switch the page to a "Based on" line's tab and dates. */
   onOpenBasis: (basis: Basis) => void
+  /** A question to put in the box, not send: the dispatcher assistant's "Ask in Analytics" (assistant spec B30). */
+  initialQuestion?: string
 }
 
 /** The "Ask about these figures" side panel (FP-295). Sits beside the charts, not over them,
@@ -35,9 +37,9 @@ interface AnalyticsChatPanelProps {
  *  covers the page instead: beside a 400 px panel, a narrower page squeezes its tabs to
  *  single letters (seen in the browser check, 19 Oct). The page mounts it only while
  *  open, so closing it throws the conversation away (spec D7). */
-export function AnalyticsChatPanel({ id, onClose, statusSpend, onRecheckStatus, onOpenBasis }: AnalyticsChatPanelProps) {
+export function AnalyticsChatPanel({ id, onClose, statusSpend, onRecheckStatus, onOpenBasis, initialQuestion }: AnalyticsChatPanelProps) {
   const chat = useAnalyticsChat(onRecheckStatus)
-  const [question, setQuestion] = useState('')
+  const [question, setQuestion] = useState(() => (initialQuestion ?? '').slice(0, MAX_QUESTION_CHARS))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const countId = useId()
   const atLimit = question.length >= MAX_QUESTION_CHARS

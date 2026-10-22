@@ -274,4 +274,11 @@ describe('AnalyticsChatPanel', () => {
 
     expect(onClose).toHaveBeenCalledTimes(2)
   })
+
+  it('starts with a carried question in the box, and sends nothing until Ask', () => {
+    renderPanel({ initialQuestion: "What's our on-time rate this month?" })
+
+    expect(input()).toHaveValue("What's our on-time rate this month?")
+    expect(mockedPost).not.toHaveBeenCalled()
+  })
 })

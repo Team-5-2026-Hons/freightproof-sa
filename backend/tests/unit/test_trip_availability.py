@@ -12,7 +12,7 @@ import pytest
 
 from app.db.models.enums import TripStatus
 from app.orchestration.trips.availability import (
-    as_utc, busy_until, clash_message, format_when, planned_window, windows_overlap,
+    as_utc, busy_until, clash_message, format_when, hold_start, planned_window, windows_overlap,
 )
 from app.schemas.availability import BusyEntry, CrewResourceType
 
@@ -108,6 +108,22 @@ def test_busy_until_accepts_a_status_read_back_as_a_plain_string():
 
 
 # ── Wording ────────────────────────────────────────────────────────────────────
+
+# ── hold_start: when a trip starts holding its crew ─────────────────────────────
+
+
+@pytest.mark.parametrize("status", [TripStatus.ACTIVE, TripStatus.EXCEPTION_HOLD])
+def test_hold_start_live_trip_started_early_holds_from_now(status: TripStatus):
+    assert hold_start(status, _T0 + 2 * _HOUR, _T0) == _T0
+
+
+def test_hold_start_booked_trip_still_waits_for_its_planned_start():
+    assert hold_start(TripStatus.CREATED, _T0 + 2 * _HOUR, _T0) == _T0 + 2 * _HOUR
+
+
+def test_hold_start_live_trip_past_its_planned_start_keeps_the_plan():
+    assert hold_start(TripStatus.ACTIVE, _T0 - _HOUR, _T0) == _T0 - _HOUR
+
 
 def test_format_when_uses_operator_time_without_a_leading_zero():
     assert format_when(datetime(2026, 10, 9, 14, 0, tzinfo=UTC)) == "Fri 9 Oct, 16:00"

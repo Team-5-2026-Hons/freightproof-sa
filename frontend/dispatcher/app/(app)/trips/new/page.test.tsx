@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const nav = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn() }))
+const nav = vi.hoisted(() => ({ push: vi.fn(), back: vi.fn(), search: '' }))
 const toast = vi.hoisted(() => ({ notify: vi.fn() }))
 
 vi.mock('@/lib/supabase/client', () => ({
   supabase: { auth: { getSession: vi.fn(), signOut: vi.fn(), onAuthStateChange: vi.fn() } },
   getAccessToken: vi.fn(),
 }))
-vi.mock('next/navigation', () => ({ useRouter: () => nav }))
+vi.mock('next/navigation', () => ({ useRouter: () => nav, useSearchParams: () => new URLSearchParams(nav.search) }))
 // TopBar mounts ForensicControls, which needs ForensicModeProvider, which reads the user.
 vi.mock('@/lib/hooks/useAuth', () => ({ useAuth: () => ({ user: null }) }))
 vi.mock('@/lib/hooks/useToast', () => ({ useToast: () => toast }))
@@ -477,5 +477,70 @@ describe('Create Trip: who is free (FP-142)', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument()
     await waitFor(() => expect(getCrewAvailability).toHaveBeenCalledTimes(2))
+  })
+})
+
+describe('Create Trip: filled in by the assistant (assistant spec §7.3)', () => {
+  function openWith(query: string): void {
+    window.history.pushState(null, '', `${ROUTES.tripNew}?${query}`)
+    nav.search = query
+    renderPage()
+  }
+
+  beforeEach(() => {
+    nav.search = ''
+  })
+
+  it('fills in after a click inside the app, while the address bar still shows the previous page (B39)', async () => {
+    // Next.js renders the new page first and updates the address bar after: only useSearchParams has the link yet.
+    window.history.pushState(null, '', '/fleet/drivers')
+    nav.search = `mode=empty_leg&driver=${DRIVER_ID}&departure=2026-11-02T17:00`
+
+    renderPage()
+
+    const summary = await screen.findByRole('complementary', { name: 'Trip summary' })
+    expect(within(summary).getByText(mockDrivers[0].full_name)).toBeInTheDocument()
+    expect(screen.getByText(/Filled in by the assistant/)).toBeInTheDocument()
+  })
+
+  it('looks the manifest up once and says it was filled in, then tidies the address', async () => {
+    vi.mocked(previewPPManifest).mockResolvedValue(makePreview())
+
+    openWith('mode=manifest&manifest=81')
+
+    await screen.findByRole('region', { name: 'Manifest The Courier Guy · CPT 81' })
+    expect(previewPPManifest).toHaveBeenCalledTimes(1)
+    expect(previewPPManifest).toHaveBeenCalledWith(81)
+    expect(screen.getByLabelText(/Manifest number/)).toHaveValue('81')
+    expect(screen.getByText(/Filled in by the assistant/)).toBeInTheDocument()
+    expect(window.location.search).toBe('')
+    expect(createTripFromPPManifest).not.toHaveBeenCalled()
+  })
+
+  it('fills an empty leg from known ids, and creates nothing until Create', async () => {
+    openWith(`mode=empty_leg&driver=${DRIVER_ID}&horse=${HORSE_ID}&origin=${PRECINCT_CGY_JHB_ID}&destination=${PRECINCT_FEDEX_DBN_ID}&departure=2026-11-02T17:00`)
+
+    const summary = await screen.findByRole('complementary', { name: 'Trip summary' })
+    expect(within(summary).getByText(mockDrivers[0].full_name)).toBeInTheDocument()
+    expect(within(summary).getByText(mockHorses[0].registration)).toBeInTheDocument()
+    expect(within(summary).getByText(/02 Nov, 17:00 SAST/)).toBeInTheDocument()
+    expect(screen.queryByText(/left blank/)).not.toBeInTheDocument()
+    expect(createTrip).not.toHaveBeenCalled()
+  })
+
+  it('leaves an unknown id blank and says so', async () => {
+    openWith('mode=empty_leg&driver=00000000-0000-0000-0000-00000000dead')
+
+    expect(await screen.findByText(/Some values weren't recognised and were left blank/)).toBeInTheDocument()
+    const summary = screen.getByRole('complementary', { name: 'Trip summary' })
+    expect(within(summary).getAllByText('Not set').length).toBeGreaterThan(0)
+  })
+
+  it('an ordinary visit shows no note', () => {
+    window.history.pushState(null, '', ROUTES.tripNew)
+    nav.search = ''
+    renderPage()
+
+    expect(screen.queryByText(/Filled in by the assistant/)).not.toBeInTheDocument()
   })
 })

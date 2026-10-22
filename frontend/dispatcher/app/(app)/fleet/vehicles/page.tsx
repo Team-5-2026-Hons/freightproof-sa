@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { FormField } from '@/components/ui/FormField'
+import { useAddFormLink } from '@/lib/fleet/add-form-link'
 import { VehicleCard, VEHICLE_GRID_CLASSES } from '@/components/vehicles/VehicleCard'
 import { VehicleCardGridSkeleton } from '@/components/vehicles/VehicleCardSkeleton'
 import { useVehicles } from '@/lib/hooks/useVehicles'
@@ -97,6 +98,8 @@ export default function FleetVehiclesPage(): React.JSX.Element {
   const [touched, setTouched] = useState<Set<VehicleField>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // The assistant's "add a vehicle" button opens this page with the pop-up open, empty (assistant spec B41).
+  useAddFormLink(ROUTES.fleetVehicles, () => setModalOpen(true))
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')

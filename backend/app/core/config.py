@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     # Across every organisation, per SAST calendar month; the chat refuses new questions once
     # reached. Keep the Anthropic console's spend limit at or a little above this.
     AI_CHAT_MONTHLY_BUDGET_USD: float = 20.0
+    # Dispatcher assistant (the bottom-right helper bubble): its own switch, so it can be off while
+    # the Analytics chat is on. It uses the provider, model, key and monthly budget above (one key,
+    # one bill, one cap), and stays off unless that key is set too.
+    ASSISTANT_ENABLED: bool = False
 
     GPS_TOLERANCE_METRES: int = 50
 

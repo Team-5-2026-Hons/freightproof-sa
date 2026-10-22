@@ -942,6 +942,266 @@
         "title": "AssignUpdate",
         "type": "object"
       },
+      "AssistantAnswer": {
+        "properties": {
+          "actions": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "open_page": "#/components/schemas/OpenPageAction",
+                  "open_trip_form": "#/components/schemas/OpenTripFormAction"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/OpenTripFormAction"
+                },
+                {
+                  "$ref": "#/components/schemas/OpenPageAction"
+                }
+              ]
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "cards": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "bookings": "#/components/schemas/BookingsCard",
+                  "choose": "#/components/schemas/ChooseCard",
+                  "expiry_list": "#/components/schemas/ExpiryListCard",
+                  "form_preview": "#/components/schemas/FormPreviewCard",
+                  "free_crew": "#/components/schemas/FreeCrewCard",
+                  "history": "#/components/schemas/HistoryCard",
+                  "incident_list": "#/components/schemas/IncidentListCard",
+                  "parcel": "#/components/schemas/ParcelCard",
+                  "review_queue": "#/components/schemas/ReviewQueueCard",
+                  "roster": "#/components/schemas/RosterCard",
+                  "route_time": "#/components/schemas/RouteTimeCard",
+                  "trip": "#/components/schemas/TripCard",
+                  "trip_list": "#/components/schemas/TripListCard",
+                  "vehicle": "#/components/schemas/VehicleCard"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/TripListCard"
+                },
+                {
+                  "$ref": "#/components/schemas/TripCard"
+                },
+                {
+                  "$ref": "#/components/schemas/IncidentListCard"
+                },
+                {
+                  "$ref": "#/components/schemas/BookingsCard"
+                },
+                {
+                  "$ref": "#/components/schemas/ChooseCard"
+                },
+                {
+                  "$ref": "#/components/schemas/VehicleCard"
+                },
+                {
+                  "$ref": "#/components/schemas/ExpiryListCard"
+                },
+                {
+                  "$ref": "#/components/schemas/FreeCrewCard"
+                },
+                {
+                  "$ref": "#/components/schemas/RouteTimeCard"
+                },
+                {
+                  "$ref": "#/components/schemas/ParcelCard"
+                },
+                {
+                  "$ref": "#/components/schemas/HistoryCard"
+                },
+                {
+                  "$ref": "#/components/schemas/FormPreviewCard"
+                },
+                {
+                  "$ref": "#/components/schemas/ReviewQueueCard"
+                },
+                {
+                  "$ref": "#/components/schemas/RosterCard"
+                }
+              ]
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "answer",
+              "follow_up",
+              "declined"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "title": "Refs",
+            "type": "array"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssistantSpend"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tools_used": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools Used",
+            "type": "array"
+          }
+        },
+        "required": [
+          "answer",
+          "kind",
+          "cards",
+          "actions",
+          "tools_used",
+          "refs",
+          "spend"
+        ],
+        "title": "AssistantAnswer",
+        "type": "object"
+      },
+      "AssistantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/AssistantTurn"
+            },
+            "maxItems": 10,
+            "title": "History",
+            "type": "array"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "maxItems": 30,
+            "title": "Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AssistantRequest",
+        "type": "object"
+      },
+      "AssistantSpend": {
+        "properties": {
+          "all_chats_spent_usd": {
+            "title": "All Chats Spent Usd",
+            "type": "number"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "budget_usd": {
+            "title": "Budget Usd",
+            "type": "number"
+          },
+          "spent_usd": {
+            "title": "Spent Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "spent_usd",
+          "all_chats_spent_usd",
+          "budget_usd",
+          "available"
+        ],
+        "title": "AssistantSpend",
+        "type": "object"
+      },
+      "AssistantStatus": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "spend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssistantSpend"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "spend"
+        ],
+        "title": "AssistantStatus",
+        "type": "object"
+      },
+      "AssistantTurn": {
+        "additionalProperties": false,
+        "description": "One earlier message, kept in the browser (spec D6): its text and the records it showed or meant.",
+        "properties": {
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "maxItems": 30,
+            "title": "Refs",
+            "type": "array"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "AssistantTurn",
+        "type": "object"
+      },
       "AuditPackAccessEventRead": {
         "additionalProperties": false,
         "properties": {
@@ -1939,6 +2199,129 @@
         "title": "Body_upload_late_artifact_endpoint_api_v1_trips_me__trip_id__late_evidence_artifacts_post",
         "type": "object"
       },
+      "BookedCrew": {
+        "properties": {
+          "bookings": {
+            "items": {
+              "$ref": "#/components/schemas/BookingRow"
+            },
+            "title": "Bookings",
+            "type": "array"
+          },
+          "who": {
+            "$ref": "#/components/schemas/RecordRef"
+          }
+        },
+        "required": [
+          "who",
+          "bookings"
+        ],
+        "title": "BookedCrew",
+        "type": "object"
+      },
+      "BookingRow": {
+        "properties": {
+          "busy_from": {
+            "format": "date-time",
+            "title": "Busy From",
+            "type": "string"
+          },
+          "busy_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Busy Until"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "planned_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Until"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "status",
+          "origin",
+          "destination",
+          "busy_from",
+          "busy_until",
+          "planned_until"
+        ],
+        "title": "BookingRow",
+        "type": "object"
+      },
+      "BookingsCard": {
+        "properties": {
+          "bookings": {
+            "items": {
+              "$ref": "#/components/schemas/BookingRow"
+            },
+            "title": "Bookings",
+            "type": "array"
+          },
+          "type": {
+            "const": "bookings",
+            "default": "bookings",
+            "title": "Type",
+            "type": "string"
+          },
+          "who": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "who",
+          "window_start",
+          "window_end",
+          "bookings"
+        ],
+        "title": "BookingsCard",
+        "type": "object"
+      },
       "BusyEntry": {
         "description": "One driver, horse or trailer, and the trip that has it in the asked-about window.",
         "properties": {
@@ -2482,6 +2865,50 @@
           "tier"
         ],
         "title": "CheckpointRecord",
+        "type": "object"
+      },
+      "ChooseCard": {
+        "description": "Two or more records matched what was typed: each is a button that answers \"which one?\".",
+        "properties": {
+          "more": {
+            "title": "More",
+            "type": "integer"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "type": {
+            "const": "choose",
+            "default": "choose",
+            "title": "Type",
+            "type": "string"
+          },
+          "typed": {
+            "title": "Typed",
+            "type": "string"
+          },
+          "what": {
+            "enum": [
+              "driver",
+              "vehicle",
+              "trip",
+              "precinct"
+            ],
+            "title": "What",
+            "type": "string"
+          }
+        },
+        "required": [
+          "what",
+          "typed",
+          "options",
+          "more"
+        ],
+        "title": "ChooseCard",
         "type": "object"
       },
       "CompleteSubstitutionRequest": {
@@ -4223,6 +4650,45 @@
           "busy"
         ],
         "title": "CrewAvailabilityResponse",
+        "type": "object"
+      },
+      "CrewGroup": {
+        "properties": {
+          "booked": {
+            "items": {
+              "$ref": "#/components/schemas/BookedCrew"
+            },
+            "title": "Booked",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "driver",
+              "horse",
+              "trailer"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "nothing_booked": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "title": "Nothing Booked",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "nothing_booked",
+          "booked",
+          "truncated"
+        ],
+        "title": "CrewGroup",
         "type": "object"
       },
       "CrewResourceType": {
@@ -7775,6 +8241,90 @@
         "title": "ExpiryBands",
         "type": "object"
       },
+      "ExpiryListCard": {
+        "description": "Drivers' licences and vehicles' licence discs: expired or due within `within_days`, or one record's.",
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ExpiryRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "expiry_list",
+            "default": "expiry_list",
+            "title": "Type",
+            "type": "string"
+          },
+          "within_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Within Days"
+          },
+          "without_date": {
+            "title": "Without Date",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "within_days",
+          "rows",
+          "without_date",
+          "truncated"
+        ],
+        "title": "ExpiryListCard",
+        "type": "object"
+      },
+      "ExpiryRow": {
+        "properties": {
+          "document": {
+            "enum": [
+              "driver_licence",
+              "vehicle_disc"
+            ],
+            "title": "Document",
+            "type": "string"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expiry"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordRef"
+          }
+        },
+        "required": [
+          "record",
+          "document",
+          "expiry",
+          "expired"
+        ],
+        "title": "ExpiryRow",
+        "type": "object"
+      },
       "ExternalActionUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -7903,6 +8453,174 @@
           "all_time_start"
         ],
         "title": "FleetTilesResponse",
+        "type": "object"
+      },
+      "FormPreviewCard": {
+        "description": "What \"Open trip form\" will fill in, shown before the dispatcher clicks (spec D2a, D2b).",
+        "properties": {
+          "arrival": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival"
+          },
+          "departure": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "driver": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "horse": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manifest_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Number"
+          },
+          "manifest_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Summary"
+          },
+          "mode": {
+            "enum": [
+              "empty_leg",
+              "manifest"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trailers": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "title": "Trailers",
+            "type": "array"
+          },
+          "type": {
+            "const": "form_preview",
+            "default": "form_preview",
+            "title": "Type",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "manifest_number",
+          "manifest_summary",
+          "driver",
+          "horse",
+          "trailers",
+          "origin",
+          "destination",
+          "departure",
+          "arrival",
+          "warnings"
+        ],
+        "title": "FormPreviewCard",
+        "type": "object"
+      },
+      "FreeCrewCard": {
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/CrewGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "type": {
+            "const": "free_crew",
+            "default": "free_crew",
+            "title": "Type",
+            "type": "string"
+          },
+          "window_end": {
+            "format": "date-time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "date-time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_start",
+          "window_end",
+          "groups"
+        ],
+        "title": "FreeCrewCard",
         "type": "object"
       },
       "Grain": {
@@ -8433,6 +9151,123 @@
           "checks"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HistoryCard": {
+        "description": "One driver's or vehicle's trips, counted the way its own page lists them.",
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "cancelled": {
+            "title": "Cancelled",
+            "type": "integer"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "live": {
+            "title": "Live",
+            "type": "integer"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryRow"
+            },
+            "title": "Recent",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "type": {
+            "const": "history",
+            "default": "history",
+            "title": "Type",
+            "type": "string"
+          },
+          "who": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "who",
+          "window_start",
+          "window_end",
+          "total",
+          "completed",
+          "cancelled",
+          "live",
+          "booked",
+          "recent"
+        ],
+        "title": "HistoryCard",
+        "type": "object"
+      },
+      "HistoryRow": {
+        "properties": {
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "happened_at": {
+            "format": "date-time",
+            "title": "Happened At",
+            "type": "string"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "status",
+          "origin",
+          "destination",
+          "happened_at"
+        ],
+        "title": "HistoryRow",
         "type": "object"
       },
       "IdentityAttestationRead": {
@@ -9523,6 +10358,38 @@
         "title": "IncidentExternalAction",
         "type": "string"
       },
+      "IncidentListCard": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "incident_list",
+            "default": "incident_list",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "rows"
+        ],
+        "title": "IncidentListCard",
+        "type": "object"
+      },
       "IncidentOutcome": {
         "description": "What the investigation established. Kept apart from IncidentStatus so closing never\nhas to pretend cargo was recovered — INCONCLUSIVE is a legitimate way to close.",
         "enum": [
@@ -9909,6 +10776,71 @@
         ],
         "title": "IncidentReporterRole",
         "type": "string"
+      },
+      "IncidentRow": {
+        "properties": {
+          "incident_id": {
+            "format": "uuid",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "incident_type": {
+            "$ref": "#/components/schemas/IncidentType"
+          },
+          "investigated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Investigated By"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_id",
+          "reference",
+          "incident_type",
+          "status",
+          "trip_id",
+          "trip_reference",
+          "received_at"
+        ],
+        "title": "IncidentRow",
+        "type": "object"
       },
       "IncidentStatus": {
         "description": "Where the investigation is. Independent of Trip.status (a trip can close while a\nshortage investigation stays open) and of each exception's review_status.",
@@ -11851,6 +12783,30 @@
         "title": "ManifestResponse",
         "type": "object"
       },
+      "NeedsReview": {
+        "description": "A trip's exceptions waiting for a dispatcher's review, by severity (the dashboard's split).",
+        "properties": {
+          "critical": {
+            "title": "Critical",
+            "type": "integer"
+          },
+          "info": {
+            "title": "Info",
+            "type": "integer"
+          },
+          "warning": {
+            "title": "Warning",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "critical",
+          "warning",
+          "info"
+        ],
+        "title": "NeedsReview",
+        "type": "object"
+      },
       "NoteUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -11973,6 +12929,92 @@
           "plan_spread"
         ],
         "title": "OnTimeResponse",
+        "type": "object"
+      },
+      "OpenPageAction": {
+        "properties": {
+          "filters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "kind": {
+            "const": "open_page",
+            "default": "open_page",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "page": {
+            "enum": [
+              "dashboard",
+              "trip",
+              "history",
+              "exceptions",
+              "incidents",
+              "drivers",
+              "driver",
+              "vehicles",
+              "vehicle",
+              "precincts",
+              "precinct",
+              "parcels",
+              "analytics",
+              "add_precinct",
+              "add_driver",
+              "add_vehicle"
+            ],
+            "title": "Page",
+            "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          }
+        },
+        "required": [
+          "label",
+          "page",
+          "record_id",
+          "filters"
+        ],
+        "title": "OpenPageAction",
+        "type": "object"
+      },
+      "OpenTripFormAction": {
+        "properties": {
+          "kind": {
+            "const": "open_trip_form",
+            "default": "open_trip_form",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "params": {
+            "$ref": "#/components/schemas/TripFormParams"
+          }
+        },
+        "required": [
+          "label",
+          "params"
+        ],
+        "title": "OpenTripFormAction",
         "type": "object"
       },
       "OperatingCost": {
@@ -12587,6 +13629,45 @@
         "title": "PPWaybillSummary",
         "type": "object"
       },
+      "ParcelCard": {
+        "properties": {
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "journeys": {
+            "items": {
+              "$ref": "#/components/schemas/ParcelJourneyRow"
+            },
+            "title": "Journeys",
+            "type": "array"
+          },
+          "type": {
+            "const": "parcel",
+            "default": "parcel",
+            "title": "Type",
+            "type": "string"
+          },
+          "waybill": {
+            "title": "Waybill",
+            "type": "string"
+          }
+        },
+        "required": [
+          "barcode",
+          "waybill",
+          "journeys"
+        ],
+        "title": "ParcelCard",
+        "type": "object"
+      },
       "ParcelFinding": {
         "description": "What a dispatcher established about one affected parcel. There is no \"stolen\" and no\n\"no scan recorded\" here: a missing scan-in is a scan fact read from Parcel, shown beside\nthe finding, and a parcel with no finding yet is simply not established.",
         "enum": [
@@ -12757,6 +13838,88 @@
           "gaps"
         ],
         "title": "ParcelJourney",
+        "type": "object"
+      },
+      "ParcelJourneyRow": {
+        "properties": {
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "last_depot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Depot"
+          },
+          "last_recorded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Recorded At"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_status": {
+            "$ref": "#/components/schemas/TripStatus"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "trip_status",
+          "origin",
+          "destination",
+          "position",
+          "phase",
+          "last_depot",
+          "last_recorded_at"
+        ],
+        "title": "ParcelJourneyRow",
         "type": "object"
       },
       "ParcelLookupResponse": {
@@ -15402,6 +16565,56 @@
         "title": "RecordChange",
         "type": "object"
       },
+      "RecordRef": {
+        "additionalProperties": false,
+        "description": "One record an answer showed: what the next question's \"him\" or \"the first horse\" can mean.\n\nThe browser sends these back with the conversation. They are never trusted: a tool that receives one\nre-loads the record by id, scoped to the caller's organisation, so a forged id is simply not found.\nThe label only names the record to the model, so it is length-capped like any typed text.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "driver",
+              "vehicle",
+              "trip",
+              "precinct"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 255,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "label"
+        ],
+        "title": "RecordRef",
+        "type": "object"
+      },
       "ReplaceImmediateSubstitutionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -15592,6 +16805,45 @@
         "title": "ReviewOutcomeCount",
         "type": "object"
       },
+      "ReviewQueueCard": {
+        "description": "The Exceptions page's queue in numbers: every exception waiting for review, on any trip.",
+        "properties": {
+          "by_severity": {
+            "$ref": "#/components/schemas/NeedsReview"
+          },
+          "claimed": {
+            "title": "Claimed",
+            "type": "integer"
+          },
+          "on_finished_trips": {
+            "title": "On Finished Trips",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "type": {
+            "const": "review_queue",
+            "default": "review_queue",
+            "title": "Type",
+            "type": "string"
+          },
+          "unclaimed": {
+            "title": "Unclaimed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "by_severity",
+          "claimed",
+          "unclaimed",
+          "on_finished_trips"
+        ],
+        "title": "ReviewQueueCard",
+        "type": "object"
+      },
       "ReviewResponse": {
         "properties": {
           "outcomes": {
@@ -15681,6 +16933,219 @@
           "road_problem_share"
         ],
         "title": "RiskyTimeBlock",
+        "type": "object"
+      },
+      "RosterCard": {
+        "description": "How many drivers, horses, trailers and depots there are (coverage audit item 4).",
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/RosterGroupCard"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "type": {
+            "const": "roster",
+            "default": "roster",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "title": "RosterCard",
+        "type": "object"
+      },
+      "RosterDepot": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "depot": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "owned": {
+            "title": "Owned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "depot",
+          "address",
+          "owned"
+        ],
+        "title": "RosterDepot",
+        "type": "object"
+      },
+      "RosterGroupCard": {
+        "properties": {
+          "active_total": {
+            "title": "Active Total",
+            "type": "integer"
+          },
+          "depots": {
+            "items": {
+              "$ref": "#/components/schemas/RosterDepot"
+            },
+            "title": "Depots",
+            "type": "array"
+          },
+          "inactive_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inactive Total"
+          },
+          "kind": {
+            "enum": [
+              "driver",
+              "horse",
+              "trailer",
+              "depot"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/RecordRef"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "active_total",
+          "inactive_total",
+          "records",
+          "depots",
+          "truncated"
+        ],
+        "title": "RosterGroupCard",
+        "type": "object"
+      },
+      "RouteTimeCard": {
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "distance_km": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Distance Km"
+          },
+          "driving_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driving Minutes"
+          },
+          "driving_unavailable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driving Unavailable"
+          },
+          "history_from": {
+            "format": "date",
+            "title": "History From",
+            "type": "string"
+          },
+          "history_left_out": {
+            "title": "History Left Out",
+            "type": "boolean"
+          },
+          "history_to": {
+            "format": "date",
+            "title": "History To",
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "past_trip_count": {
+            "title": "Past Trip Count",
+            "type": "integer"
+          },
+          "slow_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slow Minutes"
+          },
+          "type": {
+            "const": "route_time",
+            "default": "route_time",
+            "title": "Type",
+            "type": "string"
+          },
+          "typical_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typical Minutes"
+          }
+        },
+        "required": [
+          "origin",
+          "destination",
+          "driving_minutes",
+          "distance_km",
+          "driving_unavailable",
+          "past_trip_count",
+          "typical_minutes",
+          "slow_minutes",
+          "history_left_out",
+          "history_from",
+          "history_to"
+        ],
+        "title": "RouteTimeCard",
         "type": "object"
       },
       "RoutesResponse": {
@@ -17148,6 +18613,144 @@
         "title": "TripAttentionResponse",
         "type": "object"
       },
+      "TripCard": {
+        "properties": {
+          "arrival_delay_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Delay Minutes"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "delivery_confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Confirmed At"
+          },
+          "departure_delay_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Delay Minutes"
+          },
+          "journey_lock_anchored": {
+            "title": "Journey Lock Anchored",
+            "type": "boolean"
+          },
+          "open_incidents": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentRow"
+            },
+            "title": "Open Incidents",
+            "type": "array"
+          },
+          "original_driver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Driver"
+          },
+          "parcels_booked": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcels Booked"
+          },
+          "parcels_scanned_in": {
+            "title": "Parcels Scanned In",
+            "type": "integer"
+          },
+          "parcels_scanned_out": {
+            "title": "Parcels Scanned Out",
+            "type": "integer"
+          },
+          "receipts_anchored": {
+            "title": "Receipts Anchored",
+            "type": "integer"
+          },
+          "receipts_failed": {
+            "title": "Receipts Failed",
+            "type": "integer"
+          },
+          "receipts_owed": {
+            "title": "Receipts Owed",
+            "type": "integer"
+          },
+          "stops": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stops",
+            "type": "array"
+          },
+          "trip": {
+            "$ref": "#/components/schemas/TripRow"
+          },
+          "type": {
+            "const": "trip",
+            "default": "trip",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trip",
+          "stops",
+          "original_driver",
+          "open_incidents",
+          "delivery_confirmed_at",
+          "closed_at",
+          "departure_delay_minutes",
+          "arrival_delay_minutes",
+          "parcels_booked",
+          "parcels_scanned_out",
+          "parcels_scanned_in",
+          "journey_lock_anchored",
+          "receipts_owed",
+          "receipts_anchored",
+          "receipts_failed"
+        ],
+        "title": "TripCard",
+        "type": "object"
+      },
       "TripConsignmentInput": {
         "description": "One waybill on the trip. pp_reference is the PP waybill number (string[24], v28\nspec); unit_count_expected is dispatcher-entered — PP has no pallet grain.",
         "properties": {
@@ -18583,6 +20186,121 @@
         "title": "TripExceptionReviewRequest",
         "type": "object"
       },
+      "TripFormParams": {
+        "description": "What to fill in on the trip form. Ids only, never names (spec D2c); times are SAST wall-clock\n\"YYYY-MM-DDTHH:mm\", what the form's datetime-local fields hold.",
+        "properties": {
+          "arrival": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival"
+          },
+          "departure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure"
+          },
+          "destination_precinct_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Precinct Id"
+          },
+          "driver_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Driver Id"
+          },
+          "horse_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Horse Id"
+          },
+          "manifest_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Number"
+          },
+          "mode": {
+            "enum": [
+              "empty_leg",
+              "manifest"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "origin_precinct_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Precinct Id"
+          },
+          "trailer_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Trailer Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "manifest_number",
+          "driver_id",
+          "horse_id",
+          "trailer_ids",
+          "origin_precinct_id",
+          "destination_precinct_id",
+          "departure",
+          "arrival"
+        ],
+        "title": "TripFormParams",
+        "type": "object"
+      },
       "TripFromPPManifestRequest": {
         "description": "POST /trips/from-pp-manifest (spec §10.2).\n\nCargo is never accepted from the client — the server pulls it. Precincts are used\nonly for a hub the manifest could not link; planned times override the manifest's.\nTimes must carry a zone (AwareDatetime): the lock normalises to UTC, and a zone-less\nvalue could not be normalised honestly.",
         "properties": {
@@ -18814,6 +20532,93 @@
           "registration"
         ],
         "title": "TripHistoryVehicleResponse",
+        "type": "object"
+      },
+      "TripListCard": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "full_list": {
+            "enum": [
+              "dashboard",
+              "history"
+            ],
+            "title": "Full List",
+            "type": "string"
+          },
+          "on_hold": {
+            "title": "On Hold",
+            "type": "integer"
+          },
+          "on_the_road": {
+            "title": "On The Road",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/TripRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "trip_list",
+            "default": "trip_list",
+            "title": "Type",
+            "type": "string"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Start"
+          }
+        },
+        "required": [
+          "title",
+          "total",
+          "on_the_road",
+          "booked",
+          "on_hold",
+          "window_start",
+          "window_end",
+          "rows",
+          "truncated",
+          "full_list"
+        ],
+        "title": "TripListCard",
         "type": "object"
       },
       "TripListItemResponse": {
@@ -19083,6 +20888,180 @@
           "computed_at"
         ],
         "title": "TripRouteResponse",
+        "type": "object"
+      },
+      "TripRow": {
+        "properties": {
+          "actual_arrival_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Arrival At"
+          },
+          "actual_departure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Departure At"
+          },
+          "current_phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Phase"
+          },
+          "current_stop": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stop"
+          },
+          "destination": {
+            "title": "Destination",
+            "type": "string"
+          },
+          "driver": {
+            "title": "Driver",
+            "type": "string"
+          },
+          "driver_id": {
+            "format": "uuid",
+            "title": "Driver Id",
+            "type": "string"
+          },
+          "horse": {
+            "title": "Horse",
+            "type": "string"
+          },
+          "horse_id": {
+            "format": "uuid",
+            "title": "Horse Id",
+            "type": "string"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest"
+          },
+          "needs_review": {
+            "$ref": "#/components/schemas/NeedsReview"
+          },
+          "origin": {
+            "title": "Origin",
+            "type": "string"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "boolean"
+          },
+          "phase_completed": {
+            "title": "Phase Completed",
+            "type": "integer"
+          },
+          "phase_total": {
+            "title": "Phase Total",
+            "type": "integer"
+          },
+          "planned_arrival_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Arrival At"
+          },
+          "planned_departure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Departure At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TripStatus"
+          },
+          "trailers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Trailers",
+            "type": "array"
+          },
+          "trip_id": {
+            "format": "uuid",
+            "title": "Trip Id",
+            "type": "string"
+          },
+          "trip_reference": {
+            "title": "Trip Reference",
+            "type": "string"
+          },
+          "trip_type": {
+            "$ref": "#/components/schemas/TripType"
+          }
+        },
+        "required": [
+          "trip_id",
+          "trip_reference",
+          "manifest",
+          "status",
+          "trip_type",
+          "origin",
+          "destination",
+          "driver_id",
+          "driver",
+          "horse_id",
+          "horse",
+          "trailers",
+          "planned_departure_at",
+          "planned_arrival_at",
+          "actual_departure_at",
+          "actual_arrival_at",
+          "current_phase",
+          "current_stop",
+          "phase_completed",
+          "phase_total",
+          "needs_review",
+          "overdue"
+        ],
+        "title": "TripRow",
         "type": "object"
       },
       "TripStatus": {
@@ -19621,6 +21600,145 @@
           "trips_without_consignments"
         ],
         "title": "ValueExposed",
+        "type": "object"
+      },
+      "VehicleCard": {
+        "properties": {
+          "disc_state": {
+            "enum": [
+              "expired",
+              "expiring",
+              "ok",
+              "unknown"
+            ],
+            "title": "Disc State",
+            "type": "string"
+          },
+          "exception_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Exception Types",
+            "type": "array"
+          },
+          "exceptions_to_review": {
+            "$ref": "#/components/schemas/NeedsReview"
+          },
+          "gross_vehicle_mass_kg": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Vehicle Mass Kg"
+          },
+          "length_m": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length M"
+          },
+          "licence_disc_expiry": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Disc Expiry"
+          },
+          "make": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Make"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "on_trip_now": {
+            "items": {
+              "$ref": "#/components/schemas/BookingRow"
+            },
+            "title": "On Trip Now",
+            "type": "array"
+          },
+          "open_incidents": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentRow"
+            },
+            "title": "Open Incidents",
+            "type": "array"
+          },
+          "recent_breakdowns": {
+            "title": "Recent Breakdowns",
+            "type": "integer"
+          },
+          "trip_exceptions_to_review": {
+            "$ref": "#/components/schemas/NeedsReview"
+          },
+          "type": {
+            "const": "vehicle",
+            "default": "vehicle",
+            "title": "Type",
+            "type": "string"
+          },
+          "vehicle": {
+            "$ref": "#/components/schemas/RecordRef"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "vehicle",
+          "make",
+          "model",
+          "year",
+          "length_m",
+          "gross_vehicle_mass_kg",
+          "licence_disc_expiry",
+          "disc_state",
+          "on_trip_now",
+          "exceptions_to_review",
+          "exception_types",
+          "trip_exceptions_to_review",
+          "recent_breakdowns",
+          "open_incidents"
+        ],
+        "title": "VehicleCard",
         "type": "object"
       },
       "VehicleCreateBody": {
@@ -21705,6 +23823,78 @@
         "summary": "Upload Artifact Endpoint",
         "tags": [
           "artifacts"
+        ]
+      }
+    },
+    "/api/v1/assistant/chat": {
+      "post": {
+        "operationId": "ask_assistant_endpoint_api_v1_assistant_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantAnswer"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Answer a dispatcher's question from the organisation's live records, with cards of the records used",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/api/v1/assistant/status": {
+      "get": {
+        "operationId": "get_assistant_status_endpoint_api_v1_assistant_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether the dispatcher assistant is on, and this month's AI spend",
+        "tags": [
+          "assistant"
         ]
       }
     },

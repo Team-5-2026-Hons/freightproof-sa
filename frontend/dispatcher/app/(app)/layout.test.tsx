@@ -23,13 +23,15 @@ const replace = vi.fn()
 const router = { replace }
 vi.mock('next/navigation', () => ({ useRouter: () => router }))
 
-// The shell and realtime connection have their own tests; this file is about the auth gate.
+// The shell, realtime connection and assistant bubble have their own tests; this file is about
+// the auth gate.
 vi.mock('@/components/layout/DispatcherShell', () => ({
   DispatcherShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }))
 vi.mock('@/lib/realtime/RealtimeProvider', () => ({
   RealtimeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
+vi.mock('@/components/assistant/AssistantBubble', () => ({ AssistantBubble: () => null }))
 
 /** Raises one sticky error toast, standing in for a page whose fetch failed. */
 function RaiseError() {

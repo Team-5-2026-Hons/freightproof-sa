@@ -22,8 +22,10 @@ vi.mock('@/lib/hooks/useToast', () => ({
 }))
 
 const push = vi.fn()
+const address = vi.hoisted(() => ({ search: '', replace: vi.fn() }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push, back: vi.fn() }),
+  useRouter: () => ({ push, back: vi.fn(), replace: address.replace }),
+  useSearchParams: () => new URLSearchParams(address.search),
 }))
 
 vi.mock('@/lib/hooks/useVehicles', () => ({ useVehicles: vi.fn() }))
@@ -65,6 +67,8 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  address.search = ''
+  address.replace.mockReset()
   push.mockReset()
   notify.mockReset()
   mockedUseVehicles.mockReset().mockReturnValue(vehiclesState())
@@ -126,5 +130,16 @@ describe('Vehicles list', () => {
     renderPage()
 
     expect(screen.getByText('No vehicles')).toBeInTheDocument()
+  })
+})
+
+describe('Add vehicle from the assistant', () => {
+  it("opens empty from the assistant's link (?add=1), then tidies the address", () => {
+    address.search = 'add=1'
+
+    renderPage()
+
+    expect(screen.getByRole('dialog', { name: 'Add Vehicle' })).toBeInTheDocument()
+    expect(address.replace).toHaveBeenCalledWith('/fleet/vehicles', { scroll: false })
   })
 })
