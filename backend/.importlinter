@@ -362,8 +362,9 @@ layers =
 
 # ---------------------------------------------------------------------------
 # 29. Tier order inside analytics_chat/ (FP-295). service is the question loop; basis writes the
-#     "Based on" line from what the tools returned; tools and period_hints read data and the
-#     question; the bottom row are independent leaves.
+#     "Based on" line from what the tools returned, and page_view turns the page on screen into
+#     a hint, both on top of tools; tools reads data and answers "what does this mean" through
+#     page_guide; period_hints reads periods out of the question; the bottom row are leaves.
 # ---------------------------------------------------------------------------
 [importlinter:contract:analytics-chat-tier-order]
 name = Inside analytics_chat/, modules import only from lower tiers
@@ -372,8 +373,9 @@ containers =
     app.orchestration.analytics_chat
 layers =
     service
-    basis
-    period_hints | tools
+    basis | page_view
+    tools
+    page_guide | period_hints
     budget | definitions | number_check | periods | prompt | punctuation | totals
 
 # ---------------------------------------------------------------------------
