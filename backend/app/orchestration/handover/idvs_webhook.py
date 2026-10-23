@@ -42,7 +42,9 @@ def verify_webhook_signature(raw_body: bytes, presented_signature: Optional[str]
         return False
 
     expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, presented_signature)
+    # Bytes, not str: compare_digest raises TypeError on a non-ASCII str, which would turn
+    # a forged header into a 500 instead of a refusal.
+    return hmac.compare_digest(expected.encode("ascii"), presented_signature.encode("utf-8"))
 
 
 def webhook_timestamp_is_fresh(

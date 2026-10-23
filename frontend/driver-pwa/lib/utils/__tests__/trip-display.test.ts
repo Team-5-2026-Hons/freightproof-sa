@@ -43,6 +43,10 @@ describe('placeParts', () => {
     expect(placeParts('FedEx JHB · Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
   })
 
+  it('test_splits_a_name_saved_with_the_older_em_dash_separator', () => {
+    expect(placeParts('FedEx JHB — Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
+  })
+
   it('test_keeps_a_name_without_an_area_whole', () => {
     expect(placeParts('Depot 4')).toEqual({ name: 'Depot 4', detail: null })
   })
