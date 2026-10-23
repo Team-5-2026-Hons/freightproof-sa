@@ -533,7 +533,7 @@ export default function LogExceptionPageClient() {
         {submitError?.kind === 'rejected' && (
           // Terminal 4xx: retrying with the same input cannot succeed.
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
-            Could not submit — the report was not accepted. Review the details or contact your dispatcher.
+            Could not submit. The report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
         {submitError?.kind === 'rejected-photo' && (
@@ -547,7 +547,7 @@ export default function LogExceptionPageClient() {
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Could not send this report and this device has no room to store it. Not saved: the
             description{submitError.photoCount > 0 ? ` and ${pluralPhotos(submitError.photoCount)}` : ''}.
-            Nothing was lost from this screen — free up space or get signal, then submit again.
+            Nothing was lost from this screen. Free up space or get signal, then submit again.
           </p>
         )}
       </div>

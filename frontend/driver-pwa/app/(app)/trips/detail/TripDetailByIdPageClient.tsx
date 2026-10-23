@@ -90,7 +90,7 @@ export default function TripDetailByIdPageClient() {
             setHistory(await fetchDriverParticipation(tripId))
           } catch (historyErr: unknown) {
             console.error('Failed to load participation history', historyErr)
-            setLoadError('You handed this trip over. Your record could not be loaded — check your connection and try again.')
+            setLoadError('You handed this trip over. Your record could not be loaded. Check your connection and try again.')
           }
           return
         }

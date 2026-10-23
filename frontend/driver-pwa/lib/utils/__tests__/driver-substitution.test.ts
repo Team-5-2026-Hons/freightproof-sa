@@ -53,7 +53,7 @@ describe('substitutionStatusLine', () => {
   })
 
   it('test_saved_but_blocked_never_reads_as_complete', () => {
-    expect(substitutionStatusLine(pack.savedButBlocked, 'incoming')).toBe('Saved — waiting on dispatch')
+    expect(substitutionStatusLine(pack.savedButBlocked, 'incoming')).toBe('Saved, waiting on dispatch')
   })
 
   it('test_terminal_states_follow_the_server', () => {

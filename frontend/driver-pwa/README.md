@@ -1,6 +1,6 @@
 # driver-pwa
 
-Driver-facing mobile app for FreightProof SA. Drivers use this to complete the five handshake steps — gate arrival acknowledgement, evidence capture, seal entry, waybill photo, and POD capture.
+Driver-facing mobile app for FreightProof SA. Drivers use this to work through each trip phase (activation, loading, departure, in transit, unloading and confirmation), capturing seals, photos, counts and the receiver handover as they go.
 
 **Stack:** Next.js 15 App Router · TypeScript 5.5 · Tailwind v3.4 · Capacitor 6 (Android APK) · @serwist/next (browser PWA / offline)
 

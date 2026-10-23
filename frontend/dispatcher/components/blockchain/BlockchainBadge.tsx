@@ -27,7 +27,10 @@ function truncateHash(hash: string): string {
 
 export function BlockchainBadge({ receipt, state, className = '' }: Props) {
   const { copied, copy } = useCopyToClipboard()
-  const resolvedState: BadgeState = state ?? (receipt ? 'anchored' : 'unanchored')
+  // A receipt whose topic the sweep has not resolved yet is waiting, not skipped: only a
+  // missing receipt means anchoring was never attempted.
+  const resolvedState: BadgeState = state
+    ?? (receipt ? (isAnchoredTopic(receipt.hedera_topic_id) ? 'anchored' : 'pending') : 'unanchored')
 
   function copyHash() {
     if (!receipt) return
@@ -88,7 +91,7 @@ export function BlockchainBadge({ receipt, state, className = '' }: Props) {
   return (
     <span className={`inline-flex items-center rounded-sm bg-surf-high px-[10px] py-[5px] ${className}`}>
       <span className="text-[11px] font-[500] tracking-[0.04em] text-on-surf-v">
-        Not verified — minor change, skipped anchoring
+        Not verified: minor change, skipped anchoring
       </span>
     </span>
   )

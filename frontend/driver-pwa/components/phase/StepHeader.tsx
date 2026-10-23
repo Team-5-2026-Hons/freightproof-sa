@@ -81,7 +81,7 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
         <button
           type="button"
           onClick={() => router.push(ROUTES.panic)}
-          aria-label="Emergency — open panic alert"
+          aria-label="Emergency: open panic alert"
           className="flex size-11 items-center justify-center rounded-full bg-error-tint text-error transition-transform duration-100 active:scale-95"
         >
           <ShieldAlert className="size-5" strokeWidth={2.2} aria-hidden />

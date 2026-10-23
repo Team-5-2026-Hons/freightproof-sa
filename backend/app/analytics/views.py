@@ -40,6 +40,9 @@ class DriverAnalyticsView(AnalyticsViewBase):
     loading_dwell_events_count: Mapped[int] = mapped_column(Integer)
     departure_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
     departure_dwell_events_count: Mapped[int] = mapped_column(Integer)
+    # ciaran_drv_arrival_dwell: time at the gate, from the end of the drive to arrival.
+    arrival_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
+    arrival_dwell_events_count: Mapped[int] = mapped_column(Integer)
     unloading_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
     unloading_dwell_events_count: Mapped[int] = mapped_column(Integer)
     confirmation_dwell_minutes_sum: Mapped[float] = mapped_column(Double)

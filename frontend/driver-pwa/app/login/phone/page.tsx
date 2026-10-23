@@ -78,7 +78,7 @@ export default function PhoneLoginPage() {
       const message = err instanceof Error ? err.message : 'Failed to send OTP.'
       setError(
         message.toLowerCase().includes(UNREGISTERED_PHONE_ERROR_FRAGMENT)
-          ? 'Phone number not registered — contact your dispatcher.'
+          ? 'Phone number not registered. Contact your dispatcher.'
           : message,
       )
     } finally {

@@ -52,7 +52,7 @@ const STATE_WORDING: Record<EvidenceAct['state'], string> = {
   submitted: 'Submitted at completion',
   not_submitted: 'Not submitted',
   after_close: 'Received after the phase closed',
-  trip_cancelled: 'Not submitted — trip cancelled',
+  trip_cancelled: 'Not submitted: trip cancelled',
 }
 const AFTER_CANCELLATION = 'Received after the trip was cancelled'
 
@@ -97,7 +97,7 @@ export function evidenceTimeLines(act: EvidenceAct): string[] {
 // ── Completion row ───────────────────────────────────────────────────────────
 
 const OVERRIDE_TITLE = 'Closed by dispatcher override'
-const EXCEPTION_SUFFIX = ' — exception recorded'
+const EXCEPTION_SUFFIX = ', exception recorded'
 
 function completionBase(phaseType: PhaseType, stopName: string, destinationName: string): string {
   if (phaseType === 'activation') return `Driver confirmed arrival at ${stopName}`

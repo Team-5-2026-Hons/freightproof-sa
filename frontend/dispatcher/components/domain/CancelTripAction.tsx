@@ -100,7 +100,7 @@ export function CancelTripDialog({ tripId, status, open, onClose, onCancelled }:
         </div>
         <div>
           <div className="text-[13px] text-on-surf-v mt-[4px] leading-relaxed">
-            This trip will be cancelled, never deleted — every phase and every piece
+            This trip will be cancelled, never deleted. Every phase and every piece
             of evidence already recorded stays exactly as it is on the trip&apos;s
             record. This action cannot be undone.
           </div>

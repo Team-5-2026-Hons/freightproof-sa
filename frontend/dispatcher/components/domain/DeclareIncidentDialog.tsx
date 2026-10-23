@@ -75,7 +75,7 @@ export function DeclareIncidentDialog({ tripId, incidentId = null, open, onClose
   return (
     <Modal open onClose={close} closeDisabled={submitting} title="Record police & notification details">
       <p className="mb-4 text-[13px] leading-relaxed text-on-surf-v">
-        These appear in audit packs marked <strong>Declared</strong> — entered by you after the event, not captured by
+        These appear in audit packs marked <strong>Declared</strong>, entered by you after the event and not captured by
         FreightProof. Times are South African time. Saving again adds a correction; nothing is overwritten.
       </p>
       <div className="flex flex-col gap-3">

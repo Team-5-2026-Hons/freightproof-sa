@@ -343,7 +343,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
             name="name"
             value={form.name}
             onChange={handleFieldChange}
-            placeholder="FedEx DBN — Riverhorse Valley"
+            placeholder="FedEx DBN · Riverhorse Valley"
             required
             error={touched.has('name') ? errors.name ?? undefined : undefined}
           />
@@ -381,7 +381,7 @@ export function PrecinctForm({ precinct }: PrecinctFormProps): React.JSX.Element
           </div>
           <p className="text-[11px] text-on-surf-v -mt-2">
             Search an address above, click the map to place the pin, or paste coordinates
-            from a maps app — decimal (&ldquo;lat, lng&rdquo;) or degrees/minutes/seconds
+            from a maps app: decimal (&ldquo;lat, lng&rdquo;) or degrees/minutes/seconds
             both work.
           </p>
 

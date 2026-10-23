@@ -335,7 +335,7 @@
     </table>
     {% endif %}
     <p class="caveat">Phone positions are recorded only while the driver app is in use; the vehicle tracker is queried at
-      handshakes and checkpoints. The absence of a position is not evidence that the vehicle was stationary, and a straight
+      each trip phase and at checkpoints. The absence of a position is not evidence that the vehicle was stationary, and a straight
       line between two positions is not evidence of the route driven.</p>
   </div>
 </section>
@@ -586,7 +586,7 @@
     <p class="small muted">Structured around the factors section 15(3) of the Electronic Communications and Transactions Act
       25 of 2002 directs a court to consider when weighing a data message.</p>
     <h4>How the records were generated</h4>
-    <p>Custody events are captured by the driver in the FreightProof app at each handshake, with the phone's position and
+    <p>Custody events are captured by the driver in the FreightProof app at each trip phase, with the phone's position and
       time. The vehicle's tracker (Pulsit) is queried independently at the same moment. Parcel scans come from Parcel
       Perfect. Driver identity checks come from an identity verification service. Each record carries the time the device
       captured it and the time the server received it.</p>

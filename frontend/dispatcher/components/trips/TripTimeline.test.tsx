@@ -751,12 +751,12 @@ describe('TripTimeline: who sees the anchor', () => {
     expect(within(zone('Departure', 'Recorded')).getByText(/^Anchored /)).toBeInTheDocument()
   })
 
-  it('keeps "Anchor failed — receipt still owed" visible to everyone, outside the verdict', () => {
+  it('keeps "Anchor failed, receipt still owed" visible to everyone, outside the verdict', () => {
     forensic.forensicOn = false
     renderTimeline(trippedAnchor('failed').trip)
 
     const row = phaseGroup('Departure')
-    expect(within(row).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(row).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
     expect(within(row).queryByText(/Needs attention/)).not.toBeInTheDocument()
   })
 })
@@ -832,12 +832,12 @@ describe('TripTimeline: forensic gating (D32)', () => {
     expect(within(phaseGroup('Departure')).queryByRole('region', { name: 'Audit trail' })).not.toBeInTheDocument()
   })
 
-  it('keeps "Anchor failed — receipt still owed" visible with forensic mode off, on every phase that failed', () => {
+  it('keeps "Anchor failed, receipt still owed" visible with forensic mode off, on every phase that failed', () => {
     forensic.forensicOn = false
     renderTimeline(closedTrip({ departure: { anchor_status: 'failed' }, loading: { anchor_status: 'failed' } }))
 
-    expect(within(phaseGroup('Departure')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
-    expect(within(phaseGroup('Loading')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(phaseGroup('Departure')).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
+    expect(within(phaseGroup('Loading')).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
   })
 
   it('gates by wrapping in ForensicOnly, never by a prop a caller could forget', () => {
@@ -1025,7 +1025,7 @@ describe('TripTimeline: a cancelled trip', () => {
 
     const row = openCard('Departure')
     expect(within(row).getByText('Seal photographed')).toBeInTheDocument()
-    expect(within(row).getByText('Not submitted — trip cancelled')).toBeInTheDocument()
+    expect(within(row).getByText('Not submitted: trip cancelled')).toBeInTheDocument()
     expect(within(row).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
     expect(within(row).queryByText(/Expected:|Waiting for the/)).not.toBeInTheDocument()
     expect(within(row).getByText('Not reached')).toBeInTheDocument()

@@ -27,6 +27,8 @@ export interface DriverMetrics {
   loading_dwell_events_count: number
   departure_dwell_minutes_sum: number
   departure_dwell_events_count: number
+  arrival_dwell_minutes_sum: number
+  arrival_dwell_events_count: number
   unloading_dwell_minutes_sum: number
   unloading_dwell_events_count: number
   confirmation_dwell_minutes_sum: number
@@ -42,6 +44,7 @@ export interface DriverMetrics {
   activation_dwell_minutes_avg: number | null
   loading_dwell_minutes_avg: number | null
   departure_dwell_minutes_avg: number | null
+  arrival_dwell_minutes_avg: number | null
   unloading_dwell_minutes_avg: number | null
   /** Not purely driver behaviour — a slow receiver also lengthens it; show that caveat beside this number. */
   confirmation_dwell_minutes_avg: number | null

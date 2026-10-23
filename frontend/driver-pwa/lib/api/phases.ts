@@ -326,7 +326,7 @@ export async function buildPhaseCompleteRequest(
     case 'departure': {
       const e = evidence as DepartureEvidence
       if (e.sealPhotoDataUrl === null || e.sealNumber === null) {
-        throw new Error('Departure evidence incomplete — seal photo and seal number are required.')
+        throw new Error('Departure evidence incomplete: seal photo and seal number are required.')
       }
       // Not captured any more, but a pre-existing offline entry may still carry one —
       // forwarded when present rather than dropped.
@@ -364,12 +364,12 @@ export async function buildPhaseCompleteRequest(
       // Truthiness, not `=== null`, for the photo: a stale offline entry may have the
       // property absent entirely, and `undefined === null` is false.
       if (e.sealCondition === null || !e.sealPhotoDataUrl) {
-        throw new Error('Arrival evidence incomplete — seal condition and seal photo are required.')
+        throw new Error('Arrival evidence incomplete: seal condition and seal photo are required.')
       }
       // A missing seal has nothing to read a number off — required for every other
       // condition, but must never block completion when there is no seal to record.
       if (e.sealCondition !== 'missing' && e.sealNumberAtArrival === null) {
-        throw new Error('Arrival evidence incomplete — seal number is required unless the seal is missing.')
+        throw new Error('Arrival evidence incomplete: seal number is required unless the seal is missing.')
       }
       const sealPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
@@ -409,7 +409,7 @@ export async function buildPhaseCompleteRequest(
       // required. The signature is already an artifact id: the receiver's own browser
       // rendered the attestation and the server stored it, so there's nothing to upload.
       if (e.podPhotoDataUrl === null || !e.podSignatureArtifactId) {
-        throw new Error('Confirmation evidence incomplete — POD photo and receiver confirmation are required.')
+        throw new Error('Confirmation evidence incomplete: POD photo and receiver confirmation are required.')
       }
       const podPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.podPhotoArtifactId,

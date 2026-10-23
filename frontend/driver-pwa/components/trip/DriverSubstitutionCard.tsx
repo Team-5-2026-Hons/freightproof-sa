@@ -133,7 +133,7 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
         {blocker !== null && isPending ? `${request.request_format === 'immediate_v2' && role === 'outgoing' ? "Incoming acceptance is saved." : "Your check is saved."} ${blockerMessage(blocker)}` : undefined}
       </StatusBanner>
 
-      {request.request_format === 'immediate_v2' && role === 'outgoing' && <p className="mt-2 text-subhead">Not requested — notification only. You do not need to confirm or record a location.</p>}
+      {request.request_format === 'immediate_v2' && role === 'outgoing' && <p className="mt-2 text-subhead">Not requested (notification only). You do not need to confirm or record a location.</p>}
       <dl className="mt-2 divide-y divide-hairline">
         {request.exchange && <Fact label="Exchange point">
           <span className="block">{request.exchange.label}</span>

@@ -15,6 +15,6 @@ describe('SLA page', () => {
 
     render(<SLAPage />)
 
-    expect(screen.getByText('2026-09-23 — 2026-10-23')).toBeInTheDocument()
+    expect(screen.getByText('2026-09-23 to 2026-10-23')).toBeInTheDocument()
   })
 })

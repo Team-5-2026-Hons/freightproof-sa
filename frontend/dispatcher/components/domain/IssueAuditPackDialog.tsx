@@ -100,7 +100,7 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
     return (
       <Modal open onClose={close} title={`Issued ${issued.pack.pack_label}`}>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">
-          Send this link to {issued.pack.recipient_name}. It is shown only now — FreightProof keeps just its fingerprint —
+          Send this link to {issued.pack.recipient_name}. It is shown only now (FreightProof keeps just its fingerprint)
           and it expires on {new Date(issued.pack.expires_at).toLocaleDateString('en-ZA')}. You can revoke it at any time.
         </p>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">

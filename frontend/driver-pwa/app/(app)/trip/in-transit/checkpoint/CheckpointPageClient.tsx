@@ -185,7 +185,7 @@ export default function CheckpointPageClient() {
 
         {storageError && (
           <p role="alert" className="text-subhead text-error">
-            Couldn’t save on this phone — storage is full or unavailable. Try again.
+            Couldn’t save on this phone. Storage is full or unavailable. Try again.
           </p>
         )}
 
@@ -193,7 +193,7 @@ export default function CheckpointPageClient() {
           // Only on a terminal 4xx — retrying with the same input cannot succeed, so
           // "check your connection" would be actively misleading here.
           <p className="text-subhead text-error">
-            Could not submit — the checkpoint was not accepted. Review the details or contact your dispatcher.
+            Could not submit. The checkpoint was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
       </div>

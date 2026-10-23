@@ -39,7 +39,7 @@ function lateOutcomeMessage(outcome: LateEvidenceOutcome): { kind: 'success' | '
     case 'already-recorded':
       return { kind: 'success', title: 'Already on record', body: 'The server already holds this capture from you.' }
     case 'transient':
-      return { kind: 'error', title: 'Not sent yet', body: 'No connection to the server. It is still kept here — try again shortly.' }
+      return { kind: 'error', title: 'Not sent yet', body: 'No connection to the server. It is still kept here. Try again shortly.' }
     case 'refused':
       return { kind: 'error', title: 'Not accepted', body: outcome.reason }
     case 'not-eligible':

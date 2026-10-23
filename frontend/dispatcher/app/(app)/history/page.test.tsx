@@ -93,7 +93,7 @@ beforeEach(() => {
     precincts: [
       {
         id: 'origin-1' as never,
-        name: 'Cape Town — Depot',
+        name: 'Cape Town · Depot',
         principal_organization_id: 'org-1' as never,
         address: null,
         latitude: -33.9,
@@ -104,7 +104,7 @@ beforeEach(() => {
       },
       {
         id: 'destination-1' as never,
-        name: 'Johannesburg — Depot',
+        name: 'Johannesburg · Depot',
         principal_organization_id: 'org-1' as never,
         address: null,
         latitude: -26.2,
@@ -191,7 +191,7 @@ describe('Trip History page', () => {
       // 22:30Z is 00:30 SAST on the 7th. Any later render builds the query afresh.
       vi.setSystemTime(new Date('2026-09-06T22:30:00Z'))
       fireEvent.change(screen.getByDisplayValue('All routes'), { target: { value: 'origin-1' } })
-      fireEvent.change(screen.getByDisplayValue('Cape Town — Depot'), { target: { value: '' } })
+      fireEvent.change(screen.getByDisplayValue('Cape Town · Depot'), { target: { value: '' } })
 
       expect(mockedUseTripHistory).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: '2026-09-07' }))
       expect(screen.getByText('No trip history')).toBeInTheDocument()

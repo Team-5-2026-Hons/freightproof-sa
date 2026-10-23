@@ -29,8 +29,8 @@ export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
   // Only THIS phase's draft: unloading fields (waybillHandedOver etc.) belong to a
   // separate phase_event_id and are already resolved server-side by this point.
   // driverVisualCount is deliberately excluded — it's optional, and gating on it made a
-  // skipped count silently unclosable. The signature half is the receiver's confirmation
-  //, so this checks the artifact id the handover poll wrote into the draft.
+  // skipped count silently unclosable. The signature half is the receiver's confirmation,
+  // so this checks the artifact id the handover poll wrote into the draft.
   const isReady =
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureArtifactId)
@@ -45,7 +45,7 @@ export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
       <StepLayout phase={phase} stepIndex={stepIndex} showTitle={false} action={<WarehouseWaitAction />}>
         <WarehouseWaitCard title="Scanning in progress">
           The warehouse is still scanning the parcels in at this stop. The trip will
-          close on its own once they finish. Your evidence is saved — no action is
+          close on its own once they finish. Your evidence is saved. No action is
           needed from you.
         </WarehouseWaitCard>
       </StepLayout>
@@ -61,6 +61,7 @@ export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
         { label: 'Proof of delivery photo', met: draft.podPhotoDataUrl !== null },
         { label: 'Receiver confirmation', met: Boolean(draft.podSignatureArtifactId) },
       ]}
+      // onComplete itself, not a wrapper: its promise is what holds SwipeToConfirm in Submitting.
       action={<SwipeToConfirm label="Swipe to Close Trip" onConfirm={onComplete} disabled={!isReady} />}
     >
       <div className="flex flex-col items-center pt-8 text-center">

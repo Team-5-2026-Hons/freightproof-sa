@@ -66,8 +66,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-8 text-center">
         <h1 className="text-title-3 text-surface-on">Can&apos;t reach FreightProof</h1>
         <p className="text-subhead text-surface-on-variant">
-          You are still signed in. The app could not reach the server to load your trips —
-          check your signal and try again.
+          You are still signed in. The app could not reach the server to load your trips.
+          Check your signal and try again.
         </p>
         <Button variant="primary" size="md" className="mt-2" onClick={() => void auth.retryProfile()}>
           Try again

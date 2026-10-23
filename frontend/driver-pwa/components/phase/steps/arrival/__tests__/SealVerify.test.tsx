@@ -419,7 +419,7 @@ describe('SealVerify — reading the seal number from the photo', () => {
 
     expect(await screen.findByDisplayValue('AB-1234')).toBeInTheDocument()
     expect(onUpdate).toHaveBeenCalledWith({ sealNumberAtArrivalOcr: 'AB-1234', sealNumberAtArrival: 'AB-1234' })
-    expect(screen.getByText('Read from the photo — check it matches the seal.')).toBeInTheDocument()
+    expect(screen.getByText('Read from the photo. Check it matches the seal.')).toBeInTheDocument()
   })
 
   it('tells the driver to check a number that came from the photo', () => {
@@ -427,7 +427,7 @@ describe('SealVerify — reading the seal number from the photo', () => {
       sealCondition: 'intact', sealNumberAtArrival: 'AB-1234', sealNumberAtArrivalOcr: 'AB-1234',
     }) })
 
-    expect(screen.getByText('Read from the photo — check it matches the seal.')).toBeInTheDocument()
+    expect(screen.getByText('Read from the photo. Check it matches the seal.')).toBeInTheDocument()
   })
 
   it('never overwrites a number the driver typed', async () => {
@@ -451,7 +451,7 @@ describe('SealVerify — reading the seal number from the photo', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ sealNumberAtArrivalOcr: null }))
-    expect(screen.queryByText('Read from the photo — check it matches the seal.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Read from the photo. Check it matches the seal.')).not.toBeInTheDocument()
   })
 
   it('keeps a number the driver types while the read is still running', async () => {

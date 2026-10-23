@@ -13,7 +13,7 @@ export function PhaseAnchorSection({ phase }: { phase: PhaseDescriptor }) {
       <Field label="Status" value={phase.anchor_status} />
       {phase.anchor_status === 'failed' && (
         <div className="col-span-2 text-[11px] font-[600] text-warn">
-          ⚠ Anchor failed — receipt still owed
+          ⚠ Anchor failed, receipt still owed
         </div>
       )}
       {/* The phase's own SHA-256, anchored value a reviewer recomputes against the chain. */}

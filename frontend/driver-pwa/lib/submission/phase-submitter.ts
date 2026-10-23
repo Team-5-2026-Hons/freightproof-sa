@@ -306,7 +306,7 @@ function addressedPhaseOf(trip: Trip | null, phaseEventId: string): PhaseDescrip
 const DEFAULT_CONFLICT_MESSAGE = 'Trip state changed unexpectedly. Please retry from the trip screen.'
 const DEFAULT_TERMINAL_MESSAGE = 'Could not submit. Please try again.'
 // Same wording as the checkpoint screen's storage failure, so the driver hears one message for one cause.
-const QUEUE_STORAGE_FAILED_MESSAGE = 'Couldn’t save on this phone — storage is full or unavailable. Try again.'
+const QUEUE_STORAGE_FAILED_MESSAGE = 'Couldn’t save on this phone. Storage is full or unavailable. Try again.'
 
 async function runSubmission(request: PhaseSubmissionRequest, generation: number): Promise<PhaseSubmissionOutcome> {
   const { tripId, phaseEventId, phaseType, evidence, idempotencyKey, driverCapturedAt, acknowledgement = null } = request

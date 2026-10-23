@@ -538,7 +538,7 @@ export function HandoverPageClient({ token }: { token: string }) {
     setConsentBusy(true)
     try {
       await recordConsent(token, consentPayloadText(), false)
-      // No document: confirm as typed-only.
+      // No document: confirm as typed-only. There is no selfie step: one that was never stored proved nothing.
       setStatus('ready')
     } catch (err: unknown) {
       console.warn('[handover] consent record failed:', err)

@@ -71,13 +71,14 @@ describe('IncidentsPage', () => {
     expect(shownOrder()).toEqual(['FP-BRAVO', 'FP-CHARLIE', 'FP-ALPHA'])
   })
 
-  it('shows_the_report_hint_as_a_muted_line_not_link_blue_top_bar_text', () => {
+  it('keeps_the_report_hint_behind_an_info_button_beside_the_title', () => {
     renderPage()
 
-    const hint = screen.getByText("Report an incident from a trip's Info tab, or from an exception.")
+    expect(screen.queryByText("Report an incident from a trip's Info tab, or from an exception.")).toBeNull()
 
-    expect(hint).toHaveClass('text-on-surf-v')
-    expect(hint.className).not.toMatch(/text-sec/)
+    fireEvent.click(screen.getByRole('button', { name: 'About incidents' }))
+
+    expect(screen.getByText("Report an incident from a trip's Info tab, or from an exception.")).toBeInTheDocument()
   })
 
   it('asks_the_server_for_the_status_a_tab_names', () => {

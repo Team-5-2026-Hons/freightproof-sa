@@ -145,6 +145,39 @@ async def _make_exception(db_session, trip: Trip, *, tag: str, **overrides) -> T
     return exc
 
 
+def _assessment_payload(**overrides) -> dict:
+    """One stored action-location assessment, in the JSON shape the column holds."""
+    payload = {
+        "schema_version": 1,
+        "policy_version": "test-policy",
+        "evaluated_at": "2026-09-15T10:00:00Z",
+        "driver_lat": -26.0942,
+        "driver_lng": 28.1342,
+        "driver_captured_at": "2026-09-15T09:59:00Z",
+        "driver_accuracy_metres": 5.0,
+        "tracker_lat": None,
+        "tracker_lng": None,
+        "tracker_captured_at": None,
+        "separation_metres": None,
+        "proximity": "unverified",
+        "reasons": ["missing_tracker"],
+        "max_separation_metres": 100.0,
+        "max_age_seconds": 60,
+        "max_skew_seconds": 30,
+        "max_phone_accuracy_metres": 50.0,
+        "expected_trip_stop_id": None,
+        "precinct_id": None,
+        "precinct_lat": None,
+        "precinct_lng": None,
+        "precinct_radius_metres": None,
+        "precinct_tolerance_metres": None,
+        "driver_in_precinct": None,
+        "truck_in_precinct": None,
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _headers(seed: dict, *, role: str = "dispatcher") -> dict:
     return auth_header(make_token(
         sub=str(seed["user"].id), role=role, org_id=str(seed["org"].id),
@@ -197,33 +230,7 @@ async def test_exception_reads_return_the_persisted_location_assessment(
     """Dispatcher reads carry the capture-time assessment, never a rebuilt verdict."""
     seed = await _seed_org(db_session, tag="assessment-read")
     trip = await _make_trip(db_session, seed, tag="assessment-read")
-    assessment = {
-        "schema_version": 1,
-        "policy_version": "test-policy",
-        "evaluated_at": "2026-09-15T10:00:00Z",
-        "driver_lat": -26.0942,
-        "driver_lng": 28.1342,
-        "driver_captured_at": "2026-09-15T09:59:00Z",
-        "driver_accuracy_metres": 5.0,
-        "tracker_lat": None,
-        "tracker_lng": None,
-        "tracker_captured_at": None,
-        "separation_metres": None,
-        "proximity": "unverified",
-        "reasons": ["missing_tracker"],
-        "max_separation_metres": 100.0,
-        "max_age_seconds": 60,
-        "max_skew_seconds": 30,
-        "max_phone_accuracy_metres": 50.0,
-        "expected_trip_stop_id": None,
-        "precinct_id": None,
-        "precinct_lat": None,
-        "precinct_lng": None,
-        "precinct_radius_metres": None,
-        "precinct_tolerance_metres": None,
-        "driver_in_precinct": None,
-        "truck_in_precinct": None,
-    }
+    assessment = _assessment_payload()
     exc = await _make_exception(
         db_session, trip, tag="assessment-read",
         review_status=ExceptionReviewStatus.NEEDS_REVIEW,
@@ -1086,3 +1093,72 @@ async def test_trip_detail_loads_anchors_and_photos_in_a_constant_number_of_quer
     assert res.status_code == 200
     assert sum("FROM evidence_anchor_events" in s for s in statements) == 1
     assert sum("FROM exception_artifacts" in s or "JOIN exception_artifacts" in s for s in statements) == 1
+
+
+async def _location_phase(db_session, seed: dict, trip: Trip, **assessment_overrides) -> PhaseEvent:
+    stop = TripStop(id=uuid.uuid4(), trip_id=trip.id, precinct_id=seed["dest"].id, sequence=2)
+    db_session.add(stop)
+    await db_session.flush()
+    phase_event = PhaseEvent(
+        id=uuid.uuid4(), trip_id=trip.id, trip_stop_id=stop.id,
+        phase_type=PhaseType.CONFIRMATION, sequence_number=6, status=PhaseStatus.COMPLETED,
+        action_location_assessment=_assessment_payload(**assessment_overrides),
+    )
+    db_session.add(phase_event)
+    await db_session.flush()
+    return phase_event
+
+
+async def test_detail_of_a_system_location_finding_shows_the_assessment_that_raised_it(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="sysloc")
+    trip = await _make_trip(db_session, seed, tag="sysloc")
+    phase_event = await _location_phase(db_session, seed, trip, driver_in_precinct=False)
+    exc = await _make_exception(
+        db_session, trip, tag="sysloc", phase_event_id=phase_event.id,
+        exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    shown = res.json()["action_location_assessment"]
+    assert shown is not None
+    assert shown["driver_in_precinct"] is False
+    assert shown["driver_lat"] == -26.0942
+
+
+async def test_detail_of_a_non_location_finding_does_not_borrow_the_phase_assessment(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="sysdmg")
+    trip = await _make_trip(db_session, seed, tag="sysdmg")
+    phase_event = await _location_phase(db_session, seed, trip)
+    exc = await _make_exception(
+        db_session, trip, tag="sysdmg", phase_event_id=phase_event.id,
+        exception_type=ExceptionType.CARGO_DAMAGE,
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    assert res.json()["action_location_assessment"] is None
+
+
+async def test_detail_prefers_the_exception_own_assessment_over_the_phase_one(
+    client: AsyncClient, db_session,
+):
+    seed = await _seed_org(db_session, tag="ownloc")
+    trip = await _make_trip(db_session, seed, tag="ownloc")
+    phase_event = await _location_phase(db_session, seed, trip, driver_in_precinct=False)
+    exc = await _make_exception(
+        db_session, trip, tag="ownloc", phase_event_id=phase_event.id,
+        exception_type=ExceptionType.DRIVER_LOCATION_MISMATCH,
+        action_location_assessment=_assessment_payload(driver_in_precinct=True),
+    )
+
+    res = await client.get(_detail_url(exc.id), headers=_headers(seed))
+
+    assert res.status_code == 200
+    assert res.json()["action_location_assessment"]["driver_in_precinct"] is True

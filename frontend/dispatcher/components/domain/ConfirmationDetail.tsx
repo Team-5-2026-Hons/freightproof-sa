@@ -73,7 +73,7 @@ export function ConfirmationDetail({ artifactLoading, artifactError, onRetryArti
         <Field label="Parcels counted by driver" value={phase.driver_visual_count?.toString()} />
       </Section>
       <div className="text-[11px] text-on-surf-v px-3 pb-3">
-        Counted blind — recorded as independent evidence, not reconciled against the scans above.
+        Counted blind: recorded as independent evidence, not reconciled against the scans above.
       </div>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at confirmation" />

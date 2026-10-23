@@ -108,7 +108,7 @@ it('says_the_driver_was_not_asked_to_confirm_and_when_the_outgoing_notice_was_re
   vi.mocked(getCompletedSubstitution).mockResolvedValue(detail)
   renderDetail()
 
-  expect(await screen.findByText('Not requested — notification only')).toBeVisible()
+  expect(await screen.findByText('Not requested (notification only)')).toBeVisible()
   expect(screen.getByText(/Transfer completed, recorded .* · Unread/)).toBeVisible()
   expect(screen.getByText(/Notification delivery or read acknowledgement is not recorded as driver consent/)).toBeVisible()
 })

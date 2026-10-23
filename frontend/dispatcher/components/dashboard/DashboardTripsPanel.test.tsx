@@ -69,8 +69,8 @@ beforeEach(() => {
   mockedUseTrips.mockReset().mockReturnValue(tripsState())
   mockedUsePrecincts.mockReset().mockReturnValue({
     precincts: [
-      { id: 'origin-1', name: 'Cape Town — Depot' },
-      { id: 'destination-1', name: 'Johannesburg — Depot' },
+      { id: 'origin-1', name: 'Cape Town · Depot' },
+      { id: 'destination-1', name: 'Johannesburg · Depot' },
     ] as never,
     isLoading: false,
     error: null,

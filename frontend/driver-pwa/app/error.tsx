@@ -33,7 +33,7 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
         <h1 className="text-lg font-bold">Something went wrong</h1>
         <p className="text-sm opacity-90">
           The app hit a problem and couldn&rsquo;t finish what it was doing.
-          Any photos or details you&rsquo;ve captured are saved on this device — nothing is lost.
+          Any photos or details you&rsquo;ve captured are saved on this device. Nothing is lost.
         </p>
       </div>
       <div className="flex w-full flex-col gap-3">

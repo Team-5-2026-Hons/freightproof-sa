@@ -51,7 +51,7 @@ export function OutlinePanel({
         <p className="text-xs text-on-surf-v">
           {hasPin
             ? 'No outline yet. Auto-fit draws one around the pin from mapped property shapes.'
-            : 'Search an address or place the pin first — the outline is found around it.'}
+            : 'Search an address or place the pin first. The outline is found around it.'}
         </p>
       )}
 

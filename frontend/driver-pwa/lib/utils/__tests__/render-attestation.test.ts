@@ -19,8 +19,8 @@ const RECIPIENT_ID = '9202204720082'
 // past ~58 characters must ellipsize.
 const STUB_CHAR_WIDTH_PX = 11
 
-// jsdom ships no 2D canvas (node-canvas isn't installed) — same stub approach as
-// SignaturePad.test.tsx. Recording the drawn text doubles as the assertion surface.
+// jsdom ships no 2D canvas (node-canvas isn't installed), so getContext is stubbed.
+// Recording the drawn text doubles as the assertion surface.
 function stubCanvas(): { texts: string[]; restore: () => void } {
   const texts: string[] = []
   const ctx = {

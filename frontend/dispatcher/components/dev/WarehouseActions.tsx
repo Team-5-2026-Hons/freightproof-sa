@@ -31,7 +31,7 @@ export function WarehouseActions({ tripId, stage, busy, onScan, onCloseSession }
 
   if (direction === null) {
     return stage.kind === 'arrived' && stop.delivery_consignments.length > 0
-      ? <p className="text-xs text-amber-700">Scanning in opens once the driver completes arrival — the seal is inspected before any door opens.</p>
+      ? <p className="text-xs text-amber-700">Scanning in opens once the driver completes arrival. The seal is inspected before any door opens.</p>
       : null
   }
 
@@ -39,7 +39,7 @@ export function WarehouseActions({ tripId, stage, busy, onScan, onCloseSession }
   const target = { trip_id: tripId, trip_stop_id: stop.trip_stop_id, direction }
   return (
     <section aria-label="Warehouse" className="space-y-2">
-      <h3 className="font-medium">Warehouse — scan {direction} at {stop.precinct_name}</h3>
+      <h3 className="font-medium">Warehouse: scan {direction} at {stop.precinct_name}</h3>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {(Object.keys(PRESET_LABELS) as ScanPreset[]).map((preset) => (
           <Button key={preset} variant="secondary" disabled={busy}
@@ -49,7 +49,7 @@ export function WarehouseActions({ tripId, stage, busy, onScan, onCloseSession }
         ))}
       </div>
       <Button variant="danger" disabled={busy} onClick={() => onCloseSession(target)}>
-        Close scan session — unblocks the driver
+        Close scan session: unblocks the driver
       </Button>
     </section>
   )

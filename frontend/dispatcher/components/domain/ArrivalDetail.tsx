@@ -55,9 +55,9 @@ function sealFindings(
     return sealExceptions.map((exception, index) => ({
       key: `${exception.exception_type}-${index}`,
       text: exception.exception_type === 'seal_mismatch'
-        ? `Mismatch — recorded as a ${exception.severity} exception ✗`
+        ? `Mismatch: recorded as a ${exception.severity} exception ✗`
         : exception.exception_type === 'seal_compromised'
-          ? `Seal compromised — recorded as a ${exception.severity} exception ✗`
+          ? `Seal compromised: recorded as a ${exception.severity} exception ✗`
           : 'Seal continuity unverified',
       tone: exception.severity === 'critical' ? 'err' : 'warn',
     }))
