@@ -194,7 +194,8 @@ export function Swipe({ label, disabled = false, busy = false, onConfirm }: Swip
   }, [inert, fire])
 
   // A disabled control must not stay parked at the end of its track. Applies to `disabled`
-  // only: while `busy` the parked thumb is the point.
+  // only: while `busy` the parked thumb is the point. Adjusted during render, not in an
+  // effect, so the reset lands in the same paint as the change.
   const [prevDisabled, setPrevDisabled] = useState(disabled)
   if (disabled !== prevDisabled) {
     setPrevDisabled(disabled)

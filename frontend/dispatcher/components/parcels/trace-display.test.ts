@@ -46,7 +46,7 @@ describe('trace display semantics', () => {
   it('does not turn the reference precinct into an observed position without a verdict', () => {
     const journey = makeJourney()
     journey.last_recorded_location!.precinct_confirmed = null
-    expect(locationLabel(journey)).toBe('Position recorded — facility unverified')
+    expect(locationLabel(journey)).toBe('Position recorded, facility unverified')
   })
   it('does not put return query parameters inside the phase fragment', () => {
     const url = new URL(tripEvidenceLink('trip', '/parcels?barcode=0001', 'phase'), 'https://example.test')
@@ -431,7 +431,7 @@ describe('statusBadge', () => {
   it('uses the existing progress wording and chip type for every other position', () => {
     expect(statusBadge(makeDeliveredJourney())).toEqual({ label: 'Delivery phase recorded', type: 'complete' })
     expect(statusBadge(makeOverriddenArrivalJourney())).toEqual({ label: 'Journey resolved with an override', type: 'exception' })
-    expect(statusBadge(makeJourney()).label).toBe('In transit — awaiting arrival attestation')
+    expect(statusBadge(makeJourney()).label).toBe('In transit, awaiting arrival attestation')
   })
 })
 

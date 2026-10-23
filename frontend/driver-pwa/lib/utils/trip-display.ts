@@ -7,9 +7,9 @@ import { precinctName } from '@/lib/utils/precinct-name'
 const MS_PER_MINUTE = 60_000
 const MINUTES_PER_HOUR = 60
 
-// Precinct names arrive as "FedEx JHB — Linbro Park": the place a driver says, then the
+// Precinct names arrive as "FedEx JHB · Linbro Park": the place a driver says, then the
 // area. Rows and titles lead with the place and put the area underneath.
-const PLACE_SEPARATOR = ' — '
+const PLACE_SEPARATOR = ' · '
 
 // The server resolves precinct names; demo rows and a deleted precinct fall back to the
 // local lookup, then to a plain label — never a truncated UUID.

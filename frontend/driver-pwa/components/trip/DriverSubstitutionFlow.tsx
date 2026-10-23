@@ -315,7 +315,7 @@ function outcomeBanner(outcome: CaptureSendOutcome | null): { title: string; bod
   if (outcome === null) return null
   switch (outcome.kind) {
     case 'waiting':
-      return { title: 'Saved on this phone — not sent yet', body: 'It will be sent, unchanged, as soon as there is a connection.' }
+      return { title: 'Saved on this phone, not sent yet', body: 'It will be sent, unchanged, as soon as there is a connection.' }
     case 'version-changed':
     case 'not-pending':
     case 'rejected':
@@ -440,7 +440,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
       {counterpartDeclaration !== null && (
         <div className="mx-4">
           <DeclarationSummary
-            title={`${counterpart.full_name}’s check — for comparison only`}
+            title={`${counterpart.full_name}’s check (for comparison only)`}
             declaration={counterpartDeclaration}
             vehicles={context.vehicles}
           />
@@ -455,7 +455,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
 
       {submitted === null && capture !== null && capture.status === 'sending' && (
         <div className="mx-4 flex flex-col gap-2">
-          <StatusBanner tone="neutral" title="Saved on this phone — not sent yet" live>
+          <StatusBanner tone="neutral" title="Saved on this phone, not sent yet" live>
             Your {roleNoun(role)} is fixed as you confirmed it and will be sent unchanged.
           </StatusBanner>
           <Button variant="secondary" size="sm" loading={state.isSending} onClick={() => void state.retry().then(afterSend)}>

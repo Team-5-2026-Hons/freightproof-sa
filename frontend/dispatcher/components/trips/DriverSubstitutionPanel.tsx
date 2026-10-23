@@ -165,7 +165,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
       {request.exchange && <p className="text-[12px] text-on-surf-v">
         Planned point {request.exchange.latitude.toFixed(5)}, {request.exchange.longitude.toFixed(5)} (not the vehicle’s live position)
       </p>}
-      {incomingOnly && <p>Outgoing driver: Not requested — notification only. Incoming driver acceptance is required.</p>}
+      {incomingOnly && <p>Outgoing driver: Not requested (notification only). Incoming driver acceptance is required.</p>}
       <p className="mt-1">
         Confirmed by: {request.confirmations.length ? request.confirmations.map(c => c.role).join(', ') : 'no one yet'}
         {missing && ` · waiting for ${request.missing_confirmations.join(' and ')}`}

@@ -624,7 +624,7 @@ describe('AllControls — move the truck', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Go dark \(no signal\)/ }))
 
-    expect(await screen.findByText(/No verdict — tracker dark/i)).toBeInTheDocument()
+    expect(await screen.findByText(/No verdict: tracker dark/i)).toBeInTheDocument()
     expect(screen.queryByText(/Geofence failed/i)).not.toBeInTheDocument()
     expect(screen.getByText('No fix')).toBeInTheDocument()
   })
@@ -642,8 +642,8 @@ describe('AllControls — move relative to a trip stop', () => {
 
     const select = screen.getByLabelText('Trip stop') as HTMLSelectElement
     const options = Array.from(select.options).map((o) => ({ value: o.value, label: o.textContent }))
-    expect(options[1]).toEqual({ value: 'stop-a', label: 'At origin — Johannesburg CBD' })
-    expect(options[2]).toEqual({ value: 'stop-b', label: 'At destination — Durban Point' })
+    expect(options[1]).toEqual({ value: 'stop-a', label: 'At origin: Johannesburg CBD' })
+    expect(options[2]).toEqual({ value: 'stop-b', label: 'At destination: Durban Point' })
   })
 
   it('disables every scenario button except "Go dark (no signal)" until a stop is chosen', () => {
@@ -756,7 +756,7 @@ describe('AllControls — move relative to a trip stop', () => {
 
     // "Simulated target — <name>" is the result panel's own wording — unlike a bare
     // precinct name, it cannot also match the unrelated trip-picker option text.
-    expect(await screen.findByText(/Simulated target — Durban Point/)).toBeInTheDocument()
+    expect(await screen.findByText(/Simulated target: Durban Point/)).toBeInTheDocument()
 
     // Now let the STALE first request resolve. It must not clobber the fresh result.
     resolveFirst(makeMoveTruckResponse({
@@ -764,8 +764,8 @@ describe('AllControls — move relative to a trip stop', () => {
     }))
     await waitFor(() => expect(moveTruck).toHaveBeenCalledTimes(2))
 
-    expect(screen.queryByText(/Simulated target — Johannesburg CBD/)).not.toBeInTheDocument()
-    expect(screen.getByText(/Simulated target — Durban Point/)).toBeInTheDocument()
+    expect(screen.queryByText(/Simulated target: Johannesburg CBD/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Simulated target: Durban Point/)).toBeInTheDocument()
   })
 })
 

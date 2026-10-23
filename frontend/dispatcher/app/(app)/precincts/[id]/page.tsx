@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { AdminOnly } from '@/components/auth/AdminOnly'
+import { ResizableHeight } from '@/components/ui/ResizableHeight'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
 import { PrecinctDetailSkeleton } from '@/components/precincts/PrecinctDetailSkeleton'
 import { EventTimeline } from '@/components/blockchain/EventTimeline'
@@ -34,6 +35,8 @@ const LOWER_PANEL_TABS = [
 type LowerPanelTabId = (typeof LOWER_PANEL_TABS)[number]['id']
 
 const LOWER_PANEL_ID = 'precinct-lower-panel'
+// The map starts at its old fixed height; the dispatcher can drag it taller to see more.
+const MAP_HEIGHT = { initial: 320, min: 240, max: 800 } as const
 
 export default function PrecinctDetailPage(): React.JSX.Element {
   const router = useRouter()
@@ -112,13 +115,21 @@ export default function PrecinctDetailPage(): React.JSX.Element {
         <div className="flex-1 min-w-0 flex flex-col lg:overflow-y-auto">
           <div className="p-6 pb-0">
             {/* No onPositionChange: a detail view reads the geofence, it does not move it. */}
-            <GeofenceMap
-              latitude={precinct.latitude}
-              longitude={precinct.longitude}
-              radiusMetres={precinct.geofence_radius_metres}
-              polygon={precinct.geofence_polygon}
-              className="w-full h-[320px]"
-            />
+            <ResizableHeight
+              initialHeight={MAP_HEIGHT.initial}
+              minHeight={MAP_HEIGHT.min}
+              maxHeight={MAP_HEIGHT.max}
+              label="Resize map"
+              className="w-full"
+            >
+              <GeofenceMap
+                latitude={precinct.latitude}
+                longitude={precinct.longitude}
+                radiusMetres={precinct.geofence_radius_metres}
+                polygon={precinct.geofence_polygon}
+                className="w-full h-full"
+              />
+            </ResizableHeight>
           </div>
 
           <div className="p-6">

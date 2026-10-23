@@ -39,4 +39,11 @@ describe('BlockchainBadge', () => {
     expect(screen.queryByText('Verified on blockchain')).not.toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
+
+  it('shows a receipt still waiting for its topic as pending, not as skipped', () => {
+    render(<BlockchainBadge receipt={receipt('None')} />)
+
+    expect(screen.getByText('Anchoring…')).toBeInTheDocument()
+    expect(screen.queryByText(/skipped anchoring/)).not.toBeInTheDocument()
+  })
 })

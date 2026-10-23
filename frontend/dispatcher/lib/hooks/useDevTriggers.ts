@@ -241,7 +241,7 @@ export function useDevTriggers(): UseDevTriggersResult {
           // would otherwise read the resulting phase rows as genuine captures, and the
           // ledger's own stamp is the only thing that still knows the difference.
           return `Phone staged at ${result.precinct_name ?? 'the chosen stop'}`
-            + ` — phases completed now record driver_position_source=${result.recorded_as}.`
+            + `: phases completed now record driver_position_source=${result.recorded_as}.`
         },
       ),
     [run],

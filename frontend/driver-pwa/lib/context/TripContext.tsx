@@ -505,7 +505,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     toastCtx?.notify({
       kind: 'info',
       title: 'You can continue',
-      body: 'The warehouse has finished — this step is ready.',
+      body: 'The warehouse has finished. This step is ready.',
     })
   }, [actionablePhaseEventId, actionableBlockedOn, toastCtx])
 

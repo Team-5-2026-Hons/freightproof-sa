@@ -17,7 +17,7 @@ export function IntegritySummary({ trip }: { trip: Trip }) {
       <h2 className="text-sm font-bold text-on-surf">Record integrity</h2>
       <p className="mt-1 text-xs text-on-surf-v">This check covers committed trip details only.</p>
       <ForensicOnly><p className="mt-1 text-xs text-on-surf-v">Verify pickup and delivery receipts on the timeline. Evidence bytes are covered when the receipt supports them.</p></ForensicOnly>
-      {tally.failed > 0 && <p className="mt-2 text-sm font-semibold text-warn">{tally.failed} failed anchors — receipts still owed</p>}
+      {tally.failed > 0 && <p className="mt-2 text-sm font-semibold text-warn">{tally.failed} failed anchors, receipts still owed</p>}
       <ForensicOnly><p className="mt-2 text-xs text-on-surf-v">{tally.anchored} of {tally.owed} phase receipts anchored</p></ForensicOnly>
       <VerifyButton subjectType="trip" subjectId={trip.id} autoVerify onResult={onResult} />
       {checkedAt && <p className="mt-2 text-xs text-on-surf-v">Checked {fmtFull(checkedAt)}</p>}

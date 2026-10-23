@@ -116,7 +116,7 @@ export default function HistoryPage() {
             New trip history available
           </span>
           <Button size="sm" variant="ghost" onClick={history.showNewHistory}>
-            New trip history available — show newest
+            New trip history available. Show newest
           </Button>
         </div>
       )}
@@ -126,7 +126,7 @@ export default function HistoryPage() {
           <div className="flex items-center gap-[9px]">
             <Ic n="warn" s={14} className="shrink-0 text-warn-onc" />
             <span className="text-[12px] font-[600] text-warn-onc">
-              This list may be out of date — the last refresh failed.
+              This list may be out of date. The last refresh failed.
             </span>
           </div>
           <Button size="sm" variant="ghost" onClick={history.refetch}>Retry</Button>

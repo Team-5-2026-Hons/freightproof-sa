@@ -14,13 +14,13 @@ const phase = (type: string) => SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type =
 
 describe('recordedPlace', () => {
   it('test_names_the_origin_area_for_a_phase_at_the_origin', () => {
-    const expected = origin.name.split(' — ')[1] ?? origin.name
+    const expected = origin.name.split(' · ')[1] ?? origin.name
 
     expect(recordedPlace(trip, phase('departure'))).toBe(expected)
   })
 
   it('test_names_the_destination_area_for_a_phase_at_the_destination', () => {
-    const expected = destination.name.split(' — ')[1] ?? destination.name
+    const expected = destination.name.split(' · ')[1] ?? destination.name
 
     expect(recordedPlace(trip, phase('confirmation'))).toBe(expected)
   })

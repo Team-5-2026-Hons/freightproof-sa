@@ -60,7 +60,7 @@ describe('Parcel Search', () => {
     render(<ParcelSearch initialBarcode={BARCODE} initialWaybill="" />)
     const state = await screen.findByRole('region', { name: 'Current recorded state' })
     expect(within(state).getByText(BARCODE)).toBeInTheDocument()
-    expect(state).toHaveTextContent('In transit — awaiting arrival attestation')
+    expect(state).toHaveTextContent('In transit, awaiting arrival attestation')
     expect(state).toHaveTextContent('Last recorded: departed Origin Depot under seal SEAL-001')
     expect(within(state).getByText('Scanned out at origin')).toBeInTheDocument()
     expect(within(state).getByText('Consignment loaded')).toBeInTheDocument()

@@ -102,13 +102,13 @@ async def _raise_position_disagreement_if_unrecorded(
         if separation is None:
             description = (
                 "The vehicle tracker's position is outside this stop's geofence at this "
-                "handshake. Only one of the two position sources recorded a fix, so the "
+                "phase. Only one of the two position sources recorded a fix, so the "
                 "separation between them could not be measured."
             )
         else:
             description = (
                 f"Driver phone and vehicle tracker reported positions "
-                f"{format_distance(separation)} apart at this handshake. The tracker's "
+                f"{format_distance(separation)} apart at this phase. The tracker's "
                 f"position is outside this stop's geofence."
             )
 

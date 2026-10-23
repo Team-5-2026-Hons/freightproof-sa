@@ -89,7 +89,7 @@ export const CHECK_WORDING = {
       `${origin} scanned out at origin, ${destination} scanned in at destination`,
     // The driver's blind count is evidence in its own right, kept out of the verdict so its
     // independence is not spent. Task 9 renders this under Checked as static copy.
-    blindCountNote: 'Counted blind — recorded as independent evidence, not reconciled against the scans above.',
+    blindCountNote: 'Counted blind: recorded as independent evidence, not reconciled against the scans above.',
   },
   liveScan: {
     title: 'Scan in progress',

@@ -239,14 +239,14 @@ export function TripDetailView({ trip, onBack, onInTransitHub, onSelectPhase, sh
 
   const banner = onHold ? (
     <StatusBanner tone="attention" title="Trip on hold">
-      A critical exception was recorded. Follow your dispatcher’s instructions — nothing more can be recorded until the hold is cleared.
+      A critical exception was recorded. Follow your dispatcher’s instructions. Nothing more can be recorded until the hold is cleared.
     </StatusBanner>
   ) : driving ? (
     <StatusBanner tone="success" title="In transit">{`Swipe Arrive when you reach ${places.destination.name}.`}</StatusBanner>
   ) : current === null ? (
     <StatusBanner tone="success" title="All phases complete">Everything on this trip is recorded.</StatusBanner>
   ) : (current.blocked_on ?? null) !== null ? (
-    <StatusBanner tone="attention" title={`${PHASE_NAMES[current.phase_type]} — waiting on the warehouse`}>
+    <StatusBanner tone="attention" title={`${PHASE_NAMES[current.phase_type]}: waiting on the warehouse`}>
       It unlocks on its own when they finish.
     </StatusBanner>
   ) : (

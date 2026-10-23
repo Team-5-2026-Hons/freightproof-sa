@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 // (android/app/src/main/res/values/styles.xml), kept consistent for iOS/Android PWA launches.
 export const metadata: Metadata = {
   title: 'FreightProof Driver',
-  description: 'FreightProof SA — Driver evidence capture app',
+  description: 'FreightProof SA · Driver evidence capture app',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,

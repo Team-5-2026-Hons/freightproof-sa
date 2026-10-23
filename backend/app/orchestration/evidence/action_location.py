@@ -207,7 +207,7 @@ async def record_separation_finding(
         # 'separated' above.
         description = (
             f"Driver phone and vehicle tracker were recorded {format_distance(cast(float, assessment.separation_metres))} "
-            f"apart at this handshake; limit {format_distance(assessment.max_separation_metres)}."
+            f"apart at this phase; limit {format_distance(assessment.max_separation_metres)}."
             f"{_describe_driver_reason(driver_reason)}"
         )
 

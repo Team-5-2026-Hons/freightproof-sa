@@ -3,18 +3,20 @@
 Every query is scoped to the caller's organisation through the Trip join. Nothing here writes.
 """
 
+import logging
 import uuid
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import case, func, literal, or_, select, tuple_
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import ResourceNotFoundError
 from app.core.pagination import CursorPosition, decode_cursor, encode_cursor
-from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, VehicleType
+from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity, ExceptionType, VehicleType
 from app.db.models.organisations import Precinct
 from app.db.models.people import Driver
 from app.db.models.phases import PhaseEvent
@@ -26,8 +28,21 @@ from app.orchestration.evidence_anchors.reads import (
     attach_hedera_refs, load_anchor_events_by_exception, load_photos_by_exception, photo_summaries,
 )
 from app.orchestration.exceptions.review_identity import name_of, user_names
+from app.schemas.action_location import ActionLocationAssessment
 from app.schemas.pagination import CursorPage
 from app.schemas.transit import ExceptionPhotoWithUrl, TripExceptionDetail, TripExceptionListItem
+
+
+logger = logging.getLogger(__name__)
+
+# System findings raised FROM the phase's own location assessment. The finding row stores no
+# copy of it, so the detail reads it back off the phase; any other type on the same phase is
+# not a location question and must not borrow it.
+_PHASE_ASSESSED_TYPES = frozenset({
+    ExceptionType.GPS_MISMATCH,
+    ExceptionType.DRIVER_VEHICLE_SEPARATION,
+    ExceptionType.DRIVER_LOCATION_MISMATCH,
+})
 
 
 # Recorded/reviewed only — never needs_review. Named once rather than inlined into
@@ -336,6 +351,27 @@ async def list_exception_history(
     return CursorPage[TripExceptionListItem](items=items, next_cursor=next_cursor, total_items=total_items)
 
 
+async def _phase_assessment_for(db: AsyncSession, exc: TripException) -> ActionLocationAssessment | None:
+    """The assessment stored on the phase that raised a system location finding, or None.
+
+    Read, never recomputed: it is the same capture-time verdict the finding was raised from.
+    A stored value that no longer validates is logged and omitted, as the audit pack does,
+    rather than failing the whole detail read.
+    """
+    if exc.phase_event_id is None or exc.exception_type not in _PHASE_ASSESSED_TYPES:
+        return None
+    stored = (await db.execute(
+        select(PhaseEvent.action_location_assessment).where(PhaseEvent.id == exc.phase_event_id)
+    )).scalar_one_or_none()
+    if stored is None:
+        return None
+    try:
+        return ActionLocationAssessment.model_validate(stored)
+    except ValidationError:
+        logger.warning("Phase %s has an invalid stored location assessment; omitted", exc.phase_event_id)
+        return None
+
+
 async def get_exception_detail(
     db: AsyncSession, *, exception_id: uuid.UUID, organization_id: uuid.UUID,
     include_hedera_refs: bool = False,
@@ -391,6 +427,8 @@ async def get_exception_detail(
     )
     context = (await _load_trip_contexts(db, [trip])).get(trip.id)
     list_item = _to_list_item(exc, trip, phase_type, stop_sequence, names, context)
+    if list_item.action_location_assessment is None:
+        list_item.action_location_assessment = await _phase_assessment_for(db, exc)
     # Every photo of the report, in order, each signed here. Ownership is checked in the
     # loader (a photo re-pointed at another trip is dropped), so signing needs no second check.
     photos = (await load_photos_by_exception(db, [exc]))[exc.id]

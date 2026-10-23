@@ -30,9 +30,9 @@ type SortOption = 'registration-asc' | 'registration-desc' | 'year-desc' | 'year
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'registration-asc', label: 'Registration A–Z' },
   { value: 'registration-desc', label: 'Registration Z–A' },
-  { value: 'year-desc', label: 'Year — Newest' },
-  { value: 'year-asc', label: 'Year — Oldest' },
-  { value: 'licence-asc', label: 'Licence Disc Expiry — Soonest' },
+  { value: 'year-desc', label: 'Year: Newest' },
+  { value: 'year-asc', label: 'Year: Oldest' },
+  { value: 'licence-asc', label: 'Licence Disc Expiry: Soonest' },
 ]
 
 function sortVehicles(vehicles: Vehicle[], option: SortOption): Vehicle[] {

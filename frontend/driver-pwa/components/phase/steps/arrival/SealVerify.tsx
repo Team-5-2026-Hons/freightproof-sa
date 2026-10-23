@@ -226,7 +226,7 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
               : reading
                 ? 'Reading the seal…'
                 : readFromPhoto
-                  ? 'Read from the photo — check it matches the seal.'
+                  ? 'Read from the photo. Check it matches the seal.'
                   : 'Type what is printed. Don’t copy it from paperwork.'}
           </p>
         </div>

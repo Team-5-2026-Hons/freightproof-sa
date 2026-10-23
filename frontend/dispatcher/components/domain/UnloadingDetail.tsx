@@ -56,7 +56,7 @@ export function UnloadingDetail({
       )}
       {!resolved && (
         <p className="text-[10px] text-on-surf-v px-3 pb-3">
-          Scan in progress — this count may still change.
+          Scan in progress. This count may still change.
         </p>
       )}
 

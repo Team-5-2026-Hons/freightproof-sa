@@ -11,8 +11,8 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
     trip_type: 'loaded',
     origin_precinct_id: null,
     destination_precinct_id: null,
-    origin_precinct_name: 'FedEx JHB — Linbro Park',
-    destination_precinct_name: 'FedEx DBN — Riverhorse Valley',
+    origin_precinct_name: 'FedEx JHB · Linbro Park',
+    destination_precinct_name: 'FedEx DBN · Riverhorse Valley',
     planned_departure_at: '2026-05-03T09:00:00Z',
     actual_departure_at: '2026-05-03T09:00:00Z',
     planned_arrival_at: '2026-05-03T19:30:00Z',
@@ -26,7 +26,7 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
 
 describe('placeOf', () => {
   it('prefers the server-resolved name', () => {
-    expect(placeOf('FedEx JHB — Linbro Park', 'any-id')).toBe('FedEx JHB — Linbro Park')
+    expect(placeOf('FedEx JHB · Linbro Park', 'any-id')).toBe('FedEx JHB · Linbro Park')
   })
 
   it('falls back to the local precinct lookup when the server sent no name', () => {
@@ -40,7 +40,7 @@ describe('placeOf', () => {
 
 describe('placeParts', () => {
   it('test_splits_a_precinct_name_into_place_and_area', () => {
-    expect(placeParts('FedEx JHB — Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
+    expect(placeParts('FedEx JHB · Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
   })
 
   it('test_keeps_a_name_without_an_area_whole', () => {

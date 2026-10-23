@@ -317,7 +317,7 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
     renderScenario(scenarioOf('cancelled-mid-phase'))
     openAll()
 
-    expect(screen.getAllByText('Not submitted — trip cancelled').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Not submitted: trip cancelled').length).toBeGreaterThan(0)
     expect(screen.getByText('Received after the trip was cancelled')).toBeInTheDocument()
   })
 
@@ -368,7 +368,7 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
   it('anchor-failed: the card warns whatever the mode, and forensic mode adds the row', () => {
     renderScenario(scenarioOf('anchor-failed'))
     openAll()
-    expect(screen.getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(screen.getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
     expect(screen.queryByText('Anchoring failed')).toBeNull()
     cleanup()
 
@@ -412,7 +412,7 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
   it('long-precinct-name: the full precinct label reaches the phase header', () => {
     const scenario = scenarioOf(LONG_PRECINCT_SCENARIO)
     const longPrecinct = scenario.precincts.find(precinct => scenario.trip.stops.some(stop => stop.precinct_id === precinct.id && precinct.name.length > 60))
-    const label = longPrecinct?.name.split('—')[0]?.trim() ?? ''
+    const label = longPrecinct?.name.split(' · ')[0]?.trim() ?? ''
 
     renderScenario(scenario)
 

@@ -23,7 +23,7 @@ export default function DevTriggersPage(): React.ReactElement {
 
   return (
     <PageShell>
-      <DevTriggerPanel heading="Demo panel — simulated warehouse, Parcel Perfect and trackers" />
+      <DevTriggerPanel heading="Demo panel: simulated warehouse, Parcel Perfect and trackers" />
     </PageShell>
   )
 }

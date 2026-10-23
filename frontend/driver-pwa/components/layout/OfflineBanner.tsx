@@ -60,7 +60,7 @@ export function OfflineBanner() {
       {!online && (
         <div role="status" className={cn(ROW_CLASS, ATTENTION_ROW)}>
           <WifiOff className="size-4 shrink-0" aria-hidden />
-          You&rsquo;re offline — evidence you capture is saved on this device.
+          You&rsquo;re offline. Evidence you capture is saved on this device.
         </div>
       )}
 

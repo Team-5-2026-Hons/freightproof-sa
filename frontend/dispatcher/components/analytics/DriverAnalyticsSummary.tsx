@@ -43,6 +43,7 @@ type DwellAverageKey =
   | 'activation_dwell_minutes_avg'
   | 'loading_dwell_minutes_avg'
   | 'departure_dwell_minutes_avg'
+  | 'arrival_dwell_minutes_avg'
   | 'unloading_dwell_minutes_avg'
   | 'confirmation_dwell_minutes_avg'
 
@@ -57,6 +58,7 @@ const PHASE_ROWS: readonly PhaseRow[] = [
   { label: 'Activation', key: 'activation_dwell_minutes_avg' },
   { label: 'Loading', key: 'loading_dwell_minutes_avg' },
   { label: 'Departure', key: 'departure_dwell_minutes_avg' },
+  { label: 'Arrival', key: 'arrival_dwell_minutes_avg' },
   { label: 'Unloading', key: 'unloading_dwell_minutes_avg' },
   // The caveat sits with this one figure, not a footnote: a slow receiver also lengthens it.
   { label: 'Confirmation', key: 'confirmation_dwell_minutes_avg', note: ANALYTICS_COPY.confirmationDwellCaveat },

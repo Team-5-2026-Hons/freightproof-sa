@@ -161,7 +161,7 @@ describe('PhoneLoginPage phone number entry', () => {
 
     await submit()
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/not registered — contact your dispatcher/i)
+    expect(screen.getByRole('alert')).toHaveTextContent(/not registered\. contact your dispatcher/i)
     expect(mockPush).not.toHaveBeenCalled()
   })
 

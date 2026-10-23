@@ -7,7 +7,7 @@ import type { TripChecklistItem } from '@shared/lib/types/trip'
 function precinct(id: string, name: string): Precinct {
   return { id, name } as unknown as Precinct
 }
-const PRECINCTS = [precinct('cpt', 'Cape Town — Depot'), precinct('jnb', 'Johannesburg — Depot'), precinct('dbn', 'Durban — Depot')]
+const PRECINCTS = [precinct('cpt', 'Cape Town · Depot'), precinct('jnb', 'Johannesburg · Depot'), precinct('dbn', 'Durban · Depot')]
 
 function trip(id: string, overrides: Partial<TripChecklistItem> = {}): TripChecklistItem {
   return {

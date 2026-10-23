@@ -108,29 +108,29 @@ describe('OfflineBanner', () => {
 
     render(<OfflineBanner />)
 
-    expect(screen.getByText(/offline — evidence you capture is saved on this device/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture is saved on this device/i)).toBeInTheDocument()
   })
 
   it('appears when the browser fires an offline event', () => {
     setOnline(true)
     render(<OfflineBanner />)
-    expect(screen.queryByText(/offline — evidence you capture/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/offline\. evidence you capture/i)).not.toBeInTheDocument()
 
     setOnline(false)
     fireEvent(window, new Event('offline'))
 
-    expect(screen.getByText(/offline — evidence you capture/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture/i)).toBeInTheDocument()
   })
 
   it('disappears when connectivity comes back and nothing is queued', () => {
     setOnline(false)
     render(<OfflineBanner />)
-    expect(screen.getByText(/offline — evidence you capture/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture/i)).toBeInTheDocument()
 
     setOnline(true)
     fireEvent(window, new Event('online'))
 
-    expect(screen.queryByText(/offline — evidence you capture/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/offline\. evidence you capture/i)).not.toBeInTheDocument()
   })
 
   // Fix 3a: queueLength was already returned by the hook but rendered nowhere. A driver

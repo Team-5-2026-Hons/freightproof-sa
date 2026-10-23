@@ -417,7 +417,7 @@ def _observe_location_agreement(phases: Sequence[PhaseRecord]) -> list[Observati
         code="location.agreement",
         level="attention" if separated else "info",
         text=(f"Driver phone and vehicle tracker agreed at {within} of {len(assessed)} "
-              f"assessed handshakes; {len(separated)} separated, {unverified} could not be checked."),
+              f"assessed trip phases; {len(separated)} separated, {unverified} could not be checked."),
         evidence_ids=[p.phase_event_id for p in separated],
     )]
 

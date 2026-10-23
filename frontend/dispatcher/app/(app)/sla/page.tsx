@@ -34,9 +34,9 @@ export default function SLAPage() {
       {/* Filter bar */}
       <div className="flex items-center gap-3 px-6 py-4 bg-surf-low border-b border-outline-v/20 shrink-0">
         <span className="text-[12px] font-[600] text-on-surf-v">
-          {range.from} — {range.to}
+          {range.from} to {range.to}
         </span>
-        <span className="text-[11px] text-on-surf-v">(date range picker — Phase 1 hook)</span>
+        <span className="text-[11px] text-on-surf-v">(date range picker: Phase 1 hook)</span>
       </div>
 
       {/* 2×2 chart grid */}

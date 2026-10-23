@@ -83,7 +83,7 @@ export async function artifactFormData(upload: ArtifactUpload): Promise<FormData
   // and >=500, and an oversized photo can never shrink on retry — the driver has to
   // retake it, so queueing would be dishonest.
   if (blob.size > MAX_ARTIFACT_UPLOAD_BYTES) {
-    throw new ApiError(413, 'Photo is too large to upload — retake it.')
+    throw new ApiError(413, 'Photo is too large to upload. Retake it.')
   }
 
   const form = new FormData()
