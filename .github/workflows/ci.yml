@@ -356,6 +356,14 @@ jobs:
         continue-on-error: true
         run: npm audit --audit-level=high
 
+  # ---------------------------------------------------------------------------
+  # Client portal. Added for the same reason the receiver job was: it had NO CI
+  # coverage at all, despite being the surface an insurer, a loss adjuster or a
+  # claimant opens from a share link in an issued PDF — people outside the
+  # organisation, on their own devices. It also renders audit packs by capability
+  # token (/p/<token>) and seal checks (/v/<pack id>), so a break here is a break
+  # in how the evidence is read.
+  # ---------------------------------------------------------------------------
   client-portal:
     name: Client portal — lint, type-check, test
     runs-on: ubuntu-latest
@@ -387,7 +395,10 @@ jobs:
         working-directory: frontend/client-portal
         run: npm test
 
-      # Same unreachable origin as the receiver build, for the same reason.
+      # Same deliberately unreachable origin as the receiver job: this build must not
+      # depend on a real backend, and a value that silently worked would hide a missing
+      # env var. NEXT_PUBLIC_TILE_URL and NEXT_PUBLIC_HCS_TOPIC_ID are optional and
+      # default at runtime, so they are left unset here on purpose.
       - name: Build — Next.js production bundle
         working-directory: frontend/client-portal
         env:

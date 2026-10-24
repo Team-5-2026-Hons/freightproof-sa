@@ -260,7 +260,7 @@ Branch from `dev`, open a pull request back into `dev`, and follow the conventio
 | Surface | URL |
 |---|---|
 | Frontend (Vercel) | [freightproof-sa.vercel.app](https://freightproof-sa.vercel.app/) |
-| Backend API (Railway) | [freightproof-sa.up.railway.app](https://freightproof-sa.up.railway.app) |
+| Backend API (Fly.io) | [api.freightproof.co.za](https://api.freightproof.co.za) |
 
 ## Licence
 

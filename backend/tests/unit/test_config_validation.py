@@ -210,6 +210,60 @@ def test_a_deliberate_false_proxy_topology_is_accepted() -> None:
     assert errors == []
 
 
+def test_trusting_forwarded_for_on_fly_is_rejected() -> None:
+    # Fly's proxy appends to X-Forwarded-For, so its left-most entry is caller-supplied.
+    # Trusting it buys the caller a fresh rate-limit bucket per forged value and lets them
+    # dictate the receiver_ip recorded as evidence — silently, which is why it must not boot.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="x-forwarded-for",
+        )
+    )
+
+    assert any("CLIENT_IP_HEADER" in error for error in errors)
+
+
+def test_the_header_comparison_on_fly_ignores_case() -> None:
+    # A .env written in canonical HTTP casing must not slip past the rule.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="X-Forwarded-For",
+        )
+    )
+
+    assert any("CLIENT_IP_HEADER" in error for error in errors)
+
+
+def test_the_fly_client_ip_header_is_accepted_on_fly() -> None:
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="fly-client-ip",
+        )
+    )
+
+    assert errors == []
+
+
+def test_forwarded_for_on_fly_is_accepted_when_no_proxy_header_is_trusted() -> None:
+    # With trust off the header is never read, so its name cannot matter. The rule must
+    # not fire here, or it would block the one safe way to run untrusted on Fly.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=False,
+            CLIENT_IP_HEADER="x-forwarded-for",
+        )
+    )
+
+    assert errors == []
+
+
 def test_disabled_rate_limiting_is_rejected_in_production() -> None:
     errors = collect_production_config_errors(_settings(RATE_LIMIT_ENABLED=False))
 

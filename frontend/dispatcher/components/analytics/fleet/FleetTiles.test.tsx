@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { FleetTiles as FleetTilesData, UnusedVehicle } from '@shared/lib/types/fleet-analytics'
+import { ROUTES } from '@/lib/constants/routes'
 import { FleetTiles } from './FleetTiles'
 
 const NOW = new Date('2026-09-16T12:00:00Z')
@@ -55,7 +56,7 @@ describe('FleetTiles', () => {
   it('links every tile to where the dispatcher acts on it', () => {
     renderTiles(makeTiles())
 
-    expect(tileLink('Live trips')).toHaveAttribute('href', '/')
+    expect(tileLink('Live trips')).toHaveAttribute('href', ROUTES.home)
     expect(tileLink('Critical Exceptions Waiting')).toHaveAttribute('href', '/exceptions')
     expect(tileLink('Unused vehicles')).toHaveAttribute('href', '/fleet/vehicles')
     expect(screen.getByRole('link', { name: 'Drivers' })).toHaveAttribute('href', '/fleet/drivers')
