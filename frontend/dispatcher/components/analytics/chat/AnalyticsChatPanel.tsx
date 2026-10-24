@@ -6,7 +6,7 @@ import { X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@shared/lib/utils/cn'
 import { useAnalyticsChat } from '@/lib/hooks/useAnalyticsChat'
-import type { Basis, SpendStatus } from '@shared/lib/types/analytics-chat'
+import type { Basis, ChatPageView, SpendStatus } from '@shared/lib/types/analytics-chat'
 import { ChatMessage } from './ChatMessage'
 import { CHAT_COPY, spendLine } from './chatCopy'
 
@@ -28,6 +28,10 @@ interface AnalyticsChatPanelProps {
   onRecheckStatus: () => void
   /** Switch the page to a "Based on" line's tab and dates. */
   onOpenBasis: (basis: Basis) => void
+  /** A question to put in the box, not send: the dispatcher assistant's "Ask in Analytics" (assistant spec B30). */
+  initialQuestion?: string
+  /** What's on screen beside the panel, sent with each question (B45): "these figures" means this tab and period. */
+  pageView?: ChatPageView
 }
 
 /** The "Ask about these figures" side panel (FP-295). Sits beside the charts, not over them,
@@ -35,9 +39,11 @@ interface AnalyticsChatPanelProps {
  *  covers the page instead: beside a 400 px panel, a narrower page squeezes its tabs to
  *  single letters (seen in the browser check, 19 Oct). The page mounts it only while
  *  open, so closing it throws the conversation away (spec D7). */
-export function AnalyticsChatPanel({ id, onClose, statusSpend, onRecheckStatus, onOpenBasis }: AnalyticsChatPanelProps) {
+export function AnalyticsChatPanel({
+  id, onClose, statusSpend, onRecheckStatus, onOpenBasis, initialQuestion, pageView,
+}: AnalyticsChatPanelProps) {
   const chat = useAnalyticsChat(onRecheckStatus)
-  const [question, setQuestion] = useState('')
+  const [question, setQuestion] = useState(() => (initialQuestion ?? '').slice(0, MAX_QUESTION_CHARS))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const countId = useId()
   const atLimit = question.length >= MAX_QUESTION_CHARS
@@ -79,7 +85,7 @@ export function AnalyticsChatPanel({ id, onClose, statusSpend, onRecheckStatus, 
     // Cleared straight away (the question shows in the conversation while it's answered), and
     // put back only if the answer fails, ready for "Try again".
     setQuestion('')
-    if (!(await chat.send(text))) setQuestion(text)
+    if (!(await chat.send(text, pageView))) setQuestion(text)
   }
 
   function onSubmit(event: FormEvent): void {

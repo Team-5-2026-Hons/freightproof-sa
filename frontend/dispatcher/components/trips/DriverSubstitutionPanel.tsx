@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import type { Trip } from '@shared/lib/types/trip'
 import type {
   CustodyIntegrityStatus,
@@ -10,17 +10,19 @@ import type {
 } from '@shared/lib/types/driver-substitution'
 import { Button } from '@/components/ui/Button'
 import { Chip, type ChipType } from '@/components/ui/Chip'
-import { InfoRow } from '@/components/ui/InfoRow'
+import { Ic } from '@/components/ui/Ic'
 import { Input } from '@/components/ui/Input'
 import { TextArea } from '@/components/ui/TextArea'
 import { ApiError } from '@/lib/api/client'
+import { useOpenerFocus } from '@/lib/hooks/useOpenerFocus'
 import {
-  cancelSubstitution, completeSubstitution, correctSubstitution, newClientRequestId, substitutionErrorCode,
+  cancelSubstitution, completeSubstitution, newClientRequestId, substitutionErrorCode,
 } from '@/lib/api/driverSubstitutions'
+import { fmtCompletionMode } from '@/lib/format/driver-transfer'
 import { sastInputToIso } from '@/lib/format/sast'
 
 
-const INTEGRITY_CHIP: Record<CustodyIntegrityStatus, { type: ChipType; label: string }> = {
+export const INTEGRITY_CHIP: Record<CustodyIntegrityStatus, { type: ChipType; label: string }> = {
   verified: { type: 'transit', label: 'Chain verified' },
   pending: { type: 'pending', label: 'Anchoring pending' },
   failed: { type: 'exception', label: 'Integrity problem' },
@@ -44,59 +46,63 @@ function when(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 }
 
-function problemText(err: unknown, fallback: string): string {
+export function problemText(err: unknown, fallback: string): string {
   const code = substitutionErrorCode(err)
   return (code && CODE_TEXT[code]) || (err instanceof ApiError ? err.message : fallback)
 }
 
 interface Props {
   trip: Trip
-  /** Refetch the trip after any change: the server's read, not a local guess, is shown next. */
-  onChanged: () => void
+  /** Opens the transfer evidence for a completed handover. The modal lives with the page, not here:
+   *  below the dock width this panel renders inside DetailPanel's own overlay <dialog>. */
+  onOpenTransfer: (substitutionId: string) => void
 }
 
 /**
- * The trip's driver and handover controls (FP-83). Custody is derived server-side; this panel
- * only shows it and asks for changes. Every action is offered from the server's own
- * permitted_actions and the new-arrangement flag, and the server enforces each one again.
+ * The trip's custody at a glance (FP-83): what is waiting on a decision, each handover that
+ * happened, and whether the record behind them holds. It only summarises: arranging, completing and
+ * cancelling a handover live in the header's Transfer driver dialog, and a completed handover's
+ * evidence (and its clarifications) in the evidence modal each row opens. Who drives now is not
+ * repeated here: the header and this section's summary already say. Custody is derived server-side.
  */
-export function DriverSubstitutionPanel({ trip, onChanged }: Props) {
+export function DriverSubstitutionPanel({ trip, onOpenTransfer }: Props) {
   const pending = trip.pending_driver_substitution ?? null
-  const history = (trip.driver_substitutions ?? []).filter(r => r.state !== 'pending')
+  // One list in time order. Cancelled requests changed nothing, but stay in it: they are part of the
+  // audit history. A request has no terminal timestamp of its own, so a cancelled one falls back to
+  // when it was raised.
+  const requests = (trip.driver_substitutions ?? []).filter(r => r.state !== 'pending')
+    .sort((a, b) => Date.parse(a.effective_at ?? a.created_at) - Date.parse(b.effective_at ?? b.created_at))
   const enabled = trip.driver_substitutions_enabled === true
-  const changedDriver = trip.original_driver && trip.driver && trip.original_driver.id !== trip.driver.id
+  const integrity = trip.custody_integrity && trip.custody_integrity.amendment_count > 0 ? trip.custody_integrity : null
 
   return (
-    <section aria-labelledby="driver-handover-heading" className="flex flex-col gap-3 border-t border-outline-v/30 pt-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="driver-handover-heading" className="text-sm font-bold text-on-surf">Driver and handover</h3>
-      </div>
+    <div className="flex flex-col gap-3">
       {!enabled && <p className="text-[12px] text-on-surf-v">New handovers are switched off. Existing handovers still work.</p>}
 
-      <InfoRow label="Current driver" value={trip.driver?.full_name ?? '—'} />
-      {changedDriver && <InfoRow label="Original driver" value={`${trip.original_driver?.full_name} (journey record, unchanged)`} />}
-      {(trip.custody_sequence ?? 0) > 0 && <InfoRow label="Custody period" value={String(trip.custody_sequence)} />}
-      {trip.custody_integrity && trip.custody_integrity.amendment_count > 0 && (
-        <div className="flex flex-col gap-1">
-          <div><Chip type={INTEGRITY_CHIP[trip.custody_integrity.status].type} label={INTEGRITY_CHIP[trip.custody_integrity.status].label} /></div>
-          {trip.custody_integrity.pending_anchor_count > 0 && (
-            <p className="text-[12px] text-on-surf-v">{trip.custody_integrity.pending_anchor_count} record(s) waiting to be anchored. Custody is not affected.</p>
-          )}
-          {trip.custody_integrity.findings.map(f => <p key={f} className="text-[12px] text-err">{f}</p>)}
-        </div>
-      )}
-
       {pending && (
-        <p className="text-[13px]">Pending transfer: {pending.outgoing.full_name} → {pending.incoming.full_name}. Open View transfer in the trip header to resolve it.</p>
+        <p className="rounded-lg bg-warn-c/40 px-3 py-2 text-[13px] text-on-surf">
+          <span className="font-semibold">Transfer pending:</span> {pending.outgoing.full_name} → {pending.incoming.full_name}. Open View transfer in the trip header to resolve it.
+        </p>
       )}
 
-      {history.length > 0 && (
+      {requests.length === 0 && !pending && <p className="text-[13px] text-on-surf-v">No driver changes on this trip.</p>}
+
+      {requests.length > 0 && (
         <ul aria-label="Handover history" className="flex flex-col gap-2">
-          {history.map(r => <HistoryItem key={r.id} tripId={trip.id} request={r} onChanged={onChanged} />)}
+          {requests.map(r => <HistoryItem key={r.id} request={r} onOpenTransfer={onOpenTransfer} />)}
         </ul>
       )}
 
-    </section>
+      {integrity && (integrity.status === 'verified'
+        ? <p className="flex items-center gap-1.5 text-xs text-on-surf-v"><Ic n="check" s={13} className="text-ok" />Custody record verified</p>
+        : <div className="flex flex-col gap-1">
+          <div><Chip type={INTEGRITY_CHIP[integrity.status].type} label={INTEGRITY_CHIP[integrity.status].label} /></div>
+          {integrity.pending_anchor_count > 0 && (
+            <p className="text-[12px] text-on-surf-v">{integrity.pending_anchor_count} record(s) waiting to be anchored. Custody is not affected.</p>
+          )}
+          {integrity.findings.map(f => <p key={f} className="text-[12px] text-err">{f}</p>)}
+        </div>)}
+    </div>
   )
 }
 
@@ -112,6 +118,8 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   const [problem, setProblem] = useState<string | null>(null)
   // One key per intentional action; a fresh one when the dispatcher opens the form again.
   const [key, setKey] = useState(newClientRequestId)
+  // Complete and cancel each swap the action buttons for a form; focus follows into it and back out.
+  const root = useOpenerFocus(mode === 'idle' ? null : mode)
   const incomingOnly = request.request_format === 'immediate_v2'
   const missing = request.missing_confirmations.length > 0
   const mayAttestIdentity = request.permitted_actions.includes('attest_identity')
@@ -148,7 +156,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   }), 'Could not cancel the handover.')
 
   return (
-    <div className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-[13px]">
+    <div ref={root} className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-[13px]">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-bold">{request.outgoing.full_name} → {request.incoming.full_name}</span>
         <Chip type="pending" label="Pending" />
@@ -157,7 +165,7 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
       {request.exchange && <p className="text-[12px] text-on-surf-v">
         Planned point {request.exchange.latitude.toFixed(5)}, {request.exchange.longitude.toFixed(5)} (not the vehicle’s live position)
       </p>}
-      {incomingOnly && <p>Outgoing driver: Not requested — notification only. Incoming driver acceptance is required.</p>}
+      {incomingOnly && <p>Outgoing driver: Not requested (notification only). Incoming driver acceptance is required.</p>}
       <p className="mt-1">
         Confirmed by: {request.confirmations.length ? request.confirmations.map(c => c.role).join(', ') : 'no one yet'}
         {missing && ` · waiting for ${request.missing_confirmations.join(' and ')}`}
@@ -168,9 +176,9 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
 
       {mode === 'idle' && (
         <div className="mt-2 flex flex-wrap gap-2">
-          {can('complete_attested') && !(incomingOnly && missing) && <Button size="sm" variant="secondary" onClick={() => start('complete')}>Complete handover</Button>}
+          {can('complete_attested') && !(incomingOnly && missing) && <Button size="sm" variant="secondary" data-opener="complete" onClick={() => start('complete')}>Complete handover</Button>}
           {can('replace') && canReplace && <Button size="sm" variant="ghost" onClick={onReplace}>Replace</Button>}
-          {can('cancel') && <Button size="sm" variant="danger" onClick={() => start('cancel')}>Cancel handover</Button>}
+          {can('cancel') && <Button size="sm" variant="danger" data-opener="cancel" onClick={() => start('cancel')}>Cancel handover</Button>}
         </div>
       )}
       {mode === 'complete' && (
@@ -201,56 +209,31 @@ export function PendingHandover({ tripId, request, canReplace, onChanged, onRepl
   )
 }
 
-function HistoryItem({ tripId, request, onChanged }: { tripId: string; request: SubstitutionRequestRead; onChanged: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState('')
-  const [note, setNote] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [problem, setProblem] = useState<string | null>(null)
-  const [key, setKey] = useState(newClientRequestId)
-  const completed = request.state === 'completed'
-
-  async function clarify() {
-    if (!request.completed_substitution_id) return
-    setBusy(true)
-    try {
-      await correctSubstitution(tripId, request.completed_substitution_id, { client_request_id: key, reason: reason.trim(), correction_note: note.trim() })
-      setOpen(false)
-      onChanged()
-    } catch (err) {
-      setProblem(problemText(err, 'Could not add the clarification.'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <li className="rounded-lg border border-outline-v/30 p-3 text-[13px]">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span>{request.outgoing.full_name} → {request.incoming.full_name}</span>
-        <Chip type={completed ? 'transit' : 'pending'} label={completed ? 'Completed' : 'Cancelled'} />
-      </div>
-      {completed
-        ? <p className="text-[12px] text-on-surf-v">
-          Effective {when(request.effective_at)} · {request.completion_mode === 'dispatcher_attested' ? 'dispatcher attested' : request.request_format === 'immediate_v2' ? 'incoming driver accepted' : 'both drivers confirmed'}
-          {' · '}incoming identity {request.identity.status}
-        </p>
-        : <p className="text-[12px] text-on-surf-v">Cancelled{request.replacement_request_id ? ' and replaced' : ''}. Custody did not change.</p>}
-      {completed && !open && (
-        <Button size="sm" variant="ghost" onClick={() => { setKey(newClientRequestId()); setOpen(true) }}>Add clarification</Button>
-      )}
-      {open && (
-        <div className="mt-2 flex flex-col gap-2">
-          <p className="text-[12px] text-on-surf-v">A clarification is appended to the record. It cannot change the drivers, the time or who holds the trip.</p>
-          <TextArea label="Reason" value={reason} maxLength={1000} onChange={e => setReason(e.target.value)} />
-          <TextArea label="Clarification" value={note} maxLength={1000} onChange={e => setNote(e.target.value)} />
-          <div className="flex gap-2">
-            <Button size="sm" loading={busy} disabled={!reason.trim() || !note.trim()} onClick={clarify}>Add clarification</Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setOpen(false)}>Back</Button>
-          </div>
-          {problem && <p role="alert" className="text-err">{problem}</p>}
-        </div>
-      )}
+function HistoryItem({ request, onOpenTransfer }: { request: SubstitutionRequestRead; onOpenTransfer: (substitutionId: string) => void }) {
+  const detailsId = useId()
+  const names = `${request.outgoing.full_name} → ${request.incoming.full_name}`
+  const completedId = request.state === 'completed' ? request.completed_substitution_id : null
+  if (!completedId) {
+    return <li className="px-1 text-xs text-on-surf-v">
+      {names} · cancelled{request.replacement_request_id ? ' and replaced' : ''}. Custody did not change.
     </li>
-  )
+  }
+  // The one thing to act on in a row is a handover whose incoming identity is not confirmed.
+  const identityNotVerified = request.identity.status !== 'verified'
+  return <li>
+    {/* aria-label names the button and so replaces its text for assistive tech; the outcome and the
+        warning are therefore pointed at as its description. */}
+    <button type="button" onClick={() => onOpenTransfer(completedId)} aria-haspopup="dialog" aria-label={`View evidence for the transfer from ${request.outgoing.full_name} to ${request.incoming.full_name}`}
+      aria-describedby={detailsId}
+      className="flex w-full items-start justify-between gap-3 rounded-lg border border-outline-v/40 bg-surf-lowest p-3 text-left hover:bg-surf focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec">
+      <span className="min-w-0">
+        <span className="block text-[13px] font-semibold text-on-surf">{names}</span>
+        <span id={detailsId} className="block">
+          <span className="mt-0.5 block text-xs text-on-surf-v">{when(request.effective_at)} · {fmtCompletionMode(request.completion_mode, request.request_format)}</span>
+          {identityNotVerified && <span className="mt-1.5 block"><Chip type="exception" label="Identity not verified" /></span>}
+        </span>
+      </span>
+      <span aria-hidden className="flex shrink-0 items-center gap-1 pt-0.5 text-xs font-semibold text-sec">View evidence<Ic n="chev" s={12} /></span>
+    </button>
+  </li>
 }

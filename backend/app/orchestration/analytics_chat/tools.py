@@ -22,7 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.fleet.constants import EXPIRY_BAND_EDGES_DAYS, TILE_WINDOW_DAYS
-from app.analytics.fleet.periods import Grain, Period, today_sast
+from app.analytics.fleet.periods import Period, today_sast
+from app.core.fleet_bands import Grain
 from app.orchestration.analytics.fleet import (
     check_period,
     get_activity,
@@ -36,7 +37,9 @@ from app.orchestration.analytics.fleet import (
     get_tiles,
     resolve_period_start,
 )
-from app.orchestration.analytics_chat.definitions import about
+from app.orchestration.analytics.cost_profile import read_cost_profile
+from app.orchestration.analytics_chat.definitions import ABOUT_BY_TOOL, about
+from app.orchestration.analytics_chat.page_guide import GUIDE, Topic, guide_for
 from app.orchestration.analytics_chat.periods import PeriodPreset, resolve_preset
 from app.orchestration.analytics_chat.totals import (
     activity_totals,
@@ -83,8 +86,13 @@ class TrendInput(PeriodInput):
     )
 
 
-# runner(db, organisation, period, now): period is None only for NoInput tools.
-ToolRunner = Callable[[AsyncSession, uuid.UUID, Period | None, datetime], Awaitable[JsonObject]]
+class ExplainInput(ToolInput):
+    topic: Topic = Field(description="The part of the page to explain; the tool's description lists what each covers.")
+
+
+# runner(db, organisation, period, now, inputs): period is None for tools that take none (the tiles, explain);
+# inputs is the checked input, which only explain reads.
+ToolRunner = Callable[[AsyncSession, uuid.UUID, Period | None, datetime, ToolInput], Awaitable[JsonObject]]
 
 
 @dataclass(frozen=True)
@@ -96,6 +104,8 @@ class ChatTool:
     description: str
     input_model: type[ToolInput]
     runner: ToolRunner
+    # False for explain: it states no fleet figures, so its answers get no "Based on" chip (basis.py).
+    gives_figures: bool = True
 
     def input_schema(self) -> JsonObject:
         return self.input_model.model_json_schema()
@@ -129,7 +139,7 @@ def _require(period: Period | None) -> Period:
     return period
 
 
-async def _activity(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _activity(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     # The Activity tab shows trips and cancellations over time AND the busy patterns, so the
     # tool returns both. Patterns have no time axis, hence no grain.
     resolved = _require(period)
@@ -141,39 +151,66 @@ async def _activity(db: AsyncSession, org: uuid.UUID, period: Period | None, now
     }
 
 
-async def _on_time(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _on_time(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_on_time(db, organization_id=org, period=_require(period))
     return _with_totals(on_time_totals(response), response)
 
 
-async def _problems(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _problems(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_problems(db, organization_id=org, period=_require(period))
     return _with_totals(problems_totals(response), response)
 
 
-async def _review(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _review(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_review(db, organization_id=org, period=_require(period), now=now)
     return _with_totals(review_totals(response), response)
 
 
-async def _evidence(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _evidence(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_evidence(db, organization_id=org, period=_require(period))
     return _with_totals(evidence_totals(response), response)
 
 
-async def _routes(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _routes(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_routes(db, organization_id=org, period=_require(period))
     return _with_totals(routes_totals(response), response)
 
 
-async def _cost(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+def _rates_without_names(rates: JsonObject) -> JsonObject:
+    """The cost rates as the chat may see them: without the name of the admin who last saved them. The page shows
+    it on the rates card, but no answer needs a person's name, and only page figures go to the provider (spec D5)."""
+    return {key: value for key, value in rates.items() if key != "updated_by_name"}
+
+
+async def _cost(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_cost(db, organization_id=org, period=_require(period))
-    return _with_totals(cost_totals(response), response)
+    result = _with_totals(cost_totals(response), response)
+    rates = result.get("rates")
+    if isinstance(rates, dict):
+        result["rates"] = _rates_without_names(rates)
+    return result
 
 
-async def _right_now(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime) -> JsonObject:
+async def _right_now(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
     response = await get_tiles(db, organization_id=org, now=now)
     return _with_totals(right_now_totals(response, now), response)
+
+
+async def _explain(db: AsyncSession, org: uuid.UUID, period: Period | None, now: datetime, inputs: ToolInput) -> JsonObject:
+    # The page guide needs no period (B45). For Cost, the organisation's rates in force today come too, so "how do we
+    # come up with operating cost?" is answered with the real numbers the estimates use.
+    if not isinstance(inputs, ExplainInput):
+        raise TypeError("explain takes an ExplainInput")
+    result: JsonObject = {"guide": guide_for(inputs.topic)}
+    if inputs.topic == "cost":
+        rates = await read_cost_profile(db, organization_id=org)
+        result["current_rates"] = _rates_without_names(rates.model_dump(mode="json"))
+    return result
+
+
+def _topic_menu() -> str:
+    """Each topic and the elements its guide covers, built from the guide so the menu can't fall behind it."""
+    return "; ".join(f"{topic}: {', '.join(entry.title for entry in entries)}" for topic, entries in GUIDE.items())
 
 
 # The licence tile skips expiries beyond its last band.
@@ -272,6 +309,18 @@ TOOLS: tuple[ChatTool, ...] = (
         ),
         input_model=NoInput, runner=_right_now,
     ),
+    ChatTool(
+        name="explain", tab=None, label="Page guide",
+        description=(
+            "Explains anything on the Analytics page from the page's own guide, with NO period needed: what a tile, "
+            "chart, note or control shows; why it exists and the question it answers; how each of its numbers is worked "
+            "out, step by step; where its data comes from; what is counted and what is left out; what its words mean; "
+            "why it may look faded, empty or 'read with care'; and what the controls do. For Cost it also returns the "
+            "organisation's current cost rates. It returns no fleet figures. Topics and what each covers: "
+            + _topic_menu() + "."
+        ),
+        input_model=ExplainInput, runner=_explain, gives_figures=False,
+    ),
 )
 
 TOOLS_BY_NAME: Mapping[str, ChatTool] = {tool.name: tool for tool in TOOLS}
@@ -319,6 +368,8 @@ async def run_tool(
             period = await _resolve_period(db, organization_id, inputs, moment)
         except ValueError as exc:
             return ToolOutcome(tool=tool, result=None, error=str(exc), period=None)
-    result = await tool.runner(db, organization_id, period, moment)
+    result = await tool.runner(db, organization_id, period, moment, inputs)
+    if tool.name not in ABOUT_BY_TOOL:
+        return ToolOutcome(tool=tool, result=result, error=None, period=period)
     # The page's own explanation of each figure goes first, so the model reads it before the numbers.
     return ToolOutcome(tool=tool, result={"about": about(tool.name), **result}, error=None, period=period)

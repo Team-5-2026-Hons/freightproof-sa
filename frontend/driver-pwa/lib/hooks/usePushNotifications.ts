@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
@@ -12,17 +12,9 @@ import type { PhaseType } from '@shared/lib/types/phase'
 
 // The two "gate arrival" phase types under the phase model — activation (origin gate)
 // and in_transit (destination arrival).
-// Replaces the old fixed handshake numbers 1 | 4 (origin_gate_in / dest_gate_in): a
-// gate-arrival push always lands the driver on that phase's FIRST step, and phase_type
-// is the stable, semantic identifier now — not an ordinal that only made sense under
-// the old five-handshake enum.
+// A gate-arrival push always lands the driver on that phase's FIRST step, and phase_type
+// is the stable, semantic identifier for it.
 export type GateArrivalPhaseType = Extract<PhaseType, 'activation' | 'in_transit'>
-
-export interface PushNotificationsState {
-  // Simulates a GATE_ARRIVAL push for dev use on the /_dev/tokens page.
-  // On a real device this is triggered by FCM via the backend.
-  simulateGateArrival: (phaseType: GateArrivalPhaseType) => void
-}
 
 const GATE_ARRIVAL_TYPE = 'GATE_ARRIVAL'
 const GATE_ARRIVAL_PHASES: readonly GateArrivalPhaseType[] = ['activation', 'in_transit']
@@ -61,7 +53,7 @@ function pushPlatform(): PushPlatform | null {
   return platform === 'android' || platform === 'ios' ? platform : null
 }
 
-export function usePushNotifications(): PushNotificationsState {
+export function usePushNotifications(): void {
   const router = useRouter()
 
   useEffect(() => {
@@ -104,10 +96,4 @@ export function usePushNotifications(): PushNotificationsState {
       }
     }
   }, [router])
-
-  const simulateGateArrival = useCallback((phaseType: GateArrivalPhaseType) => {
-    router.push(gateArrivalRoute(phaseType))
-  }, [router])
-
-  return { simulateGateArrival }
 }

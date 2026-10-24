@@ -143,7 +143,7 @@ export default function LogExceptionPageClient() {
   const { submitExceptionReport } = useOfflineQueue()
   const { capture } = useLocation()
   const [type, setType] = useState<ExceptionType | null>(null)
-  // The category list collapses to the one chosen row (overhaul 6.4); Change reopens it.
+  // The category list collapses to the one chosen row; Change reopens it.
   const [choosingType, setChoosingType] = useState(true)
   const [description, setDescription] = useState('')
   // One id per report draft, reused by every submit press: if the first POST's response
@@ -156,8 +156,6 @@ export default function LogExceptionPageClient() {
   const [stage, setStage] = useState<SubmitStage>('idle')
   // See handleSubmit: a synchronous claim, because `stage` lags the tap by the GPS wait.
   const submitGuard = useRef(false)
-  // Two different failures that must not share one message: server refused the report,
-  // versus it never got saved anywhere at all.
   // Different failures that must not share one message: the server refused the report,
   // it refused one photo, or it never got saved anywhere at all.
   const [submitError, setSubmitError] = useState<SubmitError>(null)
@@ -226,7 +224,7 @@ export default function LogExceptionPageClient() {
     // Captured now, not at flush time: the exception belongs to the leg being driven,
     // and by the time this entry sends the trip may have reached unloading.
     const phaseEventId = contextPhaseEventId(trip.phases)
-    // FP-83: the custody period at the tap, before the GPS wait. Stored in the report body,
+    // The custody period at the tap, before the GPS wait. Stored in the report body,
     // so every resend of this report states the period it was captured in.
     const { custodySequence } = captureCustody(tripId)
     // Optional enrichment, bounded: the report's own phone fix feeds the backend's
@@ -535,7 +533,7 @@ export default function LogExceptionPageClient() {
         {submitError?.kind === 'rejected' && (
           // Terminal 4xx: retrying with the same input cannot succeed.
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
-            Could not submit — the report was not accepted. Review the details or contact your dispatcher.
+            Could not submit. The report was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
         {submitError?.kind === 'rejected-photo' && (
@@ -549,7 +547,7 @@ export default function LogExceptionPageClient() {
           <p role="alert" className="mt-4 px-5 text-subhead text-error">
             Could not send this report and this device has no room to store it. Not saved: the
             description{submitError.photoCount > 0 ? ` and ${pluralPhotos(submitError.photoCount)}` : ''}.
-            Nothing was lost from this screen — free up space or get signal, then submit again.
+            Nothing was lost from this screen. Free up space or get signal, then submit again.
           </p>
         )}
       </div>

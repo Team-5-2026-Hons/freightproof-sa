@@ -10,15 +10,10 @@ import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
-import type { ActivationEvidence } from '@/lib/types/evidence-draft'
 
 interface VerificationProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
-  // Kept in the prop shape (unread) because renderStep hands every step component the
-  // same set — activation simply has no driver-captured evidence left to review.
-  draft: ActivationEvidence
   onComplete: () => void | Promise<void>
 }
 

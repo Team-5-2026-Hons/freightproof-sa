@@ -15,7 +15,7 @@ import { markTransition } from '@/lib/navigation/transition-direction'
 const TAB_AVATAR_PX = 26
 
 // iOS 26-style floating tab bar: one glass pill of three labelled destinations — Home,
-// Trips, Profile (overhaul, Oct 2026). The separate profile circle is gone: Settings
+// Trips, Profile. The separate profile circle is gone: Settings
 // merged into Profile, and the Profile tab shows the driver themselves. Labels are not
 // optional — an icon-only bar made drivers guess what the truck meant
 // (HIG tab-bars › "Include tab labels to help with navigation").
@@ -61,7 +61,7 @@ export function BottomNav() {
               }}
               className={cn(
                 'relative flex h-[52px] flex-col items-center justify-center gap-[3px] rounded-full',
-                // Feedback on press, not on the next paint (emil-apple-design §1).
+                // Feedback on press, not on the next paint.
                 'transition-[transform,color] duration-150 active:scale-95',
                 isActive ? 'text-surface-on' : 'text-surface-on-variant',
               )}

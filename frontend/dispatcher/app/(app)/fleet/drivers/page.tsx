@@ -31,6 +31,8 @@ import {
 } from '@shared/lib/validation/driver'
 import { SA_ID_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
+import { useAddFormLink } from '@/lib/fleet/add-form-link'
+import { ROUTES } from '@/lib/constants/routes'
 
 type StatusFilter = 'all' | 'active' | 'inactive'
 
@@ -59,6 +61,8 @@ export default function FleetDriversPage(): React.JSX.Element {
   const [touched, setTouched] = useState<Set<DriverField>>(new Set())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // The assistant's "add a driver" button opens this page with the pop-up open, empty (assistant spec B41).
+  useAddFormLink(ROUTES.fleetDrivers, () => setModalOpen(true))
 
   // List controls — parity with the vehicles page.
   const [search, setSearch] = useState('')

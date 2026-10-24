@@ -6,21 +6,21 @@ import { Button }         from '@/components/ui/Button'
 import { Ic }             from '@/components/ui/Ic'
 import { Card }           from '@/components/ui/Card'
 import { EmptyState }     from '@/components/ui/EmptyState'
+import { addDays }        from '@/lib/format/period'
 import { useSLAMetrics }  from '@/lib/hooks/useSLAMetrics'
+import { sastToday }      from '@shared/lib/utils/datetime'
 import type { DateRange } from '@/lib/types/date-range'
 
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10)
-}
+const SLA_WINDOW_DAYS = 30
 
-function thirtyDaysAgo(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
+// The SAST day, not the UTC one, so the window rolls over at SAST midnight like the rest of the app.
+function defaultRange(): DateRange {
+  const to = sastToday()
+  return { from: addDays(to, -SLA_WINDOW_DAYS), to }
 }
 
 export default function SLAPage() {
-  const [range] = useState<DateRange>({ from: thirtyDaysAgo(), to: todayStr() })
+  const [range] = useState<DateRange>(defaultRange)
   const metrics = useSLAMetrics({ range })
 
   return (
@@ -34,9 +34,9 @@ export default function SLAPage() {
       {/* Filter bar */}
       <div className="flex items-center gap-3 px-6 py-4 bg-surf-low border-b border-outline-v/20 shrink-0">
         <span className="text-[12px] font-[600] text-on-surf-v">
-          {range.from} — {range.to}
+          {range.from} to {range.to}
         </span>
-        <span className="text-[11px] text-on-surf-v">(date range picker — Phase 1 hook)</span>
+        <span className="text-[11px] text-on-surf-v">(date range picker: Phase 1 hook)</span>
       </div>
 
       {/* 2×2 chart grid */}

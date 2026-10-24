@@ -1,8 +1,4 @@
-// Shared nav item data + active-match logic, consumed by BottomNav (and previously
-// NavDrawer, now removed). Lives in lib/navigation/ alongside full-bleed.ts and
-// lib/phase/routes.ts (the phase model's step-routing module, replacing the old,
-// deleted handshake-flow.ts) so both the component and its regression tests can
-// import it without depending on a specific nav UI shell.
+// Shared nav item data + active-match logic, consumed by BottomNav.
 
 import { Home, Truck, CircleUserRound, type LucideIcon } from 'lucide-react'
 import { ROUTES } from '@/lib/constants/routes'
@@ -29,7 +25,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // Settings merged into Profile (Oct 2026). BottomNav draws the driver's photo for this
   // tab; the icon is the fallback for any surface that lists tabs without a photo. The old
   // /settings path stays a match while it redirects here.
-  { label: 'Profile', href: ROUTES.profile, icon: CircleUserRound, matchPrefixes: ['/profile', '/settings'] },
+  { label: 'Profile', href: ROUTES.profile, icon: CircleUserRound, matchPrefixes: [ROUTES.profile, ROUTES.settings] },
 ]
 
 /** Exact match for '/', otherwise true if pathname is or is nested under any prefix. */

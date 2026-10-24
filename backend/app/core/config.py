@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     # Across every organisation, per SAST calendar month; the chat refuses new questions once
     # reached. Keep the Anthropic console's spend limit at or a little above this.
     AI_CHAT_MONTHLY_BUDGET_USD: float = 20.0
+    # Dispatcher assistant (the bottom-right helper bubble): its own switch, so it can be off while
+    # the Analytics chat is on. It uses the provider, model, key and monthly budget above (one key,
+    # one bill, one cap), and stays off unless that key is set too.
+    ASSISTANT_ENABLED: bool = False
 
     GPS_TOLERANCE_METRES: int = 50
 
@@ -150,7 +154,7 @@ class Settings(BaseSettings):
     OPERATIONS_UTC_OFFSET_HOURS: int = 2
 
     # Enforced in auth/sessions.py; Supabase tokens otherwise refresh forever.
-    SESSION_IDLE_TIMEOUT_MINUTES: int = 10
+    SESSION_IDLE_TIMEOUT_MINUTES: int = 60
 
     # Token lifetime, separate from how often the QR on screen rotates.
     HANDOVER_TOKEN_EXPIRY_MINUTES: int = 10
@@ -190,8 +194,19 @@ class Settings(BaseSettings):
     # Never disable when deployed: it is the only cap on Hedera and PP spend.
     RATE_LIMIT_ENABLED: bool = True
 
-    # Only enable behind a proxy that overwrites X-Forwarded-For, or IPs can be forged.
+    # Only enable behind a proxy whose edge guarantees CLIENT_IP_HEADER, or IPs can be forged.
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
+
+    # Which header the edge guarantees. X-Forwarded-For is only safe on an edge that
+    # OVERWRITES it (Railway, nginx). Fly's proxy APPENDS instead, so the left-most entry
+    # there is whatever the caller sent — set this to "fly-client-ip", which fly-proxy
+    # overwrites and a caller therefore cannot dictate.
+    CLIENT_IP_HEADER: str = "x-forwarded-for"
+
+    # Injected by the Fly machine, not by .env — the only reliable in-process signal that
+    # this is running on an appending edge. Read by config_validation to refuse the one
+    # combination that silently forges the receiver_ip evidence field.
+    FLY_APP_NAME: str = ""
 
     ENVIRONMENT: str = "development"
 

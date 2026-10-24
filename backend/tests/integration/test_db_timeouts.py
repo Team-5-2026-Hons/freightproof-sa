@@ -139,7 +139,9 @@ def disposable_test_url() -> URL:
     url = make_url(settings.TEST_DATABASE_URL)
     # These checks need no schema and never use DATABASE_URL as a fallback. Match
     # the existing disposable compose/CI database, not a shared Supabase project.
-    if url.host not in {"localhost", "127.0.0.1", "::1", "test-db"} or url.database != "freightproof_test":
+    # A parallel run (pytest -n) gives each worker freightproof_test_gwN; still the disposable one.
+    database = (url.database or "").split("_gw", 1)[0]
+    if url.host not in {"localhost", "127.0.0.1", "::1", "test-db"} or database != "freightproof_test":
         pytest.fail("FP-275 tests require the local disposable freightproof_test database")
     return url
 
@@ -270,9 +272,12 @@ async def test_service_conflict_survives_real_stalled_rollback(
         proxy.silence_open_connections()
         async with asyncio.timeout(WATCHDOG):
             with pytest.raises(ConsignmentAlreadyAssignedError) as caught:
-                await _sync_cargo_entry(session, "test-waybill", rejected_sync())
+                await _sync_cargo_entry(session, "test-waybill", rejected_sync(), uuid4())
 
-    assert caught.value is primary
+    # Still the 409, but with the holder withheld: ownership can't be checked on a dead connection.
+    assert type(caught.value) is ConsignmentAlreadyAssignedError
+    assert caught.value.__cause__ is primary
+    assert caught.value.trip_reference is None
     assert "Database rollback failed error_type=DatabaseUnavailableError" in caplog.text
     assert isinstance(engine.pool, AvailabilityPool)
     assert engine.pool.checkedout() == 0

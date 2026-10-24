@@ -1,28 +1,25 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Ic } from '@/components/ui/Ic'
 import { Chip, type ChipType } from '@/components/ui/Chip'
-import { InfoRow } from '@/components/ui/InfoRow'
 import { useToast } from '@/lib/hooks/useToast'
 import { useAuditPacks } from '@/lib/hooks/useAuditPacks'
 import { ApiError } from '@/lib/api/client'
 import {
   downloadIssuedPdf,
-  incidentSheetPdf,
   listAuditPackAccessEvents,
-  listIncidentDeclarations,
   previewAuditPdf,
   revokeAuditPack,
   saveBlob,
 } from '@/lib/api/auditPacks'
-import { useAsyncData } from '@/lib/hooks/useAsyncData'
+import { SectionRowsSkeleton } from '@/components/incidents/IncidentSkeletons'
 import {
   AUDIT_PACK_PURPOSES,
   type AuditPack,
   type AuditPackAccessEvent,
   type AuditPackStatus,
-  type IncidentDeclaration,
 } from '@/lib/types/auditPack'
 
 const STATUS_CHIP: Record<AuditPackStatus, { type: ChipType; label: string }> = {
@@ -51,20 +48,23 @@ function purposeLabel(value: string): string {
 interface Props {
   tripId: string
   tripReference: string
-  /** The caller's region is labelled by this heading, so the heading is rendered here, beside the actions. */
-  headingId: string
   onIssue: () => void
-  onDeclare: () => void
+  /** Called each time the list has finished loading, so the caller can drop any space it reserved for it. */
+  onLoaded?: () => void
 }
 
-/** The caller re-keys this panel after an issue so it remounts and refetches the list. */
-export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onDeclare }: Props) {
+/** The body of the Info tab's Audit packs section, which supplies the heading. The caller re-keys
+ *  this panel after an issue so it remounts and refetches the list. */
+export function AuditPacksPanel({ tripId, tripReference, onIssue, onLoaded }: Props) {
   const { notify } = useToast()
   const { data: packs, isLoading, error, refetchSilent } = useAuditPacks(tripId)
   const [busy, setBusy] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isLoading) onLoaded?.()
+    // Once per load: the caller's callback changing identity is not a reason to fire it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading])
   const [log, setLog] = useState<{ packId: string; events: AuditPackAccessEvent[] } | null>(null)
-  const fetchDeclarations = useCallback(() => listIncidentDeclarations(tripId), [tripId])
-  const declarations = useAsyncData<IncidentDeclaration[]>(fetchDeclarations, [])
 
   async function run(key: string, action: () => Promise<void>, failure: string) {
     setBusy(key)
@@ -77,7 +77,6 @@ export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onD
     }
   }
 
-  const sheet = () => run('sheet', async () => saveBlob(await incidentSheetPdf(tripId), `${tripReference}-incident-sheet.pdf`), 'Could not build the fact sheet.')
   const preview = () => run('preview', async () => saveBlob(await previewAuditPdf(tripId), `${tripReference}-audit-preview.pdf`), 'Could not build the preview.')
   const download = (pack: AuditPack) => run(`pdf-${pack.id}`, async () => saveBlob(await downloadIssuedPdf(pack.id), `${pack.pack_label}.pdf`), 'Could not download the PDF.')
   const revoke = (pack: AuditPack) => run(`revoke-${pack.id}`, async () => {
@@ -93,22 +92,11 @@ export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onD
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id={headingId} className="text-sm font-bold text-on-surf">Audit packs</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" loading={busy === 'preview'} onClick={preview}>Preview PDF</Button>
-          <Button size="sm" variant="secondary" onClick={onIssue}>Issue audit pack</Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" loading={busy === 'preview'} onClick={preview}>Preview PDF</Button>
+        <Button size="sm" variant="secondary" onClick={onIssue}>Issue audit pack</Button>
       </div>
-      <div className="text-[13px] leading-relaxed text-on-surf-v">
-        <p>A sealed, shareable record of this trip for an insurer, loss adjuster, client or SAPS.</p>
-        <details className="mt-1">
-          <summary className="cursor-pointer font-semibold text-sec">How facts are labelled</summary>
-          <p className="mt-2">Each fact is labelled Anchored, Corroborated, Recorded or Declared so nothing claims more than the evidence supports.</p>
-        </details>
-      </div>
-
-      {isLoading && <p className="text-[13px] text-on-surf-v">Loading audit packs…</p>}
+      {isLoading && <SectionRowsSkeleton rows={2} label="Loading audit packs" />}
       {error && <p role="status" className="text-[13px] text-err">{forbidden ? 'Only admin dispatchers can see and issue audit packs.' : error}</p>}
       {!isLoading && !error && packs.length === 0 && <p className="text-[13px] text-on-surf-v">No audit packs issued for this trip yet.</p>}
 
@@ -117,26 +105,26 @@ export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onD
           const chip = STATUS_CHIP[pack.status]
           return (
             <li key={pack.id} className="rounded-lg border border-outline-v/40 bg-surf-lowest p-3">
+              {/* Same shape as the incident and handover rows, with the pack's actions in one row at the foot. */}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-[14px] font-extrabold tabular-nums tracking-[0.03em]">{pack.pack_label}</span>
+                <span className="text-[13px] font-semibold tabular-nums text-on-surf">{pack.pack_label}</span>
                 <Chip type={chip.type} label={chip.label} />
               </div>
-              <p className="mt-1 text-[13px]">
-                {pack.recipient_name}, {pack.recipient_organization} · {purposeLabel(pack.purpose)}
-                {pack.external_reference && ` · ref ${pack.external_reference}`}
+              <p className="mt-1 text-xs text-on-surf">
+                {pack.recipient_name}, {pack.recipient_organization}
+                <span className="block text-on-surf-v">{purposeLabel(pack.purpose)}{pack.external_reference && ` · ref ${pack.external_reference}`}</span>
               </p>
-              <p className="mt-0.5 text-[12px] text-on-surf-v">
-                Issued {when(pack.issued_at)} · {pack.revoked_at ? `revoked ${when(pack.revoked_at)}` : `expires ${when(pack.expires_at)}`}
+              <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                <dt className="text-on-surf-v">Issued</dt><dd className="text-on-surf">{when(pack.issued_at)}</dd>
+                <dt className="text-on-surf-v">{pack.revoked_at ? 'Revoked on' : 'Expires'}</dt><dd className="text-on-surf">{when(pack.revoked_at ?? pack.expires_at)}</dd>
+                <dt className="text-on-surf-v">Opened</dt><dd className="text-on-surf">{pack.view_count === 0 ? 'Not yet' : `${pack.view_count}× · last ${when(pack.last_viewed_at)}`}</dd>
+              </dl>
+              {/* The transaction id is for the verifier page, not the dispatcher: here only whether the seal exists. */}
+              <p className={`mt-1.5 flex items-center gap-1 text-xs ${pack.anchor_status === 'anchored' ? 'text-on-surf-v' : 'text-warn'}`}>
+                {pack.anchor_status === 'anchored' && <Ic n="check" s={12} className="text-ok" />}
+                {pack.anchor_status === 'anchored' ? 'Sealed on Hedera' : 'Not sealed on Hedera'}
               </p>
-              <p className="mt-0.5 flex min-w-0 gap-1 text-[12px] text-on-surf-v">
-                {pack.anchor_status === 'anchored'
-                  ? <><span className="shrink-0">Sealed on Hedera ·</span><span className="truncate" title={pack.hedera_tx_id ?? undefined}>{pack.hedera_tx_id ?? ''}</span></>
-                  : <span>Not sealed on Hedera</span>}
-              </p>
-              <p className="mt-0.5 text-[12px] text-on-surf-v">
-                {pack.view_count === 0 ? 'Not opened yet' : `Opened ${pack.view_count}× · last ${when(pack.last_viewed_at)}`}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" loading={busy === `pdf-${pack.id}`} onClick={() => download(pack)}>PDF</Button>
                 <Button size="sm" variant="ghost" loading={busy === `log-${pack.id}`} onClick={() => showLog(pack)}>Access log</Button>
                 {pack.status === 'active' && (
@@ -158,27 +146,6 @@ export function AuditPacksPanel({ tripId, tripReference, headingId, onIssue, onD
           )
         })}
       </ul>
-
-      <section aria-label="Police and notifications" className="border-t border-outline-v/30 pt-4">
-        <h3 className="mb-1 text-[13px] font-bold text-on-surf">Police &amp; notifications</h3>
-        {declarations.data.length === 0 && !declarations.isLoading && (
-          <>
-            <InfoRow label="SAPS case no." value="Not recorded" />
-            <p className="mt-1 text-[12px] text-on-surf-v">Insurers will ask for the SAPS station and case number.</p>
-          </>
-        )}
-        {declarations.data.map(d => (
-          <div key={d.declaration_id}>
-            {d.saps_cas_number ? <InfoRow label="SAPS case no." value={`CAS ${d.saps_cas_number}`} mono /> : <InfoRow label="Notification times" value="Declared" />}
-            {d.saps_station && <InfoRow label="SAPS station" value={d.saps_station} />}
-            <p className="py-1 text-[11px] text-on-surf-v">Declared {when(d.declared_at)}{d.declared_by_name ? ` by ${d.declared_by_name}` : ''}</p>
-          </div>
-        ))}
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={onDeclare}>Record police details</Button>
-          <Button size="sm" variant="ghost" loading={busy === 'sheet'} onClick={sheet}>Incident fact sheet</Button>
-        </div>
-      </section>
     </div>
   )
 }

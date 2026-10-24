@@ -86,7 +86,7 @@ export interface ConfirmationEvidence {
   podSignatureArtifactId: string | null
   // Server-stamped instant the receiver confirmed. Display only.
   receiverConfirmedAt: string | null
-  // Signer identity is rendered INTO the attestation PNG (lib/utils/render-attestation.ts),
+  // Signer identity is rendered INTO the attestation PNG (shared/lib/utils/render-attestation.ts),
   // not stored as a separate field, so it's covered by the anchored artifact hash. POPIA:
   // an ID number reaches Supabase Storage only inside that PNG, never a phase row or anchor.
 

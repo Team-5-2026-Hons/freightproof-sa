@@ -18,3 +18,28 @@ describe('describeChange property outlines', () => {
     ])
   })
 })
+
+describe('describeChange booleans', () => {
+  it('test_renders_a_non_status_boolean_as_yes_or_no', () => {
+    expect(describeChange({ is_shared: true })).toEqual([
+      { label: 'Shared with other organisations', value: 'Yes' },
+    ])
+    expect(describeChange({ is_shared: { from: true, to: false } })).toEqual([
+      { label: 'Shared with other organisations', value: 'Yes → No' },
+    ])
+  })
+
+  it('test_keeps_active_and_inactive_for_is_active', () => {
+    expect(describeChange({ is_active: false })).toEqual([{ label: 'Active', value: 'Inactive' }])
+    expect(describeChange({ is_active: { from: false, to: true } })).toEqual([
+      { label: 'Active', value: 'Inactive → Active' },
+    ])
+  })
+
+  it('test_applies_the_same_wording_inside_a_cosmetic_patch', () => {
+    expect(describeChange({ _no_critical_change: true, _patch: { is_shared: true, is_active: true } })).toEqual([
+      { label: 'Shared with other organisations', value: 'Yes' },
+      { label: 'Active', value: 'Active' },
+    ])
+  })
+})

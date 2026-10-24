@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/ocr/parseSeal.ts
-//
 // Turns the text OCR read off a seal photo into seal-number candidates.
 //
 // Seal print is small, embossed and often curved, so OCR routinely swaps letters and

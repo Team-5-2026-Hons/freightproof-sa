@@ -35,3 +35,31 @@ def test_cannot_catch_a_real_figure_used_for_the_wrong_thing() -> None:
     # The 20 Oct miss: 33 is a real value (the warning total), so the check can't tell it was quoted as
     # the problem total. That is what the totals block and the eval are for, not this check.
     assert unmatched_numbers("There were 33 problems.", [_PROBLEMS]) == []
+
+
+# ── Thousands written with spaces or commas, in sources as in answers (eval, 22 Oct) ─────────────────────────────
+
+
+def test_numbers_in_reads_every_way_a_sentence_writes_an_amount() -> None:
+    text = "R 305 781, 81%, 4.5, 17,64, R20,000, R1,100.00, 1,5, R155 per hour"
+
+    assert numbers_in(text) == [305781.0, 81.0, 4.5, 17.64, 20000.0, 1100.0, 1.5, 155.0]
+
+
+def test_numbers_inside_words_are_still_not_figures() -> None:
+    assert numbers_in("Q3 and last_12_months") == []
+
+
+def test_an_amount_written_with_spaced_thousands_in_a_source_is_known() -> None:
+    # e05: the guide says "about R 20 000"; the answer quoting it was taken for an invented figure.
+    guide = "calibrated so Bruce's Johannesburg to Durban run, about R 20 000, comes out right"
+
+    assert unmatched_numbers("It was calibrated on Bruce's R 20 000 run.", [guide]) == []
+    assert unmatched_numbers("Bruce's run cost R20,000.", [guide]) == []
+    assert unmatched_numbers("A run costs R 21 000.", [guide]) == ["21000"]
+
+
+def test_an_amount_written_with_comma_thousands_in_a_source_is_known() -> None:
+    origin = "R30,000 a month ÷ 195 working hours (Bruce, 28 Jul 2026)."
+
+    assert unmatched_numbers("A driver earns about R 30 000 a month.", [origin]) == []

@@ -36,7 +36,7 @@ export function TierBadge({ tier }: { tier: EvidenceTier }) {
   return (
     <span
       title={style.meaning}
-      className={`tier-badge inline-block rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] ${style.className}`}
+      className={`tier-badge inline-block rounded-sm px-2 py-0.5 text-micro font-bold uppercase tracking-[0.06em] ${style.className}`}
     >
       {style.label}
     </span>

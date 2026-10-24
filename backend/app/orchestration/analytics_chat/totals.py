@@ -24,7 +24,7 @@ import math
 from collections.abc import Iterable
 from datetime import date, datetime
 
-from app.analytics.stats import safe_ratio
+from app.core.stats import safe_ratio
 from app.schemas.cost_analytics import CostResponse
 from app.schemas.fleet_analytics import (
     ActivityResponse,

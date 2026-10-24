@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 
 // ── Shared field primitives ───────────────────────────────────────────────────
 // These establish the pattern for future per-phase detail components.
@@ -42,13 +42,11 @@ export function CopyField({ label, value, mono = false, span = false }: {
   mono?: boolean
   span?: boolean
 }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy: copyToClipboard } = useCopyToClipboard()
 
   function copy() {
     if (!value) return
-    navigator.clipboard.writeText(value).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    void copyToClipboard(value)
   }
 
   return (

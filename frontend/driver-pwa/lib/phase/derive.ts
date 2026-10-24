@@ -87,6 +87,29 @@ export function planProgress(phases: readonly PhaseDescriptor[]): { completed: n
   }
 }
 
+/**
+ * Whether this phase is the last row of the committed plan.
+ *
+ * Keyed on sequence_number, never on phase_type: LENGTH IS DATA. A single-leg plan ends
+ * on its only `confirmation`, a cross-dock plan on its last one, and "is this phase_type
+ * confirmation" would call the first of several the end of the trip.
+ */
+export function isFinalPhase(
+  phases: readonly PhaseDescriptor[], phase: PhaseDescriptor,
+): boolean {
+  if (phases.length === 0) return false
+  return phases.every(other => other.sequence_number <= phase.sequence_number)
+}
+
+/**
+ * Whether the server says this phase is waiting on something outside the driver's hands
+ * (the warehouse's scan-in). `blocked_on` is optional on the shared type, so it is coalesced
+ * to null first: a bare `!== null` would read `undefined !== null` and be permanently true.
+ */
+export function isPhaseBlocked(phase: PhaseDescriptor): boolean {
+  return (phase.blocked_on ?? null) !== null
+}
+
 /** Whether this phase carries a Hedera anchor. */
 export function isAnchored(phase: PhaseDescriptor): boolean {
   return ANCHORED_PHASES.includes(phase.phase_type)

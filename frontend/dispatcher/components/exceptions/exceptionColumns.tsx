@@ -6,7 +6,7 @@ import { Ic } from '@/components/ui/Ic'
 import { SkeletonBar } from '@/components/ui/Skeleton'
 import type { TableColumn } from '@/components/ui/Table'
 import {
-  RAISED_TIME_UNAVAILABLE, exceptionReference, fmtClaimedFor, fmtExceptionPhaseStop, fmtExceptionRaisedParts, fmtExceptionRoute, fmtExceptionType,
+  RAISED_TIME_UNAVAILABLE, exceptionDescriptionText, exceptionReference, fmtClaimedFor, fmtExceptionPhaseStop, fmtExceptionRaisedParts, fmtExceptionRoute, fmtExceptionType,
 } from '@/lib/format/exception'
 import { ExceptionRef } from '@/components/domain/ExceptionRef'
 import { reviewState } from '@/lib/format/review-state'
@@ -79,7 +79,7 @@ export function buildExceptionColumns({ meId, now, hrefFor, onOpen }: ColumnOpti
             <Link href={hrefFor(item.id)} data-exception-id={item.id} aria-label={`${title} · ${exceptionReference(item.id)} · ${item.trip_reference}`} onClick={() => onOpen(item.id)}
               className="font-semibold text-on-surf after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-sec">{title}</Link>
           </div>
-          <p className="mt-1.5 line-clamp-2 break-words leading-relaxed text-on-surf-v">{item.description}</p>
+          <p className="mt-1.5 line-clamp-2 break-words leading-relaxed text-on-surf-v">{exceptionDescriptionText(item)}</p>
           {/* The reference leads so two identical incidents on the same trip and phase still read differently. */}
           <p className="mt-1 text-xs text-on-surf-v"><ExceptionRef id={item.id} />{phaseStop && ` · ${phaseStop}`}</p>
         </>

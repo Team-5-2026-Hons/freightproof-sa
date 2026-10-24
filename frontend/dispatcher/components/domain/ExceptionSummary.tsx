@@ -4,7 +4,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Chip } from '@/components/ui/Chip'
 import { Ic } from '@/components/ui/Ic'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtExceptionType } from '@/lib/format/exception'
 import { reviewState } from '@/lib/format/review-state'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { ROUTES } from '@/lib/constants/routes'
@@ -63,7 +63,7 @@ export function ExceptionSummary({ exception, phaseLabel, returnTo, footer, tone
         </time>
       </div>
       <p className="mt-1 text-xs text-on-surf-v">{EXCEPTION_SOURCE_META[exception.source].label} · <ExceptionRef id={exception.id} /></p>
-      <p className="mt-2 break-words text-sm text-on-surf">{exception.description}</p>
+      <p className="mt-2 break-words text-sm text-on-surf">{exceptionDescriptionText(exception)}</p>
       <p className="mt-2 text-xs font-semibold text-on-surf-v">
         {state.label}
         {stateTime && ` · ${fmtDateTime(stateTime)}`}

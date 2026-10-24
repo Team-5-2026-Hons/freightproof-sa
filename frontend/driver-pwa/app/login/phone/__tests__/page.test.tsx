@@ -16,6 +16,8 @@ function renderPhonePage() {
   const authValue: AuthState = {
     user: null,
     isLoading: false,
+    connectionFault: false,
+    retryProfile: vi.fn(),
     requestOtp: mockRequestOtp,
     signIn: vi.fn(),
     signOut: vi.fn(),
@@ -159,7 +161,7 @@ describe('PhoneLoginPage phone number entry', () => {
 
     await submit()
 
-    expect(screen.getByRole('alert')).toHaveTextContent(/not registered — contact your dispatcher/i)
+    expect(screen.getByRole('alert')).toHaveTextContent(/not registered\. contact your dispatcher/i)
     expect(mockPush).not.toHaveBeenCalled()
   })
 

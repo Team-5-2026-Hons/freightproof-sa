@@ -118,3 +118,26 @@ it.each([false, true])('transfer_action_reuses_normal_or_compact_header_slot (co
   expect(open).toHaveBeenCalledOnce()
   expect(screen.getByRole('link', { name: mockDrivers[0]!.phone_number })).toHaveAttribute('href', `tel:${mockDrivers[0]!.phone_number}`)
 })
+
+it('transfer_action_sits_in_the_driver_label_row_and_keeps_its_label_when_not_compact', () => {
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()}
+    transferAction={{ label: 'Transfer driver', onClick: vi.fn() }} />)
+
+  const action = screen.getByRole('button', { name: 'Transfer driver' })
+  const name = screen.getByRole('button', { name: new RegExp(facts.driverName) })
+
+  // Beside the "Driver" label, so a narrow cell never wraps it under the name.
+  expect(action.parentElement).toHaveTextContent('Driver')
+  expect(action.parentElement).not.toBe(name.parentElement)
+  expect(action).toHaveTextContent('Transfer driver')
+})
+
+it('lets_the_driver_name_truncate_to_the_cell_width', () => {
+  render(<TripSummary facts={facts} precincts={mockPrecincts} driver={mockDrivers[0]!} returnTo="/trips/example" onBack={vi.fn()} onPanel={vi.fn()}
+    transferAction={{ label: 'Transfer driver', onClick: vi.fn() }} />)
+
+  const name = screen.getByRole('button', { name: new RegExp(facts.driverName) })
+
+  expect(name).toHaveClass('min-w-0', 'max-w-full', 'truncate')
+  expect(name.className).not.toMatch(/\b(w|max-w)-\[|\bmax-w-(xs|sm|md|\d)/)
+})

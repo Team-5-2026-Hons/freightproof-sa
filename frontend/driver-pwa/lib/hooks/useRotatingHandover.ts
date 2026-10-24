@@ -1,6 +1,4 @@
-// frontend/driver-pwa/lib/hooks/useRotatingHandover.ts
-//
-// Owns the two clocks the receiver-handover step runs on (FP-237/238): the rotation that
+// Owns the two clocks the receiver-handover step runs on: the rotation that
 // replaces the displayed QR, and the poll that watches for the receiver's confirmation
 // landing server-side.
 //
@@ -65,7 +63,7 @@ export function useRotatingHandover(tripId: string, phaseEventId: string): Rotat
 
     setIsIssuing(true)
     try {
-      // FP-83: the period this initiation happens in; a former driver is refused server-side.
+      // The period this initiation happens in; a former driver is refused server-side.
       const res = await issueHandoverToken(tripId, phaseEventId, force, captureCustody(tripId).custodySequence)
       rotationSecondsRef.current = res.rotate_after_seconds > 0
         ? res.rotate_after_seconds
@@ -88,13 +86,21 @@ export function useRotatingHandover(tripId: string, phaseEventId: string): Rotat
     }
   }, [tripId, phaseEventId])
 
+  // A chained timeout, not setInterval: the interval would be armed before the first
+  // response and stay at the fallback cadence, ignoring what the server announces.
+  // issue() already returns early when done or paused, so the loop only re-arms.
   useEffect(() => {
-    void issue()
-    const timer = setInterval(() => {
-      if (isDoneRef.current || isPausedRef.current) return
-      void issue()
-    }, rotationSecondsRef.current * 1_000)
-    return () => clearInterval(timer)
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    async function tick() {
+      await issue()
+      if (cancelled || isDoneRef.current) return
+      timer = setTimeout(() => void tick(), rotationSecondsRef.current * 1_000)
+    }
+
+    void tick()
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [issue])
 
   useEffect(() => {

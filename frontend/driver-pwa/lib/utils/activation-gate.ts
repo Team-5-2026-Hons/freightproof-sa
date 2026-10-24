@@ -133,6 +133,6 @@ export function activationBlockMessage(block: ActivationBlock): string {
     case 'not_due_yet':
       return `This trip isn’t due until ${block.dueDate}. You can start it on the day it departs.`
     case 'earlier_trip_first':
-      return `${block.blockingTripReference} departs earlier today — start that one first.`
+      return `${block.blockingTripReference} departs earlier today. Start that one first.`
   }
 }

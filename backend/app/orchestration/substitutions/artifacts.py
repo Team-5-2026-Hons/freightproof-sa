@@ -46,9 +46,16 @@ from app.orchestration.evidence.artifacts import MAX_FILE_SIZE_BYTES
 from app.orchestration.substitutions.access import (
     custody_holders, get_current_custody, lock_trip, participant_driver_ids,
 )
-from app.orchestration.substitutions.service import (
-    OperationKey, body_digest, find_replay, lock_crew_and_request, record_operation, require_live,
+from app.orchestration.substitutions.guards import (
+    lock_crew_and_request,
+    require_live,
     require_pending_at,
+)
+from app.orchestration.substitutions.operations import (
+    OperationKey,
+    body_digest,
+    find_replay,
+    record_operation,
 )
 from app.schemas.driver_substitutions import SubstitutionRole, IMMEDIATE_V2
 from app.schemas.evidence import EvidenceArtifactRead

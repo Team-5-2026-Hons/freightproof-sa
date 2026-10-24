@@ -94,7 +94,6 @@ export function CrewFields(
             <div className="mb-[10px] text-[15px] font-[700] text-on-surf">{driver.full_name}</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-[6px]">
               <MiniField label="License number" value={driver.license_number} numeric />
-              <MiniField label="ID number" value={driver.id_number} numeric />
               <MiniField label="Phone" value={driver.phone_number} />
             </div>
           </div>

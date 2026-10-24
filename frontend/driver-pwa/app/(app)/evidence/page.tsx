@@ -8,7 +8,7 @@ import { TabSubpage } from '@/components/layout/TabSubpage'
 import { RetainedEvidenceList } from '@/components/offline/RetainedEvidenceList'
 
 /**
- * FP-83: captures this phone is keeping for the driver's decision — refused by the server,
+ * Captures this phone is keeping for the driver's decision — refused by the server,
  * kept after a handover, or saved before the app recorded who captured them.
  */
 export default function RetainedEvidencePage() {

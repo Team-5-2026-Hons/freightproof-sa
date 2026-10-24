@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/api/checkpoints.ts
 import { api } from './client'
 import type { Checkpoint, CheckpointId } from '@shared/lib/types/checkpoint'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
@@ -24,13 +23,13 @@ export interface LogCheckpointBody {
   cargo_photo_artifact_id?: string
   note?: string
   is_deviation?: boolean
-  // FP-83: the custody period the checkpoint was captured in. Omitted when unknown.
+  // The custody period the checkpoint was captured in. Omitted when unknown.
   custody_sequence?: number
 }
 
 // Raw captured checkpoint evidence (data URLs, not yet-uploaded artifacts) — mirrors
-// the shape lib/types/evidence-draft.ts uses for H1-H5. Kept here rather than there
-// since checkpoints are a driver-initiated capture independent of the five handshakes.
+// the shape lib/types/evidence-draft.ts uses for phase evidence. Kept here rather than
+// there since checkpoints are a driver-initiated capture independent of the phases.
 export interface CheckpointEvidence {
   // Nullable since the GPS capture step was removed: the app now takes the fix silently
   // as the driver submits, and a failed fix (a tunnel, a denied permission) must never
@@ -38,7 +37,7 @@ export interface CheckpointEvidence {
   // optional (LogCheckpointBody above), so nothing downstream changes.
   gpsLat: number | null
   gpsLng: number | null
-  // Optional since overhaul 6.2 removed the selfie from the screen (the backend has
+  // Optional since the screen no longer takes a selfie (the backend has
   // always accepted a checkpoint without one). Kept on the type, not deleted: a checkpoint
   // queued offline by an older build is stored WITH its selfie and must still replay.
   selfieDataUrl?: string | null
@@ -51,7 +50,7 @@ export interface CheckpointEvidence {
   clientReportId?: string
   accuracyM?: number | null
   phaseEventId?: string
-  // FP-83: stamped with the rest of the capture (lib/session/custody-context.ts) so a replay
+  // Stamped with the rest of the capture (lib/session/custody-context.ts) so a replay
   // after a handover still names the period it was taken in. Absent on older queued entries.
   custodySequence?: number | null
 }
@@ -88,13 +87,12 @@ export function checkpointRequestBody(evidence: CheckpointEvidence, ids: Checkpo
 }
 
 // Raw endpoint call — only ever invoked from submitCheckpoint's real-backend branch
-// below (mirrors how completeH1..H5 in lib/api/trips.ts are only called from inside
-// submitHandshake), so it needs no demo gate of its own.
+// below, so it needs no demo gate of its own.
 export const logCheckpoint = (tripId: string, body: LogCheckpointBody): Promise<Checkpoint> =>
   api.post<Checkpoint>(`/api/v1/trips/${tripId}/checkpoints`, body)
 
 // Demo mode: IS_DEMO_MODE (NEXT_PUBLIC_DEMO_MODE=true/unset) returns a mock success
-// immediately, same short-circuit lib/api/handshakes.ts's submitHandshake uses — without
+// immediately, the same short-circuit the phase submit uses — without
 // it, opening the in-transit hub's Log Checkpoint screen in demo mode (the default) fired
 // a real fetch at localhost:8000 that always failed.
 // Production: uploads the cargo photo (and a legacy selfie, if a queued one carries it)

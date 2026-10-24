@@ -4,15 +4,9 @@ import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import type { Trip } from '@shared/lib/types/trip'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { currentPhase, isDriving } from '@/lib/phase'
-import { precinctName } from '@/lib/utils/precinct-name'
 import { formatTime } from '@/lib/utils/format-time'
-import { placeParts } from '@/lib/utils/trip-display'
+import { placeOf, placeParts } from '@/lib/utils/trip-display'
 import { cn } from '@/lib/utils'
-
-function placeOf(name: string | null, id: string | null): string {
-  if (name !== null) return name
-  return id !== null ? precinctName(id) : 'Unknown'
-}
 
 interface ActiveTripCardProps {
   summary: DriverTripSummary
@@ -22,7 +16,7 @@ interface ActiveTripCardProps {
 }
 
 /**
- * The trip underway, pinned at the top of Trips (overhaul 3.1): an ink card — the one
+ * The trip underway, pinned at the top of Trips: an ink card — the one
  * dark object on a white page, so "now" is found before anything else is read.
  */
 export function ActiveTripCard({ summary, trip, onOpen }: ActiveTripCardProps) {

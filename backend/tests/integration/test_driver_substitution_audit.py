@@ -6,7 +6,8 @@ from datetime import timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.enums import IdvsStatus
+from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.enums import AnchorStatus, BlockchainReceiptType, IdvsStatus, SubjectType
 from app.db.models.trips import DriverSubstitution
 from app.orchestration.audit_packs.analysis import derive_observations
 from app.orchestration.audit_packs.builder import build_audit_manifest
@@ -136,3 +137,30 @@ async def test_pack_names_actual_completer_and_each_clarification(db_session: As
     assert record.arranged_by_name == 'D'
     assert {c.correction_note for c in record.corrections} == {'Gate 2', 'Spare strap retained'}
     assert all(c.recorded_by_user_id == completer.id and c.event_hash for c in record.corrections)
+
+
+async def test_pack_tier_follows_the_substitution_anchor_status_not_just_the_receipt_link(db_session: AsyncSession):
+    """WI-07: a linked receipt on a row whose anchor is not ANCHORED must not read as anchored."""
+    w = await world_with_licences(db_session)
+    await handover(db_session, w, outgoing=w.a, incoming=w.b)
+    row = (await db_session.execute(
+        select(DriverSubstitution).where(DriverSubstitution.trip_id == w.trip_id)
+    )).scalar_one()
+    receipt = BlockchainReceipt(
+        trip_id=w.trip_id, subject_type=SubjectType.DRIVER_SUBSTITUTION, subject_id=row.id,
+        receipt_type=BlockchainReceiptType.DRIVER_SUBSTITUTION, data_hash="0" * 64, payload_json={},
+    )
+    db_session.add(receipt)
+    await db_session.flush()
+    assert row.anchor_status == AnchorStatus.PENDING.value  # the real completion leaves it owed
+    tiers = {}
+
+    tiers["pending, no receipt"] = (await manifest_for(db_session, w)).driver.substitutions[0].tier
+    row.blockchain_receipt_id = receipt.id
+    await db_session.flush()
+    tiers["pending, receipt linked"] = (await manifest_for(db_session, w)).driver.substitutions[0].tier
+    row.anchor_status = AnchorStatus.ANCHORED.value
+    await db_session.flush()
+    tiers["anchored"] = (await manifest_for(db_session, w)).driver.substitutions[0].tier
+
+    assert tiers == {"pending, no receipt": "recorded", "pending, receipt linked": "recorded", "anchored": "anchored"}

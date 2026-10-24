@@ -19,7 +19,7 @@ from app.db.models.evidence import EvidenceArtifact
 from app.db.models.transit import TripException
 from app.db.models.trips import DriverSubstitution, Trip
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
-from app.orchestration.evidence import action_location
+from app.orchestration.evidence import location_assessment
 from app.orchestration.substitutions import capture_assessment
 from app.orchestration.substitutions.service import confirm_substitution
 from app.schemas.driver_substitutions import (
@@ -44,8 +44,11 @@ def tracker(position: tuple[float, float] | None, *, fixed_at: datetime = FRESH)
                      lat=Decimal(str(position[0])), lng=Decimal(str(position[1])), fixed_at=fixed_at)
 
 
-@pytest.fixture
-def staged(monkeypatch: pytest.MonkeyPatch) -> dict[str, PulsitFix]:
+# name="staged" keeps the fixture's pytest-visible name while the Python identifier differs, so
+# test_driver_substitution_review_exception.py can import it without its `staged` test parameters
+# reading to ruff as redefining an unused import (F811). Same pattern as pulsit_store.
+@pytest.fixture(name="staged")
+def _staged_fixture(monkeypatch: pytest.MonkeyPatch) -> dict[str, PulsitFix]:
     """The tracker fix the next confirmation will see; defaults to fresh and at the exchange."""
     box = {"fix": tracker(EXCHANGE)}
 
@@ -169,7 +172,7 @@ async def test_a_failure_building_the_assessment_keeps_the_capture_as_not_assess
     def _boom(**_: object) -> None:
         raise RuntimeError("assessment exploded")
 
-    monkeypatch.setattr(action_location, "build_capture_assessment", _boom)
+    monkeypatch.setattr(location_assessment, "build_capture_assessment", _boom)
 
     read = await confirm(db_session, w, pending, w.a)
 

@@ -498,7 +498,7 @@ class InvestigationRecord(_Frozen):
 class TripSummary(_Frozen):
     trip_id: UUID
     trip_reference: str
-    # Nullable since FP-281: trips keyed by the PP manifest no longer carry an order number.
+    # Nullable since FP-281, like Trip.order_number: a trip keyed by the PP manifest has none.
     order_number: str | None
     trip_type: str
     status: str

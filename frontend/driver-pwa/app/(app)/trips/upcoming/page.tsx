@@ -12,7 +12,7 @@ import { TabSubpage } from '@/components/layout/TabSubpage'
 import { TripList } from '@/components/trip/TripRow'
 import { EmptyState } from '@/components/ui/EmptyState'
 
-/** Every assigned trip not yet started, soonest first (overhaul 3.6). */
+/** Every assigned trip not yet started, soonest first. */
 export default function UpcomingTripsPage() {
   const router = useRouter()
   const goBack = useBack(ROUTES.trips)

@@ -4,7 +4,7 @@ A running list of environment and code issues to raise with the team. Each entry
 records the symptom, root cause, impact, and proposed fix. Delete an entry once it
 is resolved (and, if it changed shared behaviour, note it in the relevant spec).
 
-Two parts. **Known issues** (1-7, 11) are defects and tech debt. **Deferred work** (8 onward) is
+Two parts. **Known issues** (1-7, 11, 12) are defects and tech debt. **Deferred work** (8 onward) is
 scoped work that has been deliberately postponed — not broken, but decided and parked,
 recorded so the reasoning does not have to be re-derived when it is picked up. Both live
 here rather than in separate design notes so there is one place to look.
@@ -12,6 +12,11 @@ here rather than in separate design notes so there is one place to look.
 ---
 
 ## 1. `??` fallback in `supabase.ts` fails on empty-string env vars
+
+**Status: resolved.** `frontend/driver-pwa/lib/supabase.ts` now uses `||`, so an empty
+value falls back to the placeholder. The dispatcher client reads the variable with a
+non-null assertion rather than a `??` fallback, so this bug never applied to it. The
+original entry is kept below for the record.
 
 **Files:** `frontend/driver-pwa/lib/supabase.ts` (and the equivalent
 `frontend/dispatcher/lib/supabase/client.ts` — verify before fixing).
@@ -391,6 +396,32 @@ on record without opening each one — which is most of the reason to scan histo
 
 ---
 
+## 12. Security review findings accepted for submission (23 October 2026)
+
+**Source:** [`reviews/2026-10-23-submission-readiness-review.md`](reviews/2026-10-23-submission-readiness-review.md).
+The review's R1 (multipart parsing), R2 (JWKS refresh cooldown), R3 (driver build must
+declare demo mode), R7–R9 and R11 were fixed before submission. The items below were
+judged real but out of proportion to an academic demonstration on synthetic data. Each
+must be fixed before an internet-facing deployment that handles real evidence.
+
+- **R4: a forged Bearer header gets its own rate-limit bucket.** `core/rate_limit.py`
+  keys on a hash of any Bearer string without verifying it, including on the public
+  handover, webhook and audit-pack routes. The global per-IP cap of 300/min still applies.
+  Fix: key public routes on IP, and authenticated routes on the verified principal.
+- **R5: capability URLs and provider tokens can reach logs.** The generic 500 handler in
+  `main.py` and the global 429 log in `rate_limit.py` log the raw path, which holds the
+  handover and audit-pack tokens. The Parcel Perfect client puts `token_id` in the request
+  URL, and `endpoints/pp.py` logs the HTTP error that contains it. Fix: log route
+  templates and redact provider errors.
+- **R6: dependency advisories are not triaged.** The dispatcher, receiver and portal lock
+  Next 15.5.25/26 (the patched release is 15.5.28 with sharp 0.35.5). `python-jose` 3.3.0
+  carries advisories that the ES256-only JWT path does not reach. CI scans are
+  report-only.
+- **R10: Android Auto Backup is on.** `AndroidManifest.xml` does not disable backup or
+  exclude WebView storage, which holds sessions and unsent evidence.
+- **R2, remainder:** the JWKS fetch is still synchronous. The cooldown caps it at one
+  forced refresh per minute per worker; it is not yet async or single-flight.
+
 ---
 
 ## Common theme
@@ -505,7 +536,11 @@ is not arriving.
 
 ## 9. Dispatcher call logging and driver substitution
 
-**Status:** neither started. Recorded because neither is safe to bolt on. The read-only
+**Status (23 October 2026):** driver substitution (9b) is implemented along the chosen
+direction: anchored amendments chained by sequence and previous-link hash, with the
+original journey lock left valid (`backend/app/orchestration/substitutions/`). Dispatcher
+call logging (9a) has not been started and is deferred. The text below is the original
+design record. Recorded because neither is safe to bolt on. The read-only
 driver modal (`frontend/dispatcher/components/trips/DriverModal.tsx`) is the surface both
 would eventually attach to.
 
@@ -598,11 +633,13 @@ trade-off worth being able to defend at examination. Keep this section.
 
 ---
 
-## 10. Deferred — dedicated arrival custody-check phase (iteration 4 candidate)
+## 10. Implemented — dedicated arrival custody-check phase (was an iteration 4 candidate)
 
-**Recorded:** 9 September 2026. **Status:** preferred product direction; deferred for
-iteration 4 planning alongside the full phase child ledger. Not implemented, assigned,
-or approved for immediate execution. This entry is the canonical record of the proposal.
+**Recorded:** 9 September 2026. **Status (23 October 2026): implemented.** Arrival is a
+phase in the plan, engine, driver app, dispatcher timeline and analytics (arrival dwell
+is reported separately from unloading). The per-step child ledger it was proposed
+alongside is still not built. The text below is the original proposal, kept as the
+design rationale.
 
 **Reason:** Departure records the outbound seal and location. A corresponding Arrival
 phase should record the seal as found at the destination BEFORE opening, with its own

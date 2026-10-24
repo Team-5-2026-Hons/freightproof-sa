@@ -30,6 +30,9 @@ from app.storage.supabase_storage import UploadResult
 
 from tests.integration.audit_pack_seed import AuditTrip, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 PUBLIC = "/api/v1/public/audit-packs"
 GRANT_HEADER = "X-Audit-Pack-Grant"
 RECIPIENT = "jane@santam.example"
@@ -149,12 +152,14 @@ async def test_open_emailed_pack_without_grant_is_401_and_logged(client, db_sess
     assert await _events(db_session) == ["denied_unverified"]
 
 
+# Explicit ids: the artifact case's path holds a fresh uuid4, and a parallel run (pytest -n)
+# refuses test names that differ between workers.
 @pytest.mark.parametrize("method,suffix", [
     ("GET", "/pdf"),
     ("GET", "/incident-sheet.pdf"),
     ("GET", f"/artifacts/{uuid.uuid4()}"),
     ("POST", "/verify"),
-])
+], ids=["pdf", "incident-sheet", "artifact", "verify"])
 async def test_every_pack_route_needs_a_grant(client, db_session, audit_trip, storage, method, suffix):
     # Arrange
     issued = await _issue(db_session, audit_trip)

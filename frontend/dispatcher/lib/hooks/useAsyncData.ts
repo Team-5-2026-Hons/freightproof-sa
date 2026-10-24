@@ -18,6 +18,7 @@ export interface AsyncState<T> {
 // guarantees the UI can never get permanently stuck on a loading spinner.
 const DEFAULT_TIMEOUT_MS = 25_000
 
+// A changed fetchFn does not refetch; remount (key) to change the resource.
 export function useAsyncData<T>(
   fetchFn: () => Promise<T>,
   initial: T,

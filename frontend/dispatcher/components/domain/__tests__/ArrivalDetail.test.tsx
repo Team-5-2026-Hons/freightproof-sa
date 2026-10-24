@@ -69,7 +69,7 @@ describe('ArrivalDetail: seal as found', () => {
       />,
     )
 
-    expect(screen.getByText(/mismatch — recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/mismatch: recorded as a critical exception/i)).toBeInTheDocument()
   })
 
   it('reports a damaged seal as a compromised finding', () => {
@@ -84,7 +84,7 @@ describe('ArrivalDetail: seal as found', () => {
     )
 
     expect(screen.getByText('Damaged')).toBeInTheDocument()
-    expect(screen.getByText(/seal compromised — recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/seal compromised: recorded as a critical exception/i)).toBeInTheDocument()
   })
 
   it('reports a missing seal as a compromised finding', () => {
@@ -99,7 +99,7 @@ describe('ArrivalDetail: seal as found', () => {
     )
 
     expect(screen.getByText('Missing')).toBeInTheDocument()
-    expect(screen.getByText(/seal compromised — recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/seal compromised: recorded as a critical exception/i)).toBeInTheDocument()
   })
 
   it('shows both findings when a seal is compromised AND its number does not match', () => {
@@ -116,8 +116,8 @@ describe('ArrivalDetail: seal as found', () => {
       />,
     )
 
-    expect(screen.getByText(/seal compromised — recorded as a critical exception/i)).toBeInTheDocument()
-    expect(screen.getByText(/mismatch — recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/seal compromised: recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/mismatch: recorded as a critical exception/i)).toBeInTheDocument()
   })
 
   it('does not turn a missing departure seal into a critical mismatch', () => {

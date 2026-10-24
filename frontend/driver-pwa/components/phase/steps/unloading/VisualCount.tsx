@@ -6,11 +6,11 @@ import { Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { WarehouseWaitAction, WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
+import { isPhaseBlocked } from '@/lib/phase'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { UnloadingEvidence } from '@/lib/types/evidence-draft'
 
 interface VisualCountProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: UnloadingEvidence
@@ -18,17 +18,15 @@ interface VisualCountProps {
   onComplete: () => void | Promise<void>
 }
 
-// Blind entry: there is no h2Count prop and must never be one added back. The server
-// reconciles this count privately against loading's driver_visual_count; showing the
-// driver a number to match would defeat the purpose of an independent count.
+// Blind entry: never show the driver a number to match. The server reconciles this count
+// privately against loading's driver_visual_count; a reference figure would defeat the
+// purpose of an independent count.
 //
 // Also gates on the warehouse's own destination scan (GATED_PHASES[UNLOADING],
 // orchestration/phase_gate.py) — see loading/Linehaul.tsx for why the swipe is hidden
 // entirely rather than left visible-but-disabled while blocked.
-export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: VisualCountProps) {
-  // Coalesced to null: `blocked_on` is optional, so a bare `!== null` would read
-  // `undefined !== null` and be permanently true.
-  const isBlocked = (phase.blocked_on ?? null) !== null
+export function VisualCount({ phase, stepIndex, draft, onUpdate, onComplete }: VisualCountProps) {
+  const isBlocked = isPhaseBlocked(phase)
 
   const [input, setInput] = useState(draft.driverVisualCount !== null ? String(draft.driverVisualCount) : '')
   const trimmed = input.trim()
@@ -37,7 +35,7 @@ export function VisualCount({ tripId, phase, stepIndex, draft, onUpdate, onCompl
   const count = trimmed !== '' ? parseInt(trimmed, 10) : null
   const isValid = count === null || (!isNaN(count) && count >= 0)
 
-  // The stepper (overhaul 8.3): the driver counts as parcels come off, one tap each.
+  // The stepper: the driver counts as parcels come off, one tap each.
   // From blank (or an unreadable entry) + starts at 1; − never goes below a real zero.
   function step(by: 1 | -1) {
     const base = count !== null && !isNaN(count) && count >= 0 ? count : 0

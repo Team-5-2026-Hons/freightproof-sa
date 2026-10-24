@@ -20,7 +20,7 @@ const serwist = new Serwist({
   clientsClaim: true,
   navigationPreload: false,
   runtimeCaching: [
-    // Evidence platform: a stale cached API response (trip status, handshake state, anchor
+    // Evidence platform: a stale cached API response (trip status, phase state, anchor
     // receipts) is actively dangerous. NetworkOnly makes "never cache this" explicit.
     {
       matcher: ({ url }) => url.pathname.startsWith("/api/"),

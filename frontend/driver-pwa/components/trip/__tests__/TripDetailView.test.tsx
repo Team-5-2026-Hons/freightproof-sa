@@ -189,7 +189,7 @@ describe('TripDetailView — trip in progress (3.2)', () => {
   })
 
   it('test_route_uses_server_place_names_when_known', () => {
-    mockSummaries = [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB — Linbro Park', destination_precinct_name: 'FedEx DBN — Riverhorse Valley' }]
+    mockSummaries = [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB · Linbro Park', destination_precinct_name: 'FedEx DBN · Riverhorse Valley' }]
 
     renderView(makeTrip(upTo(SINGLE_LEG_PHASE_PLAN, 'loading')))
 

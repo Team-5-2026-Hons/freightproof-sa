@@ -4,6 +4,7 @@ model mistakes returned as messages, and no personal data in anything a tool can
 Services are patched where tools.py looks them up, so no database is needed.
 """
 
+import json
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
@@ -13,11 +14,13 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel
 
-from app.analytics.fleet.periods import Grain, Period
+from app.analytics.fleet.periods import Period
+from app.core.fleet_bands import Grain
 from app.orchestration.analytics_chat import tools
 from app.orchestration.analytics_chat.definitions import about
+from app.orchestration.analytics_chat.page_guide import GUIDE
 from app.orchestration.analytics_chat.tools import TOOLS, TOOLS_BY_NAME, run_tool
-from app.schemas.cost_analytics import CostResponse
+from app.schemas.cost_analytics import CostProfileRead, CostResponse
 from app.schemas.fleet_analytics import (
     ActivityResponse,
     EvidenceResponse,
@@ -78,7 +81,8 @@ _ALLOWED_FIELDS = frozenset({
     "LaneCost.origin_name", "LaneCost.destination_name",
     # Rand amounts: the driver share of operating cost, and the driver cost rate. Not a person.
     "OperatingCost.driver", "CostBucket.driver", "CostProfileRead.driver_cost_per_hour",
-    # The admin who last saved the cost rates, shown on the Cost tab's rates card (spec §12).
+    # The admin who last saved the cost rates, shown on the Cost tab's rates card (spec §12). In the schema, but
+    # stripped before anything is sent (tools._rates_without_names; test_cost_tool_never_sends_the_rates_editors_name).
     "CostProfileRead.updated_by_name",
     # A count of receiver sign-offs sent from a phone already signed in to FreightProof.
     "SignoffFlags.same_phone_count",
@@ -259,11 +263,11 @@ async def test_run_tool_rejects_a_missing_grain(services: dict[str, AsyncMock]) 
 # ── The tool list itself ─────────────────────────────────────────────────────
 
 
-def test_tools_are_the_eight_in_the_spec() -> None:
+def test_tools_are_the_eight_figure_tools_and_the_page_guide() -> None:
     assert [tool.name for tool in TOOLS] == [
-        "activity", "on_time", "problems", "review_desk", "evidence", "routes_and_sites", "cost", "right_now",
+        "activity", "on_time", "problems", "review_desk", "evidence", "routes_and_sites", "cost", "right_now", "explain",
     ]
-    assert set(TOOLS_BY_NAME) == set(_TOOL_OUTPUTS)
+    assert {tool.name for tool in TOOLS if tool.gives_figures} == set(_TOOL_OUTPUTS)
 
 
 @pytest.mark.parametrize("tool", TOOLS, ids=lambda tool: tool.name)
@@ -330,4 +334,70 @@ def test_no_period_tool_claims_closed_trips_only_without_deferring_to_about() ->
     # status) are not closed-trips-by-departure; the old wording said every tool was.
     for tool in TOOLS:
         assert "Counts closed trips only" not in tool.description
-        assert "`about`" in tool.description
+        if tool.gives_figures:
+            assert "`about`" in tool.description
+
+
+# ── The page guide (B45) ─────────────────────────────────────────────────────
+
+
+async def test_run_tool_explain_needs_no_period_and_returns_the_guide(services: dict[str, AsyncMock]) -> None:
+    outcome = await run_tool(object(), organization_id=uuid.uuid4(), name="explain", arguments={"topic": "on_time"}, now=_NOW)  # type: ignore[arg-type]
+
+    assert outcome.error is None
+    assert outcome.period is None
+    assert outcome.result is not None
+    assert "about" not in outcome.result
+    titles = [entry["title"] for entry in outcome.result["guide"]]  # type: ignore[attr-defined]
+    assert "How late is late" in titles
+    assert all(mock.await_count == 0 for mock in services.values())
+
+
+async def test_run_tool_explain_cost_adds_todays_rates_without_the_editors_name(
+    monkeypatch: pytest.MonkeyPatch, services: dict[str, AsyncMock],
+) -> None:
+    org = uuid.uuid4()
+    profile = CostProfileRead(
+        diesel_price_per_litre=33.29, litres_per_100km=53.0, fuel_per_km=17.64, running_cost_per_km=15.10,
+        driver_cost_per_hour=155.0, delay_cost_per_hour=1100.0, fixed_cost_per_trip=0.0, road_factor=1.15,
+        is_default=False, updated_at=_NOW, updated_by_name="Thandi Mokoena",
+    )
+    read = AsyncMock(return_value=profile)
+    monkeypatch.setattr(tools, "read_cost_profile", read)
+
+    outcome = await run_tool(object(), organization_id=org, name="explain", arguments={"topic": "cost"}, now=_NOW)  # type: ignore[arg-type]
+
+    assert outcome.result is not None
+    rates = outcome.result["current_rates"]
+    assert rates["fuel_per_km"] == 17.64  # type: ignore[index]
+    assert "updated_by_name" not in rates  # type: ignore[operator]
+    assert "Thandi" not in json.dumps(outcome.result)
+    assert read.await_args is not None and read.await_args.kwargs["organization_id"] == org
+
+
+async def test_run_tool_explain_rejects_an_unknown_topic(services: dict[str, AsyncMock]) -> None:
+    await _assert_error(services, "explain", {"topic": "everything"}, "Invalid input: topic")
+
+
+class _CostWithRates(BaseModel):
+    rates: dict[str, object]
+
+
+async def test_cost_tool_never_sends_the_rates_editors_name(services: dict[str, AsyncMock]) -> None:
+    # 22 Oct: the cost response carried the name of the admin who last saved the rates, and it was sent as is.
+    services["get_cost"].return_value = _CostWithRates(rates={"fuel_per_km": 17.64, "updated_by_name": "Thandi Mokoena"})
+
+    outcome = await run_tool(object(), organization_id=uuid.uuid4(), name="cost", arguments=_args_for("cost"), now=_NOW)  # type: ignore[arg-type]
+
+    assert outcome.result is not None
+    assert outcome.result["rates"] == {"fuel_per_km": 17.64}
+    assert "Thandi" not in json.dumps(outcome.result)
+
+
+def test_the_explain_menu_names_every_guide_entry() -> None:
+    description = TOOLS_BY_NAME["explain"].description
+
+    assert "NO period needed" in description
+    for entries in GUIDE.values():
+        for entry in entries:
+            assert entry.title in description

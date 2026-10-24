@@ -144,8 +144,20 @@ _CPT = _Depot("CAPE TOWN", "12 Gunners Circle, Epping Industria", "Epping Goods 
 _BFN = _Depot("BLOEMFONTEIN", "8 Reid Street, Hamilton", "Hamilton Cross-Dock", "BFN")
 _JHB = _Depot("JOHANNESBURG", "1 Depot Street, Linbro Park", "Linbro Receiving", "JNB")
 
+# The campus-and-mall stops used for quick, physically walkable demos. The precincts
+# behind them are created by hand in the dispatcher, not by scripts/seed_demo.py, and
+# nothing in the app writes pp_hub_code, so these hubs are deliberately NOT linked: a
+# manifest between them previews with unlinked-hub prompts and the presenter picks the
+# precinct. Addresses are descriptive text on the waybill, not geocoded.
+_CAVENDISH = _Depot("CLAREMONT", "Cavendish Square, Dreyer Street, Claremont", "Cavendish Goods Receiving", "CAV")
+_UCT_NORTH = _Depot("RONDEBOSCH", "UCT North Stop, Upper Campus, Rondebosch", "UCT North Stop Receiving", "UCN")
+_UCT_SOUTH = _Depot("RONDEBOSCH", "UCT South Stop, Lower Campus, Rondebosch", "UCT South Stop Receiving", "UCS")
+
 # The hub codes scripts/seed_demo.py puts on the three demo precincts.
 DEMO_HUB_CODES: frozenset[str] = frozenset({_CPT.hub_code, _BFN.hub_code, _JHB.hub_code})
+# Kept apart from DEMO_HUB_CODES: that set is asserted equal to the seeder's, and these
+# hubs have no seeded precinct.
+LOCAL_HUB_CODES: frozenset[str] = frozenset({_CAVENDISH.hub_code, _UCT_NORTH.hub_code, _UCT_SOUTH.hub_code})
 # A real hub with no demo precinct: the unlinked-destination case (manifest 69).
 _HUB_DURBAN = "DUR"
 

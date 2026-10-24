@@ -1,5 +1,4 @@
-// frontend/driver-pwa/lib/offline/late-evidence-sync.ts
-// FP-83 "Send as late evidence": a capture the server refused because custody had moved on
+// "Send as late evidence": a capture the server refused because custody had moved on
 // (TRIP_HANDED_OVER / CUSTODY_CONTEXT_CHANGED) goes to the dedicated late-evidence route,
 // under the custody period it was CAPTURED in, by the account that captured it. The server
 // retains it for dispatcher review; it never completes an old phase or changes custody.

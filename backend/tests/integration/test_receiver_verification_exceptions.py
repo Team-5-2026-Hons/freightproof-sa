@@ -27,7 +27,7 @@ from app.db.models.enums import (
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip, TripStop
-from app.orchestration.handover.receiver_verification import Verdict, raise_verification_exception
+from app.orchestration.handover.verdict import Verdict, raise_verification_exception
 
 
 @pytest_asyncio.fixture
@@ -164,3 +164,59 @@ async def test_no_exception_type_writes_no_row(db_session, verification_trip):
 
     rows = await _exception_rows(db_session, trip.id)
     assert rows == []
+
+
+_MISMATCH = Verdict(
+    status=ReceiverVerificationStatus.FAILED,
+    tier=ReceiverVerificationTier.DOCUMENT_AND_FACE,
+    exception_type=ExceptionType.RECEIVER_ID_MISMATCH,
+)
+_GAP = Verdict(
+    status=ReceiverVerificationStatus.UNVERIFIED,
+    tier=ReceiverVerificationTier.TYPED_ONLY,
+    unverified_reason=ReceiverVerificationUnverifiedReason.NO_DOCUMENT,
+    exception_type=ExceptionType.RECEIVER_ID_UNVERIFIED,
+)
+
+
+async def test_the_same_finding_on_the_same_handover_is_filed_once(db_session, verification_trip):
+    trip, stop, event = (
+        verification_trip["trip"], verification_trip["stop"], verification_trip["event"],
+    )
+
+    for _ in range(2):
+        await raise_verification_exception(
+            db_session, trip=trip, phase_event_id=event.id, trip_stop_id=stop.id, verdict=_MISMATCH,
+        )
+
+    assert len(await _exception_rows(db_session, trip.id)) == 1
+
+
+async def test_the_same_finding_with_no_stop_is_filed_once(db_session, verification_trip):
+    """trip_stop_id NULL never equals NULL in SQL; a naive `==` dedupe would file it every time."""
+    trip, event = verification_trip["trip"], verification_trip["event"]
+
+    for _ in range(2):
+        await raise_verification_exception(
+            db_session, trip=trip, phase_event_id=event.id, trip_stop_id=None, verdict=_MISMATCH,
+        )
+
+    assert len(await _exception_rows(db_session, trip.id)) == 1
+
+
+async def test_a_different_finding_or_stop_is_still_filed(db_session, verification_trip):
+    trip, stop, event = (
+        verification_trip["trip"], verification_trip["stop"], verification_trip["event"],
+    )
+
+    await raise_verification_exception(
+        db_session, trip=trip, phase_event_id=event.id, trip_stop_id=stop.id, verdict=_MISMATCH,
+    )
+    await raise_verification_exception(
+        db_session, trip=trip, phase_event_id=event.id, trip_stop_id=stop.id, verdict=_GAP,
+    )
+    await raise_verification_exception(
+        db_session, trip=trip, phase_event_id=event.id, trip_stop_id=None, verdict=_MISMATCH,
+    )
+
+    assert len(await _exception_rows(db_session, trip.id)) == 3

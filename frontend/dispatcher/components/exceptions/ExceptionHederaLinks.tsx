@@ -1,6 +1,6 @@
 'use client'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
-import { hashscanTopicUrl } from '@/lib/format/hashscan'
+import { hashscanTopicUrl, isAnchoredTopic } from '@/lib/format/hashscan'
 import type { EvidenceAnchorSummary } from '@shared/lib/types/exception'
 import type { BlockchainReceiptType } from '@shared/lib/types/blockchain'
 
@@ -12,16 +12,12 @@ const ACTION_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
   trip_cancelled: 'Trip cancelled',
 }
 
-// A receipt written before the sweep resolved a topic can carry the string 'None'; the
-// same guard ChainReceiptTag uses.
-const NO_TOPIC = 'None'
-
 interface HederaLink { eventId: string; label: string; sequence: number; href: string }
 
 function linkOf(event: EvidenceAnchorSummary): HederaLink | null {
   const topic = event.hedera_topic_id
   const sequence = event.hedera_sequence_number
-  if (!topic || topic === NO_TOPIC || sequence == null) return null
+  if (!isAnchoredTopic(topic) || sequence == null) return null
   return {
     eventId: event.event_id,
     label: ACTION_LABELS[event.receipt_type] ?? 'Exception action',

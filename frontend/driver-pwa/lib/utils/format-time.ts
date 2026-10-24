@@ -17,7 +17,7 @@ export function formatTime(date: Date | string): string {
 }
 
 // To the second, for the one record where seconds matter to the reader: when a panic
-// alert went (overhaul 7.2/7.3).
+// alert went.
 const timeWithSecondsFormat = lazyFormatter(() => new Intl.DateTimeFormat('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }))
 
 export function formatTimeWithSeconds(date: Date | string): string {

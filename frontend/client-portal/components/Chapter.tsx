@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Eyebrow } from './Eyebrow'
 
 export interface ChapterLink {
   n: number
@@ -29,9 +30,9 @@ export function Chapter({ chapter, lede, children }: ChapterProps) {
   return (
     <section id={chapter.id} aria-labelledby={`${chapter.id}-title`} className="chapter scroll-mt-20 lg:scroll-mt-6">
       <header className="mb-4 border-t-[3px] border-ink pt-3">
-        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted">Section {chapter.n}</p>
-        <h2 id={`${chapter.id}-title`} className="mt-0.5 text-[22px] font-extrabold leading-tight tracking-[-0.01em]">{chapter.title}</h2>
-        {lede && <p className="mt-1 max-w-2xl text-[14px] text-muted">{lede}</p>}
+        <Eyebrow>Section {chapter.n}</Eyebrow>
+        <h2 id={`${chapter.id}-title`} className="mt-0.5 text-title font-extrabold leading-tight tracking-[-0.01em]">{chapter.title}</h2>
+        {lede && <p className="mt-1 max-w-2xl text-body text-muted">{lede}</p>}
       </header>
       <div className="space-y-4">{children}</div>
     </section>

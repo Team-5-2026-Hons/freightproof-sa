@@ -86,7 +86,7 @@ function ScreenFrame({ pathname, children }: { pathname: string; children: React
   )
 }
 
-// The iOS push/pop for every screen inside the signed-in app (design audit step 8).
+// The iOS push/pop for every screen inside the signed-in app.
 // Next only re-creates a template when its OWN child segment changes, so
 // /trip/in-transit → /trip/phase/… (both under "trip") would reuse one instance and never
 // animate; keying the frame on the full pathname gives every screen change a fresh mount.

@@ -76,6 +76,12 @@ class PhaseEvent(Base):
     dispatcher_override_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
+    # Provenance of the pair above: 'device' for a real handset capture, 'simulated' for
+    # one the dev trigger panel staged for a demo. NULL on rows predating this column, so
+    # a reader must treat absence as "not recorded" rather than as a guarantee. Stored as
+    # text, not a PG enum: a one-column CHECK-free text value needs no ALTER TYPE dance
+    # when a third provenance ever appears, and the Python enum is the authority.
+    driver_position_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     # Instant the driver's phone submitted this completion, not when the server
     # processed it — needed so evidence.corroboration can tell a live handshake from a
     # stale offline replay. Nullable for older clients; never backfilled with completed_at.
@@ -84,7 +90,7 @@ class PhaseEvent(Base):
     horse_gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     pulsit_geofence_confirmed: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     # The versioned ActionLocationAssessment snapshot (schemas/action_location.py)
-    # assembled by evidence.action_location.build_phase_assessment at
+    # assembled by evidence.location_assessment.build_phase_assessment at
     # _finish_phase time — the driver-phone-vs-tracker proximity verdict plus the
     # precinct-membership facts, frozen as they stood at evaluation. Nullable: every row
     # completed before this column existed, and never backfilled — fabricating a

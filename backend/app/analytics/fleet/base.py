@@ -13,7 +13,8 @@ from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.sql.selectable import Subquery
 
 from app.analytics.fleet.constants import OPERATIONS_TIME_ZONE_NAME
-from app.analytics.fleet.periods import Grain, InstantRange, sast_date
+from app.analytics.fleet.periods import InstantRange, sast_date
+from app.core.fleet_bands import Grain
 from app.analytics.views import ATTESTED_PHASE_STATUSES
 from app.db.models.enums import PhaseType, TripStatus
 from app.db.models.phases import PhaseEvent

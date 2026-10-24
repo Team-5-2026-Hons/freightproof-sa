@@ -29,7 +29,7 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
   const phaseName = PHASE_NAMES[phase.phase_type]
   const total = slugs.length
 
-  // Where this phase sits in the whole trip (overhaul 4.x): "Phase 3 of 7". From the
+  // Where this phase sits in the whole trip: "Phase 3 of 7". From the
   // session trip's plan; without one (tests, a cold deep link mid-load) the header simply
   // leaves the trip context out rather than guessing it.
   const plan = session?.trip?.phases
@@ -81,7 +81,7 @@ export function StepHeader({ phase, stepIndex }: StepHeaderProps) {
         <button
           type="button"
           onClick={() => router.push(ROUTES.panic)}
-          aria-label="Emergency — open panic alert"
+          aria-label="Emergency: open panic alert"
           className="flex size-11 items-center justify-center rounded-full bg-error-tint text-error transition-transform duration-100 active:scale-95"
         >
           <ShieldAlert className="size-5" strokeWidth={2.2} aria-hidden />

@@ -26,6 +26,7 @@ export const CHAT_COPY = {
   you: 'You',
   assistant: 'Answer',
   noFigures: 'No figures used',
+  explained: "Explained from the page's own notes",
   basedOn: 'Based on:',
   rightNow: 'Right now',
   openTab: (label: string): string => `Open ${label} with these dates`,

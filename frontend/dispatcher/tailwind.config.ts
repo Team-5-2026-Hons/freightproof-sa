@@ -132,7 +132,7 @@ const config: Config = {
         // Design-system elevation levels — matches DESIGN_SYSTEM.md §4
         'level-1': '0 1px 0 rgba(27,27,28,0.06)',
         'level-2': '0 2px 8px rgba(27,27,28,0.04)',
-        'level-3': '0 2px 12px rgba(27,27,28,0.06)',
+        'level-3': '0 0 20px rgba(27,27,28,0.17)',
         'level-4': '0 2px 16px rgba(27,27,28,0.08)',
         'level-5': '0 8px 32px rgba(27,27,28,0.18)',
         'level-6': '0 16px 64px rgba(0,0,0,0.5)',

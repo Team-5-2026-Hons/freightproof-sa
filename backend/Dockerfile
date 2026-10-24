@@ -33,7 +33,7 @@ EXPOSE 8000
 # thing behind a proxy, and it is the opposite:
 #
 #   * uvicorn already defaults proxy_headers=True with forwarded_allow_ips=127.0.0.1, so
-#     it rewrites request.client ONLY for a loopback peer. Behind Railway/nginx the peer
+#     it rewrites request.client ONLY for a loopback peer. Behind Fly/nginx the peer
 #     is not loopback, so request.client stays the real socket peer — unforgeable.
 #   * This app resolves the caller's IP at the APPLICATION layer instead
 #     (core/client_ip.py), gated on RATE_LIMIT_TRUST_PROXY_HEADERS, because two different
@@ -45,5 +45,6 @@ EXPOSE 8000
 #     address that cannot be forged. The result is a rate limit anyone can reset and an
 #     evidence field anyone can dictate, with nothing logged either way.
 #
-# One mechanism, one switch: configure proxy trust through RATE_LIMIT_TRUST_PROXY_HEADERS.
+# One mechanism, one switch: configure proxy trust through RATE_LIMIT_TRUST_PROXY_HEADERS,
+# and name the header the edge guarantees with CLIENT_IP_HEADER (fly-client-ip on Fly).
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

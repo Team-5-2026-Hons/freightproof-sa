@@ -35,16 +35,23 @@ const NO_ROUTE_FILTER = ''
 
 export default function HistoryPage() {
   const [search, setSearch]       = useState('')
-  const [dateRange, setDateRange] = useState<DateRange>({ from: HISTORY_RANGE_START, to: sastToday() })
+  // null = the untouched default (everything up to today). Today is read on each render rather
+  // than frozen at mount, so a page left open past SAST midnight still includes the new day.
+  const [pickedRange, setPickedRange] = useState<DateRange | null>(null)
+  const today = sastToday()
+  const dateRange: DateRange = pickedRange ?? { from: HISTORY_RANGE_START, to: today }
   const [precinctId, setPrecinctId] = useState('')
   const { notify } = useToast()
 
+  const searchTerm = search.trim()
+  const rangeFrom = dateRange.from
+  const rangeTo = dateRange.to
   const historyFilters = useMemo(() => ({
-    q: search || undefined,
+    q: searchTerm || undefined,
     precinctId: precinctId || undefined,
-    fromDate: dateRange.from,
-    toDate: dateRange.to,
-  }), [search, precinctId, dateRange])
+    fromDate: rangeFrom,
+    toDate: rangeTo,
+  }), [searchTerm, precinctId, rangeFrom, rangeTo])
   const history = useTripHistory(historyFilters)
   // Same as the active list: a history row carries enough to name the trip on arrival.
   useEffect(() => { putTripSeeds(history.items) }, [history.items])
@@ -68,10 +75,10 @@ export default function HistoryPage() {
     }
   }, [precinctsError, notify])
 
-  const hasNarrowedFilters = search.trim() !== ''
+  const hasNarrowedFilters = searchTerm !== ''
     || precinctId !== ''
     || dateRange.from !== HISTORY_RANGE_START
-    || dateRange.to !== sastToday()
+    || dateRange.to !== today
 
   // Built per render: route names depend on the loaded precincts.
   const columns = useMemo(
@@ -89,7 +96,7 @@ export default function HistoryPage() {
 
       <ListToolbar>
         <SearchField value={search} onChange={setSearch} placeholder="Search trip ID, driver, or manifest number…" ariaLabel="Search trip ID, driver, or manifest number" />
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
+        <DateRangePicker value={dateRange} onChange={setPickedRange} />
         <FilterSelect
           value={precinctId}
           onChange={setPrecinctId}
@@ -109,7 +116,7 @@ export default function HistoryPage() {
             New trip history available
           </span>
           <Button size="sm" variant="ghost" onClick={history.showNewHistory}>
-            New trip history available — show newest
+            New trip history available. Show newest
           </Button>
         </div>
       )}
@@ -119,7 +126,7 @@ export default function HistoryPage() {
           <div className="flex items-center gap-[9px]">
             <Ic n="warn" s={14} className="shrink-0 text-warn-onc" />
             <span className="text-[12px] font-[600] text-warn-onc">
-              This list may be out of date — the last refresh failed.
+              This list may be out of date. The last refresh failed.
             </span>
           </div>
           <Button size="sm" variant="ghost" onClick={history.refetch}>Retry</Button>

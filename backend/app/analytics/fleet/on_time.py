@@ -15,16 +15,15 @@ from app.analytics.fleet.base import closed_trips
 from app.analytics.fleet.periods import (
     SECONDS_PER_MINUTE,
     Bucket,
-    LatenessBand,
     Period,
-    PlanBand,
     buckets,
     instant_range,
     lateness_band,
     plan_band,
     require_grain,
 )
-from app.analytics.stats import MEDIAN_FRACTION, percentile
+from app.core.fleet_bands import LatenessBand, PlanBand
+from app.core.stats import MEDIAN_FRACTION, percentile
 from app.schemas.fleet_analytics import (
     Lateness,
     LatenessBar,

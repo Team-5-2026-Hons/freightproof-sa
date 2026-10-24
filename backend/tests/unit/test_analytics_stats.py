@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from app.analytics.stats import (
+from app.core.stats import (
     MEDIAN_FRACTION,
     P90_FRACTION,
     percentile,

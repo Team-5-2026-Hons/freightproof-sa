@@ -34,14 +34,14 @@ describe('StepHeader', () => {
     render(<StepHeader phase={makePhase('activation')} stepIndex={0} />)
 
     expect(
-      screen.getByRole('button', { name: 'Emergency — open panic alert' }),
+      screen.getByRole('button', { name: 'Emergency: open panic alert' }),
     ).toBeInTheDocument()
   })
 
   it('navigates to the panic page when the emergency button is pressed', () => {
     render(<StepHeader phase={makePhase('activation')} stepIndex={0} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Emergency — open panic alert' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Emergency: open panic alert' }))
 
     expect(mockPush).toHaveBeenCalledWith(ROUTES.panic)
   })

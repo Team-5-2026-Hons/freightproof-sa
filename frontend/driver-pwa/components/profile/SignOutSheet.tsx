@@ -12,7 +12,7 @@ interface SignOutSheetProps {
 }
 
 /**
- * Confirmation before signing out (overhaul 10.3). Kept because an accidental tap from
+ * Confirmation before signing out. Kept because an accidental tap from
  * the roadside costs the driver a full SMS round trip to get back in — the one place a
  * confirmation earns its interruption (HIG alerts.md: confirm destructive actions).
  */

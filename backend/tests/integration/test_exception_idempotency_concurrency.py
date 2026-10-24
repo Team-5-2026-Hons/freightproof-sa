@@ -7,7 +7,7 @@ and rolls back at the end, so two sessions drawn from it share a transaction and
 never race for the same partial-unique-index insert — a test written against it would
 pass no matter what raise_exception does.
 
-The sequential replay case (tests/unit/test_exception_service.py's
+The sequential replay case (tests/integration/test_exceptions_review_service.py's
 test_raise_exception_replays_the_same_client_report_id) proves the pre-check branch
 works; it proves nothing about two attempts genuinely landing together. This module
 opens two independent connections, lets both attempt the same insert, and proves the

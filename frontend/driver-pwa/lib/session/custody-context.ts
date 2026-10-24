@@ -1,4 +1,4 @@
-// FP-83: who is capturing evidence on this phone, and under which custody period of which
+// Who is capturing evidence on this phone, and under which custody period of which
 // trip. Read SYNCHRONOUSLY at the moment of capture and stored with the capture — never
 // re-read at send time, because a capture replayed after a handover (or after A→B→A) must
 // still say the period it was taken in (driver substitution contract v1, "Existing reads
@@ -13,7 +13,7 @@ export interface CustodyStamp {
   actorId: string | null
   /**
    * The custody period the server last reported for THIS trip. null when the server sent
-   * none (a pre-FP-83 backend, or a trip this phone has not loaded) — the wire field is then
+   * none (an older backend, or a trip this phone has not loaded) — the wire field is then
    * omitted, which the contract accepts only on a trip with no substitution.
    */
   custodySequence: number | null

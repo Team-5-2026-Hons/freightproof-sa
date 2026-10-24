@@ -88,11 +88,10 @@ const SealPhoto = memo(CameraCapture)
 export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: SealVerifyProps) {
   const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
   const isMissing = draft.sealCondition === 'missing'
-  // Local, mirroring departure/CaptureSeal's own field — keeps typing responsive without
-  // waiting on the parent's usePhaseDraft round-trip, same as every other seal input in
-  // this app. Reset when switching to 'missing' clears the visible value alongside the
-  // draft (see handleConditionChange), so a stale number can never reappear if the
-  // driver switches back to 'intact'/'damaged'.
+  // Local state keeps typing responsive without waiting on the parent's usePhaseDraft
+  // round-trip. Switching to 'missing' clears the visible value alongside the draft (see
+  // handleConditionChange), so a stale number can never reappear if the driver switches
+  // back to 'intact'/'damaged'.
   const [input, setInput] = useState(draft.sealNumberAtArrival ?? '')
   const { reading, readSeal } = useSealOcr()
   // Judged when the OCR answer arrives, not when the photo was taken (see CaptureSeal).
@@ -227,7 +226,7 @@ export function SealVerify({ tripId, phase, stepIndex, draft, onUpdate, onComple
               : reading
                 ? 'Reading the seal…'
                 : readFromPhoto
-                  ? 'Read from the photo — check it matches the seal.'
+                  ? 'Read from the photo. Check it matches the seal.'
                   : 'Type what is printed. Don’t copy it from paperwork.'}
           </p>
         </div>

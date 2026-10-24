@@ -102,6 +102,23 @@ def derive_custody(
     )
 
 
+def links_from_rows(rows: Sequence[DriverSubstitution]) -> list[CompletedCustodyLink]:
+    """The custody links of substitution rows already loaded, so a caller holding them does not
+    query for the same columns again. Same fields and order as `completed_links`: pass the rows
+    ordered by sequence_number."""
+    return [
+        CompletedCustodyLink(
+            id=row.id,
+            sequence_number=row.sequence_number,
+            previous_substitution_id=row.previous_substitution_id,
+            outgoing_driver_id=row.original_driver_id,
+            incoming_driver_id=row.substituting_driver_id,
+            effective_at=row.substitution_at,
+        )
+        for row in rows
+    ]
+
+
 async def _completed_links(db: AsyncSession, *, trip_id: uuid.UUID) -> list[CompletedCustodyLink]:
     rows = await db.execute(
         select(
@@ -316,6 +333,38 @@ async def require_current_driver(
     if custody.driver_id != driver_id:
         raise TripHandedOverError()
     return trip
+
+
+@dataclass(frozen=True, slots=True)
+class HeldTrip:
+    """A trip and the completed custody links read for the gate that admitted the driver, so the
+    caller building the driver's view does not read them again."""
+
+    trip: Trip
+    links: list[CompletedCustodyLink]
+
+
+async def require_current_driver_with_links(
+    db: AsyncSession, *, trip_id: uuid.UUID, driver_id: uuid.UUID,
+) -> HeldTrip:
+    """`require_current_driver` (unlocked) that also returns what it read.
+
+    Same outcomes: 404 for a driver who never held the trip (a missing trip, a stranger and a
+    driver only named on a pending request are indistinguishable), TripHandedOverError for a
+    former holder. The trip and the links are read once, and participation is judged from those
+    links instead of from two further statements; a stranger is still refused before the chain is
+    validated, exactly as `_resolve_custody` orders it.
+    """
+    trip = (await db.execute(select(Trip).where(Trip.id == trip_id))).scalar_one_or_none()
+    if trip is None:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    links = await _completed_links(db, trip_id=trip_id)
+    participants = {trip.driver_id, *(link.outgoing_driver_id for link in links), *(link.incoming_driver_id for link in links)}
+    if driver_id not in participants:
+        raise ResourceNotFoundError("Trip", str(trip_id))
+    if derive_custody(trip.driver_id, links).driver_id != driver_id:
+        raise TripHandedOverError()
+    return HeldTrip(trip=trip, links=links)
 
 
 @dataclass(frozen=True, slots=True)

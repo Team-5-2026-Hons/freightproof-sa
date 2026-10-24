@@ -16,6 +16,7 @@ import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { ExceptionId, TripException } from '@shared/lib/types/exception'
 import type { PhaseDescriptor, PhaseEventId, PhaseType } from '@shared/lib/types/phase'
 import type { ConsignmentRead, Trip } from '@shared/lib/types/trip'
+import type { IncidentSummary } from '@/lib/types/incident'
 import { line } from '@/components/domain/__tests__/textLine'
 
 // PhaseOverrideAction imports lib/api/client -> lib/supabase/client, which calls createClient()
@@ -750,12 +751,12 @@ describe('TripTimeline: who sees the anchor', () => {
     expect(within(zone('Departure', 'Recorded')).getByText(/^Anchored /)).toBeInTheDocument()
   })
 
-  it('keeps "Anchor failed — receipt still owed" visible to everyone, outside the verdict', () => {
+  it('keeps "Anchor failed, receipt still owed" visible to everyone, outside the verdict', () => {
     forensic.forensicOn = false
     renderTimeline(trippedAnchor('failed').trip)
 
     const row = phaseGroup('Departure')
-    expect(within(row).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(row).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
     expect(within(row).queryByText(/Needs attention/)).not.toBeInTheDocument()
   })
 })
@@ -831,12 +832,12 @@ describe('TripTimeline: forensic gating (D32)', () => {
     expect(within(phaseGroup('Departure')).queryByRole('region', { name: 'Audit trail' })).not.toBeInTheDocument()
   })
 
-  it('keeps "Anchor failed — receipt still owed" visible with forensic mode off, on every phase that failed', () => {
+  it('keeps "Anchor failed, receipt still owed" visible with forensic mode off, on every phase that failed', () => {
     forensic.forensicOn = false
     renderTimeline(closedTrip({ departure: { anchor_status: 'failed' }, loading: { anchor_status: 'failed' } }))
 
-    expect(within(phaseGroup('Departure')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
-    expect(within(phaseGroup('Loading')).getByText('Anchor failed — receipt still owed')).toBeInTheDocument()
+    expect(within(phaseGroup('Departure')).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
+    expect(within(phaseGroup('Loading')).getByText('Anchor failed, receipt still owed')).toBeInTheDocument()
   })
 
   it('gates by wrapping in ForensicOnly, never by a prop a caller could forget', () => {
@@ -1024,7 +1025,7 @@ describe('TripTimeline: a cancelled trip', () => {
 
     const row = openCard('Departure')
     expect(within(row).getByText('Seal photographed')).toBeInTheDocument()
-    expect(within(row).getByText('Not submitted — trip cancelled')).toBeInTheDocument()
+    expect(within(row).getByText('Not submitted: trip cancelled')).toBeInTheDocument()
     expect(within(row).getByRole('button', { name: /Route Deviation/ })).toBeInTheDocument()
     expect(within(row).queryByText(/Expected:|Waiting for the/)).not.toBeInTheDocument()
     expect(within(row).getByText('Not reached')).toBeInTheDocument()
@@ -1770,4 +1771,84 @@ it('after_loading_transfer_precedes_departure_and_preserves_expanded_phase_on_re
   expect(document.getElementById(`phase-${loading.phase_event_id}`)).toBe(loadingElement)
   expect(toggleOf('Loading')).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getAllByRole('button', { name: /Driver transferred.*Fixture A.*Fixture B/ })).toHaveLength(1)
+})
+
+describe('incidents on the rail', () => {
+  const start = new Date('2026-10-20T08:00:00Z').getTime()
+  const minutes = (n: number): string => new Date(start + n * 60_000).toISOString()
+
+  function timedTrip(): Trip {
+    const trip = closedTrip()
+    trip.phases = trip.phases.map((phase, index) => ({ ...phase, completed_at: minutes(index * 10) }))
+    return trip
+  }
+
+  function incidentAt(id: string, reference: string, when: string): IncidentSummary {
+    return { incident_id: id, reference, trip_id: 'trip', trip_reference: 'FP-1', trip_status: 'cancelled', incident_type: 'hijacking',
+      summary: 'Truck taken at the toll plaza', status: 'open', confidence: 'reported', outcome: null, assigned_to_user_id: null,
+      assigned_to_name: null, reported_occurred_at: when, received_at: when, trip_stopped_at: null, closed_at: null, created_at: when,
+      exception_ids: [], exceptions_total: 0, exceptions_reviewed: 0, parcels_total: 0, parcels_unresolved: 0 }
+  }
+
+  function transferAt(when: string) {
+    return { substitution_id: 'completed-transfer', request_id: null, sequence_number: 1,
+      outgoing: { id: 'a', full_name: 'Fixture A', phone_number: '+27000000001' },
+      incoming: { id: 'b', full_name: 'Fixture B', phone_number: '+27000000002' }, effective_at: when,
+      completion_mode: null, anchor_status: null, receipt_id: null, phase_context: null,
+      request_format: null, required_confirmation_roles: null, confirmation_policy: null }
+  }
+
+  function renderWith(trip: Trip, incidents: IncidentSummary[], view: TimelineView = 'evidence', onOpenIncident = vi.fn()) {
+    return render(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence}
+      incidents={incidents} onOpenIncident={onOpenIncident} view={view} />)
+  }
+
+  it('places_an_incident_after_the_phase_it_followed_and_before_the_next', () => {
+    const trip = timedTrip()
+    const loading = phaseOf(trip, 'loading')
+    renderWith(trip, [incidentAt('i1', 'INC1', new Date(Date.parse(loading.completed_at!) + 120_000).toISOString())])
+
+    const card = screen.getByRole('button', { name: /Incident INC1/ })
+    const departure = document.getElementById(`phase-${phaseOf(trip, 'departure').phase_event_id}`)!
+    expect(document.getElementById(`phase-${loading.phase_event_id}`)!.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(card.compareDocumentPosition(departure) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('sorts_an_incident_against_a_transfer_in_the_same_slot_by_time', () => {
+    const trip = timedTrip()
+    const loadedAt = Date.parse(phaseOf(trip, 'loading').completed_at!)
+    const before = new Date(loadedAt + 60_000).toISOString()
+    const after = new Date(loadedAt + 240_000).toISOString()
+    const middle = new Date(loadedAt + 120_000).toISOString()
+    renderWith({ ...trip, completed_driver_substitutions: [transferAt(middle)] }, [incidentAt('i1', 'INC1', before), incidentAt('i2', 'INC2', after)])
+
+    const order = [/Incident INC1/, /Driver transferred/, /Incident INC2/].map(name => screen.getByRole('button', { name }))
+    expect(order[0].compareDocumentPosition(order[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('shows_the_incident_in_the_minimised_view_too', () => {
+    const trip = timedTrip()
+    renderWith(trip, [incidentAt('i1', 'INC1', minutes(25))], 'minimised')
+
+    expect(screen.getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+  })
+
+  it('lists_an_incident_in_its_own_block_when_the_phase_times_cannot_place_it', () => {
+    const trip = timedTrip()
+    trip.phases = trip.phases.map((phase, index) => index === 1 ? { ...phase, completed_at: null } : phase)
+    renderWith(trip, [incidentAt('i1', 'INC1', minutes(25))])
+
+    const block = screen.getByRole('region', { name: 'Unplaced incidents' })
+    expect(within(block).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+  })
+
+  it('asks_the_page_to_show_the_incident_when_its_card_is_activated', async () => {
+    const onOpenIncident = vi.fn()
+    renderWith(timedTrip(), [incidentAt('i1', 'INC1', minutes(25))], 'evidence', onOpenIncident)
+
+    await userEvent.click(screen.getByRole('button', { name: /Incident INC1/ }))
+
+    expect(onOpenIncident).toHaveBeenCalledExactlyOnceWith('i1')
+  })
 })

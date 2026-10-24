@@ -21,10 +21,10 @@ import { currentTripPhase, precinctAtPhase, precinctLabel } from '@/lib/phase/tr
 import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR } from './PhaseTimelineItem'
 import { nextTripStop } from './PhaseEvidence'
 import { TimelinePhase } from './TimelinePhase'
-import { Modal } from '@/components/ui/Modal'
-import { positionDriverTransfers } from '@/lib/phase/driver-transfers'
+import { positionTripEvents, type TripTimelineEvent } from '@/lib/phase/trip-events'
+import type { IncidentSummary } from '@/lib/types/incident'
+import { IncidentTimelineEvent } from '@/components/incidents/IncidentTimelineEvent'
 import { DriverTransferTimelineEvent } from './DriverTransferTimelineEvent'
-import { DriverTransferDetail } from './DriverTransferDetail'
 import { TripHelp } from './TripHelp'
 import { uniqueExceptionsById } from './exception-dedupe'
 import { useExceptionReveal, type RevealRequest } from './useExceptionReveal'
@@ -59,6 +59,9 @@ const CLOCK_TICK_MS = 60_000
 const TOOLBAR_AREAS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls']"
 const TOOLBAR_AREAS_WITH_STATUS = "grid-cols-[auto_minmax(0,1fr)] [grid-template-areas:'view_controls'_'status_status'] lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:[grid-template-areas:'view_status_controls']"
 const NO_OPEN: OpenException = () => undefined
+const NO_OPEN_TRANSFER = (): void => undefined
+const NO_INCIDENTS: readonly IncidentSummary[] = []
+const NO_OPEN_INCIDENT = (): void => undefined
 const TIMELINE_READER_HEIGHT_VAR = '--timeline-reader-height'
 // The help panel hangs from the sticky toolbar, so it stays pinned under it while the scroller's overflow clips whatever
 // runs past the scroller's bottom edge, and scrolling cannot reveal it. Capping it to the reading area below the toolbar
@@ -91,6 +94,13 @@ interface Props {
   /** An exception row was activated. A null id opens the panel on the phase's records ("+n more");
    *  a null phase is a trip-level exception (D42). */
   onOpenException?: OpenException
+  /** A completed driver transfer's card was activated. The page owns the evidence modal, so the
+   *  Info panel's handover rows can open the same one. */
+  onOpenTransfer?: (substitutionId: string) => void
+  /** The trip's incidents, drawn on the rail beside its driver transfers. */
+  incidents?: readonly IncidentSummary[]
+  /** An incident's card was activated; the page shows it in the Info panel. */
+  onOpenIncident?: (incidentId: string) => void
   /** The exception the panel is open on, so its row can show the same selected state. */
   selectedExceptionId?: string | null
   /** A page-originated "Show in timeline": open the card, keep the row visible, land on it. */
@@ -102,10 +112,9 @@ interface Props {
 }
 
 export function TripTimeline({
-  trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
+  trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, onOpenTransfer = NO_OPEN_TRANSFER, incidents = NO_INCIDENTS, onOpenIncident = NO_OPEN_INCIDENT, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLElement>(null)
-  const [openTransferId, setOpenTransferId] = useState<string | null>(null)
   const viewControlId = useId()
   const bodyId = `${viewControlId}-body`
   const minimised = view === TIMELINE_VIEWS.minimised
@@ -129,7 +138,13 @@ export function TripTimeline({
   }, [])
   const active = currentTripPhase(trip)
   const phases = sortedPlan(trip.phases)
-  const transfers = positionDriverTransfers(phases, trip.completed_driver_substitutions ?? [])
+  const events = positionTripEvents(phases, trip.completed_driver_substitutions ?? [], incidents)
+  const unplacedTransfers = events.unplaced.filter(event => event.kind === 'transfer')
+  const unplacedIncidents = events.unplaced.filter(event => event.kind === 'incident')
+  /** One rail entry: a transfer opens its evidence modal, an incident opens its page. */
+  const renderEvent = (event: TripTimelineEvent, sameRecordedTime = false): React.JSX.Element => event.kind === 'transfer'
+    ? <DriverTransferTimelineEvent key={`transfer:${event.transfer.substitution_id}`} event={event.transfer} onOpen={onOpenTransfer} sameRecordedTime={sameRecordedTime} />
+    : <IncidentTimelineEvent key={`incident:${event.incident.incident_id}`} incident={event.incident} onOpen={onOpenIncident} />
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
   const now = useNow(CLOCK_TICK_MS)
   const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
@@ -194,7 +209,7 @@ export function TripTimeline({
         exceptionCount={activeTransitExceptions.length}
         onShow={onJump}
       />}
-      {transfers.beforeFirst.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
+      {events.beforeFirst.map(event => renderEvent(event))}
       {phases.map((phase, phaseIndex) => (
         <Fragment key={phase.phase_event_id}>
         <TimelinePhase
@@ -202,7 +217,7 @@ export function TripTimeline({
           trip={trip}
           phase={phase}
           precincts={precincts}
-          isLast={phaseIndex === phases.length - 1 && !(transfers.afterPhase.get(phase.phase_event_id)?.length)}
+          isLast={phaseIndex === phases.length - 1 && !(events.afterPhase.get(phase.phase_event_id)?.length)}
           exceptions={sortExceptionsByEventTime(exceptionsById.filter(e => e.phase_event_id === phase.phase_event_id), evidence.artifactsById)}
           artifacts={artifacts}
           lookup={lookup}
@@ -214,12 +229,17 @@ export function TripTimeline({
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
         />
-        {(transfers.afterPhase.get(phase.phase_event_id) ?? []).map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} sameRecordedTime={phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.effective_at)} />)}
+        {(events.afterPhase.get(phase.phase_event_id) ?? []).map(event => renderEvent(event,
+          event.kind === 'transfer' && phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.transfer.effective_at)))}
         </Fragment>
       ))}
-      {transfers.unplaced.length > 0 && <section aria-label="Unplaced historical driver transfers" className="border-t border-outline-v/30 pt-4">
+      {unplacedTransfers.length > 0 && <section aria-label="Unplaced historical driver transfers" className="border-t border-outline-v/30 pt-4">
         <h3 className="text-label font-semibold">Unplaced historical driver transfers</h3><p className="mb-3 text-meta text-on-surf-v">Phase context not recorded</p>
-        {transfers.unplaced.map(event => <DriverTransferTimelineEvent key={event.substitution_id} event={event} onOpen={setOpenTransferId} />)}
+        {unplacedTransfers.map(event => renderEvent(event))}
+      </section>}
+      {unplacedIncidents.length > 0 && <section aria-label="Unplaced incidents" className="border-t border-outline-v/30 pt-4">
+        <h3 className="text-label font-semibold">Incidents</h3><p className="mb-3 text-meta text-on-surf-v">Phase context not recorded</p>
+        {unplacedIncidents.map(event => renderEvent(event))}
       </section>}
       <div id={TRIP_RECORD_ANCHOR_ID} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }}>
       {tripNotes.length > 0 && <section aria-label="Trip-level events" className="space-y-2 border-t border-outline-v/30 pt-4">
@@ -229,9 +249,6 @@ export function TripTimeline({
       </section>}
       </div>
     </div>
-    {openTransferId && <Modal open onClose={() => setOpenTransferId(null)} title="Driver transfer evidence" size="lg">
-      <DriverTransferDetail tripId={trip.id} substitutionId={openTransferId} onChanged={evidence.onChanged} />
-    </Modal>}
   </section>
 }
 

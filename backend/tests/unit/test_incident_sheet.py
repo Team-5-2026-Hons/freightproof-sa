@@ -16,7 +16,7 @@ from app.reporting.incident_sheet import (
 )
 from app.orchestration.audit_packs.analysis import summarise_incident
 from app.schemas.audit_pack import (
-    ExceptionAnchorRecord, ExceptionPhoto, IncidentDeclarationRecord, PositionFix, VehicleRecord,
+    ExceptionAnchorRecord, ExceptionPhoto, IncidentDeclarationRecord, PositionFix, TripSummary, VehicleRecord,
 )
 
 from tests.unit.audit_pack_factories import T0, make_exception, make_manifest
@@ -144,3 +144,27 @@ def test_incident_sheet_summary_row_carries_the_first_critical_reports_real_tier
 
     assert f"tier-{tier}" in row and label in row
     assert ("tier-recorded" in row) == (tier == "recorded")
+
+
+def test_incident_sheet_html_names_the_order_number_when_recorded():
+    # Act
+    html = render_incident_sheet_html(_incident_manifest(), verify_url="https://portal/v/pack-1")
+
+    # Assert
+    assert f"order {_incident_manifest().trip.order_number}" in html
+
+
+def test_incident_sheet_without_order_number_omits_the_order_fragment():
+    # Arrange: a manifest-imported trip has no order number; the sheet must not print "order None".
+    manifest = _incident_manifest()
+    trip = TripSummary.model_validate({**manifest.trip.model_dump(), "order_number": None})
+    manifest = manifest.model_copy(update={"trip": trip})
+
+    # Act
+    html = render_incident_sheet_html(manifest, verify_url="https://portal/v/pack-1")
+    pdf = render_incident_sheet_pdf(manifest, verify_url="https://portal/v/pack-1")
+
+    # Assert
+    assert "order None" not in html
+    assert " · order " not in html
+    assert pdf.startswith(b"%PDF-")

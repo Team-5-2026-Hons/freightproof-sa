@@ -63,7 +63,9 @@ max-statements = 50
 # Relocated, not added: each entry below is an existing violation that moved out of the flat
 # *_service.py modules with its functions (audit phase 4, evidence window); the count of
 # ruff diagnostics is unchanged (10: 7 PLR0913 and 3 C901, across 9 functions).
-"app/orchestration/evidence/action_location.py" = ["PLR0913"]  # build_phase_assessment, build_capture_assessment, record_separation_finding
+"app/orchestration/evidence/action_location.py" = ["PLR0913"]  # record_separation_finding
+# Relocated, not added: split out of action_location.py with their functions (2026-10-22 cleanup).
+"app/orchestration/evidence/location_assessment.py" = ["PLR0913"]  # build_phase_assessment, build_capture_assessment
 "app/orchestration/evidence/artifacts.py" = ["PLR0913"]  # create_artifact, _persist_artifact, create_receiver_artifact
 "app/orchestration/evidence/checkpoints.py" = ["C901"]  # log_checkpoint
 "app/orchestration/evidence/corroboration.py" = ["C901"]  # record_phase_corroboration

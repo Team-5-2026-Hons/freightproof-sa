@@ -42,8 +42,8 @@ const brokenStore: ActivityStore = {
 }
 
 describe('the timeout window', () => {
-  it('is ten minutes, matching the backend', () => {
-    expect(SESSION_IDLE_TIMEOUT_MS).toBe(10 * 60 * 1000)
+  it('is an hour, matching the backend', () => {
+    expect(SESSION_IDLE_TIMEOUT_MS).toBe(60 * 60 * 1000)
   })
 
   it('fires slightly before the server so the user gets a clean sign-out rather than a failed request', () => {

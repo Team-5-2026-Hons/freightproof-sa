@@ -55,6 +55,7 @@ _VIEW_MIGRATIONS = (
     ("2026_09_12_tom_trailer_vehicle_analytics.py", "tom_trailer_vehicle_analytics"),
     ("2026_09_13_tom_live_analytics_views.py", "tom_live_analytics_views"),
     ("2026_10_19_tim_substitution_driver_analytics.py", "tim_dsub_driver_analytics"),
+    ("2026_10_23_ciaran_driver_analytics_arrival.py", "ciaran_drv_arrival_dwell"),
 )
 
 

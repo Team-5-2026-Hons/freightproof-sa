@@ -356,6 +356,27 @@ describe('Analytics page', () => {
   describe('Ask about these figures', () => {
     const ON = { enabled: true, spend: { spent_usd: 0.42, budget_usd: 20, available: true } }
 
+    it("opens with the dispatcher assistant's question typed, not sent, and tidies the address (B30)", async () => {
+      chatStatus = ON
+      searchParams = new URLSearchParams({ ask: "What's our on-time rate this month?" })
+      renderPage()
+
+      const panel = await screen.findByRole('complementary', { name: 'Ask about these figures' })
+
+      expect(within(panel).getByRole('textbox', { name: 'Your question' })).toHaveValue("What's our on-time rate this month?")
+      expect(mockedPost).not.toHaveBeenCalled()
+      await waitFor(() => expect(replace).toHaveBeenCalledWith('/analytics?tab=activity', { scroll: false }))
+    })
+
+    it('ignores a carried question while the chat is switched off', async () => {
+      searchParams = new URLSearchParams({ ask: 'Anything?' })
+      renderPage()
+      await screen.findByText('Live trips')
+
+      await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(CHAT_STATUS_PATH))
+      expect(screen.queryByRole('complementary', { name: 'Ask about these figures' })).not.toBeInTheDocument()
+    })
+
     it('shows no chat button while the chat is switched off', async () => {
       renderPage()
       await screen.findByText('Live trips')
@@ -400,6 +421,38 @@ describe('Analytics page', () => {
 
       const panel = screen.getByRole('complementary', { name: 'Ask about these figures' })
       expect(await within(panel).findByText('AI spend this month: $0.55 of $20.00')).toBeInTheDocument()
+    })
+
+    it('sends what is on screen with each question, so "these figures" means this tab and period', async () => {
+      chatStatus = ON
+      mockedPost.mockResolvedValue({ answer: 'They show cost.', kind: 'explanation', basis: [], spend: ON.spend })
+      searchParams = new URLSearchParams('tab=cost')
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'How did delays change over the past year?' }))
+
+      await waitFor(() => expect(mockedPost).toHaveBeenCalledWith(
+        '/api/v1/analytics/chat',
+        expect.objectContaining({ page: { tab: 'cost', preset: 'last_12_weeks', grain: 'week' } }),
+        expect.anything(),
+      ))
+    })
+
+    it('sends no View by for Routes & sites', async () => {
+      chatStatus = ON
+      mockedPost.mockResolvedValue({ answer: 'Sites.', kind: 'explanation', basis: [], spend: ON.spend })
+      searchParams = new URLSearchParams('tab=routes')
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask about these figures' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'How did delays change over the past year?' }))
+
+      await waitFor(() => expect(mockedPost).toHaveBeenCalledWith(
+        '/api/v1/analytics/chat',
+        expect.objectContaining({ page: expect.objectContaining({ tab: 'routes', grain: null }) }),
+        expect.anything(),
+      ))
     })
 
     it('opens a Based on line\'s tab with the answer\'s exact dates', async () => {

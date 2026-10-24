@@ -4,15 +4,17 @@ import { Suspense, useCallback, useEffect, useRef, useState, type RefObject } fr
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { BackButton } from '@/components/ui/BackButton'
+import { Modal } from '@/components/ui/Modal'
 import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Ic } from '@/components/ui/Ic'
 import { DriverTransferController, transferActionFor } from '@/components/trips/DriverTransferController'
+import { DriverTransferDetail } from '@/components/trips/DriverTransferDetail'
 import { TripSummary, TRIP_PANELS, type TripPanel } from '@/components/trips/TripSummary'
 import { TripDetailSkeleton } from '@/components/trips/TripDetailSkeleton'
 import { TripTimeline, TIMELINE_VIEWS, readingPhaseAnchor, timelineToolbarHeight, type TimelineView, type TimelineWarning } from '@/components/trips/TripTimeline'
 import { useDocked } from '@/components/ui/DetailPanel'
-import { TripDetailPanel, LEGACY_AUDIT_PANEL } from '@/components/trips/TripDetailPanel'
+import { TripDetailPanel, LEGACY_AUDIT_PANEL, type IncidentFocusRequest } from '@/components/trips/TripDetailPanel'
 import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
 import type { RevealRequest } from '@/components/trips/useExceptionReveal'
 import { useDismissExceptionSelection } from '@/components/trips/useDismissExceptionSelection'
@@ -20,6 +22,7 @@ import type { ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
 import { IntegritySummary } from '@/components/blockchain/IntegritySummary'
 import { useTripDetail } from '@/lib/hooks/useTripDetail'
 import { useTripArtifacts } from '@/lib/hooks/useTripArtifacts'
+import { useTripIncidents } from '@/lib/hooks/useIncidents'
 import { usePrecincts } from '@/lib/hooks/usePrecincts'
 import { currentTripPhase, isTerminalTrip, tripHeaderFacts } from '@/lib/phase/trip-detail'
 import { getTripSeed } from '@/lib/trips/tripSeed'
@@ -88,6 +91,8 @@ function TripDetail({ tripId }: { tripId: string }) {
   }, [timelineView])
   const { trip, isLoading, error, errorStatus, lastUpdated, refetchSilent } = useTripDetail(tripId)
   const artifacts = useTripArtifacts(tripId)
+  // Read once here: the timeline draws the incidents and the Info panel lists them, from one fetch.
+  const incidents = useTripIncidents(tripId)
   const { precincts, error: precinctsError, refetch: retryPrecincts } = usePrecincts()
   const panelValue = search.get('panel')
   const exceptionQuery = search.get('exception')
@@ -121,6 +126,13 @@ function TripDetail({ tripId }: { tripId: string }) {
     const suffix = buildTripPanelQuery(search.toString(), { panel, filter, exceptionId: null })
     router.replace(`${ROUTES.tripDetail(tripId)}?${suffix}`, { scroll: false })
   })
+  // One evidence modal for every way in (a timeline card, a handover row in the Info panel). It
+  // renders below as a sibling of the panel: inside DetailPanel's overlay <dialog> it would centre
+  // on that dialog's box instead of the viewport.
+  const [openTransferId, setOpenTransferId] = useState<string | null>(null)
+  // A timeline incident card shows the incident in the Info panel rather than leaving the trip; the panel's
+  // own "View incident" link is the way on to the incident's page.
+  const [incidentFocus, setIncidentFocus] = useState<IncidentFocusRequest | null>(null)
   const [revealRequest, setRevealRequest] = useState<RevealRequest | null>(null)
   const [pendingTimelineReveal, setPendingTimelineReveal] = useState<Omit<RevealRequest, 'requestId'> | null>(null)
   const returnTo = `${ROUTES.tripDetail(tripId)}${search.size ? `?${search.toString()}` : ''}`
@@ -183,6 +195,12 @@ function TripDetail({ tripId }: { tripId: string }) {
     if (!active) return
     pendingReadingAnchor.current = null
     scrollIntoTimeline(timelineRef, document.getElementById(`${PHASE_ANCHOR_PREFIX}${active.phase_event_id}`))
+  }
+
+  function showIncident(incidentId: string): void {
+    pendingReadingAnchor.current = null
+    if (panel !== TRIP_PANELS.information || (!docked && !overlayOpen)) setPanel(TRIP_PANELS.information)
+    setIncidentFocus(previous => ({ incidentId, requestId: (previous?.requestId ?? 0) + 1 }))
   }
 
   /** "Show in timeline" from the panel: the row for that exception, whichever phase (or the
@@ -257,7 +275,7 @@ function TripDetail({ tripId }: { tripId: string }) {
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
             view={timelineView} onViewChange={changeTimelineView}
             expanded={timelineExpanded} onToggleExpanded={toggleExpanded}
-            onOpenException={openException} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
+            onOpenException={openException} onOpenTransfer={setOpenTransferId} incidents={incidents.data} onOpenIncident={showIncident} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
             onRevealHandled={targetId => landRowInTimeline(timelineRef, document.getElementById(targetId))} />
           <IntegritySummary trip={trip} />
         </div>
@@ -267,7 +285,10 @@ function TripDetail({ tripId }: { tripId: string }) {
         // Picking a filter is leaving the single-record view, so the selection goes.
         onSelect={setPanel} onClose={() => setPanel(null)} onFilter={value => setPanel('exceptions', value, selectedPhaseId, null)}
         onClearPhaseFilter={() => setPanel('exceptions', undefined, null, null)} onClearExceptionSelection={() => setPanel('exceptions', undefined, undefined, null)} onShowInTimeline={showInTimeline}
-        onChanged={refetchSilent} returnTo={returnTo} onIncidentReported={id => router.push(withReturnTo(ROUTES.incidentDetail(id), returnTo))} />
+        onChanged={refetchSilent} onOpenTransfer={setOpenTransferId} incidents={incidents} focusIncident={incidentFocus} returnTo={returnTo} onIncidentReported={id => router.push(withReturnTo(ROUTES.incidentDetail(id), returnTo))} />
     </div>
+    {openTransferId && <Modal open onClose={() => setOpenTransferId(null)} title="Driver transfer evidence" size="lg">
+      <DriverTransferDetail trip={trip} substitutionId={openTransferId} onChanged={refetchSilent} />
+    </Modal>}
   </div>
 }

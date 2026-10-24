@@ -91,7 +91,7 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
               </div>
               <div>
                 <div className="text-[13px] text-on-surf-v mt-[4px] leading-relaxed">
-                  This does not mark {phaseName.toLowerCase()} as done — it records that the
+                  This does not mark {phaseName.toLowerCase()} as done. It records that the
                   driver could not complete it (lost phone, left the depot, device wiped),
                   so the trip can move past it. The gap stays on the evidence record
                   permanently, alongside your note.
@@ -99,13 +99,14 @@ export function PhaseOverrideAction({ phase, tripId, tripStatus, onOverridden }:
               </div>
             </div>
 
+            {/* No autoFocus: it runs before Modal's showModal(), so a browser drops it (see
+                CancelTripAction). */}
             <TextArea
               label="Note"
               placeholder="Why couldn't the driver complete this phase?"
               value={note}
               onChange={e => setNote(e.target.value)}
               className="mb-4"
-              autoFocus
             />
 
             <div className="flex flex-col gap-2">

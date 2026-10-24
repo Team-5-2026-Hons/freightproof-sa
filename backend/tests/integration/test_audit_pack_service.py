@@ -26,6 +26,9 @@ from app.storage.supabase_storage import UploadResult
 
 from tests.integration.audit_pack_seed import T0, AuditTrip, seed_audit_trip
 
+# Renders no real PDF unless a test is marked real_pdf (see fake_pdf_renderer in conftest.py).
+pytestmark = pytest.mark.usefixtures("fake_pdf_renderer")
+
 NOW = T0 + timedelta(days=1)
 
 
@@ -66,6 +69,7 @@ async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> life
     )
 
 
+@pytest.mark.real_pdf  # reads the rendered PDF itself
 async def test_issue_audit_pack_stores_sealed_first_version(db_session, audit_trip, stored_pdfs):
     # Act
     issued = await _issue(db_session, audit_trip)

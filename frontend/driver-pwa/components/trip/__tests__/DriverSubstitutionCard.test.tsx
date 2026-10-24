@@ -59,7 +59,7 @@ describe('DriverSubstitutionCard', () => {
   it('test_saved_but_blocked_says_the_check_is_kept_and_why', () => {
     render(<DriverSubstitutionCard request={pack.savedButBlocked} role="incoming" />)
 
-    expect(screen.getByText('Saved — waiting on dispatch')).toBeInTheDocument()
+    expect(screen.getByText('Saved, waiting on dispatch')).toBeInTheDocument()
     expect(screen.getByText(/Your check is saved\. .*identity is not verified/)).toBeInTheDocument()
     expect(screen.queryByText('Handover complete')).not.toBeInTheDocument()
   })

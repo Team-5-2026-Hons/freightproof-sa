@@ -18,13 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analytics.fleet.base import earliest_trip_date, trip_departures
 from app.analytics.fleet.constants import TILE_WINDOW_DAYS
 from app.analytics.fleet.periods import (
-    ExpiryBand,
     InstantRange,
     expiry_band,
     instant_range,
     resolve_start,
     trailing_days,
 )
+from app.core.fleet_bands import ExpiryBand
 from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
 from app.db.models.people import Driver
 from app.db.models.transit import TripException

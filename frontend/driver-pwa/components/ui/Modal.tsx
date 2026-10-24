@@ -27,9 +27,9 @@ interface ModalProps {
 }
 
 /**
- * A decision the driver must make before going on, as a floating sheet (overhaul 4.2): an
+ * A decision the driver must make before going on, as a floating sheet: an
  * inset card at the bottom of the screen, where the thumb already is, over a dimmed page.
- * Unlike Drawer it has no drag-to-dismiss — its one caller is non-dismissible on purpose.
+ * Unlike Drawer it has no drag-to-dismiss: a decision that must be made is not swiped away.
  */
 export function Modal({ open, onClose, title, icon, description, children, footer, dismissible = true }: ModalProps) {
   return (

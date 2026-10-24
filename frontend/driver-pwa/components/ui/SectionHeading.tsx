@@ -11,7 +11,7 @@ interface SectionHeadingProps {
 }
 
 /**
- * The bold section title that structures every overhaul screen ("Route", "Upcoming",
+ * The bold section title that structures every screen ("Route", "Upcoming",
  * "Preferences"). Hierarchy comes from this weight and size on a white page, not from
  * boxing each section in a card — the move that made the old screens read as dated.
  */

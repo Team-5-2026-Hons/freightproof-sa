@@ -48,7 +48,7 @@ from app.db.models.enums import (
 from app.db.models.handover import HandoverCapabilityToken
 from app.db.session import get_db
 from app.orchestration.handover.capability import build_scan_url, session_secret_matches
-from app.orchestration.handover.receiver_verification import (
+from app.orchestration.handover.idvs_webhook import (
     ingest_webhook_decision,
     verify_webhook_signature,
     webhook_timestamp_is_fresh,
@@ -292,8 +292,8 @@ async def confirm_handover_endpoint(
                 receiver_lat=payload.receiver_lat,
                 receiver_lng=payload.receiver_lng,
                 receiver_accuracy_m=payload.receiver_accuracy_m,
-                # resolve_client_ip, not request.client.host: behind Railway's edge the socket
-                # peer is Railway, not the receiver.
+                # resolve_client_ip, not request.client.host: behind Fly's edge the socket
+                # peer is fly-proxy, not the receiver.
                 receiver_ip=resolve_client_ip(request),
                 receiver_user_agent=request.headers.get("user-agent"),
                 # FP-240: a camera scan opens a clean context with no Authorization header.

@@ -27,6 +27,13 @@
       "fastapi.security.http.HTTPBearer"
     ]
   },
+  "POST /api/v1/dev/phone/move": {
+    "access": "dispatcher",
+    "dependencies": [
+      "app.auth.dependencies.get_current_dispatcher",
+      "fastapi.security.http.HTTPBearer"
+    ]
+  },
   "POST /api/v1/dev/pp/manifest": {
     "access": "dispatcher",
     "dependencies": [

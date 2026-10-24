@@ -5,7 +5,7 @@ import type { DriverSubstitutionRecord, RecordChange } from '@/lib/types'
 import {
   makeAnchoredRecord, makeException, makeIncident, makeInvestigation, makeLateEvidence, makeManifest, makeSealedSeal, makeView,
 } from '@/test/factories'
-import { Driver, Exceptions, Incident, Integrity, Investigations, NotShownHere, Vehicles } from './Sections'
+import { Coverage, Driver, Exceptions, Incident, Integrity, Investigations, NotShownHere, Vehicles } from './Sections'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -448,5 +448,14 @@ describe('Integrity — plain-language summary', () => {
 
     // Assert
     expect(screen.getByText('Changed after it was published')).toHaveClass('text-err')
+  })
+})
+
+describe('Location coverage', () => {
+  it('describes tracker queries by trip phase, not by the retired "handshake" model', () => {
+    render(<Coverage manifest={makeManifest()} />)
+
+    expect(screen.getByText(/the vehicle tracker is queried at each trip phase and at checkpoints/)).toBeInTheDocument()
+    expect(screen.queryByText(/handshake/i)).not.toBeInTheDocument()
   })
 })

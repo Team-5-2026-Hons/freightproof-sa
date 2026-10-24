@@ -2,7 +2,7 @@
 
 import { Chip } from '@/components/ui/Chip'
 import { Ic } from '@/components/ui/Ic'
-import { fmtExceptionType } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtExceptionType } from '@/lib/format/exception'
 import { DEVICE_CLOCK, SERVER_CLOCK } from '@/lib/phase/act-wording'
 import { exceptionReviewLabel } from '@/lib/phase/exception-rows'
 import { NumericText } from './NumericText'
@@ -102,7 +102,7 @@ export function ExceptionRow({ exception, at, phaseId, selected, highlighted, on
       id={exceptionRowId(exception.id)}
       // Opening a panel is navigation, not a toggle, so the selected row is `current`, not `pressed`.
       aria-current={selected ? 'true' : undefined}
-      aria-label={`${typeLabel}, ${severity.label}, ${review}. ${OPEN_ACTION}. ${descriptionExcerpt(exception.description)}`}
+      aria-label={`${typeLabel}, ${severity.label}, ${review}. ${OPEN_ACTION}. ${descriptionExcerpt(exceptionDescriptionText(exception))}`}
       data-highlighted={highlighted ? 'true' : undefined}
       onClick={() => onOpen(exception.id, phaseId)}
       className={cardClass(exception, selected, highlighted)}
@@ -116,7 +116,7 @@ export function ExceptionRow({ exception, at, phaseId, selected, highlighted, on
         {' · '}Raised by {EXCEPTION_SOURCE_META[exception.source].label.toLowerCase()}
         {' · '}<span className={exception.review_status === 'needs_review' ? 'font-semibold text-warn-onc' : ''}>{review}</span>
       </span>
-      <span className="mt-0.5 line-clamp-2 text-body text-on-surf">{exception.description}</span>
+      <span className="mt-0.5 line-clamp-2 text-body text-on-surf">{exceptionDescriptionText(exception)}</span>
       <span className="mt-1 inline-flex items-center gap-1 text-meta font-semibold text-sec">
         {OPEN_ACTION} <Ic n="chev" s={11} />
       </span>

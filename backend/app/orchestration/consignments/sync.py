@@ -18,9 +18,14 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConsignmentAlreadyAssignedError, ConsignmentScannedOnCancelledTripError
+from app.core.exceptions import (
+    ConsignmentAlreadyAssignedError,
+    ConsignmentCitedByIncidentError,
+    ConsignmentScannedOnCancelledTripError,
+)
 from app.db.cleanup import rollback_after_error
 from app.db.models.enums import ParcelStatus, TripStatus
+from app.db.models.incidents import Incident, IncidentParcel, IncidentUpdate
 from app.db.models.organisations import Organization
 from app.db.models.trips import Consignment, Parcel, Trip
 from app.integrations.parcel_perfect.factory import get_pp_client
@@ -319,6 +324,43 @@ async def scanned_consignment_ids(
     return set(result.scalars().all())
 
 
+async def incident_references_by_consignment(
+    db: AsyncSession, consignment_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, tuple[str, ...]]:
+    """INC1, INC2... of every incident naming a parcel of each consignment, on its affected-cargo
+    list or in its ledger. Either reference stops the parcel rows being deleted. Consignments
+    no incident names are absent."""
+    if not consignment_ids:
+        return {}
+    parcels = select(Parcel.id).where(Parcel.consignment_id.in_(consignment_ids))
+    cited = (
+        select(IncidentParcel.incident_id.label("incident_id"), IncidentParcel.parcel_id.label("parcel_id"))
+        .where(IncidentParcel.parcel_id.in_(parcels))
+        .union(
+            select(IncidentUpdate.incident_id, IncidentUpdate.parcel_id)
+            .where(IncidentUpdate.parcel_id.in_(parcels))
+        )
+        .subquery()
+    )
+    rows = (await db.execute(
+        select(Parcel.consignment_id, Incident.incident_number)
+        .join(cited, cited.c.parcel_id == Parcel.id)
+        .join(Incident, Incident.id == cited.c.incident_id)
+        .distinct()
+        .order_by(Parcel.consignment_id, Incident.incident_number)
+    )).tuples().all()
+    by_consignment: dict[uuid.UUID, list[str]] = {}
+    # Same "INC<n>" the dispatcher sees (orchestration.incidents.creation.reference); not imported
+    # because that package depends on trips, which depend on this module.
+    for consignment_id, number in rows:
+        by_consignment.setdefault(consignment_id, []).append(f"INC{number}")
+    return {consignment_id: tuple(refs) for consignment_id, refs in by_consignment.items()}
+
+
+async def incident_references_citing(db: AsyncSession, consignment_id: uuid.UUID) -> tuple[str, ...]:
+    return (await incident_references_by_consignment(db, [consignment_id])).get(consignment_id, ())
+
+
 async def _release_from_cancelled_trip(
     db: AsyncSession, consignment: Consignment, *, pp_reference: str, new_trip_id: uuid.UUID,
 ) -> None:
@@ -334,6 +376,7 @@ async def _release_from_cancelled_trip(
     Raises:
         ConsignmentAlreadyAssignedError: the owning trip is not cancelled.
         ConsignmentScannedOnCancelledTripError: it is cancelled, but parcels were scanned.
+        ConsignmentCitedByIncidentError: it is cancelled, but an incident names its parcels.
     """
     owner = (await db.execute(
         select(Trip.trip_reference, Trip.status).where(Trip.id == consignment.trip_id)
@@ -352,13 +395,32 @@ async def _release_from_cancelled_trip(
         )
         raise ConsignmentScannedOnCancelledTripError(pp_reference, owner_reference)
 
+    # The parcels are about to be deleted, and an incident's ledger and affected-cargo list point
+    # at them. Refuse by name rather than let the foreign key surface as a 500.
+    if cited := await incident_references_citing(db, consignment.id):
+        logger.warning(
+            "Refused moving consignment pp_reference=%s off cancelled trip %s: cited by %s",
+            pp_reference, owner_reference, ", ".join(cited),
+        )
+        raise ConsignmentCitedByIncidentError(pp_reference, owner_reference, cited)
+
     logger.info(
         "Moving consignment pp_reference=%s off cancelled trip %s to trip %s",
         pp_reference, owner_reference, new_trip_id,
     )
     # Safe to discard: no stamps (checked above), and scan ingestion waits on this same
     # consignment lock. The replacement's expected parcels come from its own PP read.
-    await db.execute(delete(Parcel).where(Parcel.consignment_id == consignment.id))
+    # Incident writes lock the incident, not this consignment, so one can cite a parcel between
+    # the check above and this delete. The foreign key then decides: roll back to the savepoint
+    # and report the same refusal instead of a dead transaction.
+    try:
+        async with db.begin_nested():
+            await db.execute(delete(Parcel).where(Parcel.consignment_id == consignment.id))
+    except IntegrityError as exc:
+        cited = await incident_references_citing(db, consignment.id)
+        if not cited:
+            raise
+        raise ConsignmentCitedByIncidentError(pp_reference, owner_reference, cited) from exc
     consignment.unit_count_expected = None
     consignment.trip_id = None
     # The cancelled trip's stops; the caller stamps the new route's stops after sync.

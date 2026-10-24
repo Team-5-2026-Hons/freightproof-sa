@@ -23,8 +23,10 @@ vi.mock('@/lib/hooks/useToast', () => ({
   useToast: () => ({ notify }),
 }))
 
+const address = vi.hoisted(() => ({ search: '', replace: vi.fn() }))
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), back: vi.fn(), replace: address.replace }),
+  useSearchParams: () => new URLSearchParams(address.search),
 }))
 
 vi.mock('@/lib/hooks/useDrivers', () => ({ useDrivers: vi.fn() }))
@@ -63,6 +65,8 @@ function renderPage() {
 const rowNames = (): string[] => screen.getAllByRole('row').slice(1).map(row => within(row).getByRole('link').textContent ?? '')
 
 beforeEach(() => {
+  address.search = ''
+  address.replace.mockReset()
   notify.mockReset()
   mockedPost.mockReset()
   mockUser.current = { id: 'me', role: 'admin_dispatcher' }
@@ -200,6 +204,26 @@ describe('Add driver', () => {
     renderPage()
 
     expect(screen.queryByRole('button', { name: /add driver/i })).toBeNull()
+  })
+
+  it("opens empty from the assistant's link (?add=1), then tidies the address", () => {
+    address.search = 'add=1'
+
+    renderPage()
+
+    expect(screen.getByRole('dialog', { name: 'Add Driver' })).toBeInTheDocument()
+    expect((document.querySelector('[name="full_name"]') as HTMLInputElement).value).toBe('')
+    expect(address.replace).toHaveBeenCalledWith('/fleet/drivers', { scroll: false })
+  })
+
+  it("doesn't open from the link for another role, who has no Add button", () => {
+    mockUser.current = { id: 'me', role: 'dispatcher' }
+    address.search = 'add=1'
+
+    renderPage()
+
+    expect(screen.queryByRole('dialog', { name: 'Add Driver' })).toBeNull()
+    expect(address.replace).toHaveBeenCalledWith('/fleet/drivers', { scroll: false })
   })
 
   it('keeps Save disabled until the form is valid, then posts the normalised phone and refetches', async () => {

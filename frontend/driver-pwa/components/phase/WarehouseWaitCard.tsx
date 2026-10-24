@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/WarehouseWaitCard.tsx
 'use client'
 
 import type { ReactNode } from 'react'
@@ -18,7 +17,7 @@ interface WarehouseWaitCardProps {
   children: ReactNode
 }
 
-// Shared shell for the three gated-phase "waiting" screens (overhaul 4.4), including the
+// Shared shell for the three gated-phase "waiting" screens, including the
 // Check-now affordance for TripContext's auto-refresh (lib/hooks/useTripAutoRefresh.ts).
 // It replaces the step's own title and body: while blocked, "Check the linehaul sheet" is
 // not what is happening, so the screen says what is. Reads useTrip() itself so call sites

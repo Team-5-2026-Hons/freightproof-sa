@@ -1,13 +1,6 @@
-// frontend/driver-pwa/components/phase/steps/confirmation/ReceiverHandover.tsx
-//
-// Replaces PodSignature.tsx (FP-155). The driver no longer collects the signature.
-//
-// A 2026-06-29 decision settled that proof of delivery is a photo AND a signature, both
-// required. That still holds — the artifact is still produced, still uploaded, still
-// required at submit. What changed is WHERE it is produced: on the receiver's own phone,
-// reached by scanning the rotating QR this step displays. The property that matters is not
-// who the receiver is (we still cannot prove that) but that the confirmation was produced
-// somewhere the driver's device is not.
+// Shows a rotating QR; the receiver signs on their own phone, reached by scanning it.
+// The property that matters is not who the receiver is (we still cannot prove that) but
+// that the confirmation was produced somewhere the driver's device is not.
 //
 // This step captures nothing locally and holds no evidence of its own. Its entire job is
 // to display a code, wait, and write the resulting artifact id into the draft that
@@ -63,7 +56,7 @@ export function ReceiverHandover({
         showTitle={false}
         action={<SwipeToConfirm label="Swipe to Continue" onConfirm={onComplete} />}
       >
-        {/* No signature image (D7, Tim 14 Oct): the signature is the receiver's evidence,
+        {/* No signature image: the signature is the receiver's evidence,
             held server-side. The driver's screen says only that it happened, and when. */}
         <div className="flex flex-col items-center pt-10 text-center">
           <span className="flex size-28 items-center justify-center rounded-full bg-success-tint">

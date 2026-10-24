@@ -13,10 +13,15 @@ import {
   DEV_TRUCK_SCENARIOS,
   isClosedPhaseStatus,
   NO_STOP_REQUIRED_SCENARIO,
+  PHONE_PLACEMENT_LABELS,
+  PHONE_PLACEMENTS,
   SCENARIO_LABELS,
+  STOP_REQUIRED_PLACEMENT,
   type DevConsignment,
+  type DevPhonePlacement,
   type DevTripStop,
   type DevTruckScenario,
+  type MovePhoneResponse,
   type MoveTruckResponse,
   type ScanDirection,
 } from '@/lib/types/dev'
@@ -41,9 +46,9 @@ function formatDistance(distanceMetres: number | null, fromLabel: string): strin
 // precinct name — a repeated-precinct multi-stop trip can have two stops that share
 // a name, and matching on name would silently target the wrong one.
 function tripStopLabel(stop: DevTripStop, index: number, total: number): string {
-  if (index === 0) return `At origin — ${stop.precinct_name}`
-  if (index === total - 1) return `At destination — ${stop.precinct_name}`
-  return `Stop ${stop.sequence} — ${stop.precinct_name}`
+  if (index === 0) return `At origin: ${stop.precinct_name}`
+  if (index === total - 1) return `At destination: ${stop.precinct_name}`
+  return `Stop ${stop.sequence}: ${stop.precinct_name}`
 }
 
 // Composite identity for "which scenario+stop combination is currently staged". Stop
@@ -58,7 +63,7 @@ function scenarioActiveKey(scenario: DevTruckScenario, tripStopId: string): stri
 // verdict that was reached and failed — collapsing it to falsy would tell the
 // operator a fix existed and failed the geofence when actually there was no fix.
 function verdictLabel(confirmed: boolean | null): string {
-  if (confirmed === null) return 'No verdict — tracker dark'
+  if (confirmed === null) return 'No verdict: tracker dark'
   return confirmed ? 'Geofence confirmed' : 'Geofence failed'
 }
 
@@ -209,7 +214,7 @@ function buildWaybillBreakdown(
 export function AllControls({ controls, tripId }: AllControlsProps): React.ReactElement {
   const {
     trips, isLoading,
-    loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, moveTruck,
+    loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, moveTruck, movePhone,
   } = controls
 
   const [selectedOptionKey, setSelectedOptionKey] = useState<string>('')
@@ -220,6 +225,8 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
   // just until the next unrelated action.
   const [activeScenarioKey, setActiveScenarioKey] = useState<string | null>(null)
   const [moveTruckResult, setMoveTruckResult] = useState<MoveTruckResponse | null>(null)
+  const [phonePlacement, setPhonePlacement] = useState<DevPhonePlacement | ''>('')
+  const [movePhoneResult, setMovePhoneResult] = useState<MovePhoneResponse | null>(null)
 
   // FP-197: which of the selected trip's own stops the scenario mode targets.
   // '' means "no stop chosen" — valid only for the no_signal scenario.
@@ -365,7 +372,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
       (c) => c.parcel_perfect_reference === reference,
     )?.barcodes ?? []
     const rejection = manifest.includes(value)
-      ? 'That barcode is on the manifest — untick it above instead of adding it.'
+      ? 'That barcode is on the manifest. Untick it above instead of adding it.'
       : (extraByReference[reference] ?? []).includes(value)
         ? 'That barcode has already been added.'
         : null
@@ -485,6 +492,25 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
     }
   }
 
+  // Same deliberate bypass of the confirm flow as onMoveTruckScenario above, for the
+  // same reason: narrated live, and it writes staged mock state only. The phone is a
+  // SEPARATE control from the truck — pressing one never moves the other.
+  const onMovePhone = async (placement: DevPhonePlacement): Promise<void> => {
+    if (tripId === '') return
+    if (placement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '') return
+
+    const requestedTripId = tripId
+    const result = await movePhone({
+      trip_id: tripId,
+      placement,
+      trip_stop_id: placement === STOP_REQUIRED_PLACEMENT && selectedTripStopId !== ''
+        ? selectedTripStopId
+        : undefined,
+    })
+    if (latestSelectionRef.current.tripId !== requestedTripId) return
+    if (result !== null) setMovePhoneResult(result)
+  }
+
   const onConfirmPendingAction = async (): Promise<void> => {
     if (pendingAction === null) return
     switch (pendingAction.kind) {
@@ -553,7 +579,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
             </option>
             {scanOptions.map((option) => (
               <option key={option.key} value={option.key} disabled={option.disabled}>
-                {option.label}{option.disabled ? ` — ${option.disabledReason ?? 'blocked'}` : ''}
+                {option.label}{option.disabled ? ` (${option.disabledReason ?? 'blocked'})` : ''}
               </option>
             ))}
           </Select>
@@ -568,17 +594,17 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-medium">Move the truck (dev-mode simulation)</h3>
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
-              Dev only — simulated tracker
+              Dev only: simulated tracker
             </span>
           </div>
           <p className="text-xs text-slate-500">
             Writes a fake Pulsit position for the selected trip&apos;s device only.
-            Everything downstream — the geofence check, the corroboration verdict,
-            the phase handshake — is the real orchestration running against that
+            Everything downstream (the geofence check, the corroboration verdict,
+            the phase handshake) is the real orchestration running against that
             fake position, exactly as it would against a genuine tracker fix.
           </p>
           <p className="text-xs text-slate-500">
-            This stages mock state for the DEVICE itself, not just this trip — any
+            This stages mock state for the DEVICE itself, not just this trip. Any
             other trip whose horse shares this same Pulsit tracker will observe the
             same staged position too.
           </p>
@@ -604,16 +630,16 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                   mode) names the simulated TARGET stop actually requested. */}
               {moveTruckResult.target_precinct_name !== null && (
                 <p className="text-xs text-slate-500">
-                  Simulated target — {moveTruckResult.target_precinct_name}:{' '}
+                  Simulated target: {moveTruckResult.target_precinct_name}:{' '}
                   {formatDistance(moveTruckResult.target_distance_metres, 'from the simulated target')}
                 </p>
               )}
               <p className="text-xs text-slate-500">
-                Expected stop — {moveTruckResult.expected_precinct_name ?? moveTruckResult.precinct_name}:{' '}
+                Expected stop: {moveTruckResult.expected_precinct_name ?? moveTruckResult.precinct_name}:{' '}
                 {formatDistance(moveTruckResult.distance_metres, 'from the expected stop')}
               </p>
               <p className={`text-xs font-medium ${verdictClassName(moveTruckResult.geofence_confirmed)}`}>
-                {verdictLabel(moveTruckResult.geofence_confirmed)} — {moveTruckResult.verdict_reason}
+                {verdictLabel(moveTruckResult.geofence_confirmed)}, {moveTruckResult.verdict_reason}
               </p>
             </div>
           )}
@@ -677,6 +703,83 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
           </div>
         </Card>
       )}
+
+      <Card>
+        <div className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-medium">Move the phone (dev-mode simulation)</h3>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-700">
+              Dev only: recorded as simulated
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Places the DRIVER&apos;S PHONE for this trip, independently of the truck. Set
+            it before the driver submits a phase and their capture is recorded at that
+            precinct instead of wherever the handset actually is, which is what stops a
+            demo walked far from any depot raising a location warning on every phase.
+          </p>
+          <p className="text-xs text-slate-500">
+            Every phase completed while a position is staged is stored with{' '}
+            <code>driver_position_source = &quot;simulated&quot;</code>, so a staged walk
+            can always be told apart from a real one. &quot;Use the phone&apos;s real
+            location&quot; releases it.
+          </p>
+
+          <Select
+            label="Phone position"
+            value={phonePlacement}
+            onChange={(e) => setPhonePlacement(e.target.value as DevPhonePlacement | '')}
+          >
+            <option value="">Select a position…</option>
+            {PHONE_PLACEMENTS.map((placement) => (
+              <option key={placement} value={placement}>
+                {PHONE_PLACEMENT_LABELS[placement]}
+              </option>
+            ))}
+          </Select>
+
+          {phonePlacement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '' && (
+            <p role="alert" className="text-xs text-amber-700">
+              Pick a trip stop above first. &quot;{PHONE_PLACEMENT_LABELS[STOP_REQUIRED_PLACEMENT]}&quot; needs one.
+            </p>
+          )}
+
+          <Button
+            variant="secondary"
+            size="lg"
+            full
+            disabled={
+              isLoading
+              || tripId === ''
+              || phonePlacement === ''
+              || (phonePlacement === STOP_REQUIRED_PLACEMENT && selectedTripStopId === '')
+            }
+            onClick={() => { if (phonePlacement !== '') void onMovePhone(phonePlacement) }}
+          >
+            Apply to the phone
+          </Button>
+
+          {movePhoneResult !== null && (
+            <div className="space-y-1 rounded-lg border border-outline-v/20 p-3">
+              <p className="text-sm font-semibold">{movePhoneResult.placement_label}</p>
+              {movePhoneResult.staged ? (
+                <>
+                  <p className="text-xs text-slate-500">
+                    {movePhoneResult.precinct_name} · {movePhoneResult.latitude}, {movePhoneResult.longitude}
+                  </p>
+                  <p className="text-xs font-medium text-amber-700">
+                    Phases completed now record driver_position_source = {movePhoneResult.recorded_as}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  The handset&apos;s own fix will be recorded again (device).
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Card>
         <div className="space-y-3 p-4">
@@ -776,7 +879,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
             onClick={openCloseSessionConfirm}
             disabled={selectionDisabled || isLoading}
           >
-            Close scan session — unblocks the driver
+            Close scan session: unblocks the driver
           </Button>
         </div>
       </Card>
@@ -871,7 +974,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
             {pendingAction.kind === 'scan' && (
               <>
                 <p className="font-medium">
-                  {pendingAction.buttonLabel} — {directionPhrase(pendingAction.direction, pendingAction.stop.precinct_name)}
+                  {pendingAction.buttonLabel}: {directionPhrase(pendingAction.direction, pendingAction.stop.precinct_name)}
                 </p>
                 <ul className="space-y-2">
                   {pendingAction.waybills.map((wb) => (
@@ -890,7 +993,7 @@ export function AllControls({ controls, tripId }: AllControlsProps): React.React
                       )}
                       {wb.manifestTicked === 0 && wb.extraBarcodes.length === 0 && (
                         <p className="text-xs text-amber-700">
-                          Nothing scanned for this waybill — no exception is raised now.
+                          Nothing scanned for this waybill. No exception is raised now.
                           It is caught when the phase closes.
                         </p>
                       )}

@@ -57,6 +57,8 @@ _HIJACKING = "hijacking"
 _THEFT_REPORTED = "theft_reported"
 _REPORTED = "reported"
 _REVIEWED = "reviewed"
+# exchange_location is nullable (a handover need not name a place); an f-string would print "None".
+_EXCHANGE_LOCATION_UNRECORDED = "location not recorded"
 
 
 def mask_id_number(value: str) -> str:
@@ -415,7 +417,7 @@ def _observe_location_agreement(phases: Sequence[PhaseRecord]) -> list[Observati
         code="location.agreement",
         level="attention" if separated else "info",
         text=(f"Driver phone and vehicle tracker agreed at {within} of {len(assessed)} "
-              f"assessed handshakes; {len(separated)} separated, {unverified} could not be checked."),
+              f"assessed trip phases; {len(separated)} separated, {unverified} could not be checked."),
         evidence_ids=[p.phase_event_id for p in separated],
     )]
 
@@ -494,6 +496,12 @@ def _handover_facts(s: DriverSubstitutionRecord) -> str:
     return "; " + "; ".join(parts)
 
 
+def _exchange_phrase(substitution: DriverSubstitutionRecord) -> str:
+    if substitution.exchange_location:
+        return f"at {substitution.exchange_location}"
+    return f"({_EXCHANGE_LOCATION_UNRECORDED})"
+
+
 def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation]:
     driver = manifest.driver
     # FP-83: the trip-level check is the ORIGINAL driver's, taken at the start of the journey; it
@@ -509,7 +517,8 @@ def _observe_people_and_records(manifest: AuditPackManifest) -> list[Observation
         Observation(
             code="identity.substitution", level="attention",
             text=(f"Driver changed from {s.original_driver_name} to {s.substituting_driver_name} "
-                  f"at {s.exchange_location}, {format_sast(s.substitution_at)} "
+                  f"{_exchange_phrase(s)}, "
+                  f"{format_sast(s.substitution_at)} "
                   f"({'planned' if s.is_planned else 'unplanned'}){_handover_facts(s)}."),
             evidence_ids=[s.substitution_id],
         )

@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import WelcomePage from '../page'
 import { ROUTES } from '@/lib/constants/routes'
+import { rememberSignedOutReason } from '@/lib/session/signed-out-reason'
 
 const mockPush = vi.fn()
 
@@ -12,6 +13,7 @@ vi.mock('next/navigation', () => ({
 describe('WelcomePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.sessionStorage.clear()
   })
 
   it('leads with the FreightProof lockup as the page heading', () => {
@@ -39,5 +41,22 @@ describe('WelcomePage', () => {
     const { container } = render(<WelcomePage />)
 
     expect(container.firstElementChild).toHaveClass('dark')
+  })
+
+  it('explains a forced sign-out once, then stops showing it', () => {
+    rememberSignedOutReason('Signed in on another device.')
+
+    const first = render(<WelcomePage />)
+    expect(screen.getByText('Signed in on another device.')).toBeInTheDocument()
+    first.unmount()
+
+    render(<WelcomePage />)
+    expect(screen.queryByText('Signed in on another device.')).not.toBeInTheDocument()
+  })
+
+  it('shows no sign-out notice when the driver arrived normally', () => {
+    render(<WelcomePage />)
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

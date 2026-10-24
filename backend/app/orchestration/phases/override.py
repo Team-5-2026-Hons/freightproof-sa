@@ -17,7 +17,7 @@ from app.orchestration.evidence_anchors.recording import register_exception
 from app.orchestration.phases.anchor_dispatch import _anchor_phase
 from app.orchestration.phases.loaders import _load_phase_event, _load_trip_for_dispatcher
 from app.orchestration.phases.payloads import compute_override_canonical_payload_v2
-from app.orchestration.phases.state import recompute_position
+from app.orchestration.phases.state import first_unresolved_earlier_phase, recompute_position
 from app.orchestration.trips.detail import get_trip_detail
 from app.orchestration.exceptions.review_policy import dispatcher_authored_review, initial_review_status
 from app.schemas.trips import TripDetailResponse
@@ -39,7 +39,8 @@ async def override_phase(
     another org, or the phase_event doesn't belong to this trip. Raises
     TripStateError (409) on a trip that has already reached a terminal state, and
     PhaseSequenceError (409) if the row is already COMPLETED — a resolved row
-    needs no override, and completed evidence must not be rewritable.
+    needs no override, and completed evidence must not be rewritable — or if an
+    earlier phase in the plan is still unresolved.
     """
     trip = await _load_trip_for_dispatcher(
         db, trip_id=trip_id, operator_organization_id=operator_organization_id, lock=True,
@@ -68,6 +69,15 @@ async def override_phase(
         # reason") rather than inventing a new exception type for one more state
         # check — the reason clause just names the row's real status.
         raise PhaseSequenceError(f"phase status is '{PhaseStatus(event.status).value}'", "Override")
+
+    # Same order rule as the driver's gate: closing phase N while an earlier phase is still
+    # open leaves a gap in the ledger that nothing explains. The dispatcher UI never offers
+    # it, but the invariant belongs here, not in the UI.
+    earlier = await first_unresolved_earlier_phase(
+        db, trip_id=trip_id, sequence_number=event.sequence_number,
+    )
+    if earlier is not None:
+        raise PhaseSequenceError(f"the earlier '{earlier.value}' phase is still unresolved", "Override")
 
     event.status = PhaseStatus.OVERRIDDEN
     event.dispatcher_override_user_id = user_id

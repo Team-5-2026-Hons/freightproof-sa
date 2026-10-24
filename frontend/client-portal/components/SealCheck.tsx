@@ -6,6 +6,7 @@ import { formatSast, humanise } from '@/lib/format'
 import type { PublicPackSeal } from '@/lib/types'
 import { type AnchorCheckResult, trustedMirrorBase, verifyAnchoredRecord } from '@/lib/verify'
 import { Card, Field } from './Card'
+import { Eyebrow } from './Eyebrow'
 import { PdfCheck } from './PdfCheck'
 
 const RESULT: Record<AnchorCheckResult['state'], string> = {
@@ -97,8 +98,8 @@ export function SealCheck({ packId }: { packId: string }) {
   return (
     <main className="mx-auto max-w-2xl space-y-4 px-4 py-8">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted">FreightProof audit pack seal</p>
-        <h1 className="num text-[22px] font-extrabold">{seal.pack_label}</h1>
+        <Eyebrow size="micro">FreightProof audit pack seal</Eyebrow>
+        <h1 className="num text-title font-extrabold">{seal.pack_label}</h1>
       </div>
       <Card title={title}>
         <dl>
@@ -107,17 +108,17 @@ export function SealCheck({ packId }: { packId: string }) {
           <Field label="PDF fingerprint"><span className="num break-all">{seal.pdf_sha256}</span></Field>
           {seal.seal?.hedera_tx_id && <Field label="Hedera transaction"><span className="num break-all">{seal.seal.hedera_tx_id}</span></Field>}
         </dl>
-        <p className="mt-2 text-[12px] text-muted">
+        <p className="mt-2 text-meta text-muted">
           Checked by your browser against the Hedera {seal.hedera_network} public ledger
           {mirror ? <> via <span className="num">{new URL(mirror).host}</span></> : ' (no trusted mirror for this network)'}.
           This page shows no trip evidence; the full pack is only available through the link the operator shared.
         </p>
-        {error && <p role="alert" className="mt-2 text-[13px] text-warn">{error}</p>}
+        {error && <p role="alert" className="mt-2 text-small text-warn">{error}</p>}
         {check && check.state !== 'verified' && (
           <button
             type="button"
             onClick={() => setAttempt((n) => n + 1)}
-            className="no-print mt-2 min-h-11 rounded-md bg-surf-high px-3 py-1.5 text-[13px] font-semibold hover:bg-outline-v/50"
+            className="no-print mt-2 min-h-11 rounded-md bg-surf-high px-3 py-1.5 text-small font-semibold hover:bg-outline-v/50"
           >
             Check again
           </button>

@@ -23,8 +23,8 @@ import type { SubmitPhaseResult } from '@/lib/api/phases'
 const { push } = vi.hoisted(() => ({ push: vi.fn() }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }))
 
-// OfflineBanner now mounts useOfflineQueue() itself (Fix 3) to read queueLength/
-// droppedCount, so its mount-time flush() needs the same network mocks
+// OfflineBanner mounts useOfflineQueue() itself to read queueLength/
+// attentionCount, so its mount-time flush() needs the same network mocks
 // useOfflineQueue.test.ts uses — otherwise these tests would hit a real fetch.
 // lib/api/handshakes.ts (submitHandshake) is deleted — useOfflineQueue's sendEntry
 // now calls submitPhase from lib/api/phases.ts for a 'phase'-kind queue entry.
@@ -73,7 +73,7 @@ function phaseSubmission(overrides: Partial<PhaseSubmissionRequest> = {}): Phase
     idempotencyKey: 'idem-1',
     position: Promise.resolve(null),
     driverCapturedAt: '2026-06-12T10:00:00Z',
-    enqueuePhase: vi.fn(),
+    enqueuePhase: vi.fn(() => true), // stored, as the real queue answers when the phone has room
     refetchTrip: vi.fn().mockResolvedValue(null),
     onOutcome: vi.fn(),
     ...overrides,
@@ -108,29 +108,29 @@ describe('OfflineBanner', () => {
 
     render(<OfflineBanner />)
 
-    expect(screen.getByText(/offline — evidence you capture is saved on this device/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture is saved on this device/i)).toBeInTheDocument()
   })
 
   it('appears when the browser fires an offline event', () => {
     setOnline(true)
     render(<OfflineBanner />)
-    expect(screen.queryByText(/offline — evidence you capture/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/offline\. evidence you capture/i)).not.toBeInTheDocument()
 
     setOnline(false)
     fireEvent(window, new Event('offline'))
 
-    expect(screen.getByText(/offline — evidence you capture/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture/i)).toBeInTheDocument()
   })
 
   it('disappears when connectivity comes back and nothing is queued', () => {
     setOnline(false)
     render(<OfflineBanner />)
-    expect(screen.getByText(/offline — evidence you capture/i)).toBeInTheDocument()
+    expect(screen.getByText(/offline\. evidence you capture/i)).toBeInTheDocument()
 
     setOnline(true)
     fireEvent(window, new Event('online'))
 
-    expect(screen.queryByText(/offline — evidence you capture/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/offline\. evidence you capture/i)).not.toBeInTheDocument()
   })
 
   // Fix 3a: queueLength was already returned by the hook but rendered nowhere. A driver

@@ -75,6 +75,12 @@ _SUBSTITUTION_MIGRATION_PATH = (
     / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
 )
 
+# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
+_ARRIVAL_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
+)
+
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 
@@ -96,6 +102,7 @@ _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
 _SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
+_ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
 
 # ── Timeline building blocks ─────────────────────────────────────────────────
@@ -365,6 +372,7 @@ async def views(db_session: AsyncSession) -> None:
         *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
         *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
         *_SUBSTITUTION_MIGRATION.UPGRADE_STATEMENTS,
+        *_ARRIVAL_MIGRATION.UPGRADE_STATEMENTS,
     ):
         await db_session.execute(text(statement))
 
@@ -448,6 +456,35 @@ async def test_driver_metrics_counts_closed_trips_only(
     assert metrics.on_time_departure_rate == pytest.approx(0.5)
     assert metrics.override_rate == pytest.approx(1 / 14)
     assert metrics.activation_dwell_minutes_avg == pytest.approx(20.0)
+
+
+@pytest.mark.usefixtures("views")
+async def test_driver_metrics_measure_arrival_dwell_from_the_drive_to_the_gate(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    await _trip(
+        db_session, operator, start=_start(month, 10), stops=lane,
+        steps=[
+            Step(PhaseType.TRIP_CREATION, None, 0),
+            Step(PhaseType.ACTIVATION, 0, 10),
+            Step(PhaseType.LOADING, 0, 50),
+            Step(PhaseType.DEPARTURE, 0, 60),
+            Step(PhaseType.IN_TRANSIT, 0, 300),
+            Step(PhaseType.ARRIVAL, 1, 315),
+            Step(PhaseType.UNLOADING, 1, 345),
+            Step(PhaseType.CONFIRMATION, 1, 360),
+        ],
+    )
+    await db_session.flush()
+
+    [metrics] = await get_driver_metrics(
+        db_session, organization_id=operator.org.id, start_month=month, end_month=month
+    )
+
+    assert (metrics.arrival_dwell_minutes_sum, metrics.arrival_dwell_events_count) == (15, 1)
+    assert metrics.arrival_dwell_minutes_avg == pytest.approx(15.0)
+    # Unloading is now measured from arrival, not from the end of the drive.
+    assert (metrics.unloading_dwell_minutes_sum, metrics.unloading_dwell_events_count) == (30, 1)
 
 
 @pytest.mark.usefixtures("views")

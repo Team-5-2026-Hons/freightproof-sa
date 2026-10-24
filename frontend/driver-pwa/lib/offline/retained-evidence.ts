@@ -1,5 +1,4 @@
-// frontend/driver-pwa/lib/offline/retained-evidence.ts
-// FP-83: one read-only view over everything this phone is holding for the driver's decision —
+// One read-only view over everything this phone is holding for the driver's decision —
 // refused queue entries, refused exception reports, quarantined captures of unknown origin,
 // retained drafts and the unreadable-queue backup — plus the explicit actions on each one.
 // Nothing here deletes evidence except discardRetainedItem, which only the review screen
@@ -13,7 +12,7 @@ import {
   resetExceptionToPending,
   type ExceptionEnvelope,
 } from './exception-store'
-import { isCustodyConflict, type RetainedAttention } from './live-write-conflict'
+import { isCustodyConflict, isPhaseOverridden, type RetainedAttention } from './live-write-conflict'
 import {
   clearUnreadableQueueBackup,
   entryStatus,
@@ -83,7 +82,8 @@ function queueCapturedAt(entry: QueueEntry): string | null {
 function attentionFields(attention: RetainedAttention | null | undefined, fallback: string): Pick<RetainedItem, 'reason' | 'canRetry'> {
   return {
     reason: attention?.reason ?? fallback,
-    canRetry: attention != null && !isCustodyConflict(attention),
+    // Neither refusal can succeed on a live resend: custody has moved on, or dispatch closed the phase.
+    canRetry: attention != null && !isCustodyConflict(attention) && !isPhaseOverridden(attention),
   }
 }
 

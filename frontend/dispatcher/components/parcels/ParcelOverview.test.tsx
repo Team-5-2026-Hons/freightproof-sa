@@ -46,7 +46,7 @@ describe('ParcelOverview header', () => {
     expect(screen.getByText('Trip cancelled after departure')).toHaveClass('bg-err-c')
 
     renderOverview(makeTrace([makeJourney()]))
-    expect(screen.getByText('In transit — awaiting arrival attestation')).not.toHaveClass('bg-err-c')
+    expect(screen.getByText('In transit, awaiting arrival attestation')).not.toHaveClass('bg-err-c')
   })
   it('says pickup or delivery is unknown rather than leaving the route blank', () => {
     renderOverview(makeTrace([makeWayJourney({ origin_name: null, destination_name: null })]))

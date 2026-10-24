@@ -1,5 +1,6 @@
 'use client'
 
+import { countLabel } from '@/lib/format/count'
 import { EvidenceDocument } from './EvidenceDocument'
 import { EvidencePhoto } from './EvidencePhoto'
 import { Field, PhaseDetailCard, Section } from './PhaseDetailFields'
@@ -64,7 +65,7 @@ export function ConfirmationDetail({ artifactLoading, artifactError, onRetryArti
         <div className={`text-[11px] font-[600] px-3 pb-3 ${unaccounted === 0 ? 'text-ok' : 'text-warn'}`}>
           {unaccounted === 0
             ? 'Counts agree ✓'
-            : unaccounted < 0 ? `${Math.abs(unaccounted)} excess parcels scanned at destination` : `${unaccounted} parcel unaccounted for in transit ✗`}
+            : unaccounted < 0 ? `${Math.abs(unaccounted)} excess parcels scanned at destination` : `${countLabel(unaccounted, 'parcel')} unaccounted for in transit ✗`}
         </div>
       )}
 
@@ -72,7 +73,7 @@ export function ConfirmationDetail({ artifactLoading, artifactError, onRetryArti
         <Field label="Parcels counted by driver" value={phase.driver_visual_count?.toString()} />
       </Section>
       <div className="text-[11px] text-on-surf-v px-3 pb-3">
-        Counted blind — recorded as independent evidence, not reconciled against the scans above.
+        Counted blind: recorded as independent evidence, not reconciled against the scans above.
       </div>
 
       <PhaseLocationSection phase={phase} precinct={precinct} title="Location at confirmation" />

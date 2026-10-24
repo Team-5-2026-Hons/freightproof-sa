@@ -68,6 +68,7 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+    mockEnqueueCheckpoint.mockReturnValue(true)
   })
 
   it('submits directly and navigates to the hub on success (no queueing)', async () => {
@@ -126,6 +127,64 @@ describe('CheckpointPageClient offline queue (Fix 3)', () => {
     )
     expect(screen.queryByText(/check your connection/i)).not.toBeInTheDocument()
     expect(mockEnqueueCheckpoint).not.toHaveBeenCalled()
+    expect(mockRouterPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('CheckpointPageClient when the phone cannot store the checkpoint', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockUseTrip.mockReturnValue({ trip: { id: 'trip-1' } })
+    mockEnqueueCheckpoint.mockReturnValue(false)
+  })
+
+  async function swipeAndSettle() {
+    render(<CheckpointPageClient />)
+    fillCaptures()
+    fireEvent.click(screen.getByText('Swipe to Log Checkpoint'))
+    await waitFor(() => expect(mockEnqueueCheckpoint).toHaveBeenCalled())
+  }
+
+  it('on a network error, says so and stays put instead of claiming the evidence is stored', async () => {
+    mockSubmitCheckpoint.mockRejectedValue(new Error('network unreachable'))
+
+    await swipeAndSettle()
+
+    expect(await screen.findByText(/couldn.t save on this phone/i)).toBeInTheDocument()
+    expect(mockNotify).not.toHaveBeenCalled()
+    expect(mockRouterPush).not.toHaveBeenCalled()
+  })
+
+  it('keeps the captured evidence so the driver can simply try again', async () => {
+    mockSubmitCheckpoint.mockRejectedValue(new Error('network unreachable'))
+
+    await swipeAndSettle()
+    await screen.findByText(/couldn.t save on this phone/i)
+
+    expect(screen.getByRole('button', { name: 'Swipe to Log Checkpoint' })).toBeEnabled()
+  })
+
+  it('clears the storage error on the next attempt, and moves on once it is stored', async () => {
+    mockSubmitCheckpoint.mockRejectedValue(new Error('network unreachable'))
+    await swipeAndSettle()
+    await screen.findByText(/couldn.t save on this phone/i)
+    mockEnqueueCheckpoint.mockReturnValue(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Swipe to Log Checkpoint' }))
+
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(ROUTES.inTransit))
+    expect(screen.queryByText(/couldn.t save on this phone/i)).not.toBeInTheDocument()
+  })
+
+  it('on a custody conflict, does not leave for home as though the checkpoint were kept', async () => {
+    mockSubmitCheckpoint.mockRejectedValue(new ApiError(409, 'Captured before the handover', undefined, {
+      code: 'CUSTODY_CONTEXT_CHANGED', requestId: null, currentVersion: null, evidenceId: null,
+    }))
+
+    await swipeAndSettle()
+
+    expect(await screen.findByText(/couldn.t save on this phone/i)).toBeInTheDocument()
+    expect(mockNotify).not.toHaveBeenCalled()
     expect(mockRouterPush).not.toHaveBeenCalled()
   })
 })

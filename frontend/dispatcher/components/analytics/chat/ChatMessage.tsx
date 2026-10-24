@@ -8,7 +8,7 @@ import { BasisLine } from './BasisLine'
 import { CHAT_COPY } from './chatCopy'
 
 interface ChatMessageProps {
-  message: Pick<ChatMessageItem, 'role' | 'text' | 'basis'>
+  message: Pick<ChatMessageItem, 'role' | 'text' | 'basis' | 'kind'>
   onOpenBasis: (basis: Basis) => void
 }
 
@@ -69,7 +69,9 @@ export function ChatMessage({ message, onOpenBasis }: ChatMessageProps) {
       {!isUser && (
         <div className="flex max-w-[92%] flex-wrap items-center gap-1.5 px-1">
           {basis.length === 0 ? (
-            <p className="text-[11px] text-on-surf-v">{CHAT_COPY.noFigures}</p>
+            <p className="text-[11px] text-on-surf-v">
+              {message.kind === 'explanation' ? CHAT_COPY.explained : CHAT_COPY.noFigures}
+            </p>
           ) : (
             <>
               <span className="text-[11px] font-[600] text-on-surf-v">{CHAT_COPY.basedOn}</span>

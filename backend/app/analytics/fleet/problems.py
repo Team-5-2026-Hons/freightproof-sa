@@ -22,7 +22,7 @@ from app.analytics.fleet.periods import (
     instant_range,
     require_grain,
 )
-from app.analytics.stats import safe_ratio
+from app.core.stats import safe_ratio
 from app.db.models.enums import ExceptionSeverity, ExceptionSource, ExceptionType, PhaseType
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import TripException

@@ -174,6 +174,31 @@ async def test_availability_shows_an_overrunning_live_trip_as_busy_until_closed(
     assert all(datetime.fromisoformat(b["planned_until"]) == overran + _TRIP_LENGTH for b in busy)
 
 
+async def test_availability_shows_a_trip_started_before_its_departure_as_busy_now(
+    client: AsyncClient, db_session: AsyncSession, world: dict[str, Any],
+):
+    """Loading at 18:30 for a 20:00 departure: the live trip's crew is in use now (found 21 Oct)."""
+    now = datetime.now(UTC)
+    trip = await _trip(db_session, world, departure=now + timedelta(hours=3), status=TripStatus.ACTIVE)
+
+    busy = await _busy(client, world, now, now + timedelta(hours=1))
+
+    assert [b["resource_type"] for b in busy] == ["driver", "horse", "trailer"]
+    assert {b["trip_id"] for b in busy} == {str(trip.id)}
+    assert all(datetime.fromisoformat(b["busy_from"]) <= now + timedelta(minutes=1) for b in busy)
+
+
+async def test_availability_booked_trip_does_not_hold_anyone_before_its_departure(
+    client: AsyncClient, db_session: AsyncSession, world: dict[str, Any],
+):
+    now = datetime.now(UTC)
+    await _trip(db_session, world, departure=now + timedelta(hours=3))
+
+    busy = await _busy(client, world, now, now + timedelta(hours=1))
+
+    assert busy == []
+
+
 async def test_availability_never_shows_another_organisations_trips(
     client: AsyncClient, db_session: AsyncSession, world: dict[str, Any],
 ):

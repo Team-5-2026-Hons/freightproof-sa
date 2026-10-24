@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.analytics.driver_metrics import get_driver_metrics
 from app.analytics.facility_metrics import get_facility_metrics
 from app.analytics.lane_metrics import get_lane_metrics
-from app.analytics.stats import validate_month_range
+from app.core.stats import validate_month_range
 from app.analytics.vehicle_metrics import (
     get_vehicle_metrics,
     get_vehicle_streaks,

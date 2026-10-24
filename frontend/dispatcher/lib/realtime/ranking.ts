@@ -26,7 +26,7 @@ export function toastForEvent(event: RealtimeEvent): ToastRequest | null {
     priority: critical ? 'critical' : 'ordinary',
     title: critical ? 'Critical exception' : 'Exception raised',
     body: critical
-      ? 'A critical exception was recorded on a live trip — open it now.'
-      : 'An exception was recorded on a live trip — open the trip to review.',
+      ? 'A critical exception was recorded on a live trip. Open it now.'
+      : 'An exception was recorded on a live trip. Open the trip to review.',
   }
 }

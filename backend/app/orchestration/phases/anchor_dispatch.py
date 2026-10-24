@@ -8,12 +8,12 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import event as event_module
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import compute_payload_hash
 from app.db.models.enums import AnchorStatus, BlockchainReceiptType
 from app.db.models.phases import PhaseEvent
+from app.orchestration.evidence_anchors.dispatch import run_after_outer_commit
 from app.orchestration.phases.anchor_execution import receipt_type_for
 from app.orchestration.phases.payloads import compute_phase_actor_envelope_v4
 
@@ -39,9 +39,12 @@ def _dispatch_anchor(
 
     Two things make this safe rather than merely faster:
 
-    * It fires on after_commit, never before. The worker opens its OWN session, so a task
+    * It fires on the OUTER commit, never before. The worker opens its OWN session, so a task
       dispatched mid-transaction could look for a phase_event row that isn't committed yet
-      and find nothing.
+      and find nothing. A begin_nested() release also fires after_commit, so a bare listener
+      would publish early (and still publish after a later outer rollback);
+      run_after_outer_commit ignores releases and drops the dispatch if the row's owning
+      transaction rolls back.
     * If the broker cannot be reached, it schedules an immediate in-process fallback.
       This preserves the anchor attempt without turning the API event loop into a
       blocking Hedera worker.
@@ -78,12 +81,10 @@ def _dispatch_anchor(
             )
         return True
 
-    def _send(_session: Any) -> None:
+    def _send() -> None:
         _retain_anchor_task(asyncio.get_running_loop().create_task(_publish()), event_id)
 
-    # sync_session: SQLAlchemy's event system is synchronous, and after_commit is the
-    # only hook that fires once this request's write is actually durable.
-    event_module.listens_for(db.sync_session, "after_commit", once=True)(_send)
+    run_after_outer_commit(db, _send)
 
 
 def _schedule_anchor_after_dispatch_failure(

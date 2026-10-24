@@ -4,6 +4,7 @@
 
 import { getSupabase, getAccessToken } from '@/lib/supabase'
 import { actorGeneration } from '@/lib/session/custody-context'
+import { rememberSignedOutReason } from '@/lib/session/signed-out-reason'
 import type { SubstitutionErrorCode } from '@shared/lib/types/driver-substitution'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -12,7 +13,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 // cheap local read: when the access token is near expiry (within auth-js's refresh
 // margin) it performs a *blocking* network token refresh. If that refresh stalls — e.g.
 // the background auto-refresh timer was throttled while the tab was idle, leaving a
-// wedged connection — getSession() never resolves and a handshake submit awaiting it
+// wedged connection — getSession() never resolves and a phase submit awaiting it
 // hangs forever with the UI showing nothing.
 const SESSION_TIMEOUT_MS = 8_000
 
@@ -20,11 +21,16 @@ const SESSION_TIMEOUT_MS = 8_000
 // error, so an evidence submit never settles and never reaches the backend.
 const REQUEST_TIMEOUT_MS = 12_000
 
+// Codes the backend sends that the shared driver-substitution contract does not list. PHASE_OVERRIDDEN
+// (a driver submission to a phase dispatch already overrode) lives here, not in `@shared`, because
+// it is a phase-ledger answer rather than part of the substitution contract.
+export type DriverConflictCode = SubstitutionErrorCode | 'PHASE_OVERRIDDEN'
+
 // The coded part of a domain-conflict `detail` object (driver substitution contract v1,
 // "Stable errors"). Kept separate from the message so a caller branches on the stable code,
 // never on wording the backend is free to change.
 export interface ApiErrorDetail {
-  code: SubstitutionErrorCode
+  code: DriverConflictCode
   requestId: string | null
   currentVersion: number | null
   evidenceId: string | null
@@ -45,7 +51,7 @@ export class ApiError extends Error {
     this.name = 'ApiError'
   }
 
-  get code(): SubstitutionErrorCode | undefined {
+  get code(): DriverConflictCode | undefined {
     return this.detail?.code
   }
 }
@@ -71,10 +77,6 @@ function retryAfterMilliseconds(res: Response): number | undefined {
 // the status code, because an ordinary expired token is also a 401 and needs the opposite
 // treatment (refresh and retry, don't sign out).
 export const SESSION_SUPERSEDED_MESSAGE = 'Signed in on another device.'
-
-// Read by the login screen to explain why the driver landed back there. sessionStorage,
-// not localStorage: it is a one-off explanation for this launch, not a durable fact.
-export const SIGNED_OUT_REASON_KEY = 'fp.signedOutReason'
 
 interface ParsedError {
   message: string
@@ -104,7 +106,7 @@ async function readError(res: Response): Promise<ParsedError> {
       detail: {
         // Not narrowed against the known list: a code this build doesn't know yet must
         // still reach the caller, which then treats it as an unrecognised conflict.
-        code: coded.code as SubstitutionErrorCode,
+        code: coded.code as DriverConflictCode,
         requestId: nullableString(coded.request_id),
         currentVersion: typeof coded.current_version === 'number' ? coded.current_version : null,
         evidenceId: nullableString(coded.evidence_id),
@@ -115,9 +117,7 @@ async function readError(res: Response): Promise<ParsedError> {
 }
 
 async function signOutSupersededDevice(): Promise<void> {
-  if (typeof window !== 'undefined') {
-    window.sessionStorage.setItem(SIGNED_OUT_REASON_KEY, SESSION_SUPERSEDED_MESSAGE)
-  }
+  if (typeof window !== 'undefined') rememberSignedOutReason(SESSION_SUPERSEDED_MESSAGE)
   try {
     await getSupabase().auth.signOut()
   } catch (err) {
@@ -145,10 +145,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 // Resolve the bearer token. Hot path: the in-memory cache (kept current by
 // onAuthStateChange), which avoids calling getSession() per request — that acquires
 // Supabase's auth lock and is what let a single wedged token refresh hang every
-// handshake submit. Cold start only: before the cache is seeded (the very first request
+// phase submit. Cold start only: before the cache is seeded (the very first request
 // after a hard page load), fall back to one bounded getSession() so the request still
 // carries a token. This fallback no longer runs on the hot path, so it can't stall a
-// driver mid-handshake.
+// driver mid-phase.
 async function resolveToken(): Promise<string | null> {
   const cached = getAccessToken()
   if (cached !== null) return cached
@@ -160,7 +160,7 @@ async function resolveToken(): Promise<string | null> {
   return session?.access_token ?? null
 }
 
-// Per-call override of the default request ceiling. Some endpoints (handshake
+// Per-call override of the default request ceiling. Some endpoints (phase
 // completes that anchor to Hedera server-side, multipart photo uploads on mobile
 // networks) legitimately take longer than the 12s default — callers that know this
 // pass a bigger budget rather than the wrapper guessing per-path.

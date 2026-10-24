@@ -29,6 +29,8 @@ produce the same arithmetic result.
 
 import logging
 import uuid
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -188,56 +190,23 @@ async def _load_trip_context(
     return trip, horse, expected_stop, expected_precinct
 
 
-@router.post(
-    "/move-truck",
-    response_model=MoveTruckResponse,
-    summary="Move the trip's tracker to a waypoint or a trip-stop-relative scenario (Pulsit mock state only)",
-)
-async def move_truck(
-    body: MoveTruckRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: UserRead = Depends(get_current_dispatcher),
-) -> MoveTruckResponse:
-    """Stage a tracker position, then report where the truck is and what the fence says.
+@dataclass(frozen=True)
+class _StageTarget:
+    """Where the tracker is staged, and what the panel calls it."""
 
-    Idempotent by construction: `stage_position` REPLACES the staged state for a device
-    rather than merging into it, so pressing the same button twice leaves Redis in the
-    identical state and returns the identical response. Re-pressing is how a presenter
-    recovers from a mis-click, so it must be boring.
+    latitude: Optional[Decimal]
+    longitude: Optional[Decimal]
+    waypoint_id: str
+    label: str
+    scenario_target: Optional[ScenarioTarget]
 
-    Nothing is committed. The session is used only for reads and never written to.
 
-    TWO INPUT MODES (FP-197), mutually exclusive by MoveTruckRequest's own
-    validator: `waypoint_id` (legacy, fixed Cape Town demo locations — unchanged
-    below) or `scenario` (+ `trip_stop_id`), which computes a position relative to
-    THIS trip's own stop via orchestration/dev_truck_service.py. Whichever mode ran,
-    the EXPECTED-stop verdict fields (`precinct_id`, `distance_metres`,
-    `geofence_confirmed`, ...) always describe the trip's current phase stop, exactly
-    as before this task — only the TARGET fields differ by mode.
-    """
-    waypoint: Optional[DemoWaypoint] = None
-    if body.waypoint_id is not None:
-        waypoint = get_waypoint(body.waypoint_id)
-        if waypoint is None:
-            raise HTTPException(
-                status_code=http_status.HTTP_404_NOT_FOUND,
-                detail=f"Unknown waypoint {body.waypoint_id!r}.",
-            )
-
-    client = get_pulsit_client(organization_id=current_user.organization_id)
-    if not isinstance(client, MockPulsitClient):
-        # Unreachable while the router's guard holds — the router is not registered
-        # unless PULSE_USE_MOCK is true. Kept because the guard is enforced at import
-        # time and the flag is mutable at runtime (tests do exactly that), and a
-        # silently-live client is the one failure this file must never have.
-        raise HTTPException(
-            status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
-        )
-
-    trip, horse, expected_stop, expected_precinct = await _load_trip_context(
-        db, trip_id=body.trip_id, organization_id=current_user.organization_id,
-    )
-
+async def _resolve_stage_target(
+    db: AsyncSession, *, body: MoveTruckRequest, waypoint: Optional[DemoWaypoint],
+) -> _StageTarget:
+    """The position to stage: the legacy fixed waypoint, or a scenario computed relative to one of
+    the trip's own stops (FP-197). 404 for a stop that is not the trip's, 409 for a stop whose
+    precinct has no geometry to compute from."""
     # ---- Resolve WHAT to stage: the legacy fixed waypoint, or a scenario computed
     # relative to one of this trip's own stops. MoveTruckRequest's model validator
     # guarantees exactly one of waypoint_id/scenario was supplied, so exactly one of
@@ -288,6 +257,66 @@ async def move_truck(
             if scenario_target is not None
             else dev_truck_service.SCENARIO_LABELS[scenario]
         )
+
+    return _StageTarget(
+        latitude=latitude, longitude=longitude, waypoint_id=waypoint_id, label=waypoint_label,
+        scenario_target=scenario_target,
+    )
+
+
+@router.post(
+    "/move-truck",
+    response_model=MoveTruckResponse,
+    summary="Move the trip's tracker to a waypoint or a trip-stop-relative scenario (Pulsit mock state only)",
+)
+async def move_truck(
+    body: MoveTruckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> MoveTruckResponse:
+    """Stage a tracker position, then report where the truck is and what the fence says.
+
+    Idempotent by construction: `stage_position` REPLACES the staged state for a device
+    rather than merging into it, so pressing the same button twice leaves Redis in the
+    identical state and returns the identical response. Re-pressing is how a presenter
+    recovers from a mis-click, so it must be boring.
+
+    Nothing is committed. The session is used only for reads and never written to.
+
+    TWO INPUT MODES (FP-197), mutually exclusive by MoveTruckRequest's own
+    validator: `waypoint_id` (legacy, fixed Cape Town demo locations — unchanged
+    below) or `scenario` (+ `trip_stop_id`), which computes a position relative to
+    THIS trip's own stop via orchestration/dev_truck_service.py. Whichever mode ran,
+    the EXPECTED-stop verdict fields (`precinct_id`, `distance_metres`,
+    `geofence_confirmed`, ...) always describe the trip's current phase stop, exactly
+    as before this task — only the TARGET fields differ by mode.
+    """
+    waypoint: Optional[DemoWaypoint] = None
+    if body.waypoint_id is not None:
+        waypoint = get_waypoint(body.waypoint_id)
+        if waypoint is None:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail=f"Unknown waypoint {body.waypoint_id!r}.",
+            )
+
+    client = get_pulsit_client(organization_id=current_user.organization_id)
+    if not isinstance(client, MockPulsitClient):
+        # Unreachable while the router's guard holds — the router is not registered
+        # unless PULSE_USE_MOCK is true. Kept because the guard is enforced at import
+        # time and the flag is mutable at runtime (tests do exactly that), and a
+        # silently-live client is the one failure this file must never have.
+        raise HTTPException(
+            status_code=http_status.HTTP_409_CONFLICT, detail=_MOCK_REQUIRED_DETAIL,
+        )
+
+    trip, horse, expected_stop, expected_precinct = await _load_trip_context(
+        db, trip_id=body.trip_id, organization_id=current_user.organization_id,
+    )
+
+    target = await _resolve_stage_target(db, body=body, waypoint=waypoint)
+    latitude, longitude = target.latitude, target.longitude
+    waypoint_id, waypoint_label, scenario_target = target.waypoint_id, target.label, target.scenario_target
 
     # ---- The only write this endpoint performs, and it is to the mock. ----
     try:
@@ -357,3 +386,4 @@ async def move_truck(
         expected_trip_stop_id=expected_stop.id,
         expected_precinct_name=expected_precinct.name,
     )
+

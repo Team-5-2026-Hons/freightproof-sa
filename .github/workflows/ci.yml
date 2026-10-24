@@ -295,6 +295,8 @@ jobs:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
           NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          # Builds the real-backend app, the one a release ships.
+          NEXT_PUBLIC_DEMO_MODE: "false"
         run: npm run build
 
       # Report-only for now — see the matching pip-audit step in the backend job for why.
@@ -351,6 +353,61 @@ jobs:
       # Report-only for now — see the matching pip-audit step in the backend job for why.
       - name: Dependency vulnerability scan — npm audit (report only)
         working-directory: frontend/receiver
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------------
+  # Client portal. Added for the same reason the receiver job was: it had NO CI
+  # coverage at all, despite being the surface an insurer, a loss adjuster or a
+  # claimant opens from a share link in an issued PDF — people outside the
+  # organisation, on their own devices. It also renders audit packs by capability
+  # token (/p/<token>) and seal checks (/v/<pack id>), so a break here is a break
+  # in how the evidence is read.
+  # ---------------------------------------------------------------------------
+  client-portal:
+    name: Client portal — lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/client-portal/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend/client-portal
+        run: npm ci
+
+      - name: Lint — ESLint
+        working-directory: frontend/client-portal
+        run: npm run lint
+
+      - name: Type-check — tsc
+        working-directory: frontend/client-portal
+        run: npm run type-check
+
+      - name: Test — vitest
+        working-directory: frontend/client-portal
+        run: npm test
+
+      # Same deliberately unreachable origin as the receiver job: this build must not
+      # depend on a real backend, and a value that silently worked would hide a missing
+      # env var. NEXT_PUBLIC_TILE_URL and NEXT_PUBLIC_HCS_TOPIC_ID are optional and
+      # default at runtime, so they are left unset here on purpose.
+      - name: Build — Next.js production bundle
+        working-directory: frontend/client-portal
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+        run: npm run build
+
+      # Report-only for now — see the matching pip-audit step in the backend job for why.
+      - name: Dependency vulnerability scan — npm audit (report only)
+        working-directory: frontend/client-portal
         continue-on-error: true
         run: npm audit --audit-level=high
 

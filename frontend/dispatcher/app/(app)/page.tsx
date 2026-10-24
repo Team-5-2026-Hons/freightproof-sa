@@ -1,108 +1,26 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
-import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
 import { Ic }             from '@/components/ui/Ic'
-import { EmptyState }     from '@/components/ui/EmptyState'
-import { Table }          from '@/components/ui/Table'
-import { SearchField }    from '@/components/ui/SearchField'
-import { ListToolbar }    from '@/components/ui/ListToolbar'
-import { buildTripColumns, tripRowClassName } from '@/components/trips/tripColumns'
-import { useTrips }       from '@/lib/hooks/useTrips'
-import { putTripSeeds }   from '@/lib/trips/tripSeed'
-import { matchesTripSearch } from '@/lib/trips/search'
-import { defaultTripSortDirection, sortTrips, TRIP_SORT_KEYS, type TripSort } from '@/lib/trips/sort'
-import { useTableSort } from '@/lib/hooks/useTableSort'
+import { DashboardExceptionsPanel } from '@/components/dashboard/DashboardExceptionsPanel'
+import { DashboardIncidentsPanel } from '@/components/dashboard/DashboardIncidentsPanel'
+import { DashboardTripsPanel } from '@/components/dashboard/DashboardTripsPanel'
 import { useAuth }        from '@/lib/hooks/useAuth'
 import { useNow }         from '@/lib/hooks/useNow'
-import { usePrecincts }   from '@/lib/hooks/usePrecincts'
-import { useToast }       from '@/lib/hooks/useToast'
 import { ROUTES }         from '@/lib/constants/routes'
-import { COPY }           from '@shared/lib/constants/copy'
 import { fmtSastDateParts } from '@shared/lib/utils/datetime'
-import type { TripStatus, TripSummary } from '@shared/lib/types/trip'
 
-// Coarse: `active` is every trip between creation and
-// closure. The old list enumerated six per-step statuses from the pre-phase model
-// that no longer exist, so every advanced trip silently disappeared from this dashboard.
-// `exception_hold` currently matches nothing — no backend path sets it (see
-// orchestration/phase_service.py's _is_resolved). Kept so a held trip would appear
-// here by default if a manual dispatcher hold lands, rather than vanishing from the
-// dashboard the way the pre-phase statuses did.
-const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
-
-// Names the stored column widths; the Dashboard's must not share History's.
-const DASHBOARD_TABLE_ID = 'dashboard'
 // A control-room dashboard can stay open overnight; a minute is fine-grained enough for the date to
 // turn over at SAST midnight without a new trip event to re-render it.
 const CLOCK_TICK_MS = 60_000
-const ATTENTION_SORT: TripSort = { key: 'exceptions', dir: defaultTripSortDirection('exceptions') }
-const CREATED_DATE_COLUMN = { label: 'Created', pick: (trip: TripSummary): string => trip.created_at }
+const TRIPS_PANEL_MIN_HEIGHT = 'min-h-[16rem]'
 
-export default function ActiveTripsPage() {
+export default function DashboardPage() {
   const router = useRouter()
   const { user } = useAuth()
   const now = useNow(CLOCK_TICK_MS)
-  const { notify } = useToast()
-  const [search, setSearch] = useState('')
-  // Attention first by default: this is a monitoring screen, so a trip that has just raised a
-  // critical must surface without anyone clicking a header, even though that means a live event can
-  // move rows. A header click still takes over, and clicking Exceptions returns to attention order.
-  // Local state, because this page has no URL state to join.
-  const { sort, tableSort, onSort } = useTableSort({
-    keys: TRIP_SORT_KEYS,
-    firstDir: defaultTripSortDirection,
-    initial: ATTENTION_SORT,
-  })
-
-  // Single fetch for all trips — active and closed are derived client-side
-  const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
-  // Hand what this list already knows to the detail page, so opening a row paints its
-  // header immediately instead of waiting on the full record.
-  useEffect(() => { putTripSeeds(allFetchedTrips) }, [allFetchedTrips])
-  const { precincts, error: precinctsError } = usePrecincts()
-
-  useEffect(() => {
-    if (tripsError) {
-      notify({ kind: 'error', title: 'Failed to load trips', body: tripsError })
-    }
-  }, [tripsError, notify])
-
-  // Without this the failure is invisible: rows fall back to an em-dash, which is
-  // indistinguishable from a trip that has no origin.
-  useEffect(() => {
-    if (precinctsError) {
-      notify({
-        kind: 'error',
-        title: 'Failed to load precincts',
-        body: `${precinctsError} Origin and destination names may be missing.`,
-      })
-    }
-  }, [precinctsError, notify])
-
-  const allTrips = useMemo(
-    () => allFetchedTrips.filter(t => ACTIVE_STATUSES.includes(t.status)),
-    [allFetchedTrips],
-  )
-
-  const filteredTrips = useMemo(() => {
-    const matching = allTrips.filter(t => matchesTripSearch(t, search))
-    return sortTrips(matching, sort, precincts)
-  }, [allTrips, search, sort, precincts])
-
-  // Built per render: route names depend on the loaded precincts.
-  const columns = useMemo(
-    () => buildTripColumns<TripSummary>({ precincts, date: CREATED_DATE_COLUMN, showProgress: true, sortable: true }),
-    [precincts],
-  )
-
-  // Skeleton rows only on the first load: a live refetch swaps rows in place.
-  const initialLoad = tripsLoading && allFetchedTrips.length === 0
-  const loadFailed = !!tripsError && allFetchedTrips.length === 0
 
   // The dispatcher's own organisation, so no operator's dashboard carries another's name. The
   // separator goes with the name while /auth/me has not supplied one.
@@ -114,7 +32,7 @@ export default function ActiveTripsPage() {
       <TopBar
         title="Dispatcher Dashboard"
         badge={user?.role === 'admin_dispatcher' ? (
-          <span className="inline-flex items-center gap-[4px] rounded-[var(--r-sm)] bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
+          <span className="inline-flex items-center gap-[4px] rounded-sm bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
             <Ic n="shield" s={11} className="text-on-surf-v shrink-0" />
             Admin
           </span>
@@ -130,59 +48,20 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* No stat strip: fleet figures live on the Analytics page. */}
+      {/* Only this area scrolls, so the top bar stays put. On a tall screen nothing scrolls at all. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+        {/* No stat strip: fleet figures live on the Analytics page. */}
+        {/* Takes the height the two panels below leave, but never less than the minimum, so a short
+            screen scrolls the page instead of squeezing the table to nothing. */}
+        <div className={`flex flex-1 flex-col ${TRIPS_PANEL_MIN_HEIGHT}`}>
+          <DashboardTripsPanel />
+        </div>
 
-      <ListToolbar>
-        <SearchField value={search} onChange={setSearch} placeholder="Search trip ID, driver, or manifest…" ariaLabel="Search trip ID, driver, or manifest" />
-      </ListToolbar>
-
-      {/* Trip list card */}
-      <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
-        <SecHead title="Active Trips" />
-
-        {loadFailed ? (
-          <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
-            <AlertCircle className="w-10 h-10 text-error" />
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-bold text-surface-on">Failed to load trips</p>
-              <p className="text-xs text-surface-on-variant">{tripsError}</p>
-            </div>
-            <Button size="sm" variant="ghost" onClick={refetchTrips}>
-              Try again
-            </Button>
-          </div>
-        ) : !initialLoad && allTrips.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
-              title={COPY.emptyState.activeTrips.title}
-              body={COPY.emptyState.activeTrips.body}
-            />
-          </div>
-        ) : !initialLoad && filteredTrips.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              icon={<Ic n="search" s={32} className="text-on-surf-v" />}
-              title={COPY.emptyState.noResults.title}
-              body={COPY.emptyState.noResults.body}
-            />
-          </div>
-        ) : (
-          <Table<TripSummary>
-            tableId={DASHBOARD_TABLE_ID}
-            caption="Active trips"
-            isLoading={initialLoad}
-            loadingLabel="Loading active trips"
-            columns={columns}
-            rows={filteredTrips}
-            getRowKey={trip => trip.id}
-            rowClassName={tripRowClassName}
-            sort={tableSort}
-            onSort={onSort}
-            density="compact"
-            className="min-h-0 flex-1"
-          />
-        )}
+        {/* Side by side from xl: below that each panel would be too narrow for its columns. */}
+        <div className="grid shrink-0 grid-cols-1 gap-6 xl:grid-cols-2">
+          <DashboardExceptionsPanel />
+          <DashboardIncidentsPanel />
+        </div>
       </div>
     </div>
   )

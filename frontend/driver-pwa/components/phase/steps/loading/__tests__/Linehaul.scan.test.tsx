@@ -24,13 +24,19 @@ vi.mock('@/lib/hooks/useArtifactUpload', () => ({ useArtifactUpload: () => ({ up
 // CameraCapture stubbed as in the seal suites, but it honours nativeSource so the
 // scanner wiring is what the test exercises.
 vi.mock('@/components/phase/CameraCapture', () => ({
-  CameraCapture: ({ label, onCapture, nativeSource }: {
+  CameraCapture: ({ label, onCapture, nativeSource, busy, busyLabel }: {
     label: string; onCapture: (d: string) => void; nativeSource?: () => Promise<string | null>
+    busy?: boolean; busyLabel?: string
   }) => (
-    <button onClick={() => {
-      void (nativeSource ? nativeSource() : Promise.resolve(`data:image/jpeg;base64,${label}`))
-        .then((d) => { if (d !== null) onCapture(d) })
-    }}>{label}</button>
+    <>
+      <button onClick={() => {
+        void (nativeSource ? nativeSource() : Promise.resolve(`data:image/jpeg;base64,${label}`))
+          .then((d) => { if (d !== null) onCapture(d) })
+      }}>{label}</button>
+      {/* The real control lays a veil over the preview; the stub only has to prove the
+          step asks for one, and with what wording. */}
+      {busy === true && <span data-testid="capture-busy">{busyLabel}</span>}
+    </>
   ),
 }))
 
@@ -135,6 +141,21 @@ describe('Linehaul — scan and PDF', () => {
     expect(swipe()).toHaveTextContent('Preparing the PDF…')
     await act(async () => { build.resolve('data:application/pdf;base64,PDF') })
     expect(swipe()).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('test_marks_the_scan_itself_busy_while_the_pdf_builds', async () => {
+    // Tim, 21 Oct: the sheet looked finished the instant the scanner closed, while the
+    // build ran on — the only sign of the wait was the swipe's label, which a driver
+    // looking at their scan never reads.
+    const build = deferred<string>()
+    mockBuildPdf.mockReturnValue(build.promise)
+    render(<LiveDraft onUpdate={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Linehaul sheet' }))
+
+    await waitFor(() => expect(screen.getByTestId('capture-busy')).toHaveTextContent('Preparing the PDF'))
+    await act(async () => { build.resolve('data:application/pdf;base64,PDF') })
+    expect(screen.queryByTestId('capture-busy')).toBeNull()
   })
 
   it('releases the swipe when the PDF build fails', async () => {

@@ -1,24 +1,30 @@
-// Presentation helpers for trips on the overhaul screens (Home, Trips, trip page). Pure
+// Presentation helpers for trips on Home, Trips and the trip page. Pure
 // functions over the API shapes, so every screen words a trip the same way.
 
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
+import { splitPrecinctName } from '@shared/lib/utils/precinct-name'
+import { precinctName } from '@/lib/utils/precinct-name'
 
 const MS_PER_MINUTE = 60_000
 const MINUTES_PER_HOUR = 60
 
-// Precinct names arrive as "FedEx JHB — Linbro Park": the place a driver says, then the
-// area. Rows and titles lead with the place and put the area underneath.
-const PLACE_SEPARATOR = ' — '
+// The server resolves precinct names; demo rows and a deleted precinct fall back to the
+// local lookup, then to a plain label — never a truncated UUID.
+export function placeOf(name: string | null, id: string | null): string {
+  if (name !== null) return name
+  return id !== null ? precinctName(id) : 'Unknown'
+}
 
 export interface PlaceParts {
   name: string
   detail: string | null
 }
 
+// Precinct names arrive as "FedEx JHB · Linbro Park": the place a driver says, then the
+// area. Rows and titles lead with the place and put the area underneath.
 export function placeParts(fullName: string): PlaceParts {
-  const at = fullName.indexOf(PLACE_SEPARATOR)
-  if (at < 0) return { name: fullName, detail: null }
-  return { name: fullName.slice(0, at), detail: fullName.slice(at + PLACE_SEPARATOR.length) }
+  const { place, area } = splitPrecinctName(fullName)
+  return { name: place, detail: area }
 }
 
 /** "10 h 45" between two instants; null unless both are known. */
@@ -93,8 +99,7 @@ export interface MonthGroup {
 }
 
 /**
- * Consecutive trips grouped under "May 2026" headings for the full Past list (overhaul
- * 3.5). Keeps the caller's order — the list is already most-recent-first — so this only
+ * Consecutive trips grouped under "May 2026" headings for the full Past list. Keeps the caller's order — the list is already most-recent-first — so this only
  * inserts headings; trips with no departure at all land in a final "Unscheduled" group.
  */
 export function groupByMonth(trips: readonly DriverTripSummary[]): MonthGroup[] {

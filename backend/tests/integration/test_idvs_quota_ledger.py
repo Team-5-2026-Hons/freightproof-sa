@@ -11,7 +11,8 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.models.receiver_verification import IdvsQuotaLedger
-from app.orchestration.handover.receiver_verification import PROVIDER_DIDIT, consume_quota_slot
+from app.integrations.idvs import PROVIDER_DIDIT
+from app.orchestration.handover.quota import consume_quota_slot
 
 
 async def test_first_call_creates_the_period_row_and_consumes_one(db_session):

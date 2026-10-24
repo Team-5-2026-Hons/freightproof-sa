@@ -82,7 +82,7 @@ class DriverCheckpointCreateBody(BaseModel):
     driver_captured_at: Optional[datetime] = None
     # Mirrors _PhaseCompleteBase.driver_accuracy_metres exactly — the
     # phone's own claimed accuracy at driver_phone_lat/lng, feeding proximity_
-    # service.evaluate_proximity via evidence.action_location.build_checkpoint_
+    # service.evaluate_proximity via evidence.location_assessment.build_checkpoint_
     # assessment. Not a DB column; lives only inside the checkpoint's own
     # action_location_assessment JSONB snapshot.
     driver_accuracy_metres: Optional[float] = Field(default=None, ge=0)
@@ -133,7 +133,7 @@ class CheckpointRead(CheckpointBase):
     id: UUID
     merkle_batch_id: Optional[UUID] = None
     # The versioned proximity snapshot for this checkpoint's own handshake
-    # (evidence.action_location.build_checkpoint_assessment). Never a
+    # (evidence.location_assessment.build_checkpoint_assessment). Never a
     # precinct check — a checkpoint happens on the road, so those fields are always
     # None here. Validated through ActionLocationAssessment, never a raw dict.
     action_location_assessment: Optional[ActionLocationAssessment] = None

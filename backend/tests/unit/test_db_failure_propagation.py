@@ -3,7 +3,7 @@
 import asyncio
 from decimal import Decimal
 from typing import NoReturn
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -19,7 +19,7 @@ from app.db.models.trips import Trip
 from app.integrations.idvs import IdvsDecisionStatus
 from app.orchestration.evidence import corroboration
 from app.orchestration.exceptions.creation import _driver_report_assessment
-from app.orchestration.handover import receiver_verification
+from app.orchestration.handover import verdict as verdict_module
 from app.orchestration.phases import completion, findings
 from app.orchestration.trips.creation import _sync_cargo_entry
 
@@ -73,11 +73,13 @@ async def test_receiver_finding_propagates_database_availability_error(
 ) -> None:
     failure = DatabaseUnavailableError("command_timeout", "command")
     db = AsyncMock(spec=AsyncSession)
-    monkeypatch.setattr(receiver_verification, "register_exception", AsyncMock(side_effect=failure))
-    verdict = receiver_verification.resolve_verdict(status=IdvsDecisionStatus.DECLINED, identity_match=False)
+    # The idempotence lookup runs first: report "nothing filed yet" so the write is attempted.
+    db.execute.return_value = MagicMock(first=MagicMock(return_value=None))
+    monkeypatch.setattr(verdict_module, "register_exception", AsyncMock(side_effect=failure))
+    verdict = verdict_module.resolve_verdict(status=IdvsDecisionStatus.DECLINED, identity_match=False)
 
     with pytest.raises(DatabaseUnavailableError) as caught:
-        await receiver_verification.raise_verification_exception(
+        await verdict_module.raise_verification_exception(
             db, trip=trip, phase_event_id=uuid4(), trip_stop_id=None, verdict=verdict,
         )
 
@@ -93,7 +95,7 @@ async def test_phase_assessment_propagates_database_outage_but_keeps_optional_fa
     db = AsyncMock(spec=AsyncSession)
     monkeypatch.setattr(completion, "_raise_position_disagreement_if_unrecorded", AsyncMock())
     monkeypatch.setattr(completion, "_raise_trailer_decoupling_if_unrecorded", AsyncMock())
-    monkeypatch.setattr(completion.action_location, "build_phase_assessment", AsyncMock(side_effect=failure))
+    monkeypatch.setattr(completion.location_assessment, "build_phase_assessment", AsyncMock(side_effect=failure))
     followup = AsyncMock()
     monkeypatch.setattr(completion, "recompute_position", followup)
 
@@ -124,10 +126,15 @@ async def test_cargo_failure_keeps_its_error_mapping_when_rollback_fails(primary
 
     expected = PPSyncError if isinstance(primary, ValueError) else type(primary)
     with pytest.raises(expected) as caught:
-        await _sync_cargo_entry(db, "test-waybill", failed_sync())
+        await _sync_cargo_entry(db, "test-waybill", failed_sync(), uuid4())
 
     if isinstance(primary, ValueError):
         assert caught.value.__cause__ is primary
+    elif isinstance(primary, ConsignmentAlreadyAssignedError):
+        # The holder can't be checked without a working session, so it is withheld.
+        assert caught.value.__cause__ is primary
+        assert isinstance(caught.value, ConsignmentAlreadyAssignedError)
+        assert caught.value.trip_reference is None
     else:
         assert caught.value is primary
     db.rollback.assert_awaited_once()

@@ -33,7 +33,7 @@ vi.mock('@/lib/api/trips', () => ({
 const SELECTED_TRIP_KEY = 'fp.selectedTripId'
 
 const driver = mockDrivers[0]
-const authValue: AuthState = { user: driver, isLoading: false, requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
+const authValue: AuthState = { user: driver, isLoading: false, connectionFault: false, retryProfile: vi.fn(), requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
 
 // Two distinct real-shaped trips: the one handed over, and whatever the server says is next.
 const [handedOverTrip, nextTrip] = mockTrips.filter((t) => !['closed', 'cancelled'].includes(t.status))

@@ -213,7 +213,7 @@ export function VerifyButton({
 
   if (ui.kind === 'verifying') {
     return (
-      <div ref={pendingRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 flex items-center gap-[6px] rounded-[var(--r-md)] bg-surf-high px-[8px] py-[6px] text-[11px] font-[500] text-on-surf-v ${className}`}>
+      <div ref={pendingRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 flex items-center gap-[6px] rounded-md bg-surf-high px-[8px] py-[6px] text-[11px] font-[500] text-on-surf-v ${className}`}>
         <SpinnerRing />
         Checking blockchain integrity…
       </div>
@@ -228,7 +228,7 @@ export function VerifyButton({
       const isEvidenceEvent = subjectType === 'evidence_event'
       return (
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 ${className}`}>
-          <div className="rounded-[var(--r-md)] bg-ok-c px-[10px] py-[8px]">
+          <div className="rounded-md bg-ok-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-ok-c">
               <Ic n="shield" s={13} className="text-ok" />
               {subjectType === 'trip' ? 'Committed trip details match' : isPhaseReceipt ? 'Phase receipt matches' : isEvidenceEvent ? 'Recorded action matches its anchor' : 'Selected record matches'}
@@ -257,7 +257,7 @@ export function VerifyButton({
           <>
             {showReport && <MismatchReport result={r} onClose={() => setShowReport(false)} />}
           </>
-          <div className="rounded-[var(--r-md)] bg-err-c px-[10px] py-[8px]">
+          <div className="rounded-md bg-err-c px-[10px] py-[8px]">
             <div className="flex items-center gap-[6px] text-[12px] font-[700] text-on-err-c">
               <Ic n="warn" s={13} className="text-err" />
               Mismatch Detected
@@ -271,7 +271,7 @@ export function VerifyButton({
               <button
                 type="button"
                 onClick={openMismatchReport}
-                className="mt-[6px] flex items-center gap-[5px] rounded-[var(--r-sm)] border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
+                className="mt-[6px] flex items-center gap-[5px] rounded-sm border border-err/30 bg-err/10 px-[8px] py-[4px] text-[10px] font-[600] text-on-err-c transition-colors hover:bg-err/20"
               >
                 <Ic n="file" s={10} className="text-on-err-c" />
                 View Mismatch Report
@@ -286,7 +286,7 @@ export function VerifyButton({
     if (r.status === 'error') {
       return (
         <div ref={resultRef} tabIndex={-1} role="status" aria-live="polite" aria-label={statusAriaLabel} className={`mt-2 ${className}`}>
-          <div className="flex items-center gap-[6px] rounded-[var(--r-md)] bg-warn-c px-[10px] py-[7px]">
+          <div className="flex items-center gap-[6px] rounded-md bg-warn-c px-[10px] py-[7px]">
             <Ic n="warn" s={12} className="text-warn" />
             <div>
               <div className="text-[11px] font-[700] text-on-warn-c">Verification could not be completed</div>
@@ -316,7 +316,7 @@ export function VerifyButton({
       type="button"
       onClick={() => void verify(true)}
       aria-label={ariaLabel}
-      className={`mt-2 flex w-full items-center justify-center gap-[5px] rounded-[var(--r-md)] border border-chain/30 bg-chain/10 px-[10px] py-[5px] text-[11px] font-[600] text-chain transition-all duration-[120ms] hover:bg-chain/15 active:scale-[0.97] ${className}`}
+      className={`mt-2 flex w-full items-center justify-center gap-[5px] rounded-md border border-chain/30 bg-chain/10 px-[10px] py-[5px] text-[11px] font-[600] text-chain transition-all duration-[120ms] hover:bg-chain/15 active:scale-[0.97] ${className}`}
     >
       <Ic n="hex" s={11} className="text-chain" />
       Verify integrity

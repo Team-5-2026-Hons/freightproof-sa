@@ -2,19 +2,11 @@
 
 import { Check } from 'lucide-react'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
-import { precinctName } from '@/lib/utils/precinct-name'
 import { formatTime } from '@/lib/utils/format-time'
-import { dayTile, durationLabel, pastOutcome, placeParts } from '@/lib/utils/trip-display'
+import { dayTile, durationLabel, pastOutcome, placeOf, placeParts } from '@/lib/utils/trip-display'
 import { cn } from '@/lib/utils'
 
 export type TripRowKind = 'upcoming' | 'past'
-
-// The server resolves precinct names; demo rows and a deleted precinct fall back to the
-// local lookup, then to a plain label — never a truncated UUID.
-function placeOf(name: string | null, id: string | null): string {
-  if (name !== null) return name
-  return id !== null ? precinctName(id) : 'Unknown'
-}
 
 const OUTCOME_CLASS = {
   success: 'text-success',
@@ -29,7 +21,7 @@ interface TripRowProps {
 }
 
 /**
- * One trip as a row (overhaul 3.1/3.5/3.6): a date tile, the route as one fact, then
+ * One trip as a row: a date tile, the route as one fact, then
  * either when it leaves (upcoming) or how it ended (past). One control for the whole row.
  */
 export function TripRow({ trip, kind, onSelect }: TripRowProps) {

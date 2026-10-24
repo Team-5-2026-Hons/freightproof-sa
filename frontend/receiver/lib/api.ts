@@ -1,9 +1,5 @@
-// frontend/receiver/lib/api.ts
-//
-// This app talks to exactly two endpoints and holds no session. There is no bearer token
-// to attach and no refresh path to get wrong — the capability token in the URL is half
-// the authorisation and an HttpOnly cookie is the other half, which is why this file is
-// forty lines where the driver app's client is two hundred.
+// No session or bearer token: the capability token in the URL and an HttpOnly binding
+// cookie together authorise every call.
 //
 // `credentials: 'include'` on BOTH calls is load-bearing, not boilerplate. The GET is how
 // the binding cookie is received; the POST is how it is presented. Drop it from either

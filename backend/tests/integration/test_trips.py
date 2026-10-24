@@ -73,7 +73,10 @@ async def seed_data(db_session: AsyncSession):
     db_session.add(user)
     await db_session.flush()
 
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Cape Town Depot",
         principal_organization_id=client_org.id,
@@ -81,6 +84,7 @@ async def seed_data(db_session: AsyncSession):
         longitude="18.4241",
     )
     destination = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Johannesburg Depot",
         principal_organization_id=client_org.id,

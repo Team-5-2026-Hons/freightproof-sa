@@ -49,6 +49,7 @@ from app.integrations.ai_chat.provider import (
 from app.orchestration.analytics_chat import budget
 from app.orchestration.analytics_chat.basis import basis_for
 from app.orchestration.analytics_chat.number_check import unmatched_numbers
+from app.orchestration.analytics_chat.page_view import page_view_hint
 from app.orchestration.analytics_chat.period_hints import hint_for
 from app.orchestration.analytics_chat.periods import PeriodPreset
 from app.orchestration.analytics_chat.prompt import (
@@ -80,7 +81,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = tuple(
     ToolSpec(name=tool.name, description=tool.description, input_schema=tool.input_schema()) for tool in TOOLS
 )
 
-AnswerKind = Literal["answer", "follow_up", "declined"]
+AnswerKind = Literal["answer", "follow_up", "explanation", "declined"]
 
 
 # AI_CHAT_PROVIDER → the setting holding that provider's key.
@@ -148,6 +149,8 @@ class _Question:
     text: str
     # The periods the question names, read by code and passed to the model (analysis §10.3).
     period_hint: str | None
+    # What the dispatcher has on screen (page_view.py), or None when the panel didn't say.
+    page_hint: str | None = None
 
 
 @dataclass
@@ -180,7 +183,7 @@ async def _call_model(question: _Question, progress: _Progress) -> ModelReply:
     await budget.ensure_available(budget_usd=settings.AI_CHAT_MONTHLY_BUDGET_USD, now=question.now)
     reply = await question.provider.reply(
         system=SYSTEM_PROMPT,
-        context=context_for(today_sast(question.now), question.period_hint),
+        context=context_for(today_sast(question.now), question.period_hint, question.page_hint),
         messages=progress.messages,
         tools=TOOL_SPECS,
     )
@@ -244,20 +247,30 @@ def _check_numbers(question: _Question, progress: _Progress, request: ChatReques
 def _kind(progress: _Progress, text: str) -> AnswerKind:
     if progress.basis:
         return "answer"
-    return "follow_up" if text.rstrip().endswith("?") else "declined"
+    if text.rstrip().endswith("?"):
+        return "follow_up"
+    # Explained from the page guide and nothing else (B45): no figures, but not a refusal either.
+    return "explanation" if _EXPLAIN_TOOL in progress.tools_used else "declined"
 
+
+# The page-guide tool: it explains the page and returns no fleet figures (B45).
+_EXPLAIN_TOOL = "explain"
 
 # Preset names: a reply that used no tool may still mention "the last 12 weeks" or "the last 3 months".
 _PERIOD_WORDS = " ".join(preset.value for preset in PeriodPreset)
 
 
 def _unsourced_figures(question: _Question, progress: _Progress, text: str) -> list[str]:
-    """Numbers in a reply that ran no tool, other than ones from the question or a period name. Any
-    such number was made up: no tool gave it (eval run 4, q16: "Total trips: 2,752…")."""
+    """Numbers in a reply that ran no figure tool, other than ones from the question, a period name or the page
+    guide. Any such number was made up: no tool gave it (eval run 4, q16: "Total trips: 2,752…")."""
     if progress.basis:
         return []
-    # The period hint counts too: a question asked back for "past month" offers "the last 30 days".
-    return unmatched_numbers(text, [question.text, _PERIOD_WORDS, question.period_hint or ""])
+    # The period hint counts too: a question asked back for "past month" offers "the last 30 days". So does what the
+    # page guide returned: an explanation may quote a threshold or a cost rate (B45).
+    return unmatched_numbers(
+        text,
+        [question.text, _PERIOD_WORDS, question.period_hint or "", question.page_hint or "", *tool_texts(progress.messages)],
+    )
 
 
 def _final(question: _Question, progress: _Progress, reply: ModelReply) -> tuple[str, AnswerKind] | None:
@@ -330,6 +343,7 @@ async def ask(
         db=db, organization_id=user.organization_id, provider=chosen,
         price=price_for(chosen.model), now=moment, text=request.question,
         period_hint=hint_for(request.question, today_sast(moment)),
+        page_hint=None if request.page is None else page_view_hint(request.page, today_sast(moment)),
     )
     progress = _Progress(messages=_opening_messages(request))
     try:

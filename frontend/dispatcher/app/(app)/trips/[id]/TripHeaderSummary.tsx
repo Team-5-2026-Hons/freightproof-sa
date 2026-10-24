@@ -7,6 +7,7 @@ import { fmtFull } from '@shared/lib/utils/datetime'
 import type { Trip } from '@shared/lib/types/trip'
 import type { Precinct } from '@shared/lib/types/precinct'
 import { manifestLabel } from '@/lib/format/manifest'
+import { splitPrecinctName } from '@shared/lib/utils/precinct-name'
 
 const OPEN_DELAY_MS = 150
 const CLOSE_DELAY_MS = 180
@@ -45,7 +46,7 @@ function fullPrecinctLabel(precinct: Precinct | undefined): string {
 }
 
 function shortPrecinctLabel(precinct: Precinct | undefined): string {
-  return precinct?.name.split('—')[0]?.trim() ?? '—'
+  return precinct ? splitPrecinctName(precinct.name).place.trim() : '—'
 }
 
 export function TripHeaderSummary({

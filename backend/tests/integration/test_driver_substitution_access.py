@@ -17,10 +17,12 @@ import pytest_asyncio
 from httpx import AsyncClient, Response
 from sqlalchemy import select
 
+from app.db.models.enums import PhaseStatus
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.session import get_db
 from app.main import app
+from app.orchestration.phases.override import override_phase
 from app.storage.supabase_storage import UploadResult
 from tests.integration._driver_substitution_world import (
     SubWorld, add_pending, build_world, complete_handover, driver_headers,
@@ -331,3 +333,29 @@ async def test_no_substitution_trip_keeps_its_legacy_replay_semantics(client: As
     different_key = await client.post(url, json=_activation_body(None), headers=driver_headers(world.a))
 
     assert (first.status_code, replay.status_code, different_key.status_code) == (200, 200, 200)
+
+
+# ── overridden phase after a handover ────────────────────────────────────────
+
+
+async def test_current_driver_capture_for_overridden_phase_after_handover_returns_phase_overridden(
+    client: AsyncClient, db_session,
+):
+    """After a handover the resolved-row guard runs before the phase gate. An overridden row must
+    still answer the coded PHASE_OVERRIDDEN, not "already completed by another submission": the
+    driver app's offline queue keeps the capture and keeps draining only on that code."""
+    world = await build_world(db_session)
+    await complete_handover(db_session, world, outgoing=world.a, incoming=world.b)
+    await override_phase(
+        db_session, trip_id=world.trip_id, phase_event_id=world.activation_id,
+        operator_organization_id=world.org_id, user_id=world.user_id, note="Driver phone lost",
+    )
+
+    resp = await _phase_complete(client, world, world.b, 1)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "PHASE_OVERRIDDEN"
+    event = (await db_session.execute(select(PhaseEvent).where(PhaseEvent.id == world.activation_id))).scalar_one()
+    await db_session.refresh(event)
+    assert event.status == PhaseStatus.OVERRIDDEN
+    assert event.performed_by_driver_id is None and event.custody_sequence is None

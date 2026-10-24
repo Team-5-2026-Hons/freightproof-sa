@@ -15,7 +15,7 @@ interface ReviewRowProps {
 }
 
 /**
- * One captured item on a review step (overhaul 5.3): an icon, the label over the value,
+ * One captured item on a review step: an icon, the label over the value,
  * and the way back to change it. Rows are separated by an inset hairline that starts
  * under the text, as in an iOS list.
  */

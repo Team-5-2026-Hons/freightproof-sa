@@ -29,7 +29,7 @@ export interface TripDetailViewProps {
   notice?: ReactNode
 }
 
-// What the start of a trip will ask for, in the driver's words (overhaul 3.3). Only the
+// What the start of a trip will ask for, in the driver's words. Only the
 // phases before the drive: everything after it happens at the destination, a day away.
 const WHAT_YOU_RECORD: Partial<Record<PhaseType, { title: string; detail: string }>> = {
   activation: { title: 'Start trip at the gate', detail: 'One swipe, location recorded' },
@@ -102,9 +102,9 @@ function routeStops(trip: Trip, places: { origin: PlaceParts; destination: Place
 }
 
 /**
- * One trip (overhaul 3.2–3.4). The status picks the variant: an assignment not yet
+ * One trip. The status picks the variant: an assignment not yet
  * started shows what it will ask for; a trip underway shows progress, then the route; a
- * finished one is a read-only record. The tab bar stays (decision D3).
+ * finished one is a read-only record. The tab bar stays.
  */
 export function TripDetailView({ trip, onBack, onInTransitHub, onSelectPhase, showAllPhases, notice }: TripDetailViewProps) {
   const [allSteps, setAllSteps] = useState(showAllPhases)
@@ -239,14 +239,14 @@ export function TripDetailView({ trip, onBack, onInTransitHub, onSelectPhase, sh
 
   const banner = onHold ? (
     <StatusBanner tone="attention" title="Trip on hold">
-      A critical exception was recorded. Follow your dispatcher’s instructions — nothing more can be recorded until the hold is cleared.
+      A critical exception was recorded. Follow your dispatcher’s instructions. Nothing more can be recorded until the hold is cleared.
     </StatusBanner>
   ) : driving ? (
     <StatusBanner tone="success" title="In transit">{`Swipe Arrive when you reach ${places.destination.name}.`}</StatusBanner>
   ) : current === null ? (
     <StatusBanner tone="success" title="All phases complete">Everything on this trip is recorded.</StatusBanner>
   ) : (current.blocked_on ?? null) !== null ? (
-    <StatusBanner tone="attention" title={`${PHASE_NAMES[current.phase_type]} — waiting on the warehouse`}>
+    <StatusBanner tone="attention" title={`${PHASE_NAMES[current.phase_type]}: waiting on the warehouse`}>
       It unlocks on its own when they finish.
     </StatusBanner>
   ) : (

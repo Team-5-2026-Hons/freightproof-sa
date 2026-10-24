@@ -36,6 +36,8 @@ function makeDriver(overrides: Partial<DriverMetrics> = {}): DriverMetrics {
     loading_dwell_events_count: 11,
     departure_dwell_minutes_sum: 220,
     departure_dwell_events_count: 11,
+    arrival_dwell_minutes_sum: 150,
+    arrival_dwell_events_count: 10,
     unloading_dwell_minutes_sum: 495,
     unloading_dwell_events_count: 11,
     confirmation_dwell_minutes_sum: 330,
@@ -48,6 +50,7 @@ function makeDriver(overrides: Partial<DriverMetrics> = {}): DriverMetrics {
     activation_dwell_minutes_avg: 12,
     loading_dwell_minutes_avg: 65,
     departure_dwell_minutes_avg: 20,
+    arrival_dwell_minutes_avg: 15,
     unloading_dwell_minutes_avg: 45,
     confirmation_dwell_minutes_avg: 30,
     ...overrides,
@@ -80,8 +83,15 @@ function hasSeverityDot(label: string): boolean {
   return figureFor(label).querySelector('[aria-hidden="true"]') !== null
 }
 
+
+/** The source sits behind the frame's ⓘ, so open it before reading the line. */
+function sourceText(line: RegExp): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'About these figures' }))
+  return screen.getByText(line)
+}
+
 describe('DriverAnalyticsSummary — loading and errors', () => {
-  it('shows a spinner while loading', () => {
+  it('shows a skeleton while loading', () => {
     renderSummary({ rows: [], isLoading: true })
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
@@ -159,6 +169,7 @@ describe('DriverAnalyticsSummary — populated', () => {
     expect(valueOf('Activation')).toBe('12 m')
     expect(valueOf('Loading')).toBe('1 h 5 m')
     expect(valueOf('Departure')).toBe('20 m')
+    expect(valueOf('Arrival')).toBe('15 m')
     expect(valueOf('Unloading')).toBe('45 m')
     expect(valueOf('Confirmation')).toBe('30 m')
   })
@@ -215,14 +226,14 @@ describe('DriverAnalyticsSummary — no closed trips in the range', () => {
     const line = /Closed trips this driver ran/
 
     renderSummary()
-    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(sourceText(line)).toBeInTheDocument()
     cleanup()
 
     renderSummary({ rows: [] })
-    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(sourceText(line)).toBeInTheDocument()
     cleanup()
 
     renderSummary({ error: 'Server unavailable' })
-    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(sourceText(line)).toBeInTheDocument()
   })
 })

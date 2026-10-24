@@ -315,7 +315,7 @@ function outcomeBanner(outcome: CaptureSendOutcome | null): { title: string; bod
   if (outcome === null) return null
   switch (outcome.kind) {
     case 'waiting':
-      return { title: 'Saved on this phone — not sent yet', body: 'It will be sent, unchanged, as soon as there is a connection.' }
+      return { title: 'Saved on this phone, not sent yet', body: 'It will be sent, unchanged, as soon as there is a connection.' }
     case 'version-changed':
     case 'not-pending':
     case 'rejected':
@@ -327,7 +327,7 @@ function outcomeBanner(outcome: CaptureSendOutcome | null): { title: string; bod
 }
 
 /**
- * FP-83 T2: this driver records their OWN handover (outgoing) or takeover (incoming) check —
+ * This driver records their OWN handover (outgoing) or takeover (incoming) check —
  * vehicles, seals, photos, a note — on their own device. Saved before it is sent; the server
  * decides whether custody moved. A pending answer is shown as saved-and-waiting with the real
  * reason, never as a failure, and a completed transfer is shown only after the server's state
@@ -356,8 +356,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
   const counterpartDeclaration = context.confirmations.find((confirmation) => confirmation.driver_id === counterpart.id) ?? null
   const result = capture?.result ?? null
   // An operation receipt acknowledges that capture; the fresh read owns current state.
-  const latest = context
-  const completed = latest.state === 'completed'
+  const completed = context.state === 'completed'
   const canConfirm = context.state === 'pending'
     && context.permitted_actions.includes(role === 'outgoing' ? 'confirm_outgoing' : 'confirm_incoming')
 
@@ -397,13 +396,13 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
       </section>
 
       <StatusBanner
-        tone={completed ? 'success' : latest.completion_blocked_by !== null ? 'attention' : 'neutral'}
-        title={substitutionStatusLine(latest, role)}
+        tone={completed ? 'success' : context.completion_blocked_by !== null ? 'attention' : 'neutral'}
+        title={substitutionStatusLine(context, role)}
         className="mx-4"
         live
       >
-        {latest.state === 'pending' && latest.completion_blocked_by !== null
-          ? `Your check is saved. ${blockerMessage(latest.completion_blocked_by)}`
+        {context.state === 'pending' && context.completion_blocked_by !== null
+          ? `Your check is saved. ${blockerMessage(context.completion_blocked_by)}`
           : completed
             ? role === 'outgoing'
               ? 'You are no longer the driver on this trip. Everything you recorded is kept in your record.'
@@ -441,7 +440,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
       {counterpartDeclaration !== null && (
         <div className="mx-4">
           <DeclarationSummary
-            title={`${counterpart.full_name}’s check — for comparison only`}
+            title={`${counterpart.full_name}’s check (for comparison only)`}
             declaration={counterpartDeclaration}
             vehicles={context.vehicles}
           />
@@ -456,7 +455,7 @@ export function DriverSubstitutionFlow({ tripId, requestId, actorId }: DriverSub
 
       {submitted === null && capture !== null && capture.status === 'sending' && (
         <div className="mx-4 flex flex-col gap-2">
-          <StatusBanner tone="neutral" title="Saved on this phone — not sent yet" live>
+          <StatusBanner tone="neutral" title="Saved on this phone, not sent yet" live>
             Your {roleNoun(role)} is fixed as you confirmed it and will be sent unchanged.
           </StatusBanner>
           <Button variant="secondary" size="sm" loading={state.isSending} onClick={() => void state.retry().then(afterSend)}>

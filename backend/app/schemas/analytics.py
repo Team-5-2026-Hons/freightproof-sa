@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.analytics.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
+from app.core.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
 
 
 class DriverMetrics(BaseModel):
@@ -42,6 +42,8 @@ class DriverMetrics(BaseModel):
     loading_dwell_events_count: int
     departure_dwell_minutes_sum: float
     departure_dwell_events_count: int
+    arrival_dwell_minutes_sum: float
+    arrival_dwell_events_count: int
     unloading_dwell_minutes_sum: float
     unloading_dwell_events_count: int
     confirmation_dwell_minutes_sum: float
@@ -83,6 +85,11 @@ class DriverMetrics(BaseModel):
     @property
     def departure_dwell_minutes_avg(self) -> float | None:
         return safe_ratio(self.departure_dwell_minutes_sum, self.departure_dwell_events_count)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def arrival_dwell_minutes_avg(self) -> float | None:
+        return safe_ratio(self.arrival_dwell_minutes_sum, self.arrival_dwell_events_count)
 
     @computed_field  # type: ignore[prop-decorator]
     @property

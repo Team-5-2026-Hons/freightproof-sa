@@ -8,6 +8,7 @@ same-named fixture into a module ruff reads as redefining an unused import
 by pytest automatically, so no import is needed at all.
 """
 
+import hashlib
 import uuid
 from datetime import UTC, datetime
 
@@ -75,3 +76,30 @@ async def seed(db_session):
         "org": org, "client_org": client_org, "dispatcher": dispatcher,
         "driver": driver, "horse": horse, "origin": origin, "dest": dest,
     }
+
+
+class _FakeWeasyPrintHTML:
+    """Stands in for weasyprint.HTML: keeps the HTML our code built, skips the layout engine."""
+
+    def __init__(self, *, string: str) -> None:
+        self._html = string
+
+    def write_pdf(self) -> bytes:
+        return b"%PDF-1.7 fake " + hashlib.sha256(self._html.encode()).hexdigest().encode()
+
+
+@pytest.fixture
+def fake_pdf_renderer(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip WeasyPrint's layout step in tests that never read the PDF.
+
+    Laying out a real pack takes about a second, which made the audit-pack files a quarter of the
+    whole suite's time. Only the third-party step is replaced: our own code still builds the HTML
+    and applies its rules (an incident sheet with no critical incident still refuses). The fake's
+    bytes are a hash of that HTML, so a second version, or a stored hash checked against the bytes
+    on download, behaves as it does for real. Tests that read the PDF itself carry
+    @pytest.mark.real_pdf and keep WeasyPrint; the renderers have their own unit tests.
+    """
+    if request.node.get_closest_marker("real_pdf"):
+        return
+    for module in ("app.reporting.pdf_renderer", "app.reporting.incident_sheet"):
+        monkeypatch.setattr(f"{module}.HTML", _FakeWeasyPrintHTML)

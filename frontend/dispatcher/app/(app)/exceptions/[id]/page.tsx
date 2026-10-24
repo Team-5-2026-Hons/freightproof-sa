@@ -23,7 +23,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { reviewState, type ReviewState } from '@/lib/format/review-state'
 import { useToast } from '@/lib/hooks/useToast'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
-import { fmtBreakdownVehicle, fmtExceptionType, fmtExceptionRaised, fmtExceptionPhaseStop, fmtExceptionRoute } from '@/lib/format/exception'
+import { exceptionDescriptionText, fmtBreakdownVehicle, fmtExceptionType, fmtExceptionRaised, fmtExceptionPhaseStop, fmtExceptionRoute } from '@/lib/format/exception'
 import type {
   DispatcherReviewOutcome,
   ExceptionContactMethod,
@@ -335,7 +335,7 @@ export default function ExceptionDetailPage() {
           </section>
           <section className="xl:col-start-1 min-w-0 rounded-md border border-outline-v/30 bg-surf-lowest p-4 sm:p-6" aria-label="Incident">
             {exception.exception_type === 'gps_mismatch' && exception.source === 'system' && <p data-testid="gps-mismatch-trigger" className="mb-3 text-sm font-semibold">{GPS_MISMATCH_TRIGGER}</p>}
-            <p className="text-sm leading-relaxed text-on-surf break-words">{exception.description}</p>
+            <p className="text-sm leading-relaxed text-on-surf break-words">{exceptionDescriptionText(exception)}</p>
             {exception.exception_type === BREAKDOWN_TYPE && <div className="mt-4 flex flex-wrap gap-3 text-sm"><span className="text-xs text-on-surf-v">Vehicle</span><span>{fmtBreakdownVehicle(exception)}</span></div>}
           </section>
           {/* Below the observation, before the assessment in narrow layouts: where its follow-up lives. */}

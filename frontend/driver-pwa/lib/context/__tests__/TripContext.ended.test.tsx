@@ -30,7 +30,7 @@ const SELECTED_TRIP_KEY = 'fp.selectedTripId'
 const ENDED_AT = '2026-10-20T11:42:00Z'
 
 const driver = mockDrivers[0]
-const authValue: AuthState = { user: driver, isLoading: false, requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
+const authValue: AuthState = { user: driver, isLoading: false, connectionFault: false, retryProfile: vi.fn(), requestOtp: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }
 
 const [workingTrip] = mockTrips.filter((t) => !['closed', 'cancelled'].includes(t.status))
 if (workingTrip === undefined) throw new Error('Fixture drift: need an open mock trip')

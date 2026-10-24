@@ -28,8 +28,8 @@ from app.db.models.trips import Trip, TripStop
 from app.db.session import get_db
 from app.main import app
 from app.orchestration.handover.capability import issue_capability_token
-from app.orchestration.handover.receiver_verification import (
-    PROVIDER_DIDIT,
+from app.integrations.idvs import PROVIDER_DIDIT
+from app.orchestration.handover.idvs_webhook import (
     WEBHOOK_MAX_CLOCK_SKEW_SECONDS,
     ingest_webhook_decision,
     verify_webhook_signature,
@@ -115,6 +115,12 @@ def test_a_wrong_signature_does_not_verify(monkeypatch):
     body = json.dumps({"session_id": "s1", "status": "Approved"}).encode()
 
     assert verify_webhook_signature(body, _sign(body, "wrong-secret")) is False
+
+
+def test_a_non_ascii_signature_does_not_verify(monkeypatch):
+    monkeypatch.setattr(settings, "IDVS_WEBHOOK_SECRET", _SECRET)
+
+    assert verify_webhook_signature(b"{}", "é" * 64) is False
 
 
 def test_a_missing_signature_does_not_verify(monkeypatch):

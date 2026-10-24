@@ -64,6 +64,7 @@ from app.orchestration.evidence.action_location import (
 )
 from app.orchestration.phases.findings import _raise_position_disagreement_if_unrecorded
 from app.orchestration.evidence import action_location as evidence_action_location
+from app.orchestration.evidence import location_assessment as evidence_location_assessment
 from app.schemas.action_location import ActionLocationAssessment
 from app.orchestration.phases import findings as phase_findings
 
@@ -794,7 +795,7 @@ async def test_a_failure_building_the_assessment_leaves_the_handshake_successful
     await _stage(_HORSE_DEVICE, _ORIGIN_LAT, _ORIGIN_LNG)
 
     with patch.object(
-        evidence_action_location, "build_phase_assessment",
+        evidence_location_assessment, "build_phase_assessment",
         side_effect=RuntimeError("assessment maths blew up"),
     ):
         resp = await _complete_activation(client, trip, driver)

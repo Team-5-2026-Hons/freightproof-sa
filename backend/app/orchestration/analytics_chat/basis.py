@@ -18,6 +18,9 @@ async def basis_for(db: AsyncSession, *, organization_id: uuid.UUID, outcome: To
     """The Basis for one tool run, or None if it failed (a failed run rests nothing on data)."""
     if outcome.tool is None or outcome.error is not None:
         return None
+    if not outcome.tool.gives_figures:
+        # The page guide (explain) states no fleet figures: nothing to base an answer on (B45).
+        return None
     period = outcome.period
     if period is None:
         return Basis(

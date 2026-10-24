@@ -1,5 +1,4 @@
-// frontend/driver-pwa/lib/offline/retained-drafts.ts
-// FP-83: phase evidence drafts are bound to the account and custody period that captured
+// Phase evidence drafts are bound to the account and custody period that captured
 // them. A draft that does not match whoever is capturing now — written by an older build with
 // no record of its capturer, by another account on this phone, or by this driver in an
 // earlier custody period (A→B→A) — is never loaded into the step, where submitting it would
@@ -175,7 +174,7 @@ export function removeDraft(tripId: string, phaseEventId: string, stamp: Custody
 }
 
 /**
- * One-time sweep of drafts saved before FP-83, so a draft for a phase the driver never
+ * One-time sweep of drafts saved before captures recorded who took them, so a draft for a phase the driver never
  * reopens is also quarantined and shown for review. Rerunnable: the marker is written only
  * after every legacy draft moved, and a draft that could not move is picked up next run.
  */

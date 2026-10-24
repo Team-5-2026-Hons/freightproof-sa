@@ -9,6 +9,8 @@ import { TripProvider } from '@/lib/context/TripContext'
 import { LocationProvider } from '@/lib/context/LocationContext'
 import { DriverSubstitutionProvider } from '@/lib/context/DriverSubstitutionContext'
 import { AppShell } from '@/components/layout/AppShell'
+import { TripCompleteOverlay } from '@/components/trip/TripCompleteOverlay'
+import { Button } from '@/components/ui/Button'
 import { CapacitorBridge } from '@/components/layout/CapacitorBridge'
 import { ROUTES } from '@/lib/constants/routes'
 import { isFullBleedRoute } from '@/lib/navigation/full-bleed'
@@ -31,7 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   useEffect(() => {
-    if (!auth?.isLoading && !auth?.user) {
+    if (!auth?.isLoading && !auth?.user && !auth?.connectionFault) {
       // Covers a session that disappears without the driver choosing to leave — a
       // silently expired token, or landing on a guarded route (e.g. a deep link) with no
       // session at all. AuthContext's own signOut() already handled the deliberate case
@@ -52,7 +54,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }
       router.replace(ROUTES.login)
     }
-  }, [auth?.user, auth?.isLoading, router])
+    // connectionFault included deliberately: a retry that fails to restore a user must
+    // re-evaluate this guard, so a session that really did expire still reaches /login
+    // once the fault clears.
+  }, [auth?.user, auth?.isLoading, auth?.connectionFault, router])
+
+  // Checked before the loading/!user branch: a driver whose profile load got no answer
+  // is neither loading nor signed out, and must not be told either of those things.
+  if (auth?.connectionFault && !auth.isLoading) {
+    return (
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-3 px-8 text-center">
+        <h1 className="text-title-3 text-surface-on">Can&apos;t reach FreightProof</h1>
+        <p className="text-subhead text-surface-on-variant">
+          You are still signed in. The app could not reach the server to load your trips.
+          Check your signal and try again.
+        </p>
+        <Button variant="primary" size="md" className="mt-2" onClick={() => void auth.retryProfile()}>
+          Try again
+        </Button>
+      </main>
+    )
+  }
 
   if (auth?.isLoading || !auth?.user) {
     return (
@@ -75,6 +97,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <DriverSubstitutionProvider>
         <LocationProvider>
           {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}
+          {/* Inside TripProvider (it reads the completed-trip snapshot) and last, so it
+              paints over whatever screen the final hand-off navigated to. */}
+          <TripCompleteOverlay />
         </LocationProvider>
       </DriverSubstitutionProvider>
     </TripProvider>

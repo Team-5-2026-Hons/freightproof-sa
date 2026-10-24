@@ -2,8 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { X, Shield, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
+import { LogoMark } from '@/components/landing/Logo'
 import { ProfileMenu } from '@/components/layout/ProfileMenu'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
@@ -19,6 +20,9 @@ interface NavItem {
   icon: IconName
   activePatterns: string[]
   adminOnly?: boolean
+  /** Lit only on the exact path. `/trips` is a prefix of `/trips/new` and `/trips/[id]`, which
+   *  belong to Create Trip and to whichever list the trip was opened from. */
+  exact?: boolean
 }
 
 interface NavGroup {
@@ -47,13 +51,14 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Trips',
     items: [
+      { label: 'Active Trips', href: ROUTES.trips, icon: 'route', activePatterns: [ROUTES.trips], exact: true },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
       { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
       // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
       // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
       // route too, so the entry stays lit while a dispatcher works one exception.
       { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
-      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'shield', activePatterns: ['/incidents'] },
+      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'siren', activePatterns: ['/incidents'] },
     ],
   },
   {
@@ -80,9 +85,9 @@ const SETTINGS_ITEM: NavItem = {
   activePatterns: ['/settings'],
 }
 
-function isActive(pathname: string, patterns: string[]): boolean {
+function isActive(pathname: string, patterns: string[], exact = false): boolean {
   return patterns.some(p => {
-    if (p === '/') return pathname === '/'
+    if (p === '/' || exact) return pathname === p
     return pathname.startsWith(p)
   })
 }
@@ -120,7 +125,7 @@ function NavLink({ item, pathname, onClose, collapsed, badge }: {
   /** Status pill at the row's end; becomes a dot on the icon in the collapsed rail. */
   badge?: NavBadge
 }) {
-  const active = isActive(pathname, item.activePatterns)
+  const active = isActive(pathname, item.activePatterns, item.exact)
   const label = badge && collapsed ? badge.collapsedLabel : item.label
   return (
     <div className="relative">
@@ -257,9 +262,10 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
       {/* Header — logo mark + wordmark, with the collapse control on the right */}
       {/* px-3 lines the logo and collapse control up with the Create Trip button's edges below. */}
       <div className={cn('flex items-center gap-3 h-16', collapsed ? 'justify-center' : 'px-3')}>
-        {/* The tile needs its own fill: it sits on the same surface as the sidebar. */}
-        <div className="w-9 h-9 rounded-lg bg-white/10 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-          <Shield className="w-4 h-4 text-white" />
+        {/* A paper tile, not a translucent one: the mark is an ink shield, which would
+            vanish on the dark sidebar without a light surface behind it. */}
+        <div className="w-9 h-9 rounded-lg bg-surf flex items-center justify-center shrink-0">
+          <LogoMark size={22} />
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">

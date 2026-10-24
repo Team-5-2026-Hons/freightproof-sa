@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { Driver } from '@shared/lib/types/driver'
 import type { SubstitutionErrorCode, SubstitutionRequestRead } from '@shared/lib/types/driver-substitution'
+import { InfoPopover } from '@/components/analytics/fleet/InfoPopover'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -107,9 +108,13 @@ export function DriverSubstitutionDialog({ tripId, outgoingDriverName, open, dri
         <Button onClick={submit} loading={submitting} disabled={!complete}>{replacing ? 'Replace handover' : 'Authorise transfer'}</Button>
       </>}>
       <div className="flex flex-col gap-3">
-        <p className="text-[13px] text-on-surf-v">
-          The trip keeps its original record. You authorise the transfer; the incoming driver accepts using their takeover checks. The outgoing driver is notified. Custody changes only when the server completes it.
-        </p>
+        <div className="flex items-center gap-1 text-[13px] text-on-surf-v">
+          Hand this trip to another driver.
+          <InfoPopover title="How a transfer works" ariaLabel="How a transfer works" question="How a transfer works"
+            basis="The trip keeps its original record. You authorise the transfer, and the incoming driver accepts it using their takeover checks."
+            note="The outgoing driver is notified."
+            footnote="Custody changes only when the server completes it." />
+        </div>
         <Input label="Outgoing driver" value={outgoingDriverName ?? replacing?.outgoing.full_name ?? 'Current driver'} readOnly />
         <Select label="Incoming driver" value={draft.incomingDriverId} onChange={e => set('incomingDriverId', e.target.value)}>
           <option value="">Choose a driver</option>

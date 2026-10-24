@@ -40,7 +40,7 @@ function SeeAll({ onClick, label }: { onClick: () => void; label: string }) {
 }
 
 /**
- * Trips (overhaul 3.1). One screen that never scrolls (Tim, 14 Oct): the trip underway,
+ * Trips. One screen that never scrolls: the trip underway,
  * the next one or two, and as many past trips as fit above the tab bar — each list one
  * tap from its full, scrolling version under "See all".
  */

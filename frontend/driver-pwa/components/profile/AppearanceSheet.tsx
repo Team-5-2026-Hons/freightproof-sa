@@ -10,10 +10,10 @@ interface AppearanceSheetProps {
 }
 
 /**
- * Appearance as a sheet off a single Profile row (overhaul 10.2), instead of a segmented
+ * Appearance as a sheet off a single Profile row, instead of a segmented
  * control taking a whole group on the screen — it is changed rarely (HIG settings.md:
  * "Put general, infrequently changed settings in your custom settings area"). Kept at
- * all because Tim chose to (14 Oct): a phone left on auto-dark still needs a readable
+ * all by product decision: a phone left on auto-dark still needs a readable
  * screen in daylight. The choice applies the moment it is tapped; Done only closes.
  */
 export function AppearanceSheet({ open, onClose }: AppearanceSheetProps) {

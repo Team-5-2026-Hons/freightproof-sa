@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/in-transit/InTransitPageClient.tsx
 'use client'
 
 // The driving screen — the part of the trip where the driver is actually moving.
@@ -37,12 +36,10 @@ import { currentPhase, currentStepRoute, phaseLocation } from '@/lib/phase'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { DriverMap } from '@/components/map/DriverMap'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
-import type { DriverPosition } from '@/lib/types/location'
-import type { LocationWarningAcknowledgement } from '@/lib/types/location'
+import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import { openDriverExceptions } from '@/lib/utils/trip-attention'
 import { ExceptionCard } from '@/components/trip/ExceptionCard'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
-import type { TripException } from '@shared/lib/types/exception'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
 import { useBack } from '@/lib/navigation/useBack'
 import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
@@ -240,7 +237,7 @@ export default function InTransitPageClient() {
         return
       }
       case 'retained': {
-        // FP-83: custody moved on first. The arrival is kept for review, not recorded live.
+        // Custody moved on first. The arrival is kept for review, not recorded live.
         clearPhaseSyncing(phaseEventId)
         notify({ kind: 'error', title: 'Arrival not recorded on the trip', body: outcome.message })
         if (outcome.handedOver && trip !== null) noteTripHandedOver(String(trip.id))
@@ -378,7 +375,7 @@ export default function InTransitPageClient() {
     // scroll, inside the sheet. dvh, not vh — 100vh resolves to the address-bar-hidden
     // height in a mobile browser and would push the sheet off the bottom.
     <main className="relative flex h-dvh flex-col overflow-hidden bg-surface">
-      {/* The map, full-bleed (overhaul 6.1): it takes every pixel the sheet does not, up
+      {/* The map, full-bleed: it takes every pixel the sheet does not, up
           under the status bar. The sheet's rounded top overlaps it by its own radius
           (-mb-7); the map itself stops short of that overlap so Google's logo, bottom
           left, is never covered. min-h-0 is load-bearing — without it a flex child
@@ -534,7 +531,7 @@ function formatRemaining(metres: number): string {
 }
 
 /**
- * Where this leg ends and when it is due (overhaul 6.1) — the two facts a driver checks
+ * Where this leg ends and when it is due — the two facts a driver checks
  * most, at the top of the sheet. The leg's end comes from the plan: the destination, or
  * on a cross-dock plan the next stop, named by position when no name is known.
  *

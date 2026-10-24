@@ -26,7 +26,8 @@ const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 const mockUseParams = vi.fn()
 const mockRouterPush = vi.fn()
 const mockNotify = vi.fn()
-const mockEnqueuePhase = vi.fn()
+// true: stored, as the real queue answers when the phone has room.
+const mockEnqueuePhase = vi.fn(() => true)
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.
@@ -34,6 +35,9 @@ const mockAdoptTrip = vi.fn()
 // Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
+// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
+// hand-off under test runs the same code path the app does.
+const mockNoteTripCompleted = vi.fn()
 
 interface MockTripState {
   trip: Trip
@@ -43,6 +47,7 @@ interface MockTripState {
   syncingPhaseIds: readonly string[]
   markPhaseSyncing: typeof mockMarkPhaseSyncing
   clearPhaseSyncing: typeof mockClearPhaseSyncing
+  noteTripCompleted: typeof mockNoteTripCompleted
 }
 
 // Mutable module-level value, reassigned per test — the current PHASE must match
@@ -59,6 +64,7 @@ function setTripState(trip: Trip): void {
     syncingPhaseIds: [],
     markPhaseSyncing: mockMarkPhaseSyncing,
     clearPhaseSyncing: mockClearPhaseSyncing,
+    noteTripCompleted: mockNoteTripCompleted,
   }
 }
 

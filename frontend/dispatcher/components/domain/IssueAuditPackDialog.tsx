@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { useToast } from '@/lib/hooks/useToast'
 import { ApiError } from '@/lib/api/client'
 import { issueAuditPack } from '@/lib/api/auditPacks'
@@ -50,7 +51,7 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
   const [form, setForm] = useState<AuditPackCreate>(EMPTY)
   const [submitting, setSubmitting] = useState(false)
   const [issued, setIssued] = useState<AuditPackIssued | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy: copyToClipboard } = useCopyToClipboard()
 
   if (!open) return null
   const emailValid = EMAIL_SHAPE.test(form.recipient_email.trim())
@@ -64,7 +65,6 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
     if (submitting) return
     setForm(EMPTY)
     setIssued(null)
-    setCopied(false)
     onClose()
   }
 
@@ -93,15 +93,14 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
 
   async function copy() {
     if (!issued) return
-    await navigator.clipboard.writeText(issued.share_url)
-    setCopied(true)
+    await copyToClipboard(issued.share_url)
   }
 
   if (issued) {
     return (
       <Modal open onClose={close} title={`Issued ${issued.pack.pack_label}`}>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">
-          Send this link to {issued.pack.recipient_name}. It is shown only now — FreightProof keeps just its fingerprint —
+          Send this link to {issued.pack.recipient_name}. It is shown only now (FreightProof keeps just its fingerprint)
           and it expires on {new Date(issued.pack.expires_at).toLocaleDateString('en-ZA')}. You can revoke it at any time.
         </p>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">

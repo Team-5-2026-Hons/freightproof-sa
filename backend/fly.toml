@@ -1,0 +1,66 @@
+# FreightProof SA — API deployment (Fly.io).
+#
+# Replaces backend/railway.json. Same image: backend/Dockerfile, built from this
+# directory, so `fly deploy` must be run from backend/ (the Dockerfile's `COPY . .`
+# expects the backend tree as its context).
+#
+# Deliberately defines three processes. railway.json built the image and nothing else,
+# so production ran only the Dockerfile CMD — the uvicorn web process. The consequence
+# was silent: every Hedera anchor queued by an endpoint sat in Redis unclaimed, and the
+# five jobs in app/tasks/__init__.py's beat_schedule (PP consignment sync, the IDVS
+# abandoned-verification sweep, and the phase, evidence and custody anchor recovery
+# sweeps) never ran at all, so nothing retried a failed anchor either.
+
+app = "freightproof-api"
+
+# Johannesburg. The personal data itself stays in Supabase (af-south-1) per POPIA, but
+# every request carrying it terminates in this process — putting the compute off-continent
+# would move identities, GPS and photos through another region in transit, and add a
+# round trip to every query for the trouble. Verify availability with
+# `fly platform regions | grep jnb` before the first deploy.
+primary_region = "jnb"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# One image, three roles. `fly scale count app=2 worker=1 beat=1` after the first deploy.
+[processes]
+  app    = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  worker = "celery -A app.tasks worker --loglevel=info"
+  # Beat MUST stay at exactly one machine: two schedulers mean every sweep above fires
+  # twice, which for the anchor-recovery jobs means duplicate Hedera submissions and
+  # duplicate spend. --schedule points at /tmp because the image root is read-only to
+  # the app user and beat needs to write its own state file.
+  beat   = "celery -A app.tasks beat --loglevel=info --schedule=/tmp/freightproof-celerybeat"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  processes = ["app"]
+
+  # No scale-to-zero. A cold start lands on a driver mid-handover or a receiver opening a
+  # one-time OTP link, and the evidence timestamps would carry the delay.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    path = "/health"
+    method = "GET"
+    interval = "30s"
+    # /health probes Postgres, Redis and Hedera concurrently, capped by
+    # HEALTH_PROBE_TIMEOUT_SECONDS (2.0s), so this leaves headroom without hiding a hang.
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  # 256MB does not start this image: hedera-sdk-py boots a JVM through jnius, and
+  # WeasyPrint loads Pango and HarfBuzz at import time for audit-pack PDFs.
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# No [deploy] release_command, and do not add one that runs `alembic upgrade`.
+# DATABASE_URL is the shared Supabase database and records a single alembic_version:
+# CLAUDE.md requires migrations be applied by hand from `dev` after merge, never
+# automatically from whatever revision a deploy happens to carry.

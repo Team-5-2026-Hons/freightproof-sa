@@ -1,4 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/in-transit/checkpoint/CheckpointPageClient.tsx
 'use client'
 
 import { useRef, useState } from 'react'
@@ -27,8 +26,7 @@ import { cn } from '@/lib/utils'
 import { useAccessibilityTextSize } from '@/lib/hooks/useAccessibilityTextSize'
 
 // Driver-initiated in-transit capture, independent of the phases — proves the cargo is
-// intact, and where, between departure and arrival. A cargo photo only since overhaul 6.2
-// (Tim, 14 Oct): the selfie proved little the phone's position does not, and asking a
+// intact, and where, between departure and arrival. A cargo photo only: the selfie proved little the phone's position does not, and asking a
 // driver on a road shoulder for one was friction without evidence value.
 export default function CheckpointPageClient() {
   const router = useRouter()
@@ -46,6 +44,9 @@ export default function CheckpointPageClient() {
   const [isDeviation, setIsDeviation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(false)
+  // The phone itself refused to keep the checkpoint (storage full or disabled). Distinct from
+  // submitError: the server never refused anything, and nothing is stored anywhere yet.
+  const [storageError, setStorageError] = useState(false)
   const clientReportIdRef = useRef<string | null>(null)
 
   // GPS is not a gate: it is captured silently at submit, and a checkpoint with a photo
@@ -56,7 +57,8 @@ export default function CheckpointPageClient() {
     if (!isReady || !trip) return
     setSubmitting(true)
     setSubmitError(false)
-    // FP-83: the custody period at the tap, before the GPS wait, travelling with the evidence.
+    setStorageError(false)
+    // The custody period at the tap, before the GPS wait, travelling with the evidence.
     const custody = captureCustody(String(trip.id))
 
     const position = await capturePosition()
@@ -81,12 +83,17 @@ export default function CheckpointPageClient() {
     } catch (err) {
       // A 4xx (validation failure) will fail identically on retry — leave the driver
       // here with the inline error so they can fix/retry manually. A network failure
-      // or 5xx is retryable, so queue it (same offline-queue pattern handshakes and
+      // or 5xx is retryable, so queue it (same offline-queue pattern phase submits and
       // exceptions use) and let the driver move on; it syncs on reconnect.
       const isRetryable = !(err instanceof ApiError) || err.status >= 500
       if (isRetryable) {
         console.error('Failed to log checkpoint — queued for retry', err)
-        enqueueCheckpoint(String(trip.id), evidence)
+        if (!enqueueCheckpoint(String(trip.id), evidence)) {
+          // Not stored anywhere. Stay here with the photo and note still in state, so a retry
+          // costs the driver one swipe; leaving would lose the only copy of the evidence.
+          setStorageError(true)
+          return
+        }
         notify({
           kind: 'success',
           title: 'Checkpoint recorded',
@@ -94,11 +101,14 @@ export default function CheckpointPageClient() {
         })
         router.push(ROUTES.inTransit)
       } else {
-        // FP-83: a custody conflict is not a validation error the driver can fix here — the
+        // A custody conflict is not a validation error the driver can fix here — the
         // trip moved on. The checkpoint is kept for review (late evidence), not lost.
         const failure = classifyLiveWriteFailure(err)
         if (failure.kind === 'retain' && isCustodyConflict(failure.attention)) {
-          enqueueCheckpoint(String(trip.id), evidence, failure.attention)
+          if (!enqueueCheckpoint(String(trip.id), evidence, failure.attention)) {
+            setStorageError(true)
+            return
+          }
           notify({ kind: 'error', title: 'Checkpoint not recorded on the trip', body: failure.attention.reason })
           router.push(ROUTES.home)
           return
@@ -173,11 +183,17 @@ export default function CheckpointPageClient() {
           onChange={(e) => setNote(e.target.value)}
         />
 
+        {storageError && (
+          <p role="alert" className="text-subhead text-error">
+            Couldn’t save on this phone. Storage is full or unavailable. Try again.
+          </p>
+        )}
+
         {submitError && (
           // Only on a terminal 4xx — retrying with the same input cannot succeed, so
           // "check your connection" would be actively misleading here.
           <p className="text-subhead text-error">
-            Could not submit — the checkpoint was not accepted. Review the details or contact your dispatcher.
+            Could not submit. The checkpoint was not accepted. Review the details or contact your dispatcher.
           </p>
         )}
       </div>

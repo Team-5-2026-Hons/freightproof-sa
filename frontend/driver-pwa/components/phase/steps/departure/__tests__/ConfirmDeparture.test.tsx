@@ -25,7 +25,7 @@ function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidenc
 }
 
 function renderStep(draft: DepartureEvidence = makeDraft()) {
-  render(<ConfirmDeparture tripId="trip-1" phase={departure} stepIndex={1} draft={draft} onComplete={vi.fn()} />)
+  render(<ConfirmDeparture phase={departure} stepIndex={1} draft={draft} onComplete={vi.fn()} />)
 }
 
 beforeEach(() => mockPush.mockClear())

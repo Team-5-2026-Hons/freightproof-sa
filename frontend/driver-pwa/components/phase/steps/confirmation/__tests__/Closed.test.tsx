@@ -18,7 +18,6 @@ import { Closed } from '../Closed'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
-const TRIP_ID = '7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b'
 const SWIPE_LABEL = 'Swipe to Close Trip'
 
 // StepHeader calls useRouter — stub it so the component mounts under jsdom.
@@ -58,7 +57,6 @@ function makeDraft(overrides: Partial<ConfirmationEvidence> = {}): ConfirmationE
 function renderStep(draft: ConfirmationEvidence, blockedOn: string | null = null) {
   render(
     <Closed
-      tripId={TRIP_ID}
       phase={makePhase('confirmation', { blocked_on: blockedOn })}
       stepIndex={3}
       draft={draft}
@@ -115,7 +113,6 @@ describe('Closed — blocked on the destination warehouse scan', () => {
   it('hides the swipe entirely while the warehouse is still scanning in', () => {
     render(
       <Closed
-        tripId={TRIP_ID}
         phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
         stepIndex={3}
         draft={makeDraft()}
@@ -134,7 +131,6 @@ describe('Closed — blocked on the destination warehouse scan', () => {
     // server will refuse to close.
     render(
       <Closed
-        tripId={TRIP_ID}
         phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
         stepIndex={3}
         draft={makeDraft()}

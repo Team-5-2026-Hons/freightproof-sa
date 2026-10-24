@@ -6,6 +6,7 @@ stored hash.
 import hashlib
 import json
 import uuid
+from collections.abc import Mapping
 
 from app.db.models.enums import PhaseStatus, PhaseType
 
@@ -241,7 +242,7 @@ def driver_actor_sha256(driver_id: uuid.UUID) -> str:
 
 
 def compute_phase_actor_envelope_v4(
-    *, phase_event_id: uuid.UUID, evidence: dict[str, object], driver_id: uuid.UUID, custody_sequence: int,
+    *, phase_event_id: uuid.UUID, evidence: Mapping[str, object], driver_id: uuid.UUID, custody_sequence: int,
 ) -> dict[str, object]:
     """The v4 phase payload: the unchanged versioned evidence payload, plus who and when-in-custody.
 

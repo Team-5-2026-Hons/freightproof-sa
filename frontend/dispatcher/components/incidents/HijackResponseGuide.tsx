@@ -2,7 +2,7 @@
 
 import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 import { Button } from '@/components/ui/Button'
-import { RESPONSE_STEP_ACTION, RESPONSE_STEP_LABELS } from '@/lib/format/incident'
+import { RESPONSE_STEP_ACTION, RESPONSE_STEP_LABELS, SYSTEM_WITNESSED_STEPS } from '@/lib/format/incident'
 import type { IncidentExternalAction, ResponseStep, ResponseStepState } from '@/lib/types/incident'
 
 interface Props {
@@ -32,6 +32,12 @@ const STATE_DOT: Record<ResponseStepState, string> = {
   not_applicable: 'bg-surf-high',
 }
 
+/** A done step the system did not witness itself rests on a dispatcher's entry. The API does not
+ *  say which dispatcher, so the label is all there is to show; the time is the step's own. */
+function recordedByDispatcher(step: ResponseStep): boolean {
+  return step.state === 'done' && !SYSTEM_WITNESSED_STEPS.includes(step.key)
+}
+
 /**
  * The steps after a hijacking, in the order a dispatcher takes them. Each is ticked by what
  * was recorded (an action on the ledger, a SAPS declaration, an issued pack), never by a
@@ -42,7 +48,8 @@ export function HijackResponseGuide(props: Props): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs leading-relaxed text-on-surf-v">
-        FreightProof records each step; it does not contact SAPS, the insurer or the tracking company for you.
+        These steps are what the dispatcher recorded, not confirmations from the parties. FreightProof records
+        each step; it does not contact SAPS, the insurer or the tracking company for you.
       </p>
       <ol className="flex flex-col divide-y divide-outline-v/30 rounded-md border border-outline-v/30">
         {props.steps.map((step, index) => (
@@ -52,7 +59,7 @@ export function HijackResponseGuide(props: Props): React.JSX.Element {
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-on-surf">{index + 1}. {RESPONSE_STEP_LABELS[step.key]}</p>
                 <p className="text-xs text-on-surf-v">
-                  {STATE_TEXT[step.state]}{step.done_at ? ` · ${fmtSastDateTime(step.done_at)}` : ''}{step.detail ? ` · ${step.detail}` : ''}
+                  {STATE_TEXT[step.state]}{step.done_at ? ` · ${fmtSastDateTime(step.done_at)}` : ''}{recordedByDispatcher(step) ? ' · Recorded by dispatcher' : ''}{step.detail ? ` · ${step.detail}` : ''}
                 </p>
               </div>
             </div>

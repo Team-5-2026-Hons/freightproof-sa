@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Camera as CameraIcon, Check } from 'lucide-react'
+import { Spinner } from '@/components/ui/Spinner'
 import { useToast } from '@/lib/hooks/useToast'
 import { fileToCompressedJpegDataUrl } from '@/lib/utils/image'
 import { EVIDENCE_PHOTO_JPEG_QUALITY_PERCENT, EVIDENCE_PHOTO_MAX_EDGE_PX } from '@/lib/constants/evidence-photo'
@@ -15,7 +16,7 @@ import {
 interface CameraCaptureProps {
   /** What the photo is — the field label and the captured image's alt text. */
   label: string
-  /** The tile's verb (overhaul 4.3: "Photograph the sheet"). Defaults to Take Photo. */
+  /** The tile's verb ("Photograph the sheet"). Defaults to Take Photo. */
   actionLabel?: string
   /** One line under the verb on what makes a usable photo. */
   hint?: string
@@ -24,7 +25,7 @@ interface CameraCaptureProps {
   capturedAt?: string | null
   /**
    * 'tile' (default) is the large evidence tile; 'row' is a compact line for an optional
-   * photo on a longer form (overhaul 6.3), where a 196px tile would bury the submit.
+   * photo on a longer form, where a 196px tile would bury the submit.
    */
   variant?: 'tile' | 'row'
   /** The row variant's second line once a photo is added ("Sends with the report"). */
@@ -36,6 +37,15 @@ interface CameraCaptureProps {
    * back to the file picker exactly like a camera failure. The browser ignores it.
    */
   nativeSource?: () => Promise<string | null>
+  /**
+   * The capture is taken but the step is still doing something with it (the linehaul's
+   * PDF build). Lays a faint veil and a spinner over the preview, so the wait is visible
+   * on the thing being waited on. Tile variant only — the row variant has no preview big
+   * enough to carry it.
+   */
+  busy?: boolean
+  /** What the veil is waiting for, announced in place of the spinner. */
+  busyLabel?: string
 }
 
 type CameraFailure = 'cancelled' | 'permission-denied' | 'other'
@@ -55,6 +65,7 @@ function classifyCameraFailure(err: unknown): CameraFailure {
 
 export function CameraCapture({
   label, actionLabel = 'Take Photo', hint, dataUrl, capturedAt = null, variant = 'tile', capturedHint, onCapture, nativeSource,
+  busy = false, busyLabel = 'Processing',
 }: CameraCaptureProps) {
   const [isCapturing, setIsCapturing] = useState(false)
   // Latches once the native camera has refused (permission denied, or no camera on the
@@ -240,6 +251,24 @@ export function CameraCapture({
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={dataUrl} alt={label} className="h-full w-full object-cover" />
+          {/* Faint on purpose: the capture itself succeeded and the driver should still be
+              able to read it. The veil only says a readable copy is still being made —
+              which is also what the swipe is waiting for, so showing it here puts the
+              wait on the thing causing it instead of only in the button's label. Placed
+              before the chips so "Captured 21:39" and Retake stay legible over it. */}
+          {busy && (
+            <div
+              role="status"
+              aria-label={busyLabel}
+              className="absolute inset-0 flex items-center justify-center bg-black/35"
+            >
+              {/* The spinner's own role="status" would be announced alongside the
+                  wrapper's; hidden so the label above is said once. */}
+              <span aria-hidden>
+                <Spinner size="lg" className="border-white/40 border-t-white" />
+              </span>
+            </div>
+          )}
           {/* Scrim chips, not page tokens: they sit on an arbitrary photo, so they carry
               their own contrast whatever the theme. */}
           <span className="absolute bottom-3 left-3 inline-flex h-[30px] items-center gap-1.5 rounded-full bg-black/60 px-3 text-footnote font-semibold text-white">
