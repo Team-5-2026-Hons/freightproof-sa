@@ -10,8 +10,6 @@ for multi-stop trips). Backfills two TripStop rows (seq 0 = origin, seq 1 =
 destination) for every existing trip so single-leg trips keep working
 unchanged.
 
-Design: docs/superpowers/plans/2026-06-24-fp112-tripstop.md
-
 Revision ID: ciaran_add_tripstop
 Revises: tim_add_precinct_is_shared
 Create Date: 2026-07-02

@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Phase 0 must be complete — token map, types, mocks, hooks, UI primitives, and `/dev/tokens` all passing.
 >
-> **Key references:** `docs/FreightProof_Frontend_Spec_v1.md` §5.3 + §7 · `frontend/DESIGN_SYSTEM.md` · `docs/FreightProof_Full_Picture_v6.md`
+> **Key references:** `docs/archive/root/FreightProof_Frontend_Spec_v1.md` §5.3 + §7 · `frontend/DESIGN_SYSTEM.md` · `docs/archive/root/FreightProof_Full_Picture_v6.md`
 
 ---
 

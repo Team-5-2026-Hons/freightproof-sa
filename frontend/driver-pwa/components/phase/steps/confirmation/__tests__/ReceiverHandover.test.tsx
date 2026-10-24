@@ -131,7 +131,7 @@ describe('ReceiverHandover', () => {
       podSignatureArtifactId: 'art-1', receiverConfirmedAt: '2026-09-13T10:05:00.000Z',
     }))
 
-    expect(screen.getByText(/receiver confirmed the delivery/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Receiver signed' })).toBeInTheDocument()
     expect(screen.queryByTestId('qr')).not.toBeInTheDocument()
   })
 
@@ -154,5 +154,26 @@ describe('ReceiverHandover', () => {
     renderStep(makeDraft())
 
     expect(screen.getByRole('button', { name: /show a new code/i })).toBeInTheDocument()
+  })
+})
+
+describe('ReceiverHandover — signed, without the signature (overhaul 9.3, D7)', () => {
+  it('test_says_signed_with_the_time_and_shows_no_signature_image', () => {
+    mockHook()
+    renderStep(makeDraft({ podSignatureArtifactId: 'sig-1', receiverConfirmedAt: new Date(2026, 9, 14, 19, 41).toISOString() }))
+
+    expect(screen.getByText('19:41')).toBeInTheDocument()
+    expect(screen.getByText(/on their own device, with their own location/)).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /signature/i })).toBeNull()
+  })
+})
+
+describe('ReceiverHandover — the QR plate', () => {
+  it('test_gives_the_plate_a_width_so_a_pending_code_never_collapses', () => {
+    mockHook({ scanUrl: null })
+    renderStep(makeDraft())
+
+    // jsdom has no layout; this guards the structure that collapsed in a real browser.
+    expect(screen.getByTestId('qr').parentElement).toHaveClass('w-full')
   })
 })

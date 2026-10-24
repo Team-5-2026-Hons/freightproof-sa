@@ -32,6 +32,7 @@ from app.db.models.transit import Checkpoint, TripException  # noqa: E402,F401
 from app.db.models.locations import TripLocationPing  # noqa: E402,F401
 from app.db.models.sessions import DriverSession, UserSession  # noqa: E402,F401
 from app.db.models.sla import SlaConfig  # noqa: E402,F401
+from app.db.models.cost import CostProfile  # noqa: E402,F401
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent  # noqa: E402,F401
 from app.db.models.handover import (  # noqa: E402,F401
     HandoverCapabilityToken,
@@ -42,3 +43,28 @@ from app.db.models.receiver_verification import (  # noqa: E402,F401
     IdvsQuotaLedger,
     ReceiverIdentityVerification,
 )
+from app.db.models.incidents import (  # noqa: E402,F401
+    Incident,
+    IncidentException,
+    IncidentParcel,
+    IncidentUpdate,
+)
+from app.db.models.audit_packs import (  # noqa: E402,F401
+    AuditPack,
+    AuditPackAccessEvent,
+    AuditPackEmailCode,
+    IncidentDeclaration,
+)
+from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact  # noqa: E402,F401
+from app.db.models.driver_substitutions import (  # noqa: E402,F401
+    DriverSubstitutionConfirmation,
+    DriverSubstitutionConfirmationArtifact,
+    DriverSubstitutionCorrection,
+    DriverSubstitutionNotice,
+    DriverSubstitutionOperation,
+    DriverSubstitutionRequest,
+    DriverSubstitutionUpload,
+    LateDriverEvidence,
+    LateDriverEvidenceArtifact,
+)
+from app.db.models.driver_push_tokens import DriverPushToken  # noqa: E402,F401

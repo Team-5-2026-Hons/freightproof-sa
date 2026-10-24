@@ -10,7 +10,7 @@
 //      the scan-driven redesign (2026-08-08) the count is optional at unloading and at
 //      confirmation, so `null` legitimately carries all the way to this step. It used to
 //      be part of `isReady`, which meant a driver who skipped the count reached a
-//      permanently disabled "Close trip" swipe with nothing on screen explaining why —
+//      permanently disabled "Close Trip" swipe with nothing on screen explaining why —
 //      a delivered trip that could never be closed.
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
@@ -18,8 +18,7 @@ import { Closed } from '../Closed'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
-const TRIP_ID = '7e8f9a0b-1c2d-4e3f-8a5b-6c7d8e9f0a1b'
-const SWIPE_LABEL = 'Close trip'
+const SWIPE_LABEL = 'Swipe to Close Trip'
 
 // StepHeader calls useRouter — stub it so the component mounts under jsdom.
 vi.mock('next/navigation', () => ({
@@ -58,7 +57,6 @@ function makeDraft(overrides: Partial<ConfirmationEvidence> = {}): ConfirmationE
 function renderStep(draft: ConfirmationEvidence, blockedOn: string | null = null) {
   render(
     <Closed
-      tripId={TRIP_ID}
       phase={makePhase('confirmation', { blocked_on: blockedOn })}
       stepIndex={3}
       draft={draft}
@@ -115,7 +113,6 @@ describe('Closed — blocked on the destination warehouse scan', () => {
   it('hides the swipe entirely while the warehouse is still scanning in', () => {
     render(
       <Closed
-        tripId={TRIP_ID}
         phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
         stepIndex={3}
         draft={makeDraft()}
@@ -134,7 +131,6 @@ describe('Closed — blocked on the destination warehouse scan', () => {
     // server will refuse to close.
     render(
       <Closed
-        tripId={TRIP_ID}
         phase={makePhase('confirmation', { blocked_on: 'warehouse_scan' })}
         stepIndex={3}
         draft={makeDraft()}
@@ -142,7 +138,7 @@ describe('Closed — blocked on the destination warehouse scan', () => {
       />,
     )
 
-    expect(screen.queryByText('Trip Complete')).toBeNull()
+    expect(screen.queryByText('Delivered')).toBeNull()
   })
 
   it('restores the swipe once the warehouse session closes', () => {
@@ -150,5 +146,14 @@ describe('Closed — blocked on the destination warehouse scan', () => {
     const swipe = renderStep(makeDraft(), null)
 
     expect(swipe).toBeEnabled()
+  })
+})
+
+describe('Closed — the delivered screen (overhaul 9.5)', () => {
+  it('test_says_delivered_and_that_closing_finishes_the_trip', () => {
+    renderStep(makeDraft())
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Delivered' })).toBeInTheDocument()
+    expect(screen.getByText(/Close the trip to finish/)).toBeInTheDocument()
   })
 })

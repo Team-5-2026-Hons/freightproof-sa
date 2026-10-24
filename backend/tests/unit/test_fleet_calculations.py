@@ -9,13 +9,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
-from app.analytics.fleet.constants import DayBlock
 from app.analytics.fleet.periods import (
     OPERATIONS_TZ,
-    ExpiryBand,
-    LatenessBand,
-    PlanBand,
-    ReviewAgeBand,
     day_block,
     driving_minutes_by_block,
     expiry_band,
@@ -25,6 +20,7 @@ from app.analytics.fleet.periods import (
     review_age_band,
     waiting_at,
 )
+from app.core.fleet_bands import DayBlock, ExpiryBand, LatenessBand, PlanBand, ReviewAgeBand
 from app.analytics.fleet.patterns import build_pattern_set
 from app.analytics.fleet.tiles import count_expiry_bands
 from app.schemas.fleet_analytics import ExpiryBands
@@ -271,7 +267,7 @@ def test_a_date_the_period_never_reaches_has_no_average() -> None:
     assert by_date[10].average_per_day == 0.0
 
 
-# ── Plan spread bands (chart 2.5, D23) ───────────────────────────────────────
+# ── Plan spread bands ─────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(

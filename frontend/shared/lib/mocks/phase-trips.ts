@@ -86,7 +86,12 @@ export function makePhasePlan(
   const lastIndex = stops.length - 1
   stops.forEach((stop, i) => {
     if (i === 0) push('activation', stop)
-    else if (stop.drops_off) push('unloading', stop)
+    else {
+      // Every in_transit is followed by arrival at the stop it reaches, even a pickup-only
+      // one: the seal is inspected before the doors open, whatever happens next there.
+      push('arrival', stop)
+      if (stop.drops_off) push('unloading', stop)
+    }
 
     if (stop.picks_up) push('loading', stop)
 
@@ -121,7 +126,7 @@ export const CROSS_DOCK_STOPS: readonly PlanStopInput[] = [
   { trip_stop_id: 'b2000000-0000-4000-8000-000000000003', sequence: 3, picks_up: false, drops_off: true },
 ]
 
-/** 7 rows. */
+/** 8 rows. */
 export const SINGLE_LEG_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   SINGLE_LEG_TRIP_ID,
   SINGLE_LEG_STOPS,
@@ -129,7 +134,7 @@ export const SINGLE_LEG_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   'c1000000-0000-4000-8000',
 )
 
-/** 11 rows — the multi-stop proof. */
+/** 13 rows — the multi-stop proof. */
 export const CROSS_DOCK_PHASE_PLAN: PhaseDescriptor[] = makePhasePlan(
   CROSS_DOCK_TRIP_ID,
   CROSS_DOCK_STOPS,

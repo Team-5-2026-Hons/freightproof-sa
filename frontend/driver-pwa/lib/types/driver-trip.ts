@@ -8,11 +8,11 @@
 
 import type { TripId, TripType } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
+import type { DriverParticipation } from '@shared/lib/types/driver-substitution'
 
 export interface DriverTripSummary {
   id: TripId
   trip_reference: string
-  order_number: string
   // The ONLY field the Active/Upcoming/Past tabs group by. 'created' is an assignment
   // the driver has not activated yet; 'active'/'exception_hold' is underway;
   // 'closed'/'cancelled' is history. See categorizeTrips in lib/utils/trip-filters.ts.
@@ -28,9 +28,16 @@ export interface DriverTripSummary {
   actual_departure_at: string | null
   planned_arrival_at: string | null
   actual_arrival_at: string | null
-  // NEEDS_REVIEW only (Task 2, FP-146 follow-on) — displayed for parity with the
-  // dispatcher board, but the driver gains no review workflow of their own.
+  // Unreviewed CRITICAL rows only: every exception starts needs_review, and the
+  // driver has no review workflow of their own.
   needs_review_count: number
+  // Driver substitution contract v1, "Existing reads". 'former' is a trip this
+  // driver handed over: history for them even while `status` is still 'active' for the
+  // driver who took it. Absent or null means no substitution has happened, which is exactly
+  // how such a row must keep grouping.
+  participation?: DriverParticipation
+  last_participation_ended_at?: string | null
+  custody_sequence?: number
   created_at: string
   updated_at: string
 }

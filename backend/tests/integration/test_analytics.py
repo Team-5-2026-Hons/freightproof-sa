@@ -69,6 +69,17 @@ _LIVE_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
 )
+# FP-83: the driver view recreated with handover-aware attribution. Always run after the live views.
+_SUBSTITUTION_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
+)
+
+# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
+_ARRIVAL_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -90,6 +101,8 @@ def _load_migration(path: Path, name: str) -> ModuleType:
 _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
+_SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
+_ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
 
 # ── Timeline building blocks ─────────────────────────────────────────────────
@@ -258,7 +271,7 @@ async def _trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=planned_departure,
         planned_arrival_at=planned_arrival,
-        # Reproduces phase_service's known defect: stamped on EVERY departure, so it holds
+        # Reproduces phases.advance_departure's known defect: stamped on EVERY departure, so it holds
         # the LAST leg. Seeded deliberately wrong to prove no view reads it.
         actual_departure_at=at(departures[-1].minute) if departures else None,
         actual_arrival_at=(
@@ -271,7 +284,7 @@ async def _trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -358,6 +371,8 @@ async def views(db_session: AsyncSession) -> None:
         *_MIGRATION.UPGRADE_STATEMENTS,
         *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
         *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
+        *_SUBSTITUTION_MIGRATION.UPGRADE_STATEMENTS,
+        *_ARRIVAL_MIGRATION.UPGRADE_STATEMENTS,
     ):
         await db_session.execute(text(statement))
 
@@ -441,6 +456,35 @@ async def test_driver_metrics_counts_closed_trips_only(
     assert metrics.on_time_departure_rate == pytest.approx(0.5)
     assert metrics.override_rate == pytest.approx(1 / 14)
     assert metrics.activation_dwell_minutes_avg == pytest.approx(20.0)
+
+
+@pytest.mark.usefixtures("views")
+async def test_driver_metrics_measure_arrival_dwell_from_the_drive_to_the_gate(
+    db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
+) -> None:
+    await _trip(
+        db_session, operator, start=_start(month, 10), stops=lane,
+        steps=[
+            Step(PhaseType.TRIP_CREATION, None, 0),
+            Step(PhaseType.ACTIVATION, 0, 10),
+            Step(PhaseType.LOADING, 0, 50),
+            Step(PhaseType.DEPARTURE, 0, 60),
+            Step(PhaseType.IN_TRANSIT, 0, 300),
+            Step(PhaseType.ARRIVAL, 1, 315),
+            Step(PhaseType.UNLOADING, 1, 345),
+            Step(PhaseType.CONFIRMATION, 1, 360),
+        ],
+    )
+    await db_session.flush()
+
+    [metrics] = await get_driver_metrics(
+        db_session, organization_id=operator.org.id, start_month=month, end_month=month
+    )
+
+    assert (metrics.arrival_dwell_minutes_sum, metrics.arrival_dwell_events_count) == (15, 1)
+    assert metrics.arrival_dwell_minutes_avg == pytest.approx(15.0)
+    # Unloading is now measured from arrival, not from the end of the drive.
+    assert (metrics.unloading_dwell_minutes_sum, metrics.unloading_dwell_events_count) == (30, 1)
 
 
 @pytest.mark.usefixtures("views")
@@ -674,7 +718,7 @@ async def test_vehicle_streaks_and_trips_since_last_incident(
     assert since == {"mixed": 1, "record": 3, "clean": 2, "double": 1}
 
 
-# ── Trailers (trailer analytics spec, Stage 2) ───────────────────────────────
+# ── Trailers ──────────────────────────────────────────────────────────────────
 
 
 async def _vehicle_rows(db: AsyncSession, operator: Operator, month: date) -> dict[uuid.UUID, Any]:
@@ -820,7 +864,7 @@ async def test_breakdown_recorded_against_the_horse_counts_for_no_trailer(
 async def test_trailer_streaks_and_trips_since_last_incident(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    """FP-153 §11.4's worked examples, applied to trailers. Every breakdown is recorded
+    """FP-153's worked examples, applied to trailers. Every breakdown is recorded
     against a trailer, so the horse pulling them all keeps a clean record."""
     trailers = {name: _new_trailer(operator.org) for name in ("mixed", "record", "clean", "double")}
     db_session.add_all(trailers.values())
@@ -972,7 +1016,7 @@ async def test_lane_metrics_skip_trips_with_unknown_endpoint(
 async def test_facility_metrics_three_states_without_in_transit_or_overrides(
     db_session: AsyncSession, operator: Operator, lane: list[Precinct], month: date,
 ) -> None:
-    # in_transit is left NULL on both trips, as corroboration_service always leaves it.
+    # in_transit is left NULL on both trips, as evidence.corroboration always leaves it.
     await _trip(
         db_session, operator, start=_start(month, 10), stops=lane,
         steps=_geofenced(_single_leg(), {

@@ -210,6 +210,60 @@ def test_a_deliberate_false_proxy_topology_is_accepted() -> None:
     assert errors == []
 
 
+def test_trusting_forwarded_for_on_fly_is_rejected() -> None:
+    # Fly's proxy appends to X-Forwarded-For, so its left-most entry is caller-supplied.
+    # Trusting it buys the caller a fresh rate-limit bucket per forged value and lets them
+    # dictate the receiver_ip recorded as evidence — silently, which is why it must not boot.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="x-forwarded-for",
+        )
+    )
+
+    assert any("CLIENT_IP_HEADER" in error for error in errors)
+
+
+def test_the_header_comparison_on_fly_ignores_case() -> None:
+    # A .env written in canonical HTTP casing must not slip past the rule.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="X-Forwarded-For",
+        )
+    )
+
+    assert any("CLIENT_IP_HEADER" in error for error in errors)
+
+
+def test_the_fly_client_ip_header_is_accepted_on_fly() -> None:
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=True,
+            CLIENT_IP_HEADER="fly-client-ip",
+        )
+    )
+
+    assert errors == []
+
+
+def test_forwarded_for_on_fly_is_accepted_when_no_proxy_header_is_trusted() -> None:
+    # With trust off the header is never read, so its name cannot matter. The rule must
+    # not fire here, or it would block the one safe way to run untrusted on Fly.
+    errors = collect_production_config_errors(
+        _settings(
+            FLY_APP_NAME="freightproof-api",
+            RATE_LIMIT_TRUST_PROXY_HEADERS=False,
+            CLIENT_IP_HEADER="x-forwarded-for",
+        )
+    )
+
+    assert errors == []
+
+
 def test_disabled_rate_limiting_is_rejected_in_production() -> None:
     errors = collect_production_config_errors(_settings(RATE_LIMIT_ENABLED=False))
 
@@ -244,3 +298,44 @@ def test_enforce_raises_with_every_error_in_the_message() -> None:
 
 def test_enforce_is_silent_for_a_correct_config() -> None:
     enforce_production_config(_settings())
+
+
+# ── FP-83: DRIVER_SUBSTITUTIONS_ENABLED ───────────────────────────────────────
+# Gates only NEW arrangements; off by default so a deploy never exposes a half-built feature.
+# A blank value must read as false because backend/.env.example ships the key empty and a
+# developer copying it must not hit a startup validation error.
+
+
+def test_driver_substitutions_flag_is_off_when_the_key_is_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DRIVER_SUBSTITUTIONS_ENABLED", raising=False)
+
+    assert _settings().DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_driver_substitutions_flag_treats_a_blank_value_as_false(blank: str) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=blank).DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+def test_driver_substitutions_flag_treats_a_blank_environment_variable_as_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DRIVER_SUBSTITUTIONS_ENABLED", "")
+
+    assert _settings().DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("value", ["false", "False", False])
+def test_driver_substitutions_flag_accepts_false(value: object) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=value).DRIVER_SUBSTITUTIONS_ENABLED is False
+
+
+@pytest.mark.parametrize("value", ["true", "True", True])
+def test_driver_substitutions_flag_accepts_true(value: object) -> None:
+    assert _settings(DRIVER_SUBSTITUTIONS_ENABLED=value).DRIVER_SUBSTITUTIONS_ENABLED is True
+
+
+def test_a_blank_substitutions_flag_does_not_loosen_other_boolean_fields() -> None:
+    # The blank->false mapping is field-local: global parsing must still reject a blank bool.
+    with pytest.raises(ValueError):
+        _settings(RATE_LIMIT_ENABLED="")

@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import { AuthProvider, DEMO_SESSION_KEY, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import { AuthProvider, SUPPRESS_RETURN_SAVE_KEY } from '@/lib/context/AuthContext'
+import { DEMO_SESSION_KEY } from '@/lib/auth/DemoOtpAuth'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { RETURN_PATH_KEY } from '@shared/lib/session/return-path'
+import type { AuthChangeListener, OtpAuthPort } from '@shared/lib/auth/port'
+import { MOCK_DRIVER } from '@/lib/auth/DemoDriverProfileSource'
+import { currentActorId, __resetCustodyContextForTests } from '@/lib/session/custody-context'
 
 vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: true }))
 // The idle timer itself (listeners, a real setTimeout, cross-tab sync) is wiring these
@@ -13,6 +17,71 @@ vi.mock('@/lib/constants/env', () => ({ IS_DEMO_MODE: true }))
 vi.mock('@/lib/hooks/useIdleTimeout', () => ({ useIdleTimeout: vi.fn() }))
 
 const mockedUseIdleTimeout = vi.mocked(useIdleTimeout)
+
+it('a_delayed_signin_session_cannot_rebind_after_signout', async () => {
+  __resetCustodyContextForTests()
+  let resolveSession!: (value: { userId: string }) => void
+  const getSession = vi.fn().mockResolvedValueOnce(null).mockImplementationOnce(
+    () => new Promise<{ userId: string }>((resolve) => { resolveSession = resolve }),
+  )
+  const profiles = { loadProfile: vi.fn().mockResolvedValue(MOCK_DRIVER) }
+  const port: OtpAuthPort = {
+    getSession, onChange: () => () => {},
+    requestOtp: async () => {}, verifyOtp: async () => {}, signOut: async () => {},
+  }
+  const { result } = renderHook(() => useAuth(), {
+    wrapper: ({ children }) => <AuthProvider port={port} profiles={profiles}>{children}</AuthProvider>,
+  })
+  await waitFor(() => expect(result.current.isLoading).toBe(false))
+  let signingIn!: Promise<void>
+  await act(async () => {
+    signingIn = result.current.signIn({ phone_number: '+27821234567', otp: '123456' })
+    await Promise.resolve()
+  })
+  await act(async () => { await result.current.signOut() })
+  await act(async () => { resolveSession({ userId: 'old-auth-subject' }); await signingIn })
+
+  expect(result.current.user).toBeNull()
+  expect(currentActorId()).toBeNull()
+  expect(profiles.loadProfile).not.toHaveBeenCalled()
+})
+
+it('a_startup_lookup_cannot_restore_a_driver_after_manual_signout', async () => {
+  __resetCustodyContextForTests()
+  let resolveSession!: (value: { userId: string }) => void
+  const port: OtpAuthPort = {
+    getSession: () => new Promise(resolve => { resolveSession = resolve }), onChange: () => () => {},
+    requestOtp: async () => {}, verifyOtp: async () => {}, signOut: async () => {},
+  }
+  const profiles = { loadProfile: vi.fn().mockResolvedValue(MOCK_DRIVER) }
+  const { result } = renderHook(() => useAuth(), {
+    wrapper: ({ children }) => <AuthProvider port={port} profiles={profiles}>{children}</AuthProvider>,
+  })
+  await act(async () => { await result.current.signOut() })
+  await act(async () => { resolveSession({ userId: 'old-auth-subject' }) })
+  expect(result.current.user).toBeNull()
+  expect(currentActorId()).toBeNull()
+  expect(profiles.loadProfile).not.toHaveBeenCalled()
+})
+
+it('a_delayed_old_profile_cannot_rebind_after_signout', async () => {
+  __resetCustodyContextForTests()
+  let notify!: AuthChangeListener
+  let resolveProfile!: (value: typeof MOCK_DRIVER) => void
+  const port: OtpAuthPort = {
+    getSession: async () => ({ userId: 'auth-subject' }),
+    onChange: (listener) => { notify = listener; return () => {} },
+    requestOtp: async () => {}, verifyOtp: async () => {}, signOut: async () => {},
+  }
+  const profiles = { loadProfile: () => new Promise<typeof MOCK_DRIVER>((resolve) => { resolveProfile = resolve }) }
+  const { result } = renderHook(() => useAuth(), {
+    wrapper: ({ children }) => <AuthProvider port={port} profiles={profiles}>{children}</AuthProvider>,
+  })
+  await act(async () => { await Promise.resolve() })
+  await act(async () => { notify('signed_out', null); resolveProfile(MOCK_DRIVER) })
+  expect(result.current.user).toBeNull()
+  expect(currentActorId()).toBeNull()
+})
 
 /** The onExpire handler AuthProvider most recently armed the (mocked) idle timer with. */
 function latestIdleExpiryHandler(): (() => void) | undefined {
@@ -63,22 +132,26 @@ describe('AuthContext (demo mode)', () => {
     expect(sessionStorage.getItem(DEMO_SESSION_KEY)).toBe('true')
   })
 
-  it('a fresh mount with the session flag set hydrates the demo user without signIn', () => {
+  // Restoration goes through the auth port, so it settles a microtask after mount rather
+  // than inside the mount effect. These wait for isLoading to clear, which is the signal
+  // guarded routes themselves wait on; AuthContext.restore.test.tsx proves that the login
+  // view is never shown while it is pending.
+  it('a fresh mount with the session flag set hydrates the demo user without signIn', async () => {
     sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
 
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
     // User is restored and loading has resolved — guarded routes must not
     // bounce a refreshed demo session back to /login.
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).not.toBeNull()
-    expect(result.current.isLoading).toBe(false)
   })
 
-  it('a fresh mount without the flag resolves loading with no user', () => {
+  it('a fresh mount without the flag resolves loading with no user', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
 
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.user).toBeNull()
-    expect(result.current.isLoading).toBe(false)
   })
 
   it('signOut removes the demo session flag', async () => {

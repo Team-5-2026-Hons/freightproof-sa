@@ -282,3 +282,22 @@ describe('LocationComparisonSchematic', () => {
     expect(screen.getByTestId('boundary-circle')).toBeInTheDocument()
   })
 })
+
+describe('LocationComparisonSchematic outline boundary', () => {
+  it('test_draws_an_outline_boundary_as_a_polygon', () => {
+    const evidence = makeEvidence({
+      boundary: {
+        coords: { lat: -33.9255, lng: 18.4241 },
+        radiusMetres: 80,
+        polygon: [[-33.925, 18.4236], [-33.925, 18.4246], [-33.926, 18.4246], [-33.926, 18.4236]],
+        precinctName: 'Cape Town DC',
+        provenance: 'recorded_snapshot',
+      },
+    })
+
+    render(<LocationComparisonSchematic evidence={evidence} />)
+
+    expect(screen.getByTestId('boundary-outline').getAttribute('points')?.split(' ')).toHaveLength(4)
+    expect(screen.queryByTestId('boundary-circle')).not.toBeInTheDocument()
+  })
+})

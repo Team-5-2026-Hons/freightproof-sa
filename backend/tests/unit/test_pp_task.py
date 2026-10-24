@@ -11,7 +11,7 @@ Patching strategy:
   - fetch_and_sync_consignment → AsyncMock to control success / failure per call
 
 All patches target app.tasks.parcel_perfect.* — the module path as seen by
-the system under test, following the same convention as test_consignment_service.py.
+the system under test, following the same convention as test_consignment_sync.py.
 """
 
 import uuid
@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.orchestration.consignment_service import ConsignmentSyncResult
+from app.orchestration.consignments.sync import ConsignmentSyncResult
 from app.tasks.parcel_perfect import _sync_all_active
 
 
@@ -258,3 +258,62 @@ async def test_sync_all_active_continues_on_single_failure() -> None:
     assert result["synced"] == 1
     assert result["errors"] == 1
     assert result["pods_confirmed"] == 0
+
+
+class _RollbackExpiredError(RuntimeError):
+    """Stands in for SQLAlchemy's MissingGreenlet: a lazy load attempted on an expired instance
+    inside async code, where no implicit IO is allowed."""
+
+
+class _ExpiringConsignment:
+    """A Consignment whose attributes fail to load once the session has rolled back.
+
+    A real AsyncSession.rollback() expires every instance it holds, so reading an attribute
+    afterwards triggers a lazy load that raises. MagicMock hides this, which is how the sweep's
+    handler read expired attributes without any test noticing.
+    """
+
+    def __init__(self, pp_ref: str, expired: list[bool]) -> None:
+        self._values = {
+            "id": uuid.uuid4(), "parcel_perfect_reference": pp_ref,
+            "trip_id": uuid.uuid4(), "pp_raw_json": None,
+        }
+        self._expired = expired
+
+    def __getattr__(self, name: str) -> object:
+        if name.startswith("_") or name not in self._values:
+            raise AttributeError(name)
+        if self._expired[0]:
+            raise _RollbackExpiredError(f"{name} is expired; lazy load not allowed in async code")
+        return self._values[name]
+
+
+@pytest.mark.asyncio
+async def test_sync_all_active_survives_a_rollback_that_expires_every_consignment() -> None:
+    """After a failed sync the handler and the NEXT iteration must not read the expired
+    instances: errors == 1, the second consignment still syncs, nothing escapes."""
+    expired = [False]
+    first = _ExpiringConsignment("WAY001", expired)
+    second = _ExpiringConsignment("WAY002", expired)
+    db = _make_session_mock([first, second])  # type: ignore[list-item]
+
+    async def _rollback() -> None:
+        expired[0] = True
+
+    db.rollback = AsyncMock(side_effect=_rollback)
+    updated = _make_consignment("WAY002")
+    updated.pp_raw_json = {"details": {"poddate": ""}}
+    mock_fetch = AsyncMock(
+        side_effect=[ValueError("PP not found"), ConsignmentSyncResult(consignment=updated, warning=None)]
+    )
+
+    with (
+        patch("app.tasks.parcel_perfect.create_async_engine", return_value=_make_engine_mock()),
+        patch("app.tasks.parcel_perfect.async_sessionmaker", return_value=_make_session_factory(db)),
+        patch("app.tasks.parcel_perfect.fetch_and_sync_consignment", mock_fetch),
+    ):
+        result = await _sync_all_active()
+
+    assert result["errors"] == 1
+    assert result["synced"] == 1
+    assert mock_fetch.await_args_list[1].kwargs["pp_reference"] == "WAY002"

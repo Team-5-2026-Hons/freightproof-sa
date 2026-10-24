@@ -1,6 +1,7 @@
 'use client'
 
-// Evidence, not operations: shows a position, never routes or navigates.
+// Evidence, not operations: shows a position and, when given one, the planned route line.
+// It never routes or navigates — the line is drawn from data the caller already holds.
 //
 // Core rule: must never render a plausible-looking wrong position. Every failure degrades
 // to something explicitly labelled instead:
@@ -10,15 +11,18 @@
 //
 // POPIA: never transmits a coordinate; draws locally what the caller passes in.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader'
 import { Loader2, MapPinOff, Navigation, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { GOOGLE_MAPS_API_KEY } from '@/lib/constants/env'
+import { DARK_CLASS } from '@/lib/theme'
+import { MAP_STYLES_DARK, MAP_STYLES_QUIET } from '@/lib/tokens'
 import { formatTime } from '@/lib/utils/format-time'
 import { Button } from '@/components/ui/Button'
 import type { DriverPosition } from '@/lib/types/location'
+import type { RouteCoordinate } from '@/lib/types/route'
 
 // Street level: about a kilometre across on a phone.
 const MAP_ZOOM = 15
@@ -31,6 +35,12 @@ const DRIVER_DOT_RADIUS_M = 12
 const FALLBACK_ACCURACY_RADIUS_M = 50
 
 const ACCURACY_FILL_OPACITY = 0.15
+
+// Under the driver dot, not over it: the dot is the fact, the line is the plan.
+const ROUTE_STROKE_WEIGHT = 5
+const ROUTE_STROKE_OPACITY = 0.55
+const ROUTE_Z_INDEX = 0
+const DRIVER_Z_INDEX = 1
 const ACCURACY_STROKE_OPACITY = 0.4
 
 // ~1.1m of ground resolution at the equator — finer than any consumer GPS fix.
@@ -75,6 +85,15 @@ function nativeMapsUrl(position: DriverPosition): string {
   }
 }
 
+// The basemap's styling for whichever theme <html> currently carries. null = Google's own
+// default (light) styling.
+function themedMapStyles(): google.maps.MapTypeStyle[] | null {
+  if (typeof document === 'undefined') return null
+  return document.documentElement.classList.contains(DARK_CLASS)
+    ? [...MAP_STYLES_DARK, ...MAP_STYLES_QUIET]
+    : MAP_STYLES_QUIET
+}
+
 function formatCoordinate(value: number): string {
   return value.toFixed(COORDINATE_DECIMALS)
 }
@@ -87,6 +106,14 @@ function isStale(capturedAt: string | null, now: number): boolean {
   return now - takenAt > STALE_FIX_MS
 }
 
+// Where a caller's extra action lands on a fallback card: in the card's own flow, right
+// aligned under the card's text and hand-off button. A control floated over the card cannot
+// know how tall its text has grown (a short phone, a long caption), so it ends up on top of
+// the card's own button; in the flow it can only ever sit below it.
+function FallbackExtraAction({ children }: { children: ReactNode }) {
+  return <div className="flex w-full shrink-0 justify-end">{children}</div>
+}
+
 /** Why the map itself is not on screen. Drives the coordinates card's headline copy. */
 type FallbackReason = 'no-key' | 'tiles-unreachable'
 
@@ -95,10 +122,11 @@ interface CoordinatesCardProps {
   capturedAt: string | null
   reason: FallbackReason
   className?: string
+  extraAction?: ReactNode
 }
 
 // Rungs 1 and 2 of the ladder. Identical content, different headline explaining why.
-function CoordinatesCard({ position, capturedAt, reason, className }: CoordinatesCardProps) {
+function CoordinatesCard({ position, capturedAt, reason, className, extraAction }: CoordinatesCardProps) {
   const stale = isStale(capturedAt, Date.now())
 
   return (
@@ -124,7 +152,7 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
       </p>
 
       <div className="rounded-xl bg-surface-container-lowest p-4">
-        <p className="text-xs uppercase tracking-industrial text-surface-on-variant">
+        <p className="text-footnote font-semibold text-surface-on-variant">
           {stale ? 'Last known position' : 'Current position'}
         </p>
         <p className="mt-1 font-mono text-lg font-semibold text-surface-on">
@@ -146,14 +174,15 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
         rel="noopener noreferrer"
         className={cn(
           'inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 py-4',
-          'text-sm font-bold uppercase tracking-wider transition-all duration-200 active:scale-[0.98]',
-          'border border-outline-variant/60 bg-surface-container-lowest text-surface-on shadow-ambient-sm',
+          'text-body font-semibold transition-all duration-200 active:scale-[0.98]',
+          'border border-outline-variant/60 bg-surface-container-lowest text-surface-on',
           'hover:bg-surface-container-low',
         )}
       >
         <Navigation className="h-4 w-4" strokeWidth={2} aria-hidden />
         Open in Maps
       </a>
+      {extraAction !== undefined && <FallbackExtraAction>{extraAction}</FallbackExtraAction>}
     </div>
   )
 }
@@ -161,10 +190,11 @@ function CoordinatesCard({ position, capturedAt, reason, className }: Coordinate
 interface NoFixPanelProps {
   onRetry?: () => void
   className?: string
+  extraAction?: ReactNode
 }
 
 // Rung 3. Nothing is drawn, because there is nothing true to draw.
-function NoFixPanel({ onRetry, className }: NoFixPanelProps) {
+function NoFixPanel({ onRetry, className, extraAction }: NoFixPanelProps) {
   return (
     <div
       className={cn(
@@ -180,9 +210,10 @@ function NoFixPanel({ onRetry, className }: NoFixPanelProps) {
       </p>
       {onRetry !== undefined && (
         <Button variant="secondary" size="md" onClick={onRetry}>
-          Try again
+          Try Again
         </Button>
       )}
+      {extraAction !== undefined && <FallbackExtraAction>{extraAction}</FallbackExtraAction>}
     </div>
   )
 }
@@ -195,17 +226,45 @@ export interface DriverMapProps {
   /** Re-request a fix. Omit to render the no-fix state without a retry control. */
   onRetry?: () => void
   className?: string
+  /**
+   * Placement override for the live map's "Open in Maps" chip, for a screen that floats
+   * its own controls where the chip normally sits (In Transit's Back button, top left).
+   * Whatever the placement, it must stay clear of Google's logo and attribution.
+   */
+  handoffClassName?: string
+  /**
+   * Sizing for the fallback cards (no fix / coordinates), when it must differ from the
+   * map's own. A fixed-height map strip needs an explicit height for the Maps API to draw
+   * into, but the fallback cards carry text and a button that would overflow that height.
+   * Defaults to `className`.
+   */
+  fallbackClassName?: string
+  /**
+   * A second hand-off that belongs on the map surface (In Transit's Navigate to the
+   * destination). On the live map it floats where `extraActionClassName` places it; on the
+   * fallback cards it joins the card's flow instead, so it can never cover the card's own
+   * "Open in Maps" button. Omit for none.
+   */
+  extraAction?: ReactNode
+  /** Placement of `extraAction` over the live map, e.g. `bottom-12 right-4`. */
+  extraActionClassName?: string
+  /** The planned leg being driven, [lat, lng] in driving order. Omit or null for no line. */
+  route?: readonly RouteCoordinate[] | null
 }
 
 /** Whether the Maps JS API is usable right now. */
 type MapState = 'loading' | 'ready' | 'unavailable'
 
-export function DriverMap({ position, capturedAt, onRetry, className }: DriverMapProps) {
+export function DriverMap({ position, capturedAt, onRetry, className, handoffClassName, fallbackClassName = className, extraAction, extraActionClassName, route = null }: DriverMapProps) {
   const [mapState, setMapState] = useState<MapState>('loading')
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<google.maps.Map | null>(null)
   const driverDotRef = useRef<google.maps.Circle | null>(null)
   const accuracyRef = useRef<google.maps.Circle | null>(null)
+  const routeLineRef = useRef<google.maps.Polyline | null>(null)
+  // Kept from the one library load so the route effect can build a Polyline without a
+  // second importLibrary round trip (and without reaching for the global `google`).
+  const mapsLibraryRef = useRef<google.maps.MapsLibrary | null>(null)
 
   const hasKey = GOOGLE_MAPS_API_KEY !== ''
 
@@ -223,8 +282,10 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
 
     applyMapsOptions(GOOGLE_MAPS_API_KEY)
     importLibrary('maps')
-      .then(({ Map, Circle }) => {
+      .then((library) => {
         if (cancelled) return
+        const { Map, Circle } = library
+        mapsLibraryRef.current = library
 
         const map = new Map(container, {
           center: centre,
@@ -234,6 +295,7 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
           gestureHandling: 'greedy',
           clickableIcons: false,
           keyboardShortcuts: false,
+          styles: themedMapStyles(),
         })
 
         // The halo is the uncertainty, drawn to scale, stopping a 500m fix reading as a pinpoint.
@@ -258,6 +320,7 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
           fillColor: driverColour,
           fillOpacity: 1,
           clickable: false,
+          zIndex: DRIVER_Z_INDEX,
         })
 
         mapRef.current = map
@@ -286,12 +349,48 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
     accuracyRef.current?.setRadius(position.accuracyM ?? FALLBACK_ACCURACY_RADIUS_M)
   }, [position, mapState])
 
+  // Drawn (or redrawn) whenever the map becomes ready or the leg changes. The map stays
+  // centred on the driver, not fitted to the route: this is a driving screen, and a
+  // 600 km leg fitted to a phone would shrink the driver's own position to a pixel.
+  useEffect(() => {
+    const map = mapRef.current
+    const Polyline = mapsLibraryRef.current?.Polyline
+    routeLineRef.current?.setMap(null)
+    routeLineRef.current = null
+    if (mapState !== 'ready' || map === null || Polyline === undefined || route === null || route.length < 2) return
+
+    routeLineRef.current = new Polyline({
+      map,
+      path: route.map(([lat, lng]) => ({ lat, lng })),
+      strokeColor: tokenColour(DRIVER_COLOUR_VAR, DRIVER_COLOUR_FALLBACK),
+      strokeOpacity: ROUTE_STROKE_OPACITY,
+      strokeWeight: ROUTE_STROKE_WEIGHT,
+      clickable: false,
+      zIndex: ROUTE_Z_INDEX,
+    })
+  }, [route, mapState])
+
+  // Follow the app theme live: the theme class lands on <html> (lib/theme.ts), including
+  // the automatic switch at sunset under "System", so watch that one attribute rather than
+  // re-deriving the preference here.
+  useEffect(() => {
+    if (mapState !== 'ready' || typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(() => {
+      mapRef.current?.setOptions({ styles: themedMapStyles() })
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    return () => observer.disconnect()
+  }, [mapState])
+
   // Release the Maps objects on unmount so repeated opens don't accumulate map instances.
   useEffect(() => () => {
     driverDotRef.current?.setMap(null)
     accuracyRef.current?.setMap(null)
+    routeLineRef.current?.setMap(null)
     driverDotRef.current = null
     accuracyRef.current = null
+    routeLineRef.current = null
+    mapsLibraryRef.current = null
     mapRef.current = null
   }, [])
 
@@ -309,10 +408,10 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
   }, [retryTiles])
 
   // Rung 3 first: with no fix there is no coordinate for rungs 1 and 2 to show either.
-  if (position === null) return <NoFixPanel onRetry={onRetry} className={className} />
-  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={className} />
+  if (position === null) return <NoFixPanel onRetry={onRetry} className={fallbackClassName} extraAction={extraAction} />
+  if (!hasKey) return <CoordinatesCard position={position} capturedAt={capturedAt} reason="no-key" className={fallbackClassName} extraAction={extraAction} />
   if (mapState === 'unavailable') {
-    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={className} />
+    return <CoordinatesCard position={position} capturedAt={capturedAt} reason="tiles-unreachable" className={fallbackClassName} extraAction={extraAction} />
   }
 
   return (
@@ -324,6 +423,24 @@ export function DriverMap({ position, capturedAt, onRetry, className }: DriverMa
           <p className="text-sm text-surface-on-variant">Loading map</p>
         </div>
       )}
+      {/* The same handoff the fallback cards offer: a small map is for glancing, the
+          phone's own map app is for looking properly. A real <a> for the reason given on
+          the fallback card's link. Top-left: the bottom corners carry Google's logo and
+          attribution, which must stay visible. */}
+      {mapState === 'ready' && (
+        <a
+          href={nativeMapsUrl(position)}
+          rel="noopener noreferrer"
+          className={cn(
+            'glass-nav absolute left-2 top-2 flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 text-footnote font-semibold text-surface-on shadow-level-2 transition-opacity duration-100 active:opacity-60',
+            handoffClassName,
+          )}
+        >
+          <Navigation className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden />
+          Open in Maps
+        </a>
+      )}
+      {extraAction !== undefined && <div className={cn('absolute', extraActionClassName)}>{extraAction}</div>}
     </div>
   )
 }

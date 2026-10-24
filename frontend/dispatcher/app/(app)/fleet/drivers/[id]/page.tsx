@@ -5,13 +5,13 @@ import { useParams, useRouter } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
-import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
 import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { SplitDetailSkeleton } from '@/components/ui/DetailSkeleton'
 import { DriverAnalyticsSummary } from '@/components/analytics/DriverAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
@@ -76,14 +76,14 @@ export default function DriverDetailPage() {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Driver" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <SplitDetailSkeleton label="Loading driver" />
       </div>
     )
   }
 
-  if (error || !driver) {
+  // Only an empty page is a load failure. With driver details on screen a failed background
+  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
+  if (!driver) {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Driver not found" left={backButton} />
@@ -162,7 +162,8 @@ export default function DriverDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/drivers/${driver!.id}`, body)
-      await refetchSilent()
+      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
+      refetchSilent()
       setIsEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
@@ -180,6 +181,12 @@ export default function DriverDetailPage() {
       >
         <Chip type={driver.is_active ? 'complete' : 'pending'} label={driver.is_active ? 'Active' : 'Inactive'} />
       </TopBar>
+
+      {error && (
+        <p role="alert" className="shrink-0 bg-err-c px-6 py-2 text-[12px] text-on-err-c">
+          Could not refresh this driver ({error}). Showing the details last loaded.
+        </p>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
 

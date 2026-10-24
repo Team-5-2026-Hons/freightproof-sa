@@ -4,10 +4,10 @@ A trip is immutable evidence. FreightProof has no trip-deletion feature and must
 never grow one: no endpoint, no orchestration path, no UI affordance. This script is
 out-of-band maintenance for a disposable refactor database, in the same category as
 seed_demo.py, and nothing under app/ may import from it. It exists because
-trips.trip_reference is UNIQUE, so re-seeding demo trips during Stages 1-4 fails on
-the second run without it.
+trips.trip_reference is UNIQUE, so repeatedly re-seeding demo trips during development
+fails on the second run without it.
 
-Existing trips are old-shape and anchored over old payloads; parent §5.3 regenerates
+Existing trips are old-shape and anchored over old payloads, so this script regenerates
 them rather than migrating them. Reference data — organizations, precincts, users,
 drivers, vehicles, templates, SLA configs — survives untouched, and the script
 asserts that rather than hoping.
@@ -21,7 +21,7 @@ silently wipe the entire fleet audit trail. At demo volumes DELETE costs nothing
 single row is touched. No pg_dump stands behind this script (decision 2026-07-28),
 so the guard IS the safety net: the failure mode that matters is running it while
 DATABASE_URL still points at the old fallback project, which is exactly the class
-of misconfiguration Stage 0 found three instances of.
+of misconfiguration that has bitten this project before.
 
 Usage:
     cd backend
@@ -40,12 +40,45 @@ from app.core.config import settings
 
 # FK-safe order: children before parents. phase_events precedes evidence_artifacts
 # and blockchain_receipts because it points at both; exceptions and checkpoints
-# precede merkle_batches for the same reason.
+# precede merkle_batches for the same reason. The receiver-handover chain comes first:
+# verifications point at confirmations and tokens, attempts and confirmations at
+# tokens, and tokens at phase_events and trip_stops. Audit packs go first of all: access
+# events and email codes point at packs, packs at consignments and trip-scoped receipts, and incident
+# declarations at exceptions. Driver-substitution support rows precede driver_substitutions (corrections
+# point at it), and requests follow it because completed substitutions point at them. Both facts (coverage and order) are checked against the
+# models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
+    "audit_pack_access_events",
+    "audit_pack_email_codes",
+    "audit_packs",
+    "incident_declarations",
+    # Incidents after their declarations, and before the exceptions, parcels, phase events
+    # and artifacts their ledger entries cite.
+    "incident_updates",
+    "incident_exceptions",
+    "incident_parcels",
+    "incidents",
+    "receiver_identity_verifications",
+    "handover_token_attempts",
+    "handover_confirmations",
+    "handover_capability_tokens",
+    "trip_location_pings",
     "merkle_batch_leaves",
     "trailer_gps_snapshots",
+    "driver_substitution_operations",
+    "driver_substitution_corrections",
+    "driver_substitution_notices",
+    "driver_substitution_confirmation_artifacts",
+    "driver_substitution_uploads",
+    "late_driver_evidence_artifacts",
+    "late_driver_evidence",
     "driver_substitutions",
+    "evidence_anchor_events",
+    "exception_artifacts",
     "exceptions",
+    # After exceptions: a handover capture's findings point at it (FP-83 C3 CP4).
+    "driver_substitution_confirmations",
+    "driver_substitution_requests",
     "checkpoints",
     "phase_events",
     "parcels",
@@ -56,13 +89,25 @@ _DELETE_ORDER = [
     "trip_stops",
 ]
 
+# evidence_artifacts.phase_event_id -> phase_events and the phase_events -> evidence_artifacts
+# columns form a cycle, so no delete order satisfies both. The nullable half is cleared first.
+# _SEVERED_BEFORE_DELETE names the edge so tests/unit/test_dev_reset_lifecycle.py can exempt
+# exactly that edge from its ordering check, and nothing else.
+_CLEAR_ATTRIBUTION = (
+    "UPDATE evidence_artifacts SET phase_event_id = NULL, evidence_role = NULL "
+    "WHERE phase_event_id IS NOT NULL"
+)
+_SEVERED_BEFORE_DELETE = frozenset({("evidence_artifacts", "phase_events")})
+
 # Trip-scoped receipts only. Vehicle/driver receipts carry trip_id IS NULL and are
 # referenced by vehicle_events / driver_events, which are reference-side audit rows.
 _RECEIPTS_DELETE = "DELETE FROM blockchain_receipts WHERE trip_id IS NOT NULL"
 
+# precinct_events is the precinct registry's audit trail, the same kind of row as
+# vehicle_events / driver_events: it points at trip_id-NULL receipts, which survive.
 _REFERENCE_TABLES = [
     "organizations", "precincts", "users", "drivers", "vehicles",
-    "trip_templates", "sla_configs", "vehicle_events", "driver_events",
+    "trip_templates", "sla_configs", "vehicle_events", "driver_events", "precinct_events",
 ]
 
 
@@ -90,6 +135,9 @@ async def reset() -> None:
     try:
         async with async_session() as db:
             before = await _counts(db, _REFERENCE_TABLES)
+
+            result = await db.execute(text(_CLEAR_ATTRIBUTION))
+            print(f"  {'evidence attribution':<24} {_deleted(result)} cleared")
 
             for table in _DELETE_ORDER:
                 result = await db.execute(text(f"DELETE FROM {table}"))  # noqa: S608

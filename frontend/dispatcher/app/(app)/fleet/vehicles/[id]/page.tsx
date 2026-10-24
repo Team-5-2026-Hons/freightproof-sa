@@ -5,13 +5,13 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { TopBar }    from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Chip }      from '@/components/ui/Chip'
-import { Spinner }   from '@/components/ui/Spinner'
 import { Button }    from '@/components/ui/Button'
 import { Ic }        from '@/components/ui/Ic'
 import { InfoRow }   from '@/components/ui/InfoRow'
 import { FormField } from '@/components/ui/FormField'
 import { Switch }    from '@/components/ui/Switch'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
+import { SplitDetailSkeleton } from '@/components/ui/DetailSkeleton'
 import { VehicleAnalyticsSummary } from '@/components/analytics/VehicleAnalyticsSummary'
 import { BlockchainBadge } from '@/components/blockchain/BlockchainBadge'
 import { EventTimeline }   from '@/components/blockchain/EventTimeline'
@@ -30,6 +30,10 @@ import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
 import { validateVehicleForm, vinFieldFeedback, VEHICLE_FIELD_ORDER, type VehicleField } from '@shared/lib/validation/vehicle'
 import { VIN_LENGTH } from '@shared/lib/validation/constants'
 import { AdminOnly } from '@/components/auth/AdminOnly'
+
+// The vehicle info column's facts: registration, type, make, model, year, device, VIN, licence disc,
+// GVM and status.
+const VEHICLE_SKELETON_INFO_ROWS = 10
 
 type EditState = {
   registration: string
@@ -82,14 +86,14 @@ export default function VehicleDetailPage() {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Vehicle" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <SplitDetailSkeleton label="Loading vehicle" infoRows={VEHICLE_SKELETON_INFO_ROWS} />
       </div>
     )
   }
 
-  if (error || !vehicle) {
+  // Only an empty page is a load failure. With vehicle details on screen a failed background
+  // refresh keeps them and says so inline (below), rather than discarding what was loaded.
+  if (!vehicle) {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Vehicle not found" left={backButton} />
@@ -175,7 +179,8 @@ export default function VehicleDetailPage() {
 
       if (Object.keys(body).length === 0) { setIsEditing(false); return }
       await api.patch(`/api/v1/vehicles/${vehicle!.id}`, body)
-      await refetchSilent()
+      // Not awaited: refetchSilent returns void, so the panel closes before fresh data lands.
+      refetchSilent()
       setIsEditing(false)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Save failed')
@@ -193,6 +198,12 @@ export default function VehicleDetailPage() {
       >
         <Chip type={vehicle.is_active ? 'complete' : 'pending'} label={vehicle.is_active ? 'Active' : 'Inactive'} />
       </TopBar>
+
+      {error && (
+        <p role="alert" className="shrink-0 bg-err-c px-6 py-2 text-[12px] text-on-err-c">
+          Could not refresh this vehicle ({error}). Showing the details last loaded.
+        </p>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
 

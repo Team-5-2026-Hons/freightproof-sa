@@ -70,8 +70,15 @@ class ReceiverIdentityVerification(Base):
     # replay — the single-use link already stops that.
     identity_match: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
+    # When the receiver's own resolve recorded a final verdict: cross-check run, any exception
+    # filed. NULL while that is still owed (pending at the vendor, or only the webhook or sweeper
+    # has terminalised the row). Explicit because identity_match is the cross-check's RESULT, and
+    # NULL there also means "nothing to compare", so it cannot double as "already resolved".
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # SELFIE_ONLY tier only; our own capture in af-south-1, never sent to the vendor
-    # (avoids the s26 biometric regime).
+    # (avoids the s26 biometric regime). Unused since the receiver selfie was removed
+    # (FP-316); kept so dropping it needs no migration while other work is in flight.
     selfie_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )

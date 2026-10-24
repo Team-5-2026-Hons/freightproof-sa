@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   NO_DATA,
+  fmtAxisAmount,
   fmtHours,
   fmtMinutes,
   fmtOptionalCount,
   fmtRate,
+  fmtRand,
+  fmtRandRate,
   fmtRatio,
   fmtScheduleDelta,
 } from './analytics'
@@ -89,5 +92,55 @@ describe('fmtOptionalCount', () => {
   it('shows a real zero as 0', () => {
     // Back-to-back incident trips give a genuine zero-length streak.
     expect(fmtOptionalCount(0)).toBe('0')
+  })
+})
+
+// Intl's en-ZA groups thousands with a no-break space; normalise it so the expectations read plainly.
+const plain = (text: string): string => text.replace(/\u00a0/g, ' ')
+
+describe('fmtRand', () => {
+  it('shows whole rand in the South African style', () => {
+    expect(plain(fmtRand(1284300))).toBe('R 1 284 300')
+  })
+
+  it('rounds to the rand: cents on an estimate would be false precision', () => {
+    expect(plain(fmtRand(20209.39))).toBe('R 20 209')
+  })
+
+  it('shows a real zero as R 0', () => {
+    expect(plain(fmtRand(0))).toBe('R 0')
+  })
+
+  it('shows "—" when there is no figure', () => {
+    expect(fmtRand(null)).toBe(NO_DATA)
+  })
+})
+
+describe('fmtRandRate', () => {
+  it('shows a rate to the cent', () => {
+    expect(plain(fmtRandRate(17.6437))).toBe('R 17,64')
+  })
+
+  it('keeps two decimals on a whole-rand rate', () => {
+    expect(plain(fmtRandRate(155))).toBe('R 155,00')
+  })
+
+  it('shows "—" when there is no figure', () => {
+    expect(fmtRandRate(null)).toBe(NO_DATA)
+  })
+})
+
+describe('fmtAxisAmount', () => {
+  // 21 Oct: "160000" on the Delay cost axis ran into the "Rand" heading beside it.
+  it('shortens thousands and millions so an axis number stays about four characters', () => {
+    expect(fmtAxisAmount(160000)).toBe('160k')
+    expect(fmtAxisAmount(50000)).toBe('50k')
+    expect(fmtAxisAmount(2500)).toBe('2,5k')
+    expect(fmtAxisAmount(1200000)).toBe('1,2m')
+  })
+
+  it('leaves amounts under a thousand, and zero, as they are', () => {
+    expect(fmtAxisAmount(0)).toBe('0')
+    expect(fmtAxisAmount(850)).toBe('850')
   })
 })

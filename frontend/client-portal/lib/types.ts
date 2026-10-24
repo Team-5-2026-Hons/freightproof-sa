@@ -1,0 +1,534 @@
+// Mirrors backend/app/schemas/audit_pack.py — the manifest every rendering is built from.
+// Kept local to this app (not @shared): nothing else in the frontend reads audit packs,
+// and a portal that outsiders open should not move when the dispatcher's types do.
+//
+// Covers manifest v4. A pack is frozen under the contract it was issued with and served as
+// stored (response_model_exclude_unset), so every field added after v1 is optional here.
+
+export type EvidenceTier = 'anchored' | 'corroborated' | 'recorded' | 'declared'
+export type PositionSource = 'driver_phone' | 'vehicle_tracker' | 'trailer_tracker'
+export type ObservationLevel = 'info' | 'attention'
+export type LiveCheckStatus = 'verified' | 'db_mismatch' | 'hedera_mismatch' | 'no_receipt' | 'error'
+
+export interface PositionFix {
+  lat: number
+  lng: number
+  source: PositionSource
+  recorded_at: string | null
+  accuracy_metres: number | null
+}
+
+export interface AnchoredRecord {
+  receipt_id: string
+  subject_type: string
+  subject_id: string
+  receipt_type: string
+  canonical_payload: string
+  data_hash: string
+  hedera_topic_id: string | null
+  hedera_sequence_number: number | null
+  hedera_tx_id: string | null
+  hedera_consensus_at: string | null
+  payload_matches_hash: boolean
+}
+
+export interface EvidenceFile {
+  artifact_id: string
+  role: string
+  sha256: string
+  mime_type: string
+  captured_at: string
+  tier: EvidenceTier
+}
+
+export interface StopRecord {
+  trip_stop_id: string
+  sequence: number
+  precinct_id: string
+  precinct_name: string
+  address: string | null
+  lat: number
+  lng: number
+  geofence_radius_metres: number
+  // [lat, lng] corners. When set the outline was the fence and the radius is not used.
+  geofence_polygon?: [number, number][] | null
+  slot_time: string | null
+}
+
+export interface VehicleRecord {
+  vehicle_id: string
+  role: 'horse' | 'trailer'
+  registration: string
+  vehicle_type: string
+  make: string | null
+  model: string | null
+  year: number | null
+  vin_number: string | null
+  licence_disc_expiry: string | null
+  licence_disc_valid_on_trip_date: boolean | null
+  tracker_device_id: string
+}
+
+/** One driver's own capture at a handover (FP-83): what they declared, on their device. */
+export interface HandoverDeclarationRecord {
+  role: string
+  driver_name: string
+  captured_at: string
+  received_at: string
+  location_recorded: boolean
+  seal_readings: string[]
+  photo_sha256: string[]
+  discrepancy_note: string | null
+  driver_id?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  accuracy_metres?: number | null
+  location_observed_at?: string | null
+  location_unavailable_reason?: string | null
+  location_observation_committed?: boolean
+}
+
+export interface SubstitutionClarificationRecord {
+  id: string
+  recorded_by_user_id: string
+  recorded_by_name: string | null
+  recorded_at: string
+  reason: string
+  correction_note: string
+  event_hash: string | null
+  anchor_status: string | null
+  receipt_id: string | null
+}
+
+export interface DriverSubstitutionRecord {
+  substitution_id: string
+  original_driver_name: string
+  substituting_driver_name: string
+  exchange_location: string | null
+  is_planned: boolean | null
+  substitution_at: string
+  anchor_receipt_id: string | null
+  tier: EvidenceTier
+  // v3 (FP-83 custody facts). Absent on packs frozen before them.
+  sequence_number?: number | null
+  completion_mode?: string | null
+  arranged_by_name?: string | null
+  completed_by?: 'driver' | 'dispatcher' | null
+  missing_confirmation_reason?: string | null
+  incoming_identity_status?: string | null
+  identity_attested_by_name?: string | null
+  identity_attested_at?: string | null
+  incoming_licence_expiry?: string | null
+  commitment_sha256?: string | null
+  declarations?: HandoverDeclarationRecord[]
+  request_format?: string | null
+  confirmation_policy?: string | null
+  required_confirmation_roles?: string[] | null
+  completed_by_driver_id?: string | null
+  completed_by_user_id?: string | null
+  completed_by_name?: string | null
+  identity_attestation_reason?: string | null
+  corrections?: SubstitutionClarificationRecord[]
+}
+
+/** Evidence a driver captured in an earlier custody period, kept for review (FP-83). */
+export interface LateEvidenceRecord {
+  evidence_id: string
+  driver_name: string
+  custody_sequence: number
+  kind: string
+  captured_at: string
+  received_at: string
+  status: string
+  payload_sha256: string
+  photo_sha256: string[]
+  reviewed_at: string | null
+}
+
+export interface DriverRecord {
+  driver_id: string
+  full_name: string
+  id_number: string
+  id_number_masked: boolean
+  license_number: string
+  license_expiry: string | null
+  license_valid_on_trip_date: boolean | null
+  trip_idvs_status: string
+  trip_idvs_checked_at: string | null
+  substitutions: DriverSubstitutionRecord[]
+}
+
+export interface ParcelRecord {
+  barcode: string
+  status: string
+  pp_scan_out_at: string | null
+  pp_scan_in_at: string | null
+}
+
+export interface ConsignmentRecord {
+  consignment_id: string
+  parcel_perfect_reference: string
+  client_name: string | null
+  // Pydantic serialises Decimal as a string to keep cents exact.
+  declared_value: string | null
+  parcel_count_expected: number | null
+  unit_count_expected: number | null
+  pickup_stop_id: string | null
+  delivery_stop_id: string | null
+  parcels: ParcelRecord[]
+}
+
+export interface AnchoredField {
+  name: string
+  value: string | number | null
+  matches_anchor: boolean
+}
+
+export interface LocationAssessment {
+  proximity: 'within_limit' | 'separated' | 'unverified'
+  separation_metres: number | null
+  driver_in_precinct: boolean | null
+  truck_in_precinct: boolean | null
+  reasons: string[]
+}
+
+export interface PhaseRecord {
+  phase_event_id: string
+  sequence_number: number
+  phase_type: string
+  status: string
+  anchor_status: string
+  trip_stop_id: string | null
+  precinct_name: string | null
+  slot_time: string | null
+  completed_at: string | null
+  driver_captured_at: string | null
+  driver_phone: PositionFix | null
+  vehicle_tracker: PositionFix | null
+  trailer_fixes: PositionFix[]
+  location_assessment: LocationAssessment | null
+  location_warning_acknowledged_at: string | null
+  location_warning_reason: string | null
+  overridden_by_dispatcher: boolean
+  override_note: string | null
+  seal_number: string | null
+  /** intact / damaged / missing — Arrival rows only; absent on packs frozen before Arrival. */
+  seal_condition?: string | null
+  parcel_count_origin: number | null
+  parcel_count_destination: number | null
+  driver_visual_count: number | null
+  evidence: EvidenceFile[]
+  anchored_fields: AnchoredField[]
+  anchor_receipt_id: string | null
+  tier: EvidenceTier
+}
+
+export interface CheckpointRecord {
+  checkpoint_id: string
+  checkpoint_type: string
+  recorded_at: string
+  driver_phone: PositionFix | null
+  vehicle_tracker: PositionFix | null
+  is_deviation: boolean
+  note: string | null
+  evidence: EvidenceFile[]
+  tier: EvidenceTier
+}
+
+// Manifest v2 added per-photo receipts and per-action anchors on an exception.
+// These are the three anchorable actions on an exception.
+export type AnchorAction = 'raised' | 'reviewed' | 'cancelled'
+
+// One photo of an exception report, tied to the receipt that committed its hash. `tier` is
+// 'anchored' only when that receipt is intact and commits exactly this artifact and hash.
+export interface ExceptionPhoto {
+  artifact_id: string
+  position: number
+  sha256: string
+  mime_type: string
+  captured_at: string
+  tier: EvidenceTier
+  anchor_event_id: string | null
+  anchor_receipt_id: string | null
+}
+
+// Where one action on an exception stands. 'pending' and 'failed' are debts, never success.
+export interface ExceptionAnchorRecord {
+  event_id: string
+  action: AnchorAction
+  receipt_type: string
+  anchor_status: string
+  receipt_id: string | null
+  occurred_at: string
+  tier: EvidenceTier
+}
+
+export interface ExceptionRecord {
+  exception_id: string
+  exception_type: string
+  source: string
+  severity: string
+  description: string
+  raised_at: string
+  position: PositionFix | null
+  phase_event_id: string | null
+  checkpoint_id: string | null
+  consignment_id: string | null
+  review_status: string
+  review_outcome: string | null
+  reviewed_at: string | null
+  reviewer_name: string | null
+  contact_method: string | null
+  review_note: string | null
+  // v1 readers: the photo(s). In v2 every photo is repeated in `photos` with its receipt.
+  evidence: EvidenceFile[]
+  // The REPORT's tier: anchored only by a matching raise receipt (a review or cancellation
+  // receipt anchors that action alone).
+  tier: EvidenceTier
+  // Absent on packs frozen under manifest v1.
+  photos?: ExceptionPhoto[]
+  anchors?: ExceptionAnchorRecord[]
+  // GPS is never part of a receipt, so a position is always FreightProof's own record.
+  position_tier?: 'recorded'
+}
+
+export interface RecordChange {
+  subject: 'driver' | 'vehicle'
+  subject_id: string
+  event_type: string
+  changed_fields: string[]
+  changed_at: string
+  anchor_receipt_id: string | null
+  tier: EvidenceTier
+}
+
+export interface CoverageGap {
+  start: string
+  end: string
+  minutes: number
+}
+
+export interface StationaryPeriod {
+  start: string
+  end: string
+  minutes: number
+  lat: number
+  lng: number
+}
+
+export interface LocationCoverage {
+  window_start: string | null
+  window_end: string | null
+  fix_counts: Partial<Record<PositionSource, number>>
+  first_fix_at: string | null
+  last_fix_at: string | null
+  gaps: CoverageGap[]
+  stationary_periods: StationaryPeriod[]
+}
+
+export interface Observation {
+  code: string
+  level: ObservationLevel
+  text: string
+  evidence_ids: string[]
+}
+
+export interface IncidentDeclarationRecord {
+  declaration_id: string
+  exception_id: string | null
+  // v4: the investigation this declaration belongs to.
+  incident_id?: string | null
+  saps_station: string | null
+  saps_cas_number: string | null
+  saps_officer: string | null
+  reported_to_saps_at: string | null
+  tracking_company_notified_at: string | null
+  insurer_notified_at: string | null
+  client_notified_at: string | null
+  insurer_claim_reference: string | null
+  note: string | null
+  declared_by_name: string | null
+  declared_at: string
+  tier: 'declared'
+}
+
+export interface IncidentSummary {
+  exception_ids: string[]
+  first_exception_type: string
+  first_raised_at: string
+  position: PositionFix | null
+  last_known_position: PositionFix | null
+  first_reviewed_at: string | null
+  minutes_to_first_review: number | null
+  // v4. 'investigation' = a dispatcher-recorded hijacking with no earlier critical exception;
+  // absent or 'exception' = anchored on the first critical exception.
+  basis?: 'exception' | 'investigation'
+}
+
+export interface AffectedParcelRecord {
+  parcel_id: string
+  barcode: string
+  consignment_id: string
+  scan_state: 'scanned_in' | 'no_scan_in_recorded' | 'no_scan_recorded'
+  latest_finding: string | null
+}
+
+/** One entry of an incident's append-only ledger, as recorded by a dispatcher. */
+export interface InvestigationEntryRecord {
+  sequence: number
+  kind: string
+  note: string | null
+  from_value: string | null
+  to_value: string | null
+  parcel_id: string | null
+  exception_id: string | null
+  external_action: string | null
+  action_at: string | null
+  recorded_by_name: string | null
+  recorded_at: string
+}
+
+/** An incident the operator investigated. Declared tier throughout: nothing in it was captured by FreightProof. */
+export interface InvestigationRecord {
+  incident_id: string
+  reference: string
+  incident_type: string
+  summary: string
+  reporter_role: string
+  report_channel: string
+  reported_occurred_at: string | null
+  received_at: string
+  confidence: string
+  status: string
+  outcome: string | null
+  closure_reason: string | null
+  closed_at: string | null
+  trip_stopped_at: string | null
+  assigned_to_name: string | null
+  exception_ids: string[]
+  parcels: AffectedParcelRecord[]
+  entries: InvestigationEntryRecord[]
+  tier: 'declared'
+}
+
+export interface TripSummary {
+  trip_id: string
+  trip_reference: string
+  order_number: string | null
+  trip_type: string
+  status: string
+  operator_name: string
+  client_names: string[]
+  pulsit_trip_reference_id: string | null
+  journey_lock_hash: string | null
+  created_at: string
+  planned_departure_at: string | null
+  planned_arrival_at: string | null
+  actual_departure_at: string | null
+  actual_arrival_at: string | null
+  closed_at: string | null
+}
+
+export interface AuditPackManifest {
+  manifest_version: number
+  generated_at: string
+  options: {
+    scope_consignment_id: string | null
+    include_location_trail: boolean
+    include_full_driver_id: boolean
+  }
+  trip: TripSummary
+  stops: StopRecord[]
+  vehicles: VehicleRecord[]
+  driver: DriverRecord
+  consignments: ConsignmentRecord[]
+  phases: PhaseRecord[]
+  checkpoints: CheckpointRecord[]
+  exceptions: ExceptionRecord[]
+  record_changes: RecordChange[]
+  location_trail: PositionFix[]
+  location_coverage: LocationCoverage
+  anchored_records: AnchoredRecord[]
+  incident: IncidentSummary | null
+  // Absent on packs issued before declarations existed.
+  declarations?: IncidentDeclarationRecord[]
+  // Absent on packs frozen before FP-83 (late_evidence) and v4 (investigations).
+  late_evidence?: LateEvidenceRecord[]
+  investigations?: InvestigationRecord[]
+  observations: Observation[]
+  redactions: string[]
+}
+
+export interface SealReceipt {
+  canonical_payload: string
+  data_hash: string
+  hedera_topic_id: string | null
+  hedera_sequence_number: number | null
+  hedera_tx_id: string | null
+  hedera_consensus_at: string | null
+}
+
+export interface PublicPackSeal {
+  pack_id: string
+  pack_label: string
+  issued_at: string
+  expires_at: string
+  revoked: boolean
+  anchor_status: string
+  manifest_sha256: string
+  pdf_sha256: string
+  seal: SealReceipt | null
+  hedera_network: string
+  mirror_base_url: string
+}
+
+export interface PublicAuditPackView {
+  seal: PublicPackSeal
+  recipient_name: string
+  recipient_organization: string
+  purpose: string
+  external_reference: string | null
+  manifest: AuditPackManifest
+}
+
+export interface LiveRecordCheck {
+  receipt_id: string
+  subject_type: string
+  subject_id: string
+  status: LiveCheckStatus
+}
+
+export interface LiveVerification {
+  checked_at: string
+  seal_status: LiveCheckStatus
+  records: LiveRecordCheck[]
+  records_added_since_issue: number
+}
+
+// ── API error bodies ───────────────────────────────────────────────────────────────
+
+// FastAPI's 422: one item per invalid field.
+export interface ValidationItem {
+  loc?: (string | number)[]
+  msg: string
+  type?: string
+}
+
+export interface ErrorBody {
+  // A string for our own HTTPException/JSONResponse bodies, a list for a 422.
+  detail?: string | ValidationItem[]
+  verification_required?: boolean
+  email_hint?: string
+}
+
+// ── Emailed one-time code ───────────────────────────────────────────────────────────
+
+export interface EmailCodeSent {
+  /** Masked, e.g. j***@santam.co.za. */
+  email_hint: string
+}
+
+export interface ViewerGrant {
+  grant: string
+  expires_at: string
+}

@@ -6,9 +6,10 @@
 
 import type { ReactNode } from 'react'
 
+import { InfoPopover } from '@/components/analytics/fleet/InfoPopover'
 import { Button } from '@/components/ui/Button'
 import { MonthRangePicker } from '@/components/ui/MonthRangePicker'
-import { Spinner } from '@/components/ui/Spinner'
+import { SkeletonBar } from '@/components/ui/Skeleton'
 import { NO_DATA } from '@/lib/format/analytics'
 import type { MonthRange } from '@/lib/types/month-range'
 import { EXCEPTION_SEVERITY_META } from '@shared/lib/constants/status-meta'
@@ -20,6 +21,8 @@ const FRAME_COPY = {
   // Same wording as DataTable's error state, so a failure reads alike on /analytics.
   loadFailed: 'Failed to load',
   retry: 'Try again',
+  aboutTitle: 'These figures',
+  aboutLabel: 'About these figures',
 } as const
 
 // The right panel is already bg-surf-lowest, so tiles take the next tone down.
@@ -50,21 +53,21 @@ interface AnalyticsSummaryFrameProps {
   isLoading: boolean
   error: string | null
   onRetry: () => void
+  /** Where this page's figures come from, shown behind the ⓘ. Required, not optional: the type
+   *  checker is what guarantees all three detail pages name a source, and it is reachable in every
+   *  state because the answer doesn't depend on whether the figures loaded. */
+  source: string
   /** The figures, shown once loaded without error. */
   children: ReactNode
 }
 
-/** Month range picker above a spinner, an error with retry, or the figures. */
+/** Month range picker above a skeleton, an error with retry, or the figures. */
 export function AnalyticsSummaryFrame({
-  range, onRangeChange, isLoading, error, onRetry, children,
+  range, onRangeChange, isLoading, error, onRetry, source, children,
 }: AnalyticsSummaryFrameProps) {
   let body: ReactNode = children
   if (isLoading) {
-    body = (
-      <div className="flex justify-center py-10">
-        <Spinner size="lg" />
-      </div>
-    )
+    body = <SummarySkeleton />
   } else if (error) {
     body = (
       <div className="flex flex-col items-start gap-2">
@@ -79,9 +82,50 @@ export function AnalyticsSummaryFrame({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Always shown, so the range can still be changed after an error or an empty result. */}
-      <MonthRangePicker value={range} onChange={onRangeChange} />
+      {/* Always shown, so the range can still be changed after an error or an empty result.
+          The source sits behind the ⓘ beside it: it describes the whole tab, in every state. */}
+      <div className="flex items-center gap-2">
+        <MonthRangePicker value={range} onChange={onRangeChange} />
+        <InfoPopover title={FRAME_COPY.aboutTitle} ariaLabel={FRAME_COPY.aboutLabel} question={source} />
+      </div>
       {body}
+    </div>
+  )
+}
+
+// Placeholder rows under the tiles; the real summaries list between three and six.
+const SKELETON_LIST_ROWS = 4
+const SKELETON_TILE_CLASS = cn(TILE_CLASS, 'flex flex-col gap-3 p-4')
+
+/** The summary's own shape while it loads (four stat tiles, a three-cell strip and a list),
+ *  so the figures land where the placeholders were instead of the panel jumping. */
+function SummarySkeleton() {
+  return (
+    <div role="status" aria-busy="true" aria-label="Loading" className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-3">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className={SKELETON_TILE_CLASS}>
+            <SkeletonBar className="h-3 w-16" />
+            <SkeletonBar className="h-7 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className={cn(TILE_CLASS, 'grid grid-cols-3 divide-x divide-outline-v/40')}>
+        {SEVERITY_ORDER.map((severity) => (
+          <div key={severity} className="flex flex-col gap-2 p-4">
+            <SkeletonBar className="h-6 w-8" />
+            <SkeletonBar className="h-3 w-14" />
+          </div>
+        ))}
+      </div>
+      <div className="divide-y divide-outline-v/40">
+        {Array.from({ length: SKELETON_LIST_ROWS }, (_, index) => (
+          <div key={index} className="flex items-center justify-between gap-3 py-3">
+            <SkeletonBar className="h-3.5 w-32" />
+            <SkeletonBar className="h-5 w-12" />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

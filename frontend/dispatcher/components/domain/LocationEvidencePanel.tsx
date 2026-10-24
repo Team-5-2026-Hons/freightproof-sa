@@ -35,6 +35,8 @@ interface Props {
    *  the trip timeline's exception footer, which renders `ExceptionMapButton` once per
    *  exception already. Defaults to false: every other consumer keeps its button. */
   hideMapButton?: boolean
+  /** The timeline keeps coordinates in the map; other surfaces retain their field grid. */
+  showCoordinates?: boolean
 }
 
 const NO_FIX_RECORDED = 'No fix recorded'
@@ -109,13 +111,20 @@ function legendText(boundary: LocationEvidence['boundary']): string {
   return parts.join(INLINE_SEPARATOR)
 }
 
+/** "200 m radius" or "property outline (6 corners)" — the fence named the way it was judged. */
+function fenceText(boundary: NonNullable<LocationEvidence['boundary']>): string {
+  return boundary.polygon
+    ? `property outline (${boundary.polygon.length} corners)`
+    : `${Math.round(boundary.radiusMetres)} m radius`
+}
+
 /** The Boundary field/row text, shared by the panel and the modal so both surfaces state
  *  the same fact the same way. */
 function boundaryValue(boundary: LocationEvidence['boundary'], assessmentRecorded: boolean | undefined): string {
   return boundary
     ? boundary.provenance === 'recorded_snapshot'
-      ? `Recorded boundary and policy${boundary.policyVersion ? ` (${boundary.policyVersion})` : ''}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${boundary.toleranceMetres !== undefined ? `, ${Math.round(boundary.toleranceMetres)} m tolerance` : ''}`
-      : `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius`
+      ? `Recorded boundary and policy${boundary.policyVersion ? ` (${boundary.policyVersion})` : ''}: ${boundary.precinctName}, ${fenceText(boundary)}${boundary.toleranceMetres !== undefined ? `, ${Math.round(boundary.toleranceMetres)} m tolerance` : ''}`
+      : `${BOUNDARY_REFERENCE_LABEL}: ${boundary.precinctName}, ${fenceText(boundary)}`
     : assessmentRecorded ? RECORDED_BOUNDARY_UNAVAILABLE : NO_BOUNDARY_RECORDED
 }
 
@@ -126,12 +135,12 @@ function distanceToPrecinctValue(distanceMetres: number): string {
   return `${formatSeparation(distanceMetres)} ${MODAL_DISTANCE_SUFFIX}`
 }
 
-/** Modal Boundary row: precinct and radius only, the "reference only" caveat lives in the label. */
+/** Modal Boundary row: precinct and fence only, the "reference only" caveat lives in the label. */
 function modalBoundaryValue(boundary: NonNullable<LocationEvidence['boundary']>): string {
   const policy = boundary.provenance === 'recorded_snapshot' && boundary.policyVersion
     ? ` · policy ${boundary.policyVersion}`
     : ''
-  return `${boundary.precinctName}, ${Math.round(boundary.radiusMetres)} m radius${policy}`
+  return `${boundary.precinctName}, ${fenceText(boundary)}${policy}`
 }
 
 interface ModalProps {
@@ -193,7 +202,7 @@ export function LocationComparisonModal({ open, onClose, evidence, contextLabel 
   )
 }
 
-export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = false }: Props) {
+export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = false, showCoordinates = true }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const closeModal = () => setModalOpen(false)
   const { driverFix, trackerFix, separationMetres, verdict, boundary } = evidence
@@ -202,8 +211,8 @@ export function LocationEvidencePanel({ evidence, contextLabel, hideMapButton = 
   const separationText = separationMetres === null ? COMPARISON_UNAVAILABLE : formatSeparation(separationMetres)
   return (
     <>
-      <Field label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />
-      <Field label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />
+      {showCoordinates && <Field label={FIX_LABELS.driver_phone} value={driverFix ? coordsValue(driverFix) : NO_FIX_RECORDED} mono />}
+      {showCoordinates && <Field label={FIX_LABELS.horse_tracker} value={trackerFix ? coordsValue(trackerFix) : NO_FIX_RECORDED} mono />}
       {driverFix && <Field label={`${FIX_LABELS.driver_phone} capture time`} value={captureValue(driverFix)} />}
       {trackerFix && <Field label={`${FIX_LABELS.horse_tracker} capture time`} value={captureValue(trackerFix)} />}
 

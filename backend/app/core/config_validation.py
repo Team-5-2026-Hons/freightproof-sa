@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 _PRODUCTION = "production"
 
+# Mirrors client_ip.FORWARDED_FOR_HEADER by value, not by import: this module declares
+# "core -> config only" above, and one string is cheaper than widening that contract.
+_FORWARDED_FOR_HEADER = "x-forwarded-for"
+
 # Hosts meaning "this machine" — never right for a URL handed to a
 # stranger's phone or a vendor's redirect.
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1")
@@ -45,6 +49,51 @@ def _is_loopback(url: str) -> bool:
     """
     host = (urlparse(url.lower()).hostname or "").strip("[]")
     return host in _LOOPBACK_HOSTS
+
+
+def _proxy_topology_errors(settings: Settings) -> List[str]:
+    """Rules about which address this process believes, and therefore records.
+
+    Extracted as a pair because they are one decision with two failure modes, and both
+    are silent: whatever these settings resolve to becomes the rate-limit bucket key AND
+    the receiver_ip written to a handover confirmation as evidence.
+    """
+    errors: List[str] = []
+
+    # Required to be an explicit decision, not required to be true — a
+    # deployment genuinely not behind a proxy must be able to say so.
+    # model_fields_set distinguishes "deliberately false" from "unset".
+    if "RATE_LIMIT_TRUST_PROXY_HEADERS" not in settings.model_fields_set:
+        errors.append(
+            "RATE_LIMIT_TRUST_PROXY_HEADERS is not set explicitly. In production it must "
+            "be a deliberate statement about the deployment's topology: true behind an "
+            "edge that guarantees CLIENT_IP_HEADER (Fly's fly-client-ip, or an "
+            "X-Forwarded-For that nginx or a load balancer overwrites), false only when "
+            "this process is directly internet-facing. Left unset, every "
+            "unauthenticated caller shares one rate-limit bucket and the receiver_ip "
+            "recorded on each handover is the proxy's."
+        )
+
+    # The one combination that is actively worse than not trusting a header at all. Fly's
+    # proxy APPENDS to X-Forwarded-For rather than overwriting it, so the left-most entry
+    # is whatever the caller sent: every forged value buys a fresh rate-limit bucket and
+    # writes itself into receiver_ip as evidence. Nothing throws and nothing is logged,
+    # which is why it is enforced here rather than left to the runbook.
+    if (
+        settings.FLY_APP_NAME.strip()
+        and settings.RATE_LIMIT_TRUST_PROXY_HEADERS
+        and settings.CLIENT_IP_HEADER.strip().lower() == _FORWARDED_FOR_HEADER
+    ):
+        errors.append(
+            "CLIENT_IP_HEADER is X-Forwarded-For while running on Fly (FLY_APP_NAME is "
+            "set) and RATE_LIMIT_TRUST_PROXY_HEADERS is true. Fly's proxy appends to that "
+            "header instead of overwriting it, so its left-most entry is caller-supplied: "
+            "rate limits become bypassable per forged value and the receiver_ip recorded "
+            "on every handover confirmation is dictated by the caller. Set "
+            "CLIENT_IP_HEADER=fly-client-ip, which fly-proxy sets itself."
+        )
+
+    return errors
 
 
 def collect_production_config_errors(settings: Settings) -> List[str]:
@@ -112,18 +161,7 @@ def collect_production_config_errors(settings: Settings) -> List[str]:
                 "decisions the receiver's own return never delivered is silently gone."
             )
 
-    # Required to be an explicit decision, not required to be true — a
-    # deployment genuinely not behind a proxy must be able to say so.
-    # model_fields_set distinguishes "deliberately false" from "unset".
-    if "RATE_LIMIT_TRUST_PROXY_HEADERS" not in settings.model_fields_set:
-        errors.append(
-            "RATE_LIMIT_TRUST_PROXY_HEADERS is not set explicitly. In production it must "
-            "be a deliberate statement about the deployment's topology: true behind a "
-            "proxy that overwrites X-Forwarded-For (Railway, nginx, a load balancer), "
-            "false only when this process is directly internet-facing. Left unset, every "
-            "unauthenticated caller shares one rate-limit bucket and the receiver_ip "
-            "recorded on each handover is the proxy's."
-        )
+    errors.extend(_proxy_topology_errors(settings))
 
     if not settings.RATE_LIMIT_ENABLED:
         errors.append(

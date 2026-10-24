@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
 import { Ic } from '@/components/ui/Ic'
+import { isAnchoredTopic } from '@/lib/format/hashscan'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { BlockchainReceipt, BlockchainReceiptType } from '@shared/lib/types/blockchain'
 const HASHSCAN_BASE =
@@ -10,21 +11,27 @@ const RECEIPT_LABELS: Partial<Record<BlockchainReceiptType, string>> = {
   journey_lock:      'Journey lock anchored',
   pickup:            'Pickup receipt anchored',
   delivery:          'Delivery receipt anchored',
+  activation:        'Activation receipt anchored',
+  loading:           'Loading receipt anchored',
+  transit_arrival:   'Arrival attestation anchored',
+  arrival_inspection: 'Seal inspection anchored',
+  unloading:         'Unloading receipt anchored',
+  // Never worded like a phase receipt: this anchors the dispatcher's override record,
+  // not evidence the driver captured.
+  phase_override:    'Override record anchored',
   checkpoint_batch:  'Checkpoint receipt anchored',
   exception_batch:   'Exception receipt anchored',
 }
 
 export function ChainReceiptTag({ receipt }: { receipt: BlockchainReceipt }) {
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
 
-  const isPending = !receipt.hedera_topic_id || receipt.hedera_topic_id === 'None'
+  const isPending = !isAnchoredTopic(receipt.hedera_topic_id)
   const truncated = `${receipt.data_hash.slice(0, 8)}…${receipt.data_hash.slice(-8)}`
   const label = RECEIPT_LABELS[receipt.receipt_type] ?? 'Receipt anchored'
 
   function copyHash() {
-    navigator.clipboard.writeText(receipt.data_hash).catch(() => {})
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    void copy(receipt.data_hash)
   }
 
   return (

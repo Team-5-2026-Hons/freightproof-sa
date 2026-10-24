@@ -1,22 +1,113 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { usePhaseDraft } from '../usePhaseDraft'
-import type { ActivationEvidence, UnloadingEvidence } from '@/lib/types/evidence-draft'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
+import { listRetainedDrafts, writeDraft } from '@/lib/offline/retained-drafts'
+import type { ActivationEvidence, ArrivalEvidence } from '@/lib/types/evidence-draft'
+import { bindActorLease, invalidateActorLease, setCustodyContext } from '@/lib/session/custody-context'
 
 // Activation's draft is down to capturedAt (its GPS fields moved out when the manual
-// capture step was removed), so the patch/persist cases below exercise UNLOADING_INITIAL
+// capture step was removed), so the patch/persist cases below exercise ARRIVAL_INITIAL
 // instead — this one still proves the "nothing stored yet" path.
 const INITIAL: ActivationEvidence = { capturedAt: null }
 
-const UNLOADING_INITIAL: UnloadingEvidence = {
-  waybillHandedOver: null, sealNumberAtDestination: null,
-  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-  driverVisualCount: null, capturedAt: null,
+// The seal check moved from unloading to its own arrival phase — this suite's
+// string-field draft now exercises ArrivalEvidence, the current home of that evidence.
+const ARRIVAL_INITIAL: ArrivalEvidence = {
+  sealCondition: null, sealNumberAtArrival: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  authenticateTestDriver('trip-1')
+})
+afterEach(() => vi.restoreAllMocks())
 
 describe('usePhaseDraft', () => {
+  it('retains a mounted earlier-period draft and rejects its old edit and clear callbacks', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealNumberAtArrival: 'AB-1234', sealPhotoDataUrl: 'original-photo' }))
+    const oldUpdate = result.current[1]
+    const oldClear = result.current[2]
+
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    rerender()
+
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
+    expect(listRetainedDrafts()).toEqual([expect.objectContaining({ actorId: 'driver-1', custodySequence: 0,
+      draft: expect.objectContaining({ sealNumberAtArrival: 'AB-1234', sealPhotoDataUrl: 'original-photo' }) })])
+    act(() => result.current[1]({ sealNumberAtArrival: 'CD-5678' }))
+    act(() => { oldUpdate({ sealNumberAtArrival: 'EF-9999' }); oldClear() })
+    expect(result.current[0].sealNumberAtArrival).toBe('CD-5678')
+    expect(JSON.parse(localStorage.getItem('fp_draft_trip-1_phase-event-1') ?? '{}')).toMatchObject({
+      actorId: 'driver-1', custodySequence: 2, draft: { sealNumberAtArrival: 'CD-5678' },
+    })
+  })
+
+  it('resets a mounted draft when another account takes the same phase', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'first-account-photo' }))
+    bindActorLease('driver-2', invalidateActorLease())
+    setCustodyContext({ actorId: 'driver-2', tripId: 'trip-1', custodySequence: 1 })
+    rerender()
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
+    expect(listRetainedDrafts()).toEqual([expect.objectContaining({ actorId: 'driver-1',
+      draft: expect.objectContaining({ sealPhotoDataUrl: 'first-account-photo' }) })])
+  })
+
+  it('does not edit or delete old evidence after custody changes before React rerenders', () => {
+    const { result } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'original-photo' }))
+    const original = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    act(() => { result.current[1]({ sealPhotoDataUrl: 'late-photo' }); result.current[2]() })
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(original)
+  })
+
+  it('keeps a known legacy draft when the first server custody answer is zero', () => {
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: null })
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'compatible-photo' }))
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 0 })
+    rerender()
+    expect(result.current[0].sealPhotoDataUrl).toBe('compatible-photo')
+    expect(listRetainedDrafts()).toEqual([])
+    act(() => result.current[2]())
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBeNull()
+  })
+
+  it('an old hook cannot edit or clear a newer draft in the same custody period', () => {
+    const original = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => original.result.current[1]({ sealPhotoDataUrl: 'original-photo' }))
+    const oldUpdate = original.result.current[1]
+    const oldClear = original.result.current[2]
+    original.unmount()
+    const reopened = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => reopened.result.current[1]({ sealPhotoDataUrl: 'newer-photo' }))
+    const newer = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+
+    act(() => { oldUpdate({ sealPhotoDataUrl: 'late-upload-result' }); oldClear() })
+
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(newer)
+    expect(reopened.result.current[0].sealPhotoDataUrl).toBe('newer-photo')
+  })
+
+  it('refuses to overwrite an old draft when its retained copy cannot be saved', () => {
+    const { result, rerender } = renderHook(() => usePhaseDraft('trip-1', 'phase-event-1', ARRIVAL_INITIAL))
+    act(() => result.current[1]({ sealPhotoDataUrl: 'irreplaceable-photo' }))
+    const original = localStorage.getItem('fp_draft_trip-1_phase-event-1')
+    const setItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (key.startsWith('fp_retained_draft_')) throw new DOMException('Full', 'QuotaExceededError')
+      setItem.call(this, key, value)
+    })
+    setCustodyContext({ actorId: 'driver-1', tripId: 'trip-1', custodySequence: 2 })
+    rerender()
+    act(() => result.current[1]({ sealPhotoDataUrl: 'new-period-photo' }))
+    expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBe(original)
+  })
+
   it('returns initial state when nothing is stored', () => {
     const { result } = renderHook(() =>
       usePhaseDraft<ActivationEvidence>('trip-1', 'phase-event-1', INITIAL)
@@ -26,74 +117,90 @@ describe('usePhaseDraft', () => {
 
   it('updateDraft merges partial patch into draft', () => {
     const { result } = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'phase-event-1', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'phase-event-1', ARRIVAL_INITIAL)
     )
-    act(() => result.current[1]({ sealNumberAtDestination: 'AB-1234', driverVisualCount: 31 }))
-    expect(result.current[0].sealNumberAtDestination).toBe('AB-1234')
-    expect(result.current[0].driverVisualCount).toBe(31)
+    act(() => result.current[1]({ sealNumberAtArrival: 'AB-1234', sealCondition: 'intact' }))
+    expect(result.current[0].sealNumberAtArrival).toBe('AB-1234')
+    expect(result.current[0].sealCondition).toBe('intact')
   })
 
   it('persists draft to localStorage keyed by phase_event_id', () => {
     const { result } = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'phase-event-1', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'phase-event-1', ARRIVAL_INITIAL)
     )
-    act(() => result.current[1]({ sealNumberAtDestination: 'AB-1234' }))
+    act(() => result.current[1]({ sealNumberAtArrival: 'AB-1234' }))
     const stored = JSON.parse(localStorage.getItem('fp_draft_trip-1_phase-event-1') ?? '{}')
-    expect(stored.sealNumberAtDestination).toBe('AB-1234')
+    expect(stored).toMatchObject({ v: 2, actorId: 'driver-1', custodySequence: 0 })
+    expect(stored.draft.sealNumberAtArrival).toBe('AB-1234')
   })
 
   it('clearDraft resets to initial and removes storage key', () => {
     const { result } = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'phase-event-1', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'phase-event-1', ARRIVAL_INITIAL)
     )
-    act(() => result.current[1]({ sealNumberAtDestination: 'AB-1234' }))
+    act(() => result.current[1]({ sealNumberAtArrival: 'AB-1234' }))
     act(() => result.current[2]())
-    expect(result.current[0]).toEqual(UNLOADING_INITIAL)
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
     expect(localStorage.getItem('fp_draft_trip-1_phase-event-1')).toBeNull()
   })
 
   it('falls back to initial value for keys missing from a stale stored draft', () => {
-    // Simulates a draft saved under an older UnloadingEvidence shape, before
-    // driverVisualCount existed. This is not hypothetical for the current release: a
-    // driver mid-trip when the GPS steps were removed has drafts on disk written under
-    // the previous shapes, and they must not resurrect fields the type no longer has.
+    // Simulates a draft saved under an older ArrivalEvidence shape, before
+    // sealCondition existed. This is not hypothetical for the current release: a
+    // driver mid-trip when the shape changed has drafts on disk written under the
+    // previous shapes, while retaining its authenticated capture provenance.
     const staleDraft = {
-      sealNumberAtDestination: 'AB-1234', capturedAt: '2026-01-01T00:00:00Z',
+      sealNumberAtArrival: 'AB-1234', capturedAt: '2026-01-01T00:00:00Z',
     }
-    localStorage.setItem('fp_draft_trip-1_phase-event-1', JSON.stringify(staleDraft))
+    // A known capturer with an older evidence shape is still this driver's draft.
+    writeDraft('trip-1', 'phase-event-1', { actorId: 'driver-1', custodySequence: 0 }, staleDraft)
 
     const { result } = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'phase-event-1', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'phase-event-1', ARRIVAL_INITIAL)
     )
 
-    expect(result.current[0].driverVisualCount).toBe(UNLOADING_INITIAL.driverVisualCount)
-    expect(result.current[0].sealNumberAtDestination).toBe('AB-1234')
+    expect(result.current[0].sealCondition).toBe(ARRIVAL_INITIAL.sealCondition)
+    expect(result.current[0].sealNumberAtArrival).toBe('AB-1234')
+  })
+
+  it('retains a legacy draft intact instead of assigning its unknown evidence to the signed-in driver', () => {
+    const legacy = { sealNumberAtArrival: 'AB-1234', capturedAt: '2026-01-01T00:00:00Z' }
+    localStorage.setItem('fp_draft_trip-1_phase-event-1', JSON.stringify(legacy))
+
+    const { result } = renderHook(() =>
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'phase-event-1', ARRIVAL_INITIAL)
+    )
+
+    expect(result.current[0]).toEqual(ARRIVAL_INITIAL)
+    expect(listRetainedDrafts()).toEqual([expect.objectContaining({
+      actorId: null, custodySequence: null, quarantined: true, draft: legacy,
+    })])
   })
 
   // The rename's whole reason to exist: the old useHandshakeDraft keyed storage on
   // (tripId, handshakeType), which collides every occurrence of a repeated phase type
-  // onto one key. A three-stop cross-dock visits `unloading` more than once — this
+  // onto one key. A three-stop cross-dock visits `arrival` more than once — this
   // proves two such occurrences (different phase_event_id, same phase_type) get
   // independent drafts instead of one clobbering the other.
-  it('drafts for two different unloading phase_event_ids in one trip do not collide', () => {
+  it('drafts for two different arrival phase_event_ids in one trip do not collide', () => {
     const first = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'unloading-event-1', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'arrival-event-1', ARRIVAL_INITIAL)
     )
     const second = renderHook(() =>
-      usePhaseDraft<UnloadingEvidence>('trip-1', 'unloading-event-2', UNLOADING_INITIAL)
+      usePhaseDraft<ArrivalEvidence>('trip-1', 'arrival-event-2', ARRIVAL_INITIAL)
     )
 
-    act(() => first.result.current[1]({ sealNumberAtDestination: 'AB-1111', driverVisualCount: 12 }))
-    act(() => second.result.current[1]({ sealNumberAtDestination: 'CD-2222', driverVisualCount: 40 }))
+    act(() => first.result.current[1]({ sealNumberAtArrival: 'AB-1111', sealCondition: 'intact' }))
+    act(() => second.result.current[1]({ sealNumberAtArrival: 'CD-2222', sealCondition: 'damaged' }))
 
-    expect(first.result.current[0].sealNumberAtDestination).toBe('AB-1111')
-    expect(first.result.current[0].driverVisualCount).toBe(12)
-    expect(second.result.current[0].sealNumberAtDestination).toBe('CD-2222')
-    expect(second.result.current[0].driverVisualCount).toBe(40)
+    expect(first.result.current[0].sealNumberAtArrival).toBe('AB-1111')
+    expect(first.result.current[0].sealCondition).toBe('intact')
+    expect(second.result.current[0].sealNumberAtArrival).toBe('CD-2222')
+    expect(second.result.current[0].sealCondition).toBe('damaged')
 
-    const storedFirst = JSON.parse(localStorage.getItem('fp_draft_trip-1_unloading-event-1') ?? '{}')
-    const storedSecond = JSON.parse(localStorage.getItem('fp_draft_trip-1_unloading-event-2') ?? '{}')
-    expect(storedFirst.sealNumberAtDestination).toBe('AB-1111')
-    expect(storedSecond.sealNumberAtDestination).toBe('CD-2222')
+    const storedFirst = JSON.parse(localStorage.getItem('fp_draft_trip-1_arrival-event-1') ?? '{}')
+    const storedSecond = JSON.parse(localStorage.getItem('fp_draft_trip-1_arrival-event-2') ?? '{}')
+    expect(storedFirst.draft.sealNumberAtArrival).toBe('AB-1111')
+    expect(storedSecond.draft.sealNumberAtArrival).toBe('CD-2222')
   })
 })

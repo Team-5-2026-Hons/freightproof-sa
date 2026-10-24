@@ -10,7 +10,7 @@ function seed(overrides: Partial<TripSeed> = {}): TripSeed {
   return {
     id: base.id,
     trip_reference: 'FP-SEED-0001',
-    order_number: 'ORD-SEED',
+    pp_manifest: { issuer_account: 'MOCK01', origin_hub: 'JNB', number: 69, display: 'CGY Logistics · JNB 69' },
     status: 'active',
     driver: { full_name: 'Seeded Driver' },
     horse: { registration: 'CA 000-000' },
@@ -29,6 +29,16 @@ function seed(overrides: Partial<TripSeed> = {}): TripSeed {
 beforeEach(() => { __resetTripSeeds() })
 
 describe('tripHeaderFacts', () => {
+  it('names the trip by its PP manifest, from a record or a list row', () => {
+    expect(tripHeaderFacts(null, seed())?.manifestLabel).toBe('CGY Logistics · JNB 69')
+    expect(tripHeaderFacts(base, null)?.manifestLabel).toBe(base.pp_manifest?.display)
+  })
+
+  it('calls a manifest-less empty leg an empty leg, and an untyped row "No manifest"', () => {
+    expect(tripHeaderFacts({ ...base, pp_manifest: null, trip_type: 'empty_leg' }, null)?.manifestLabel).toBe('Empty leg')
+    expect(tripHeaderFacts(null, seed({ pp_manifest: null }))?.manifestLabel).toBe('No manifest')
+  })
+
   it('returns null when neither a record nor a seed is known', () => {
     expect(tripHeaderFacts(null, null)).toBeNull()
   })

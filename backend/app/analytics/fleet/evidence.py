@@ -1,8 +1,8 @@
-"""Queries behind the Evidence tab (GET /analytics/fleet/evidence, spec §5.5).
+"""Queries behind the Evidence tab (GET /analytics/fleet/evidence).
 
 How strong the record is. Tracker agreement, overrides and receiver sign-off are over the
-closed-trip set (spec G4), each step bucketed by its trip's first departure. The blockchain
-receipts chart (D25) and the Receipts owed tile (D26) were both removed.
+closed-trip set, each step bucketed by its trip's first departure. The blockchain
+receipts chart and the Receipts owed tile were both removed.
 """
 
 import uuid
@@ -29,7 +29,7 @@ from app.schemas.fleet_analytics import (
 
 
 def _zero_filled(counts: Mapping[date, tuple[int, ...]], bucket_list: Sequence[Bucket], width: int) -> list[tuple[Bucket, tuple[int, ...]]]:
-    """Every bucket of the period with its counts, zeros where nothing happened (spec G7)."""
+    """Every bucket of the period with its counts, zeros where nothing happened."""
     return [(bucket, counts.get(bucket.start, (0,) * width)) for bucket in bucket_list]
 
 

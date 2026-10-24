@@ -1,6 +1,6 @@
 """introduce exception review semantics, migrating existing evidence
 
-Task 1 (FP-146 follow-on). Replaces the old two-state `resolved: bool` with a
+FP-146 follow-on. Replaces the old two-state `resolved: bool` with a
 tri-state `review_status` (recorded / needs_review / reviewed) — a boolean could not
 distinguish "nobody has looked at this yet" from "looked at, still needs a decision",
 which is exactly the gap that let a CRITICAL exception sit unactioned indefinitely with

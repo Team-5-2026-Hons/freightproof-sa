@@ -64,3 +64,90 @@ describe('uploadArtifact pre-upload size check (audit fix)', () => {
     expect(result).toEqual({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
   })
 })
+
+describe('uploadArtifact attribution', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    stubFetchedBlobOfSize(1024)
+    mockPostForm.mockResolvedValue({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function sentForm(): FormData {
+    return mockPostForm.mock.calls[0][1] as FormData
+  }
+
+  it('sends both attribution fields or neither', async () => {
+    await uploadArtifact({
+      ...PARAMS,
+      attribution: { phaseEventId: 'phase-1', role: 'seal_photo' },
+    })
+    const attributed = sentForm()
+
+    mockPostForm.mockClear()
+    await uploadArtifact(PARAMS)
+    const unattributed = sentForm()
+
+    expect(attributed.get('phase_event_id')).toBe('phase-1')
+    expect(attributed.get('evidence_role')).toBe('seal_photo')
+    // An older-style call must stay byte-compatible with what the backend already accepts:
+    // a lone field would 422, so the unattributed form carries neither.
+    expect(unattributed.has('phase_event_id')).toBe(false)
+    expect(unattributed.has('evidence_role')).toBe(false)
+  })
+})
+
+describe('uploadArtifact filename', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPostForm.mockResolvedValue({ id: 'artifact-1', file_hash: 'f'.repeat(64) })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubBlob(type: string) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      blob: () => Promise.resolve(new Blob([new ArrayBuffer(16)], { type })),
+    }))
+  }
+
+  it('names a PDF .pdf', async () => {
+    stubBlob('application/pdf')
+
+    await uploadArtifact({ ...PARAMS, artifactType: 'document' })
+
+    const file = (mockPostForm.mock.calls[0][1] as FormData).get('file') as File
+    expect(file.name).toBe('document.pdf')
+  })
+
+  it('keeps .jpg for photos', async () => {
+    stubBlob('image/jpeg')
+
+    await uploadArtifact(PARAMS)
+
+    const file = (mockPostForm.mock.calls[0][1] as FormData).get('file') as File
+    expect(file.name).toBe(`${PARAMS.artifactType}.jpg`)
+  })
+})
+
+it('stops_after_account_generation_changes_during_photo_conversion', async () => {
+  const actor = await import('@/lib/session/custody-context')
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  mockPostForm.mockClear()
+  let release!: (value: Blob) => void
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ blob: () => new Promise<Blob>((resolve) => { release = resolve }) }))
+  const result = uploadArtifact(PARAMS).catch((error: unknown) => error)
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  actor.bindActorLease('driver-b', actor.invalidateActorLease())
+  actor.bindActorLease('driver-a', actor.invalidateActorLease())
+  release(new Blob(['original bytes']))
+  await result
+  expect(mockPostForm).not.toHaveBeenCalled()
+  vi.unstubAllGlobals()
+  actor.invalidateActorLease()
+})

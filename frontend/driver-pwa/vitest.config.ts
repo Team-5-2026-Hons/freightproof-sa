@@ -8,9 +8,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
     globals: true,
-    // No test files exist yet in this task — later tasks add them under app/**.
-    // Without this, vitest exits 1 on an empty suite and breaks CI for this task.
-    passWithNoTests: true,
   },
   resolve: {
     alias: {

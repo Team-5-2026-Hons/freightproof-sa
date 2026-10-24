@@ -14,19 +14,27 @@ from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.blockchain.anchor_service import lookup_receipts
+from app.db.models.audit_packs import AuditPack
 from app.db.models.blockchain import BlockchainReceipt
+from app.db.models.driver_substitutions import DriverSubstitutionCorrection
 from app.db.models.enums import (
+    AnchorStatus,
     BlockchainReceiptType,
+    ExceptionSeverity,
+    ExceptionSource,
+    ExceptionType,
     OrganizationType,
     PhaseType,
     SubjectType,
     VehicleType,
 )
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.events import DriverEvent, PrecinctEvent, VehicleEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.phases import PhaseEvent
-from app.db.models.trips import Trip, TripStop
+from app.db.models.transit import TripException
+from app.db.models.trips import DriverSubstitution, Trip, TripStop
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.main import app
@@ -409,7 +417,57 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
             changed_fields={},
             changed_by_user_id=lookup_seed.user.id,
         )
-        db_session.add_all([phase, vehicle_event, driver_event, precinct_event])
+        audit_pack = AuditPack(
+            id=uuid.uuid4(), trip_id=trip.id, organization_id=organization.id, pack_version=1,
+            purpose="insurance_claim", recipient_name="R", recipient_organization="R",
+            include_location_trail=False, include_full_driver_id=False, manifest_version=1,
+            manifest_json={}, manifest_sha256="0" * 64, pdf_storage_bucket="b", pdf_storage_key="k",
+            pdf_sha256="0" * 64, pdf_size_bytes=1, anchor_status="anchored", token_hash=uuid.uuid4().hex * 2,
+            issued_at=now, expires_at=now, issued_by_user_id=lookup_seed.user.id,
+        )
+        db_session.add_all([phase, vehicle_event, driver_event, precinct_event, audit_pack])
+        await db_session.flush()
+        raised = TripException(
+            trip_id=trip.id, exception_type=ExceptionType.PANIC_BUTTON, source=ExceptionSource.DRIVER,
+            severity=ExceptionSeverity.CRITICAL, description="x",
+        )
+        db_session.add(raised)
+        await db_session.flush()
+        evidence_event = EvidenceAnchorEvent(
+            trip_id=trip.id, exception_id=raised.id, receipt_type=BlockchainReceiptType.EXCEPTION_RAISED,
+            occurred_at=now, payload_version=1, payload_json={}, event_hash="0" * 64,
+            anchor_status=AnchorStatus.PENDING,
+        )
+        db_session.add(evidence_event)
+        await db_session.flush()
+
+        # A legacy substitution (request_id NULL, so no completing actor) is the simplest valid
+        # row; its visibility runs through the trip's operator organisation.
+        incoming_driver = Driver(
+            id=uuid.uuid4(),
+            organization_id=organization.id,
+            full_name="Incoming Driver",
+            # uq_drivers_org_id_number: must differ from the trip driver's in the same organisation.
+            id_number="8001015009088",
+            phone_number="+27821234567",
+            license_number="TEST",
+        )
+        db_session.add(incoming_driver)
+        await db_session.flush()
+        substitution = DriverSubstitution(
+            id=uuid.uuid4(), trip_id=trip.id, original_driver_id=driver.id,
+            substituting_driver_id=incoming_driver.id, exchange_location="Depot",
+            approving_dispatcher_user_id=lookup_seed.user.id, is_planned=True,
+            substitution_at=now, request_id=None, sequence_number=1, previous_substitution_id=None,
+        )
+        db_session.add(substitution)
+        await db_session.flush()
+        correction = DriverSubstitutionCorrection(
+            id=uuid.uuid4(), substitution_id=substitution.id, recorded_by_user_id=lookup_seed.user.id,
+            reason="Clarification", correction_note="Note", payload_version=1, payload_json={},
+            event_hash="0" * 64,
+        )
+        db_session.add(correction)
         await db_session.flush()
 
         subjects = [
@@ -432,6 +490,14 @@ async def test_lookup_is_tenant_safe_for_every_subject_type_and_direction(
                 BlockchainReceiptType.PRECINCT_CREATED,
             ),
             (SubjectType.PHASE_EVENT, phase.id, BlockchainReceiptType.PICKUP),
+            (SubjectType.AUDIT_PACK, audit_pack.id, BlockchainReceiptType.AUDIT_PACK_ISSUED),
+            (SubjectType.EVIDENCE_EVENT, evidence_event.id, BlockchainReceiptType.EXCEPTION_RAISED),
+            (SubjectType.DRIVER_SUBSTITUTION, substitution.id, BlockchainReceiptType.DRIVER_SUBSTITUTION),
+            (
+                SubjectType.DRIVER_SUBSTITUTION_CORRECTION,
+                correction.id,
+                BlockchainReceiptType.DRIVER_SUBSTITUTION_CORRECTED,
+            ),
         ]
         for subject_type, subject_id, receipt_type in subjects:
             receipt = _receipt(

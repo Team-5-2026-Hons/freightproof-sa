@@ -22,6 +22,16 @@ vi.mock('@/lib/hooks/useTrip', () => ({
   useTrip: () => mockUseTrip(),
 }))
 
+const mockUseMyTrips = vi.fn(() => ({ trips: [], isLoading: false, loadError: null as string | null, reload: vi.fn() }))
+
+vi.mock('@/lib/hooks/useAuth', () => ({
+  useAuth: () => ({ user: { full_name: 'Sipho Dlamini' } }),
+}))
+
+vi.mock('@/lib/hooks/useMyTrips', () => ({
+  useMyTrips: () => mockUseMyTrips(),
+}))
+
 // jsdom has no scrollIntoView; PhaseProgressBar calls it on the current phase's cell.
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
@@ -37,7 +47,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: 'trip-1' as unknown as TripId,
     trip_reference: 'TRP-2026-0099',
-    order_number: 'ORD-99',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -72,21 +82,22 @@ describe('HomeContent driving entry', () => {
     vi.clearAllMocks()
   })
 
-  it('shows the unloading capture card, not the driving screen, once arrival is recorded', () => {
-    // in_transit resolved, unloading current — the driver has submitted their arrival and
-    // is standing at the destination doing seal-verify. This state used to be mistaken for
-    // "still driving" (the old case-2 fossil, V7): it is the exact moment driving must be
-    // false, and the unloading capture card is what should be offered instead.
-    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4)), isLoading: false })
+  it('shows the arrival capture card, not the driving screen, once in_transit resolves', () => {
+    // in_transit resolved, arrival current — the driver has swiped "Arrive at
+    // destination" and is standing at the gate doing seal-verify, before unloading. This
+    // state used to be mistaken for "still driving" (the old case-2 fossil, V7): it is the
+    // exact moment driving must be false, and the arrival capture card is what should be
+    // offered instead.
+    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 4)), isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
 
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /unloading/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /arrival/i })).toBeInTheDocument()
   })
 
   it('offers the current phase card and no driving entry when the trip is not moving', () => {
-    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 1)), isLoading: false })
+    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 1)), isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
 
@@ -98,7 +109,7 @@ describe('HomeContent driving entry', () => {
     // With the backend keeping in_transit pending during the drive, isDriving returns
     // true while the driver is actively en route. This is exactly when the driving button
     // should appear to take them to the map and checkpoint/exception screens.
-    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3)), isLoading: false })
+    mockUseTrip.mockReturnValue({ trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3)), isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
 
@@ -113,6 +124,7 @@ describe('HomeContent driving entry', () => {
     mockUseTrip.mockReturnValue({
       trip: makeTrip(walk(CROSS_DOCK_PHASE_PLAN, secondInTransit.sequence_number - 1)),
       isLoading: false,
+      exceptions: [],
     })
 
     render(<HomeContent />)
@@ -127,6 +139,7 @@ describe('HomeContent driving entry', () => {
     mockUseTrip.mockReturnValue({
       trip: makeTrip(walk(SINGLE_LEG_PHASE_PLAN, 3), { status: 'exception_hold' }),
       isLoading: false,
+      exceptions: [],
     })
 
     render(<HomeContent />)
@@ -136,11 +149,40 @@ describe('HomeContent driving entry', () => {
   })
 
   it('shows the empty state with no trip at all', () => {
-    mockUseTrip.mockReturnValue({ trip: null, isLoading: false })
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, exceptions: [] })
 
     render(<HomeContent />)
 
-    expect(screen.getByText('No active trip right now')).toBeInTheDocument()
+    expect(screen.getByText('No trip assigned')).toBeInTheDocument()
+    // Leads somewhere useful: the driver's past trips (overhaul 2.3).
+    expect(screen.getByRole('button', { name: 'See past trips' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /continue driving/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('HomeContent greeting and record', () => {
+  it('greets the driver by first name', () => {
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, exceptions: [] })
+
+    render(<HomeContent />)
+
+    expect(screen.getByText(/, Sipho$/)).toBeInTheDocument()
+  })
+
+  it('shows the driver record once their trips have loaded', () => {
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, exceptions: [] })
+
+    render(<HomeContent />)
+
+    expect(screen.getByRole('region', { name: 'Your record' })).toBeInTheDocument()
+  })
+
+  it('stays quiet about the record when the trip list failed to load', () => {
+    mockUseTrip.mockReturnValue({ trip: null, isLoading: false, exceptions: [] })
+    mockUseMyTrips.mockReturnValueOnce({ trips: [], isLoading: false, loadError: 'offline', reload: vi.fn() })
+
+    render(<HomeContent />)
+
+    expect(screen.queryByRole('region', { name: 'Your record' })).not.toBeInTheDocument()
   })
 })

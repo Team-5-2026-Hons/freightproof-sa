@@ -19,7 +19,7 @@ import { FLEET_COPY } from './copy'
 const COPY = FLEET_COPY.tiles
 // Enough registrations to act on without the tile growing taller than its neighbours.
 const MAX_LISTED_REGISTRATIONS = 3
-// Parcels complete and Receipts owed were removed (D26), leaving four.
+// Parcels complete and Receipts owed were removed, leaving four.
 const TILE_COUNT = 4
 
 const EXPIRY_BAND_ORDER: readonly (keyof ExpiryBands)[] = [
@@ -38,7 +38,7 @@ interface FleetTileProps {
   children?: ReactNode
 }
 
-/** One headline number (spec §7.5): label, value in proportional figures, one sub-line. */
+/** One headline number: label, value in proportional figures, one sub-line. */
 export function FleetTile({ label, value, sub, href, warn = false, className, children }: FleetTileProps) {
   const body = (
     <>
@@ -137,7 +137,7 @@ function unusedSummary(unused: UnusedVehicles): string {
   const listed = vehicles.slice(0, MAX_LISTED_REGISTRATIONS).map((vehicle) => vehicle.registration)
   const hidden = vehicles.length - listed.length
   const registrations = hidden > 0 ? [...listed, COPY.unused.more(hidden)] : listed
-  return `${kinds.join(' · ')} — ${registrations.join(', ')}`
+  return `${kinds.join(' · ')}: ${registrations.join(', ')}`
 }
 
 interface FleetTilesProps {
@@ -152,8 +152,20 @@ interface FleetTilesProps {
 // Five columns at xl: three single tiles plus the two-wide licence table, all on one row.
 const GRID = 'grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5'
 
-/** The four headline tiles. No controls: they always describe the fleet right now (spec D4). */
-export function FleetTiles({ data, isLoading, error, onRetry, now }: FleetTilesProps) {
+/** The four headline tiles, with one Source line under the row.
+ *
+ *  The line sits out here rather than inside each state's markup, so the loading skeleton and
+ *  the error both keep it: where the numbers come from doesn't depend on whether they arrived. */
+export function FleetTiles(props: FleetTilesProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      <TileRow {...props} />
+      <p className="text-[12px] text-on-surf-v">{COPY.source}</p>
+    </div>
+  )
+}
+
+function TileRow({ data, isLoading, error, onRetry, now }: FleetTilesProps) {
   if (error !== null) {
     return (
       <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg bg-surf-lowest p-4 text-[13px] text-on-surf shadow-level-3">

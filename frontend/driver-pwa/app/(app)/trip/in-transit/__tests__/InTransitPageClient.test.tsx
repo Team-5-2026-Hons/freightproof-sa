@@ -1,4 +1,4 @@
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import InTransitPageClient from '../InTransitPageClient'
 import { ROUTES } from '@/lib/constants/routes'
@@ -7,6 +7,7 @@ import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { TripException, ExceptionId } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
+import { mockPrecincts } from '@shared/lib/mocks/precincts'
 import type { PhaseSubmissionOutcome, PhaseSubmissionRequest } from '@/lib/submission/phase-submitter'
 
 const mockUseTrip = vi.fn()
@@ -21,6 +22,7 @@ const mockNotify = vi.fn()
 const mockStartPhaseSubmission = vi.fn()
 const mockLocationCapture = vi.fn()
 const mockPreviewPhaseLocation = vi.fn()
+const mockUseTripRoute = vi.fn()
 
 const ARRIVAL_CAPTURE = {
   latitude: -26.09421,
@@ -57,6 +59,11 @@ vi.mock('@/lib/hooks/useLocationTrail', () => ({
 vi.mock('@/lib/hooks/useLocation', () => ({
   useLocation: () => ({ capture: () => mockLocationCapture() }),
 }))
+// The fetch has nothing to test here beyond "null or a route" — the ETA maths has its own
+// suite (lib/route/__tests__/eta.test.ts).
+vi.mock('@/lib/hooks/useTripRoute', () => ({
+  useTripRoute: () => mockUseTripRoute(),
+}))
 vi.mock('@/lib/api/phases', () => ({
   previewPhaseLocation: (...args: unknown[]) => mockPreviewPhaseLocation(...args),
 }))
@@ -79,9 +86,22 @@ vi.mock('@/lib/submission/phase-submitter', () => ({
 // The map has its own suite (components/map/__tests__/DriverMap.test.tsx) covering the
 // whole degradation ladder. Stubbed here so this suite is about the hub, while still
 // surfacing the fix the hub feeds it — the one thing the hub owns.
+// "Heading to" names the destination from the driver's trip list (useTripPlaces).
+vi.mock('@/lib/hooks/useMyTrips', () => ({
+  useMyTrips: () => ({
+    trips: [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB · Linbro Park', destination_precinct_name: 'FedEx DBN · Riverhorse Valley' }],
+    isLoading: false, loadError: null, reload: vi.fn(),
+  }),
+}))
+
+// It also renders the `extraAction` the hub hands it (Navigate), which is how the real map
+// places that action — the hub no longer floats it itself.
 vi.mock('@/components/map/DriverMap', () => ({
-  DriverMap: ({ position }: { position: { lat: number; lng: number } | null }) => (
-    <div data-testid="driver-map">{position === null ? 'no-fix' : `${position.lat},${position.lng}`}</div>
+  DriverMap: ({ position, route, extraAction }: { position: { lat: number; lng: number } | null; route?: readonly unknown[] | null; extraAction?: React.ReactNode }) => (
+    <div data-testid="driver-map" data-route-points={route?.length ?? 0}>
+      {position === null ? 'no-fix' : `${position.lat},${position.lng}`}
+      {extraAction}
+    </div>
   ),
 }))
 
@@ -121,6 +141,10 @@ function makeException(overrides: Partial<TripException>): TripException {
     contact_method: null,
     vehicle_id: null,
     merkle_batch_id: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -139,7 +163,7 @@ function walk(plan: readonly PhaseDescriptor[], through: number): PhaseDescripto
 // driver arrives — so in_transit is `currentPhase()` the entire time this screen is up.
 //
 // This fixture previously resolved in_transit too, which made `unloading` current and
-// quietly hid a real bug: "Arrive at destination" read the current phase's recipe, found
+// quietly hid a real bug: "Arrive at Destination" read the current phase's recipe, found
 // unloading's steps in the test and in_transit's empty one in the app, and so passed here
 // while dead-ending on a real phone. Anchored to the departure row by phase_type rather
 // than a literal sequence number, so it cannot drift if the plan generator changes shape.
@@ -192,6 +216,7 @@ beforeEach(() => {
   mockRefetchTrip.mockResolvedValue(null)
   mockLocationCapture.mockResolvedValue(ARRIVAL_CAPTURE)
   mockPreviewPhaseLocation.mockResolvedValue(ARRIVAL_PASS)
+  mockUseTripRoute.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -199,9 +224,15 @@ afterEach(() => {
 })
 
 async function confirmArrival(): Promise<PhaseSubmissionRequest> {
-  fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+  fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
   await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledTimes(1))
   return mockStartPhaseSubmission.mock.calls[0][0] as PhaseSubmissionRequest
+}
+
+
+/** The open-exception cards, counted inside their section — no count eyebrow is drawn. */
+function openExceptionCards() {
+  return within(screen.getByRole('region', { name: 'Open exceptions' })).getAllByRole('button')
 }
 
 describe('InTransitPageClient exceptions list (5b)', () => {
@@ -223,7 +254,7 @@ describe('InTransitPageClient exceptions list (5b)', () => {
 
     render(<InTransitPageClient />)
 
-    expect(screen.getByText('3 open exceptions')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(3)
     expect(screen.getByText(/pallet crushed during pothole impact/i)).toBeInTheDocument()
     expect(screen.queryByText(/stale snapshot exception/i)).not.toBeInTheDocument()
   })
@@ -241,7 +272,7 @@ describe('InTransitPageClient exceptions list (5b)', () => {
 
     render(<InTransitPageClient />)
 
-    expect(screen.getByText('1 open exception')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(1)
     expect(screen.queryByText(/already handled/i)).not.toBeInTheDocument()
   })
 })
@@ -262,14 +293,24 @@ describe('InTransitPageClient expandable cards (5c)', () => {
     })
   })
 
-  it('renders each card as a button, collapsed with line-clamp-2 and aria-expanded=false', () => {
+  it('renders each card as a button, collapsed to one clamped line and aria-expanded=false', () => {
     render(<InTransitPageClient />)
 
     const card = screen.getByRole('button', { expanded: false })
     const description = screen.getByText(/a very long dispatcher note/i)
 
     expect(card).toContainElement(description)
-    expect(description).toHaveClass('line-clamp-2')
+    expect(description).toHaveClass('line-clamp-1')
+  })
+
+  it('shows that a card expands, and marks it as an alert without a thick side stripe', () => {
+    // Arrange / Act
+    render(<InTransitPageClient />)
+    const card = screen.getByRole('button', { expanded: false })
+
+    // Assert — the chevron is the visible "there is more" cue the old card lacked.
+    expect(card.querySelector('svg.lucide-chevron-down')).not.toBeNull()
+    expect(card).not.toHaveClass('border-l-4')
   })
 
   it('tapping a card removes the clamp and sets aria-expanded=true; tapping again re-clamps', () => {
@@ -279,12 +320,12 @@ describe('InTransitPageClient expandable cards (5c)', () => {
     fireEvent.click(card)
 
     expect(card).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText(/a very long dispatcher note/i)).not.toHaveClass('line-clamp-2')
+    expect(screen.getByText(/a very long dispatcher note/i)).not.toHaveClass('line-clamp-1')
 
     fireEvent.click(card)
 
     expect(card).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText(/a very long dispatcher note/i)).toHaveClass('line-clamp-2')
+    expect(screen.getByText(/a very long dispatcher note/i)).toHaveClass('line-clamp-1')
   })
 })
 
@@ -300,10 +341,61 @@ describe('InTransitPageClient driving screen', () => {
     expect(screen.getByRole('button', { name: 'Panic' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /checkpoint/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /log exception/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /arrive at destination/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /swipe to arrive/i })).toBeInTheDocument()
   })
 
-  it('walks "Arrive at destination" past the pending, stepless in_transit row to the arrival step', async () => {
+  it('test_shows_where_the_truck_is_heading_and_when_it_is_due', () => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, planned_arrival_at: '2026-05-09T17:30:00Z' }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByText('Heading to')).toBeInTheDocument()
+    expect(screen.getByText('FedEx DBN')).toBeInTheDocument()
+    expect(screen.getByText('Riverhorse Valley')).toBeInTheDocument()
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument()
+  })
+
+  it('test_offers_navigate_to_a_destination_the_phone_can_place', () => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, destination_precinct_id: String(mockPrecincts[1].id) }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+
+    render(<InTransitPageClient />)
+
+    expect(screen.getByRole('link', { name: /navigate/i })).toHaveAttribute('href', expect.stringContaining('destination='))
+  })
+
+  it('test_offers_no_navigate_when_the_destination_is_unknown', () => {
+    render(<InTransitPageClient />)
+
+    expect(screen.queryByRole('link', { name: /navigate/i })).toBeNull()
+  })
+
+  it('test_keeps_a_way_back_over_the_map', () => {
+    render(<InTransitPageClient />)
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+  })
+
+  it('keeps Panic outside the region that scrolls, so it can never be scrolled away', () => {
+    // Arrange
+    render(<InTransitPageClient />)
+
+    // Act — walk up from the Panic button looking for any scrolling ancestor.
+    let node: HTMLElement | null = screen.getByRole('button', { name: 'Panic' })
+    const scrollers: HTMLElement[] = []
+    while (node) {
+      if (node.classList.contains('overflow-y-auto')) scrollers.push(node)
+      node = node.parentElement
+    }
+
+    // Assert
+    expect(scrollers).toEqual([])
+  })
+
+  it('walks "Arrive at Destination" past the pending, stepless in_transit row to the arrival step', async () => {
     // Guards the premise: in_transit is CURRENT here (not resolved), and carries no
     // recipe. Without both, this test cannot detect the dead-end it exists to catch.
     const current = DRIVING_PHASES.find((p) => p.status !== 'completed')!
@@ -314,15 +406,15 @@ describe('InTransitPageClient driving screen', () => {
 
     await confirmArrival()
 
-    // Unloading recipe (shared/lib/constants/phase-meta.ts) is ['2-seal-verify',
-    // '4-visual-count'] as of 2026-08-05 — '1-hand-waybill' was deleted, so the first
-    // arrival step is now seal-verify.
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    // The arrival phase's own recipe (shared/lib/constants/phase-meta.ts) is
+    // ['2-seal-verify'] — the seal inspection moved here from unloading, so the first
+    // step after the swipe is the arrival phase's seal-verify, not unloading's.
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
-  it('never routes "Arrive at destination" back to a trip screen, which would loop', async () => {
+  it('never routes "Arrive at Destination" back to a trip screen, which would loop', async () => {
     // The regression itself: the old fallback returned ROUTES.activeTripDetail, whose
-    // "Continue driving" CTA leads straight back here — a driver could not reach unloading.
+    // "Continue Driving" CTA leads straight back here — a driver could not reach unloading.
     render(<InTransitPageClient />)
 
     await confirmArrival()
@@ -400,7 +492,7 @@ describe('InTransitPageClient driving screen', () => {
 // paperwork happened to be submitted. Since 2026-08-09 the swipe hands that attestation
 // to the background submitter (lib/submission/phase-submitter.ts) before navigating —
 // the same hand-off model PhaseStepPageClient's final step already uses.
-describe('InTransitPageClient arrival attestation (Task 5)', () => {
+describe('InTransitPageClient arrival attestation', () => {
   beforeEach(() => {
     mockUseTrip.mockReturnValue({ trip: baseTrip, isLoading: false, exceptions: [], ...tripStateFields })
   })
@@ -427,7 +519,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     await confirmArrival()
 
     expect(mockMarkPhaseSyncing).toHaveBeenCalledWith(IN_TRANSIT_PHASE.phase_event_id)
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
     // Order matters: without it Home renders one frame with in_transit still pending and
     // isDriving() (lib/phase/derive.ts) still true.
     const markOrder = mockMarkPhaseSyncing.mock.invocationCallOrder[0]
@@ -443,7 +535,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
 
     // Stranding the driver on the driving screen would only invite a third swipe — the
     // evidence is already on its way either way.
-    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterPush).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
   it('rolls the marker back when the ledger refuses the arrival', async () => {
@@ -504,16 +596,16 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     mockPreviewPhaseLocation.mockResolvedValue(mismatch)
 
     render(<InTransitPageClient />)
-    fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+    fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
 
-    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
-    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    await screen.findByText('320 m apart')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
     await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(
       'trip-1', IN_TRANSIT_PHASE.phase_event_id,
       expect.objectContaining({ lat: retryCapture.latitude, captured_at: retryCapture.capturedAt }),
     ))
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
 
     await waitFor(() => expect(mockStartPhaseSubmission).toHaveBeenCalledWith(expect.objectContaining({
       driverCapturedAt: retryCapture.capturedAt,
@@ -525,7 +617,7 @@ describe('InTransitPageClient arrival attestation (Task 5)', () => {
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true })
     try {
       render(<InTransitPageClient />)
-      fireEvent.click(screen.getByRole('button', { name: /arrive at destination/i }))
+      fireEvent.click(screen.getByRole('button', { name: /swipe to arrive/i }))
 
       await screen.findByText('Location not verified while offline.')
       await screen.findByText('We could not compare your location with the truck. Your action can still be recorded.')
@@ -592,7 +684,7 @@ describe('InTransitPageClient exception visibility (FP-150)', () => {
     expect(screen.queryByText(/positions disagree/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/off the planned route/i)).not.toBeInTheDocument()
     // Singular: one visible exception, not three.
-    expect(screen.getByText('1 open exception')).toBeInTheDocument()
+    expect(openExceptionCards()).toHaveLength(1)
   })
 
   it('still shows dispatcher-raised exceptions, which the driver is meant to act on', () => {
@@ -624,6 +716,108 @@ describe('InTransitPageClient exception visibility (FP-150)', () => {
 
     // The empty state is the common case, and it must read as "nothing to see" rather
     // than "0 open exceptions" hinting that something was filtered away.
-    expect(screen.queryByText(/open exception/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Open exceptions' })).not.toBeInTheDocument()
+  })
+})
+
+describe('InTransitPageClient at accessibility text sizes', () => {
+  beforeEach(() => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, destination_precinct_id: String(mockPrecincts[1].id) }, isLoading: false, exceptions: [], ...tripStateFields,
+    })
+  })
+  afterEach(() => { document.documentElement.style.fontSize = '' })
+
+  it('test_moves_navigate_off_the_short_map_into_the_sheet', () => {
+    document.documentElement.style.fontSize = '28px'
+
+    render(<InTransitPageClient />)
+
+    const navigate = screen.getByRole('link', { name: /navigate/i })
+    expect(navigate.closest('section[aria-label="Your position"]')).toBeNull()
+  })
+
+  // Regression: the rem-sized sheet is taller than the screen's lower two thirds at these
+  // sizes and, being pinned, left the map slot no room and hid its content with no way to
+  // scroll to it. The sheet scrolls inside itself instead; at normal sizes it never needs to.
+  it('test_caps_the_sheet_and_lets_it_scroll_at_large_text', () => {
+    document.documentElement.style.fontSize = '28px'
+
+    render(<InTransitPageClient />)
+
+    const sheet = screen.getByText('Heading to').closest('div.rounded-t-\\[28px\\]')
+    expect(sheet).toHaveClass('overflow-y-auto')
+    expect(sheet?.className).toMatch(/max-h-\[\d+dvh\]/)
+  })
+
+  it('test_leaves_the_sheet_uncapped_at_normal_sizes', () => {
+    render(<InTransitPageClient />)
+
+    const sheet = screen.getByText('Heading to').closest('div.rounded-t-\\[28px\\]')
+    expect(sheet).not.toBeNull()
+    expect(sheet).not.toHaveClass('overflow-y-auto')
+  })
+
+  it('test_keeps_navigate_on_the_map_at_normal_sizes', () => {
+    render(<InTransitPageClient />)
+
+    const navigate = screen.getByRole('link', { name: /navigate/i })
+    expect(navigate.closest('section[aria-label="Your position"]')).not.toBeNull()
+  })
+})
+
+describe('InTransitPageClient planned route ETA', () => {
+  // A straight 100 km leg due south from the fix's latitude, leaving the stop the
+  // in_transit row is anchored to.
+  const LEG = {
+    from_stop_sequence: IN_TRANSIT_PHASE.stop_sequence!,
+    to_stop_sequence: IN_TRANSIT_PHASE.stop_sequence! + 1,
+    distance_metres: 100_000,
+    duration_seconds: 4000,
+    coordinates: Array.from({ length: 11 }, (_, i) => [-26 - i / 10, 28] as [number, number]),
+  }
+  const ROUTE = {
+    trip_id: 'trip-1', provider: 'openrouteservice', profile: 'driving-hgv',
+    distance_metres: 100_000, duration_seconds: 4000, legs: [LEG], computed_at: '2026-10-14T08:00:00Z',
+  }
+
+  beforeEach(() => {
+    mockUseTrip.mockReturnValue({
+      trip: { ...baseTrip, planned_arrival_at: '2026-05-09T17:30:00Z', actual_departure_at: null },
+      isLoading: false, exceptions: [], ...tripStateFields,
+    })
+    mockUseTripRoute.mockReturnValue(ROUTE)
+  })
+
+  it('test_shows_distance_left_and_draws_the_leg_when_on_the_planned_route', async () => {
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    expect(await screen.findByText('50 km to go')).toBeInTheDocument()
+    expect(screen.getByTestId('driver-map')).toHaveAttribute('data-route-points', '11')
+    expect(screen.queryByText('Off planned route')).not.toBeInTheDocument()
+  })
+
+  it('test_falls_back_to_the_planned_arrival_when_off_the_route', async () => {
+    // ~1 km east of the line, with a tight fix.
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28.01, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    expect(await screen.findByText('Off planned route')).toBeInTheDocument()
+    expect(screen.getByText(/^\d{2}:\d{2}$/)).toBeInTheDocument()
+    expect(screen.queryByText(/to go$/)).not.toBeInTheDocument()
+  })
+
+  it('test_draws_no_line_and_keeps_the_planned_eta_without_a_route', async () => {
+    mockUseTripRoute.mockReturnValue(null)
+    mockCapturePosition.mockResolvedValue({ lat: -26.5, lng: 28, accuracyM: 10 })
+
+    render(<InTransitPageClient />)
+
+    await screen.findByText('-26.5,28')
+    expect(screen.getByTestId('driver-map')).toHaveAttribute('data-route-points', '0')
+    expect(screen.queryByText(/to go$/)).not.toBeInTheDocument()
   })
 })

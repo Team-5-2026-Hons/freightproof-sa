@@ -1,14 +1,14 @@
-"""Dispatcher-only trip lifecycle exits — the two dead-end closers (task 6.1):
+"""Dispatcher-only trip lifecycle exits — the two dead-end closers:
 
 POST /trips/{trip_id}/cancel
 POST /trips/{trip_id}/phases/{phase_event_id}/override
 
-Kept out of trips.py and phases.py deliberately. phases.py is driver-scoped by
-decision S3 ("giving these routes a second auth path would be new security
+Kept out of trips.py and phases.py deliberately. phases.py is driver-scoped
+("giving these routes a second auth path would be new security
 surface with no consumer") — override is dispatcher-only, so putting it there
-would mix two auth audiences into one file, exactly what S3 protects against.
-trips.py stays the create/read surface; these are the two write actions that
-close a dead end rather than advance the plan.
+would mix two auth audiences into one file, exactly what that separation protects
+against. trips.py stays the create/read surface; these are the two write actions
+that close a dead end rather than advance the plan.
 """
 
 import logging
@@ -23,9 +23,10 @@ from app.auth.dependencies import get_current_dispatcher
 from app.core.exceptions import PhaseSequenceError, ResourceNotFoundError, TripStateError
 from app.core.limits import FLEET_MUTATION
 from app.core.rate_limit import rate_limit
+from app.db.errors import DatabaseUnavailableError
 from app.db.session import get_db
-from app.orchestration.phase_service import override_phase
-from app.orchestration.trip_service import cancel_trip
+from app.orchestration.phases.override import override_phase
+from app.orchestration.trips.administration import cancel_trip
 from app.schemas.people import UserRead
 from app.schemas.trips import CancelTripRequest, OverridePhaseRequest, TripDetailResponse
 
@@ -60,6 +61,8 @@ async def cancel_trip_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except TripStateError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error cancelling trip_id=%s", trip_id)
         raise HTTPException(
@@ -94,6 +97,8 @@ async def override_phase_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (TripStateError, PhaseSequenceError) as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         logger.exception("Database error overriding phase_event_id=%s", phase_event_id)
         raise HTTPException(

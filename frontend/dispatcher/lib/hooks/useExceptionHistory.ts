@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { ExceptionHistoryNavigation } from '@/lib/exceptions/view-state'
 import { api } from '@/lib/api/client'
 import type {
   ExceptionReviewStatus,
@@ -9,11 +10,10 @@ import type {
   TripExceptionListItem,
 } from '@shared/lib/types/exception'
 import type { CursorPage } from '@shared/lib/types/pagination'
-
-// Matches the backend's own default (schemas/pagination.py); not dispatcher-adjustable.
-const PAGE_SIZE = 25
+import { readPreferences } from '@/lib/preferences'
 
 const EMPTY: TripExceptionListItem[] = []
+const FIRST_CURSOR_STACK: (string | undefined)[] = [undefined]
 
 export interface ExceptionHistoryFilters {
   q?: string
@@ -30,7 +30,7 @@ export interface UseExceptionHistoryResult {
   isLoading: boolean
   error: string | null
   // True when the last refresh failed but `items` still shows an earlier successful
-  // result — the UI must flag it as possibly out of date, not present it as current.
+  // result, the UI must flag it as possibly out of date, not present it as current.
   isStale: boolean
   totalItems: number
   page: number
@@ -42,9 +42,9 @@ export interface UseExceptionHistoryResult {
   refetch: () => void
 }
 
-function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined): string {
+function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined, pageSize: number): string {
   const params = new URLSearchParams()
-  params.set('limit', String(PAGE_SIZE))
+  params.set('limit', String(pageSize))
   if (cursor) params.set('cursor', cursor)
   if (filters.q) params.set('q', filters.q)
   if (filters.reviewStatus) params.set('review_status', filters.reviewStatus)
@@ -55,7 +55,7 @@ function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined
 }
 
 /**
- * The dispatcher's browsable exception archive — GET /api/v1/exceptions/history,
+ * The dispatcher's browsable exception archive, GET /api/v1/exceptions/history,
  * cursor-paginated. Doesn't use useAsyncData: that hook can't express "changing a filter
  * jumps back to page 1", so this owns its own fetch effect guarded by a
  * request-generation counter (a superseded request can never overwrite a newer result).
@@ -63,18 +63,29 @@ function buildQuery(filters: ExceptionHistoryFilters, cursor: string | undefined
  * No realtime subscription: unlike the review queue this is a static archive a dispatcher
  * is actively paging through, and a live update mid-scroll would reorder pages underfoot.
  */
-export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExceptionHistoryResult {
+export function useExceptionHistory(filters: ExceptionHistoryFilters, navigation?: ExceptionHistoryNavigation): UseExceptionHistoryResult {
   const [items, setItems] = useState<TripExceptionListItem[]>(EMPTY)
   const [totalItems, setTotalItems] = useState(0)
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isStale, setIsStale] = useState(false)
+  // Read once per mount. Restored URLs are checked separately below because they can
+  // contain boundaries created before this browser's preference changed.
+  const [pageSize] = useState(() => readPreferences().rowsPerPage)
 
   // cursorStack[0] is always undefined (page 1 needs no cursor); cursorStack[n] is the
   // cursor that fetches page n + 1, recorded once on first visit.
-  const [cursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined])
-  const [pageIndex, setPageIndex] = useState(0)
+  const [localCursorStack, setCursorStack] = useState<(string | undefined)[]>([undefined])
+  const [localPageIndex, setPageIndex] = useState(0)
+
+  const [controlledPageReset, setControlledPageReset] = useState(false)
+  if (controlledPageReset && navigation?.pageIndex === 0) setControlledPageReset(false)
+  // Legacy URLs have no size, so their range labels cannot safely be reconstructed either.
+  const pageSizeChanged = !!navigation && navigation.cursorStack.length > 1 && navigation.pageSize !== pageSize
+  const resetNavigation = controlledPageReset || pageSizeChanged
+  const cursorStack = resetNavigation ? FIRST_CURSOR_STACK : navigation?.cursorStack ?? localCursorStack
+  const pageIndex = resetNavigation ? 0 : navigation?.pageIndex ?? localPageIndex
 
   // Primitive dependency key, not the filters object, so a fresh object literal every
   // render doesn't trigger a refetch (mirrors useTrips.ts's statusKey pattern).
@@ -83,25 +94,36 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
   const severity = filters.severity ?? ''
   const fromDate = filters.fromDate ?? ''
   const toDate = filters.toDate ?? ''
-  const filterKey = `${q}|${reviewStatus}|${severity}|${fromDate}|${toDate}`
+  const filterKey = JSON.stringify([q, reviewStatus, severity, fromDate, toDate])
 
   // Reset to page 1 the moment a filter changes, DURING render (React's sanctioned
-  // pattern), not in an effect — an effect-based reset would let the fetch effect below
+  // pattern), not in an effect, an effect-based reset would let the fetch effect below
   // read the OLD cursor against the NEW filters for one pass.
   const [prevFilterKey, setPrevFilterKey] = useState(filterKey)
   if (filterKey !== prevFilterKey) {
     setPrevFilterKey(filterKey)
+    if (navigation && navigation.pageIndex > 0) setControlledPageReset(true)
     setCursorStack([undefined])
     setPageIndex(0)
   }
 
+  const controlledFilterRef = useRef(filterKey)
+  useEffect(() => {
+    const filtersChanged = controlledFilterRef.current !== filterKey
+    controlledFilterRef.current = filterKey
+    if (filtersChanged || pageSizeChanged) {
+      navigation?.onChange({ cursorStack: [undefined], pageIndex: 0, pageSize })
+    }
+  }, [filterKey, navigation, pageSizeChanged, pageSize])
+
   // Bumped on every fetch kicked off below; a response is applied only if this counter
-  // has not moved on since — i.e. no newer request (a page change or a filter change)
+  // has not moved on since, i.e. no newer request (a page change or a filter change)
   // has started in the meantime. This is what makes a late, superseded response
   // harmless instead of a race that overwrites fresher data with stale rows.
   const requestGenerationRef = useRef(0)
   const hasSuccessfulResultRef = useRef(false)
-  const cursor = cursorStack[pageIndex]
+  // During a filter change never send the previous page's cursor, even in controlled mode.
+  const cursor = filterKey !== prevFilterKey ? undefined : cursorStack[pageIndex]
 
   const runFetch = useCallback((preserveCurrentResult: boolean) => {
     const generation = ++requestGenerationRef.current
@@ -119,7 +141,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
       hasSuccessfulResultRef.current = false
     }
 
-    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor))
+    api.get<CursorPage<TripExceptionListItem>>(buildQuery(filters, cursor, pageSize))
       .then((page) => {
         if (requestGenerationRef.current !== generation) return
         setItems(page.items)
@@ -139,7 +161,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
         setIsLoading(false)
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, cursor])
+  }, [filterKey, cursor, pageSize])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -151,21 +173,17 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
 
   const goToNextPage = useCallback(() => {
     if (!hasNext || nextCursor === null) return
-    setCursorStack((stack) => {
-      // Going forward always means recording a new entry: a dispatcher cannot have
-      // visited a page beyond the current stack length yet.
-      if (stack[pageIndex + 1] !== undefined) return stack
-      const next = stack.slice(0, pageIndex + 1)
-      next[pageIndex + 1] = nextCursor
-      return next
-    })
-    setPageIndex((i) => i + 1)
-  }, [hasNext, nextCursor, pageIndex])
+    const next = cursorStack.slice(0, pageIndex + 1)
+    next[pageIndex + 1] = nextCursor
+    if (navigation) navigation.onChange({ cursorStack: next, pageIndex: pageIndex + 1, pageSize })
+    else { setCursorStack(next); setPageIndex(pageIndex + 1) }
+  }, [hasNext, nextCursor, pageIndex, cursorStack, navigation, pageSize])
 
   const goToPreviousPage = useCallback(() => {
     if (!hasPrevious) return
-    setPageIndex((i) => i - 1)
-  }, [hasPrevious])
+    if (navigation) navigation.onChange({ cursorStack, pageIndex: pageIndex - 1, pageSize })
+    else setPageIndex(i => i - 1)
+  }, [hasPrevious, navigation, cursorStack, pageIndex, pageSize])
 
   const refetch = useCallback(() => runFetch(true), [runFetch])
 
@@ -176,7 +194,7 @@ export function useExceptionHistory(filters: ExceptionHistoryFilters): UseExcept
     isStale,
     totalItems,
     page: pageIndex + 1,
-    pageSize: PAGE_SIZE,
+    pageSize,
     hasPrevious,
     hasNext,
     goToNextPage,

@@ -60,8 +60,6 @@ def include_object(
     Deliberately narrow. This is a suppression mechanism, and a broad one would hide real
     drift — the failure mode it exists to prevent. Everything not named here is still
     compared, so a stale index or a dropped column is still reported.
-
-    See docs/design-notes/2026-09-15-alembic-autogenerate-drift.md for the full picture.
     """
     if type_ == "foreign_key_constraint" and name in _SUPABASE_AUTH_FOREIGN_KEYS:
         return False

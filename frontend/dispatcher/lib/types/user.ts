@@ -9,6 +9,7 @@ export type UserId = string & { readonly __brand: 'UserId' }
 export interface DispatcherUser {
   id: UserId
   organization_id: string
+  organization_name: string
   email: string
   full_name: string
   is_active: boolean

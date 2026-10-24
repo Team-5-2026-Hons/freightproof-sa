@@ -8,6 +8,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { DriverMap } from '../DriverMap'
 import type { DriverPosition } from '@/lib/types/location'
+import { MAP_STYLES_QUIET } from '@/lib/tokens'
+
 
 // Mutable through a getter: DriverMap reads GOOGLE_MAPS_API_KEY as a module binding, and
 // the "key absent" and "key present" ladders are two different code paths in one suite.
@@ -44,12 +46,14 @@ const mapCtor = vi.fn()
 const circleCtor = vi.fn()
 const setCenter = vi.fn()
 const setRadius = vi.fn()
+const mapSetOptions = vi.fn()
 
 class FakeMap {
   constructor(container: HTMLElement, options: { center: { lat: number; lng: number } }) {
     mapCtor(container, options)
   }
   setCenter = setCenter
+  setOptions = mapSetOptions
 }
 
 class FakeCircle {
@@ -73,6 +77,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  document.documentElement.classList.remove('dark')
 })
 
 describe('DriverMap rung 3 — no GPS fix at all', () => {
@@ -233,5 +238,167 @@ describe('DriverMap with a working key', () => {
 
     await waitFor(() => expect(setCenter).toHaveBeenCalledWith({ lat: moved.lat, lng: moved.lng }))
     expect(setRadius).toHaveBeenCalledWith(moved.accuracyM)
+  })
+})
+
+describe('DriverMap — theme and handoff', () => {
+  it('draws the dark basemap when the app is in the dark theme', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+    document.documentElement.classList.add('dark')
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
+    expect(Array.isArray(options.styles)).toBe(true)
+    expect(options.styles!.length).toBeGreaterThan(0)
+  })
+
+  it('keeps Google’s light palette but hides points of interest in the light theme', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    const [, options] = mapCtor.mock.calls[0] as [HTMLElement, { styles: unknown[] | null }]
+    expect(options.styles).toEqual(MAP_STYLES_QUIET)
+  })
+
+  it('restyles a live map when the theme flips (e.g. the automatic switch at sunset)', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+    await screen.findByRole('link', { name: /open in maps/i })
+
+    // Act
+    document.documentElement.classList.add('dark')
+
+    // Assert
+    await waitFor(() => expect(mapSetOptions).toHaveBeenCalledWith({ styles: expect.any(Array) }))
+  })
+
+  it('offers the phone’s map app from the live map, not only from the fallback cards', async () => {
+    // Arrange
+    mockApiKey = 'a-real-key'
+
+    // Act
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    // Assert
+    const link = await screen.findByRole('link', { name: /open in maps/i })
+    expect(link).toHaveAttribute('href', expect.stringContaining(String(JHB_FIX.lat)))
+  })
+
+  it('sizes the fallback cards separately from the map strip', () => {
+    // Arrange — no fix, so the no-fix panel renders instead of a map.
+
+    // Act
+    const { container } = render(
+      <DriverMap position={null} capturedAt={null} className="h-[200px]" fallbackClassName="w-full" />,
+    )
+
+    // Assert — the fixed strip height would clip the panel's text and Retry button.
+    expect(container.firstElementChild).not.toHaveClass('h-[200px]')
+    expect(container.firstElementChild).toHaveClass('w-full')
+  })
+})
+
+describe('DriverMap extra action', () => {
+  const navigate = <a href="https://maps.example/dir">Navigate</a>
+
+  // Regression: the caller used to float its own Navigate chip over the map slot, which on a
+  // 360x740 phone sat on top of the card's full-width "Open in Maps" button. On a fallback
+  // card the action has to join the card's flow, after the hand-off button, so the two can
+  // never overlap whatever the card's text does.
+  it('test_sets_the_action_in_the_coordinates_card_flow_after_open_in_maps', () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} extraAction={navigate} extraActionClassName="bottom-12 right-4" />)
+
+    const openInMaps = screen.getByRole('link', { name: /open in maps/i })
+    const action = screen.getByRole('link', { name: 'Navigate' })
+    expect(openInMaps.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // In the flow, not floated: no absolute ancestor between the action and the card.
+    expect(action.closest('.absolute')).toBeNull()
+  })
+
+  it('test_keeps_the_action_available_when_there_is_no_fix', () => {
+    render(<DriverMap position={null} capturedAt={null} extraAction={navigate} />)
+
+    expect(screen.getByRole('link', { name: 'Navigate' })).toBeInTheDocument()
+  })
+
+  it('test_floats_the_action_over_a_live_map_where_the_caller_places_it', async () => {
+    mockApiKey = 'a-real-key'
+
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} extraAction={navigate} extraActionClassName="bottom-12 right-4" />)
+
+    await screen.findByRole('link', { name: /open in maps/i })
+    const floated = screen.getByRole('link', { name: 'Navigate' }).parentElement
+    expect(floated).toHaveClass('absolute', 'bottom-12', 'right-4')
+  })
+
+  it('test_renders_nothing_extra_when_no_action_is_given', () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    expect(screen.queryByRole('link', { name: 'Navigate' })).not.toBeInTheDocument()
+  })
+})
+
+describe('DriverMap planned route line', () => {
+  const polylineCtor = vi.fn()
+  const polylineSetMap = vi.fn()
+
+  class FakePolyline {
+    constructor(options: { path: Array<{ lat: number; lng: number }>; zIndex: number }) {
+      polylineCtor(options)
+    }
+    setMap = polylineSetMap
+  }
+
+  const LEG: Array<[number, number]> = [[-26.09, 28.13], [-26.2, 28.2], [-26.3, 28.3]]
+
+  beforeEach(() => {
+    polylineCtor.mockClear()
+    polylineSetMap.mockClear()
+    mockApiKey = 'a-real-key'
+    mockImportLibrary.mockResolvedValue({ Map: FakeMap, Circle: FakeCircle, Polyline: FakePolyline })
+  })
+
+  it('draws the leg lat-first into the Maps {lat, lng} shape, under the driver dot', async () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG} />)
+
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledOnce())
+    const options = polylineCtor.mock.calls[0][0]
+    expect(options.path).toEqual([
+      { lat: -26.09, lng: 28.13 }, { lat: -26.2, lng: 28.2 }, { lat: -26.3, lng: 28.3 },
+    ])
+    const dotOptions = circleCtor.mock.calls.at(-1)?.[0] as { zIndex: number }
+    expect(options.zIndex).toBeLessThan(dotOptions.zIndex)
+  })
+
+  it('draws no line without a route', async () => {
+    render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} />)
+
+    await screen.findByRole('region', { name: /map/i })
+    await waitFor(() => expect(mapCtor).toHaveBeenCalled())
+    expect(polylineCtor).not.toHaveBeenCalled()
+  })
+
+  it('replaces the line when the leg changes and removes it on unmount', async () => {
+    const { rerender, unmount } = render(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG} />)
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledOnce())
+
+    rerender(<DriverMap position={JHB_FIX} capturedAt={FIX_TAKEN_AT} route={LEG.slice(1)} />)
+    await waitFor(() => expect(polylineCtor).toHaveBeenCalledTimes(2))
+    expect(polylineSetMap).toHaveBeenCalledWith(null)
+
+    polylineSetMap.mockClear()
+    unmount()
+    expect(polylineSetMap).toHaveBeenCalledWith(null)
   })
 })

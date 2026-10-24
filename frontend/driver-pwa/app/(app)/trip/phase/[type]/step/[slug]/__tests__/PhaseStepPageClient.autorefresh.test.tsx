@@ -64,6 +64,8 @@ vi.mock('@/lib/api/phases', () => ({ submitPhase: vi.fn() }))
 const authValue: AuthState = {
   user: mockDrivers[0],
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
@@ -73,7 +75,7 @@ function buildTrip(blockedOn: string | null): Trip {
   return {
     id: 'trip-autorefresh-page' as unknown as Trip['id'],
     trip_reference: 'TRP-AR-PAGE',
-    order_number: 'ORD-AR-PAGE',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -145,7 +147,7 @@ describe('PhaseStepPageClient — the blocked step clears itself while the drive
     })
 
     expect(screen.queryByText('Waiting for the warehouse')).not.toBeInTheDocument()
-    expect(screen.getByText('Confirm linehaul')).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toBeInTheDocument()
   })
 
   it('checks immediately on arriving at a blocked step, not a full interval later', async () => {

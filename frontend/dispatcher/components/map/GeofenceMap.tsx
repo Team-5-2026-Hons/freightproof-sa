@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { Map as LeafletMap, Marker, Circle, DivIcon, TileLayer } from 'leaflet'
+import type { Map as LeafletMap, Marker, Circle, DivIcon, TileLayer, Polygon as LeafletPolygon, LatLng } from 'leaflet'
 
-// Static side-effect import (not dynamic, unlike Leaflet's JS below): inlines cleanly into
-// this chunk and type-checks under this project's `moduleResolution: "bundler"` with no cast.
+// Static side-effect imports (not dynamic, unlike the JS below): inline cleanly into this
+// chunk and type-check under this project's `moduleResolution: "bundler"` with no cast.
 import 'leaflet/dist/leaflet.css'
+import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 
 import { TILE_ERROR_FALLBACK_THRESHOLD, TILE_SOURCES, type TileSourceKey } from '@/lib/map/tiles'
+import type { LatLngPair } from '@shared/lib/types/precinct'
 
 import { GeofenceSchematic } from './GeofenceSchematic'
 
@@ -23,6 +25,30 @@ const GEOFENCE_CIRCLE_CLASS = 'fill-sec stroke-sec'
 
 // Matches the centre dot GeofenceSchematic/StaticGeofenceThumbnail draw (r=4).
 const PIN_DIAMETER_PX = 16
+
+// Matches the backend's Numeric(10, 7) rounding of outline corners, so an edited corner
+// echoes back from the form unchanged and the echo check below can recognise it.
+const OUTLINE_COORDINATE_DECIMALS = 7
+
+// Breathing room around an outline when the map frames it.
+const OUTLINE_FIT_PADDING_PX = 24
+
+function roundCoordinate(value: number): number {
+  const factor = 10 ** OUTLINE_COORDINATE_DECIMALS
+  return Math.round(value * factor) / factor
+}
+
+/** The outer ring of a Leaflet polygon as [lat, lng] pairs. getLatLngs() nests rings
+ *  (outer first) for a polygon; holes are never created here, so only [0] matters. */
+function ringFromLayer(layer: LeafletPolygon): LatLngPair[] {
+  const rings = layer.getLatLngs() as LatLng[][]
+  return (rings[0] ?? []).map((p) => [roundCoordinate(p.lat), roundCoordinate(p.lng)])
+}
+
+function sameOutline(a: readonly LatLngPair[] | null, b: readonly LatLngPair[] | null | undefined): boolean {
+  if (a === null || b == null || a.length !== b.length) return false
+  return a.every(([lat, lng], i) => lat === b[i][0] && lng === b[i][1])
+}
 
 /**
  * Builds the precinct pin as a `divIcon` rather than Leaflet's default marker, which
@@ -83,12 +109,24 @@ export function attachTileFailureTracking(
   }
 }
 
+// Wheel zoom on: placing a pin or tracing an outline needs quick zooming, and Leaflet only
+// takes the wheel while the pointer is over the map, so the page still scrolls elsewhere.
+export const GEOFENCE_MAP_INTERACTION = { scrollWheelZoom: true } as const
+
 interface GeofenceMapProps {
   latitude: number
   longitude: number
   radiusMetres: number
+  /** The property outline. When it has 3+ corners it is drawn INSTEAD of the circle,
+   *  because it replaces the circle in every verdict. */
+  polygon?: readonly LatLngPair[] | null
+  /** False hides the circle even with no outline — the form's outline mode before one is
+   *  drawn, where a circle would read as the fence when it isn't. Defaults to true. */
+  showCircle?: boolean
   /** Supplied only by the create/edit form. Omit for a read-only view. */
   onPositionChange?: (next: { latitude: number; longitude: number }) => void
+  /** Supplied by the form to make the outline editable (drag corners, add/remove points). */
+  onPolygonChange?: (next: LatLngPair[]) => void
   className?: string
 }
 
@@ -96,13 +134,17 @@ interface GeofenceMapProps {
  * Renders the precinct's position and geofence on a real basemap. The only module that
  * imports Leaflet directly, loaded dynamically since it touches `window` at module
  * scope. Falls back to GeofenceSchematic if the chunk or tiles fail to load. Uses
- * `L.circle`'s metre-based radius so the fence stays accurate at every zoom.
+ * `L.circle`'s metre-based radius so the fence stays accurate at every zoom; an outline,
+ * when present, is drawn in place of the circle and edited with Leaflet-Geoman.
  */
 export function GeofenceMap({
   latitude,
   longitude,
   radiusMetres,
+  polygon = null,
+  showCircle = true,
   onPositionChange,
+  onPolygonChange,
   className,
 }: GeofenceMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -110,6 +152,9 @@ export function GeofenceMap({
   const markerRef = useRef<Marker | null>(null)
   const circleRef = useRef<Circle | null>(null)
   const tileRef = useRef<TileLayer | null>(null)
+  const polygonRef = useRef<LeafletPolygon | null>(null)
+  // The loaded Leaflet module, kept so the outline effect can build layers after init.
+  const leafletRef = useRef<typeof import('leaflet') | null>(null)
   // Detaches the active tile layer's listeners; re-armed whenever the layer is (re)created.
   const tileFailureCleanupRef = useRef<(() => void) | null>(null)
 
@@ -128,6 +173,16 @@ export function GeofenceMap({
     onPositionChangeRef.current = onPositionChange
   }, [onPositionChange])
 
+  const onPolygonChangeRef = useRef(onPolygonChange)
+  useEffect(() => {
+    onPolygonChangeRef.current = onPolygonChange
+  }, [onPolygonChange])
+
+  // Set on every outline edit, so the outline effect can tell the form echoing this map's
+  // own drag back from a new outline (a picked candidate) that must replace the layer.
+  // Rebuilding on an echo would drop the edit handles mid-drag.
+  const lastEmittedPolygonRef = useRef<LatLngPair[] | null>(null)
+
   // Set on every click/drag so the follow-effect can distinguish an echo of this map's
   // own gesture from a coordinate that came from the form fields.
   const lastEmittedPositionRef = useRef<{ latitude: number; longitude: number } | null>(null)
@@ -139,13 +194,18 @@ export function GeofenceMap({
     async function init(): Promise<void> {
       try {
         const L = await import('leaflet')
+        // Editing only: Geoman is an IIFE that patches the global `L` Leaflet sets, and its
+        // init hooks must be in place BEFORE the map and layers are constructed.
+        if (onPolygonChangeRef.current !== undefined) {
+          await import('@geoman-io/leaflet-geoman-free')
+        }
         if (cancelled || containerRef.current === null || mapRef.current !== null) return
+        leafletRef.current = L
 
         const map = L.map(containerRef.current, {
           center: [latitude, longitude],
           zoom: DEFAULT_ZOOM,
-          // Disabled so scrolling the form past the map doesn't zoom it.
-          scrollWheelZoom: false,
+          ...GEOFENCE_MAP_INTERACTION,
         })
 
         const chosen = TILE_SOURCES.satellite
@@ -205,6 +265,8 @@ export function GeofenceMap({
       markerRef.current = null
       circleRef.current = null
       tileRef.current = null
+      polygonRef.current = null
+      leafletRef.current = null
     }
     // Only initAttempt: re-running on a coordinate change would reset the user's pan mid-edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -229,6 +291,49 @@ export function GeofenceMap({
   useEffect(() => {
     circleRef.current?.setRadius(radiusMetres)
   }, [radiusMetres])
+
+  // The outline: drawn instead of the circle whenever it has enough corners, rebuilt (and
+  // framed) when a new one arrives, left alone when the change is this map's own edit.
+  useEffect(() => {
+    const map = mapRef.current
+    const L = leafletRef.current
+    const circle = circleRef.current
+    if (!mapReady || map === null || L === null) return
+
+    const outline = polygon !== null && polygon.length >= 3 ? polygon : null
+    if (circle !== null) {
+      const wantCircle = outline === null && showCircle
+      if (!wantCircle && map.hasLayer(circle)) circle.remove()
+      if (wantCircle && !map.hasLayer(circle)) circle.addTo(map)
+    }
+
+    if (sameOutline(lastEmittedPolygonRef.current, outline)) return
+
+    polygonRef.current?.remove()
+    polygonRef.current = null
+    lastEmittedPolygonRef.current = null
+    if (outline === null) return
+
+    const layer = L.polygon(outline.map(([lat, lng]) => [lat, lng] as [number, number]), {
+      className: GEOFENCE_CIRCLE_CLASS,
+      weight: 1.5,
+      fillOpacity: 0.1,
+    }).addTo(map)
+
+    if (onPolygonChangeRef.current !== undefined) {
+      // A crossing outline has no meaningful inside; Geoman refuses the drag that would
+      // make one, so the dispatcher can't save a shape the server would reject.
+      layer.pm.enable({ allowSelfIntersection: false })
+      layer.on('pm:edit', () => {
+        const next = ringFromLayer(layer)
+        lastEmittedPolygonRef.current = next
+        onPolygonChangeRef.current?.(next)
+      })
+    }
+
+    polygonRef.current = layer
+    map.fitBounds(layer.getBounds(), { padding: [OUTLINE_FIT_PADDING_PX, OUTLINE_FIT_PADDING_PX] })
+  }, [polygon, showCircle, mapReady])
 
   useEffect(() => {
     // Re-checked after each await: mapRef.current can be nulled mid-flight (e.g. the
@@ -264,6 +369,16 @@ export function GeofenceMap({
     // mapReady as a dependency ensures a source chosen before Leaflet finishes loading is still applied.
   }, [source, mapReady])
 
+  // Leaflet measures its container once, so a resized frame would leave grey, untiled
+  // bands until something else nudged it. Re-measure whenever the box changes size.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!mapReady || container === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => mapRef.current?.invalidateSize())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [mapReady])
+
   // The schematic is an overlay, not a replacement — the map stays mounted beneath it,
   // so a tile that succeeds after an outage resets the streak and the overlay lifts on its own.
   return (
@@ -275,9 +390,14 @@ export function GeofenceMap({
           className="absolute inset-0 z-[500] flex flex-col items-center justify-center gap-2 bg-surf-low rounded-lg"
           role="status"
         >
-          <GeofenceSchematic radiusMetres={radiusMetres} className="w-[200px] h-[200px]" />
+          <GeofenceSchematic
+            radiusMetres={radiusMetres}
+            polygon={polygon}
+            centre={[latitude, longitude]}
+            className="w-[200px] h-[200px]"
+          />
           <p className="text-[11px] text-on-surf-v">
-            Map unavailable — showing the geofence to scale.
+            Map unavailable. Showing the geofence to scale.
           </p>
           <button
             type="button"

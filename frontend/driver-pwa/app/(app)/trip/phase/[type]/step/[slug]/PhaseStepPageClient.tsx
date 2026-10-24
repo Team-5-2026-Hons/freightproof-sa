@@ -1,6 +1,3 @@
-// frontend/driver-pwa/app/(app)/trip/phase/[type]/step/[slug]/PhaseStepPageClient.tsx
-//
-// Replaces the deleted app/(app)/trip/handshake/[h]/step/[slug]/HandshakeStepPageClient.tsx.
 // The URL keys on phase_type (see page.tsx and lib/phase/routes.ts's header note) — the
 // actual phase_event_id a driver is addressing is resolved here, client-side, from
 // TripContext via actionablePhase(trip.phases). A cross-dock plan can visit `unloading`
@@ -21,7 +18,7 @@ import { useOfflineQueue } from '@/lib/hooks/useOfflineQueue'
 import {
   startPhaseSubmission, usePhaseSubmissions, type PhaseSubmissionOutcome,
 } from '@/lib/submission/phase-submitter'
-import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored } from '@/lib/phase'
+import { actionablePhase, stepsFor, nextStepRoute, currentStepRoute, isAnchored, isFinalPhase } from '@/lib/phase'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { ROUTES } from '@/lib/constants/routes'
 import { formatTime } from '@/lib/utils/format-time'
@@ -29,6 +26,7 @@ import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
 import { Button } from '@/components/ui/Button'
 import { HoldNotice } from '@/components/trip/HoldNotice'
+import { recordedPlace } from '@/lib/phase/recorded-place'
 import { stepComponentFor } from '@/components/phase/steps/registry'
 import { fetchLinehaul } from '@/lib/api/manifest'
 import { previewPhaseLocation } from '@/lib/api/phases'
@@ -36,26 +34,31 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
 import type {
-  ActivationEvidence, LoadingEvidence, DepartureEvidence, UnloadingEvidence,
+  ActivationEvidence, LoadingEvidence, DepartureEvidence, ArrivalEvidence, UnloadingEvidence,
   ConfirmationEvidence, PhaseEvidence,
 } from '@/lib/types/evidence-draft'
 import type { ActionLocationAssessment } from '@shared/lib/types/action-location'
 import type { DriverPosition, LocationWarningAcknowledgement } from '@/lib/types/location'
 import { LocationCheckModal } from '@/components/phase/LocationCheckModal'
+import { actorGeneration, captureCustody } from '@/lib/session/custody-context'
 
 const ACTIVATION_INITIAL: ActivationEvidence = { capturedAt: null }
 const LOADING_INITIAL: LoadingEvidence = {
-  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null,
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
+  linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt: null,
 }
 const DEPARTURE_INITIAL: DepartureEvidence = {
-  sealNumber: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+  sealNumber: null, sealNumberOcr: null, sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
 }
+// The seal is no longer captured here — see ArrivalEvidence/ARRIVAL_INITIAL below.
 const UNLOADING_INITIAL: UnloadingEvidence = {
-  waybillHandedOver: null, sealNumberAtDestination: null,
-  sealIntactPhotoDataUrl: null, sealIntactPhotoArtifactId: null,
-  driverVisualCount: null, capturedAt: null,
+  waybillHandedOver: null, driverVisualCount: null, capturedAt: null,
 }
-// driverVisualCount is seeded per-mount from the carry-forward hook (task 4) — see
+const ARRIVAL_INITIAL: ArrivalEvidence = {
+  sealCondition: null, sealNumberAtArrival: null, sealNumberAtArrivalOcr: null,
+  sealPhotoDataUrl: null, sealPhotoArtifactId: null, capturedAt: null,
+}
+// driverVisualCount is seeded per-mount from the carry-forward hook — see
 // ConfirmationStep below — never hard-coded here.
 const CONFIRMATION_INITIAL_BASE: Omit<ConfirmationEvidence, 'driverVisualCount'> = {
   podPhotoDataUrl: null, podPhotoArtifactId: null,
@@ -84,16 +87,12 @@ function UnknownStep({ phaseType, slug }: { phaseType: PhaseType; slug: string }
   )
 }
 
-// Thin gate: decides WHETHER the step screen renders at all, before any hook that
-// depends on a real trip ever mounts. Mirrors the old HandshakeStepPageClient's split —
-// see the Fix 1/Fix 2 comments below — so usePhaseDraft/useVisualCountCarry (owned
-// further down, by the XStep components) can never mount with an empty tripId or key off
-// a phase that hasn't loaded yet.
+// Gate: no draft hook mounts until a real trip exists.
 export default function PhaseStepPageClient() {
   const router = useRouter()
   const { trip, isLoading } = useTrip()
 
-  // Fix 2 (submit-triggered spinner/"not found" flash): tracks whether a phase submit is
+  // Submit-triggered spinner/"not found" flash: tracks whether a phase submit is
   // currently in flight. Latched true at hand-off and never reset here — every path out
   // of a hand-off navigates to a different top-level route, unmounting this component and
   // discarding the flag for free.
@@ -109,7 +108,7 @@ export default function PhaseStepPageClient() {
   const { inFlight } = usePhaseSubmissions()
   const isSubmitting = isHandingOff || inFlight.length > 0
 
-  // Fix 2 (trip-closing case): once confirmation's last step submits, the trip is
+  // Trip-closing case: once confirmation's last step submits, the trip is
   // CLOSED — refetching /trips/me/active legitimately returns null — while the success
   // toast fires and the driver is routed away. Without a fallback, the render in that
   // window falls into the `!trip` branch and flashes "Trip not found" before the
@@ -125,7 +124,7 @@ export default function PhaseStepPageClient() {
   // this screen against itself: marking the phase resolved moves currentPhase() on, which
   // makes PhaseStepContent's own mismatch guard fire and router.replace() the driver into
   // the NEXT phase's first step — the exact "marched straight into the next phase"
-  // behaviour Workstream 1 exists to remove — racing the push to Home that was already
+  // behaviour the hand-off exists to remove — racing the push to Home that was already
   // issued. Nothing downstream needs a fresher plan than this: the screen is leaving.
   const handedOffTripRef = useRef<Trip | null>(null)
   const beginHandOff = useCallback(() => {
@@ -137,7 +136,7 @@ export default function PhaseStepPageClient() {
     ?? trip
     ?? (isSubmitting ? lastTripRef.current : null)
 
-  // Fix 1 (CRITICAL evidence-wipe bug, carried over unchanged): the (app) layout only
+  // Evidence-wipe guard (critical): the (app) layout only
   // gates children on auth, not on TripContext.isLoading — so a hard reload, PWA
   // relaunch, or a push-notification deep link straight into a phase step can mount this
   // page while `trip` is still null. usePhaseDraft/useVisualCountCarry
@@ -164,10 +163,10 @@ export default function PhaseStepPageClient() {
   // submit in this state can only 409, so there's nothing to do here.
   if (activeTrip.status === 'exception_hold') {
     return (
-      <main className="flex min-h-dvh flex-col justify-center gap-4 p-6">
+      <main className="flex min-h-dvh flex-col justify-center gap-4 bg-surface p-5">
         <HoldNotice />
-        <Button variant="secondary" size="lg" onClick={() => router.push(ROUTES.activeTripDetail)}>
-          View trip
+        <Button variant="fill" size="pill" onClick={() => router.push(ROUTES.activeTripDetail)}>
+          View Trip
         </Button>
       </main>
     )
@@ -184,7 +183,7 @@ interface PhaseStepContentProps {
   onHandOff: () => void
 }
 
-// Everything that needs a real, non-null trip lives here (see Fix 1 above) — most
+// Everything that needs a real, non-null trip lives here (see the evidence-wipe guard above) — most
 // importantly the type-mismatch guard, which is this route's whole reason for existing
 // as a client-resolved redirect rather than a plain static page.
 function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
@@ -201,7 +200,7 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
   // Guarding on currentPhase deadlocked the trip — this screen demanded the ledger
   // already be on `unloading`, while the only thing that moves the ledger to `unloading`
   // is a submit from this screen. The driver was bounced back to the trip page every
-  // time they pressed "Arrive at destination". See lib/phase/derive.ts.
+  // time they pressed "Arrive at Destination". See lib/phase/derive.ts.
   const phase = actionablePhase(trip.phases)
   const steps = phase !== null ? stepsFor(phase) : []
   // Guard: the phase the driver is due on may not be the one this URL addresses — a stale
@@ -229,15 +228,12 @@ function PhaseStepContent({ trip, onHandOff }: PhaseStepContentProps) {
     return <UnknownStep phaseType={phase.phase_type} slug={slug} />
   }
 
+  const custody = captureCustody(String(trip.id))
   return (
-    // Keyed on phase_event_id — not just phase_type — so navigating between two
-    // occurrences of the SAME phase type on a cross-dock plan (e.g. unloading at stop 1,
-    // then unloading again at stop 2) fully remounts this subtree. Without the key,
-    // React would reconcile the same component instance across that transition (same
-    // element type at the same tree position) and usePhaseDraft's internal state
-    // wouldn't reset to the new phase_event_id's own stored draft.
+    // A different phase, account or custody period also resets pending location checks
+    // and submission refs; the previous period's draft is retained by usePhaseDraft.
     <PhaseStepRouter
-      key={phase.phase_event_id}
+      key={`${phase.phase_event_id}:${actorGeneration()}:${custody.actorId}:${custody.custodySequence}`}
       trip={trip}
       phase={phase}
       slug={slug}
@@ -273,6 +269,7 @@ function PhaseStepRouter(props: StepControllerProps) {
     case 'activation': return <ActivationStep {...props} />
     case 'loading': return <LoadingStep {...props} />
     case 'departure': return <DepartureStep {...props} />
+    case 'arrival': return <ArrivalStep {...props} />
     case 'unloading': return <UnloadingStep {...props} />
     case 'confirmation': return <ConfirmationStep {...props} />
     case 'trip_creation':
@@ -325,9 +322,16 @@ function usePhaseStepController<T extends PhaseEvidence>(
   const router = useRouter()
   const { notify } = useToast()
   const { enqueuePhase } = useOfflineQueue()
-  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing } = useTrip()
+  const { refetchTrip, adoptTrip, markPhaseSyncing, clearPhaseSyncing, noteTripHandedOver, noteTripCompleted } = useTrip()
   const { capture } = useLocation()
   const tripId = String(trip.id)
+  const captureScope = useRef({ ...captureCustody(tripId), generation: actorGeneration() })
+  function isCurrentCapture(): boolean {
+    const live = captureCustody(tripId)
+    const original = captureScope.current
+    return actorGeneration() === original.generation && live.actorId === original.actorId
+      && live.custodySequence === original.custodySequence
+  }
 
   const [draft, updateDraftRaw, clearDraft] = usePhaseDraft<T>(tripId, phase.phase_event_id, initial)
   const [locationAssessment, setLocationAssessment] = useState<ActionLocationAssessment | null>(null)
@@ -350,6 +354,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
   useEffect(() => { draftRef.current = draft }, [draft])
 
   function onUpdate(patch: Partial<T>) {
+    if (!isCurrentCapture()) return
     draftRef.current = { ...draftRef.current, ...patch }
     updateDraftRaw(patch)
   }
@@ -362,23 +367,29 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // which naturally gets one, from a fresh mount after a rolled-back failure.
   const idempotencyKeyRef = useRef<string | null>(null)
 
-  // The anchored set is ANCHORED_PHASES (phase-meta.ts): trip_creation, departure,
-  // confirmation — not loading/unloading, which is what the OLD (deleted)
-  // HandshakeStepPageClient.anchoring.test.tsx hard-coded and is now wrong.
+  // The anchored set is ANCHORED_PHASES (phase-meta.ts): every phase since 2026-09-23,
+  // so every driver submission shows the anchoring notice.
   function recordedNotice(addressedPhase: PhaseDescriptor | null): RecordedNotice {
     if (IS_DEMO_MODE || !isAnchored(phase)) return 'plain'
     return addressedPhase?.blockchain_receipt_id ? 'anchored' : 'anchoring'
   }
 
   function notifyPhaseRecorded(notice: RecordedNotice) {
+    // The receipt: when and where, then — only for evidence the server
+    // has actually accepted — its Hedera state as its own row. The swipe only says
+    // "Departed"/"Confirmed"; this toast is the honest record that it landed.
     const savedAt = formatTime(new Date())
-    const body =
-      notice === 'anchored'
-        ? `Saved . Evidence recorded and anchored to Hedera HCS.`
-        : notice === 'anchoring'
-          ? `Saved . Evidence recorded. Hedera anchoring in progress, track it on your trip screen.`
-          : `Saved . Evidence stored on this device.`
-    notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body })
+    if (notice === 'plain') {
+      notify({ kind: 'success', title: `${PHASE_NAMES[phase.phase_type]} recorded`, body: `${savedAt} · Stored on this device` })
+      return
+    }
+    const place = recordedPlace(trip, phase)
+    notify({
+      kind: 'success',
+      title: `${PHASE_NAMES[phase.phase_type]} recorded`,
+      body: place === null ? savedAt : `${savedAt} · ${place}`,
+      anchor: notice,
+    })
   }
 
   function notifyTripOnHold() {
@@ -421,12 +432,13 @@ function usePhaseStepController<T extends PhaseEvidence>(
   // the app router, and clearDraft/onResolved write their localStorage synchronously
   // before touching any component state.
   function handleOutcome(outcome: PhaseSubmissionOutcome, evidence: T) {
+    if (!isCurrentCapture()) return
     switch (outcome.kind) {
       case 'recorded': {
         onResolved(outcome.trip, evidence)
         // Only NOW, once the backend has confirmed. Clearing at hand-off would leave a
         // driver with no evidence and no record if the submission then failed.
-        clearDraft()
+        clearDraft(evidence)
         if (outcome.trip !== null) {
           adoptTrip(outcome.trip)
           // Reconcile: the real plan already shows this phase resolved, so dropping the
@@ -441,7 +453,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
       }
       case 'hold': {
         onResolved(outcome.trip, evidence)
-        clearDraft()
+        clearDraft(evidence)
         adoptTrip(outcome.trip)
         clearPhaseSyncing(phase.phase_event_id)
         notifyTripOnHold()
@@ -479,6 +491,17 @@ function usePhaseStepController<T extends PhaseEvidence>(
         // who missed it would otherwise believe evidence was recorded when it was not.
         return
       }
+      case 'retained': {
+        // Custody moved on before this reached the server. The phase is NOT recorded
+        // (roll the advance back), but the capture is kept for review under the period it
+        // was taken in. The draft is cleared only once that retained copy is on disk, so the
+        // evidence always exists in exactly one durable place.
+        clearPhaseSyncing(phase.phase_event_id)
+        if (outcome.persisted) clearDraft(evidence)
+        notify({ kind: 'error', title: 'Not recorded on the trip', body: outcome.message })
+        if (outcome.handedOver) noteTripHandedOver(tripId)
+        return
+      }
       default: {
         const unreachable: never = outcome
         throw new Error(`handleOutcome: unhandled outcome "${String(unreachable)}"`)
@@ -486,22 +509,23 @@ function usePhaseStepController<T extends PhaseEvidence>(
     }
   }
 
-  // The whole point of Workstream 1: synchronous, so the driver is on Home before the
+  // Synchronous on purpose, so the driver is on the next screen before the
   // first byte of their evidence leaves the phone.
   function handOffSubmission(
     position: DriverPosition | null,
     driverCapturedAt: string,
     acknowledgement: LocationWarningAcknowledgement | null,
   ) {
+    if (!isCurrentCapture()) return
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
-    // Task 0A: stamped HERE, at the same instant the driver confirms — mirrors
+    // Stamped HERE, at the same instant the driver confirms — mirrors
     // idempotencyKeyRef above (generated once per attempt, reused across any retry of
     // that attempt) so a replay from the offline queue reports the ORIGINAL swipe
     // instant, never the retry's own clock.
     // Return value deliberately ignored: `false` means a submission for this exact
-    // phase_event_id is already running, and the right response to that is still to mark
+    // phase_event_id in this account and custody period is already running, so still mark
     // and navigate — the driver's evidence is on its way either way, and leaving them on
     // the step screen would only invite a third swipe.
     startPhaseSubmission({
@@ -515,6 +539,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
       // would compare a different location than the driver saw, so retry replaces both.
       position: Promise.resolve(position),
       acknowledgement,
+      custody: { actorId: captureScope.current.actorId, custodySequence: captureScope.current.custodySequence },
       enqueuePhase,
       refetchTrip,
       onOutcome: (outcome) => handleOutcome(outcome, evidence),
@@ -523,11 +548,32 @@ function usePhaseStepController<T extends PhaseEvidence>(
     // Order matters: mark before navigating, so Home's very first render already sees
     // this phase resolved rather than re-offering the step for a frame.
     markPhaseSyncing(phase.phase_event_id)
-    router.push(ROUTES.home)
+
+    // The last row of the plan: the driver has finished the trip, so hand the completion
+    // moment to the overlay before navigating. Optimistic by necessity — this phase's
+    // evidence is still in flight and its anchor has not landed — so the snapshot marks
+    // only what the driver just did, and PhaseList renders each row's real anchor state
+    // rather than implying a receipt exists. Raised BEFORE the push so the overlay is
+    // already mounted on Home's first frame, never a beat late.
+    if (isFinalPhase(trip.phases, phase)) {
+      noteTripCompleted({
+        tripId,
+        tripReference: trip.trip_reference,
+        phases: trip.phases.map(row => row.phase_event_id === phase.phase_event_id
+          ? { ...row, status: 'completed' as const, completed_at: driverCapturedAt }
+          : row),
+      })
+    }
+
+    // Departure is the one phase whose next screen is certain: the truck is now moving,
+    // so the driver lands on In Transit. Every other phase goes Home, where
+    // the Now card offers whatever comes next. A failed departure rolls back from there
+    // too — In Transit's Arrive routes to the live step, so nothing can submit out of order.
+    router.push(phase.phase_type === 'departure' ? ROUTES.inTransit : ROUTES.home)
   }
 
   async function startLocationCheck(): Promise<void> {
-    if (locationPreviewLoading) return
+    if (locationPreviewLoading || !isCurrentCapture()) return
     const attemptStartedAt = new Date().toISOString()
     setLocationPreviewLoading(true)
     setLocationPreviewError(null)
@@ -538,6 +584,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     const offline = typeof navigator !== 'undefined' && !navigator.onLine
     setOfflineLocationCheck(offline)
     const coords = await capture()
+    if (!isCurrentCapture()) return
     if (coords === null) {
       setPendingCapturedAt(attemptStartedAt)
       setLocationPreviewLoading(false)
@@ -563,6 +610,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         accuracy_metres: position.accuracyM,
         captured_at: coords.capturedAt,
       })
+      if (!isCurrentCapture()) return
       const requiresAcknowledgement =
         (assessment.proximity === 'separated' && assessment.separation_metres !== null)
         || assessment.truck_in_precinct === false
@@ -582,10 +630,11 @@ function usePhaseStepController<T extends PhaseEvidence>(
         handOffSubmission(position, coords.capturedAt, null)
       }
     } catch (err) {
+      if (!isCurrentCapture()) return
       console.error('PhaseStepPageClient: location preview failed', err)
       setLocationPreviewError('Location preview failed')
     } finally {
-      setLocationPreviewLoading(false)
+      if (isCurrentCapture()) setLocationPreviewLoading(false)
     }
   }
 
@@ -664,10 +713,24 @@ function DepartureStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }:
   // No carry-forward. The seal committed here used to be persisted per-trip
   // (useSealReference) so `unloading` could display it as a reference to type against;
   // that display is gone (2026-08-05) because showing a driver the expected number is
-  // not verification. advance_unloading compares against this leg's own departure event
+  // not verification. advance_arrival compares against this leg's own departure event
   // server-side, so nothing on the device needs to remember the seal.
   const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<DepartureEvidence>(
     trip, phase, slug, isFinalStep, DEPARTURE_INITIAL, onHandOff, () => {},
+  )
+  const StepComponent = stepComponentFor(phase.phase_type, slug)
+  if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
+  return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
+}
+
+function ArrivalStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff }: StepControllerProps) {
+  const tripId = String(trip.id)
+  // No carry-forward, same reasoning as DepartureStep above: the seal comparison is
+  // server-side (advance_arrival), so nothing on the device needs to remember either
+  // seal. sealNumberAtArrival is cleared to a fresh draft per phase_event_id by
+  // usePhaseDraft, which is exactly right for a repeated arrival on a cross-dock plan.
+  const { draft, onUpdate, onComplete, locationCheckModal } = usePhaseStepController<ArrivalEvidence>(
+    trip, phase, slug, isFinalStep, ARRIVAL_INITIAL, onHandOff, () => {},
   )
   const StepComponent = stepComponentFor(phase.phase_type, slug)
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
@@ -700,14 +763,3 @@ function ConfirmationStep({ trip, phase, slug, stepIndex, isFinalStep, onHandOff
   if (!StepComponent) return <UnknownStep phaseType={phase.phase_type} slug={slug} />
   return <>{renderStep(StepComponent, { tripId, phase, stepIndex, draft, onUpdate, onComplete })}{locationCheckModal}</>
 }
-
-// InTransitStep is gone with in_transit's step recipe. Its single step ('1-arrival')
-// only ever asked the driver to capture a GPS fix that submitPhase never sent anywhere.
-//
-// The phase DOES have a PhaseCompleteRequest variant again as of 2026-08-09
-// (InTransitCompleteRequest / advance_in_transit) and the driver does submit it — but
-// from the in-transit hub's "Arrive at destination" swipe, deliberately not from a step
-// page: a step recipe would perturb actionablePhase() and force a change to the shared
-// STEP_SLUGS contract. So the recipe stays empty, PhaseStepContent's guard still
-// redirects away before this phase can address a step page, and this file stays out of
-// it — exactly as it always has for trip_creation.

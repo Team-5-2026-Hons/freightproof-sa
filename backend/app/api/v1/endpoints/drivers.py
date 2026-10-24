@@ -17,15 +17,17 @@ from app.core.exceptions import (
     HederaTimeoutError,
     ResourceNotFoundError,
 )
-from app.core.limits import FLEET_MUTATION
+from app.core.limits import FLEET_MUTATION, PUSH_TOKEN_REGISTER
 from app.core.rate_limit import rate_limit
 from app.db.session import get_db
-from app.orchestration.driver_service import (
+from app.orchestration.fleet.drivers import (
     list_drivers, create_driver, update_driver, get_driver_detail,
 )
+from app.orchestration.notifications.push_tokens import register_push_token
 from app.schemas.people import (
     DriverCreateBody, DriverDetailResponse, DriverRead, DriverUpdateBody, UserRead,
 )
+from app.schemas.push import PushTokenRegistration
 
 router = APIRouter(prefix="/drivers", tags=["drivers"])
 
@@ -48,6 +50,21 @@ async def get_my_driver_profile(
     confirm the session and load the driver record for the app shell.
     """
     return current_driver
+
+
+@router.post(
+    "/me/push-tokens",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Register this device's push token for the authenticated driver",
+    dependencies=[Depends(rate_limit(PUSH_TOKEN_REGISTER))],
+)
+async def register_my_push_token(
+    payload: PushTokenRegistration,
+    db: AsyncSession = Depends(get_db),
+    current_driver: DriverRead = Depends(get_current_driver),
+) -> None:
+    """Idempotent: the app calls this on every launch, and a repeat only refreshes the row."""
+    await register_push_token(db, driver_id=current_driver.id, payload=payload)
 
 
 # Fleet mutations write an event row and may anchor to Hedera — not free writes, and the

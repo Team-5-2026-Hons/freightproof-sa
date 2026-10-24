@@ -66,7 +66,7 @@ export function TrendLines<Row>({
   rows, rowKey, tickLabel, isPartial, series, renderTooltip, yLabel, height: normalHeight = CHART_HEIGHT,
   yTickFormat, yDomain, allowDecimals = false,
 }: TrendLinesProps<Row>) {
-  // Taller inside the zoom modal (D27).
+  // Taller inside the zoom modal.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const labelWidth = labelWidthFor(rows.map((row) => tickLabel(rowKey(row))))
@@ -77,7 +77,8 @@ export function TrendLines<Row>({
   }))
 
   return (
-    <ResponsiveContainer width="100%" height={height}>
+    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
+    <ResponsiveContainer width="100%" height="100%" minHeight={height}>
       <LineChart data={data} margin={TIME_CHART_MARGIN}>
         <CartesianGrid vertical={false} stroke={GRID_COLOR} />
         <XAxis

@@ -1,7 +1,7 @@
-"""Queries behind the Routes & sites tab (spec §5.6): GET /analytics/fleet/routes
+"""Queries behind the Routes & sites tab: GET /analytics/fleet/routes
 and GET /analytics/fleet/incidents. Period only, no time axis. Sites and lanes are
-over the closed-trip set (spec G4); the incident map is over every report, any trip
-status. Precinct names are attached by the service (spec G16); this module returns ids."""
+over the closed-trip set; the incident map is over every report, any trip
+status. Precinct names are attached by the service; this module returns ids."""
 
 import uuid
 from dataclasses import dataclass, field
@@ -69,7 +69,7 @@ async def site_counts(db: AsyncSession, *, organization_id: uuid.UUID, period: P
 async def lane_trips(db: AsyncSession, *, organization_id: uuid.UUID, period: Period) -> list[LaneTrips]:
     """Charts 2.4 and 6.3: closed trips per lane, each with its driving time (first attested
     departure to final arrival, the lane view's actual_transit_minutes) and its problems
-    (dispatcher notes excluded, spec D10). A trip with an unknown endpoint is on no lane."""
+    (dispatcher notes excluded). A trip with an unknown endpoint is on no lane."""
     window = instant_range(period.start, period.end)
     trips = closed_trips(organization_id, window)
     trip_rows = await db.execute(

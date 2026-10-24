@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import ExceptionDetailPage from './page'
 import { ToastProvider } from '@/lib/context/ToastContext'
 import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { useExceptionDetail } from '@/lib/hooks/useExceptionDetail'
-import { ApiError, reviewException } from '@/lib/api/client'
+import { ApiError, claimException, releaseException, reviewException } from '@/lib/api/client'
 import type { TripException, TripExceptionDetail } from '@shared/lib/types/exception'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { VehicleId } from '@shared/lib/types/vehicle'
@@ -21,8 +21,11 @@ vi.mock('@/lib/supabase/client', () => ({
 
 // ForensicModeProvider reads the signed-in user. Nothing these tests assert depends on
 // who that is, so the identity is stubbed rather than an AuthProvider stood up.
+// The claim UI does depend on who is signed in (mine vs a colleague's claim), so the
+// user is a mutable stub the claim tests set; everything else leaves it at null.
+let mockUserId: string | null = null
 vi.mock('@/lib/hooks/useAuth', () => ({
-  useAuth: () => ({ user: null }),
+  useAuth: () => ({ user: mockUserId === null ? null : { id: mockUserId } }),
 }))
 
 const push = vi.fn()
@@ -42,11 +45,13 @@ vi.mock('@/lib/hooks/useExceptionDetail', () => ({
 // only the one mutation this page calls — same pattern as CancelTripAction.test.tsx.
 vi.mock('@/lib/api/client', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/client')>('@/lib/api/client')
-  return { ...actual, reviewException: vi.fn() }
+  return { ...actual, reviewException: vi.fn(), claimException: vi.fn(), releaseException: vi.fn() }
 })
 
 const mockedUseExceptionDetail = vi.mocked(useExceptionDetail)
 const mockedReviewException = vi.mocked(reviewException)
+const mockedClaimException = vi.mocked(claimException)
+const mockedReleaseException = vi.mocked(releaseException)
 
 const EXCEPTION_ID = '11111111-1111-1111-1111-111111111111'
 
@@ -64,6 +69,8 @@ const ARTIFACT_WITH_URL: EvidenceArtifactWithUrl = {
   captured_lat: -33.9249,
   captured_lng: 18.4241,
   created_at: '2026-09-03T10:00:00Z',
+  phase_event_id: null,
+  evidence_role: null,
   signed_url: 'https://storage.example/photo.jpg',
 }
 
@@ -84,8 +91,17 @@ function baseException(overrides: Partial<TripExceptionDetail> = {}): TripExcept
     trip_id: '22222222-2222-2222-2222-222222222222',
     trip_reference: 'FP-2026-0001',
     trip_status: 'active',
+    origin_name: 'Johannesburg DC',
+    destination_name: 'Durban Depot',
+    driver_name: 'Thabo Mokoena',
+    horse_registration: 'HRS 001 GP',
+    trailer_registrations: ['TRL 101 GP'],
     phase_label: null,
     stop_label: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     gps_lat: null,
     gps_lng: null,
     review_outcome: null,
@@ -126,7 +142,7 @@ const REVIEWED_RESPONSE: TripException = {
   review_note: 'Evidence settles it.',
   contact_method: null,
   vehicle_id: null,
-  merkle_batch_id: null,
+  merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
   created_at: '2026-09-03T10:00:00Z',
   updated_at: '2026-09-04T09:30:00Z',
 }
@@ -162,10 +178,11 @@ function renderPage() {
 
 const NOTE = 'Phoned the depot; the seal was cut during a lawful SARS inspection.'
 
-const noteField    = () => screen.getByLabelText('Review note')
-const outcomeField = () => screen.getByLabelText('Outcome')
-const contactField = () => screen.getByLabelText('Contact method')
+const noteField    = () => screen.getByLabelText('Review note (required)')
+const outcomeField = () => screen.getByLabelText('Outcome (required)')
+const contactField = () => screen.getByLabelText('Contact method (optional)')
 const submitButton = () => screen.getByRole('button', { name: 'Submit review' })
+const assessmentPanel = () => within(screen.getByRole('region', { name: 'Assessment' }))
 
 function fillValidForm() {
   fireEvent.change(noteField(), { target: { value: NOTE } })
@@ -179,15 +196,22 @@ beforeEach(() => {
   refetch.mockReset()
   refetchSilent.mockReset()
   mockedReviewException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockedClaimException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockedReleaseException.mockReset().mockResolvedValue(REVIEWED_RESPONSE)
+  mockUserId = null
 })
 
 describe('Exception detail — loading and error states', () => {
-  it('shows a spinner while loading', () => {
+  it('shows a layout-shaped skeleton while loading, with no record facts in it', () => {
     mockDetail(null, { isLoading: true })
     renderPage()
 
     expect(screen.getByText('Exception Detail')).toBeInTheDocument()
-    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
+    const skeleton = screen.getByRole('status', { name: 'Loading exception' })
+    expect(skeleton).toHaveAttribute('aria-busy', 'true')
+    // Placeholders must never read as recorded evidence.
+    expect(skeleton).toHaveTextContent('')
+    expect(screen.queryByLabelText('Review note (required)')).not.toBeInTheDocument()
   })
 
   it('offers Back while loading, so a slow record never strands the dispatcher', () => {
@@ -204,7 +228,7 @@ describe('Exception detail — loading and error states', () => {
     renderPage()
 
     const backButton = screen.getByRole('button', { name: 'Back' })
-    const title = screen.getByText('Seal Mismatch')
+    const title = screen.getAllByText('Seal Mismatch')[0]
 
     // DOCUMENT_POSITION_FOLLOWING: the title comes after Back in the header row, which is
     // what puts Back on the left rather than in TopBar's right-hand action slot.
@@ -220,13 +244,33 @@ describe('Exception detail — loading and error states', () => {
     expect(push).toHaveBeenCalledWith('/exceptions')
   })
 
+  it('shows the trip route, driver, truck and trailers above the evidence', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(context).toHaveTextContent('Johannesburg DC → Durban Depot')
+    expect(context).toHaveTextContent('Thabo Mokoena')
+    expect(context).toHaveTextContent('HRS 001 GP')
+    expect(context).toHaveTextContent('TRL 101 GP')
+  })
+
+  it('states when no trailers or crew were recorded instead of leaving blanks', () => {
+    mockDetail(baseException({ origin_name: null, destination_name: null, driver_name: null, horse_registration: null, trailer_registrations: [] }))
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(context).toHaveTextContent('Route not recorded')
+    expect(context).toHaveTextContent('None attached')
+  })
+
   it('does not tear down a loaded record when a background refresh fails', () => {
     // useExceptionDetail refetches on realtime events for this trip; a failed background
     // refresh must not replace a half-typed review with an error page.
     mockDetail(baseException(), { error: 'Network error' })
     renderPage()
 
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 })
 
@@ -261,19 +305,73 @@ describe('Exception detail — trip lifecycle banner', () => {
 })
 
 describe('Exception detail — phase/stop context', () => {
-  it('renders phase and stop context when present', () => {
+  it('shows the phase and stop as its own Phase row in the trip context', () => {
     mockDetail(baseException({ phase_label: 'In Transit', stop_label: 2 }))
     renderPage()
 
-    expect(screen.getByText('In Transit · Stop 2')).toBeInTheDocument()
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('In Transit · Recorded stop 2')
   })
 
-  it('degrades cleanly with no literal "null" or dangling separator when phase/stop are absent', () => {
+  it('says plainly that a trip-level record belongs to no phase', () => {
     mockDetail(baseException({ phase_label: null, stop_label: null }))
     renderPage()
 
-    expect(screen.queryByText(/null/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^·/)).not.toBeInTheDocument()
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('Trip-level record, no phase')
+    // Scoped to the context block: the header's own line legitimately starts with the reference.
+    expect(within(context).queryByText(/null/i)).not.toBeInTheDocument()
+    expect(within(context).queryByText(/^·/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the stop and says there is no phase when a record has a stop but no phase', () => {
+    mockDetail(baseException({ phase_label: null, stop_label: 2 }))
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Phase').nextElementSibling).toHaveTextContent('Trip-level record, no phase · Recorded stop 2')
+  })
+
+  it('does not guess a phase scope when the payload does not say which phase it belongs to', () => {
+    mockDetail(baseException({ phase_label: 'Loading', stop_label: 1 }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&exception=${EXCEPTION_ID}`,
+    )
+  })
+
+  it('opens the trip on this exception\'s phase and record from View trip', () => {
+    mockDetail(baseException({ phase_label: 'Loading', stop_label: 1, phase_event_id: 'phase-1' }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&phase=phase-1&exception=${EXCEPTION_ID}`,
+    )
+  })
+
+  it('opens the trip on its trip-level records when the exception has no phase', () => {
+    mockDetail(baseException({ phase_label: null, stop_label: null, phase_event_id: null }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+
+    expect(push).toHaveBeenCalledWith(
+      `/trips/22222222-2222-2222-2222-222222222222?panel=exceptions&exceptions=all&phase=trip-level&exception=${EXCEPTION_ID}`,
+    )
+  })
+})
+
+describe('Exception detail — reference', () => {
+  it('shows the short exception reference in the header', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByRole('heading', { level: 1 }).parentElement).toHaveTextContent('EX-11111111')
   })
 })
 
@@ -396,7 +494,7 @@ describe('Exception detail — recorded vs needs_review visibility', () => {
     mockDetail(baseException({ review_status: 'needs_review' }))
     renderPage()
 
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 
   it('shows a secondary "Add review" action for a recorded exception, form hidden until clicked', () => {
@@ -408,7 +506,7 @@ describe('Exception detail — recorded vs needs_review visibility', () => {
     expect(addReview).toBeInTheDocument()
 
     fireEvent.click(addReview)
-    expect(screen.getByLabelText('Review note')).toBeInTheDocument()
+    expect(screen.getByLabelText('Review note (required)')).toBeInTheDocument()
   })
 })
 
@@ -521,6 +619,293 @@ describe('Exception detail — submit outcomes', () => {
     // Exact match on the toast TITLE, not a substring search — the toast body also
     // contains "already reviewed by a colleague" (the backend's own detail message),
     // and both must be able to say so without the assertion becoming ambiguous.
-    expect(screen.getByText('Already reviewed by a colleague')).toBeInTheDocument()
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+  })
+})
+
+const ME = 'me-user-id'
+const ANA = 'ana-user-id'
+const CLAIMED_AT = '2026-09-03T11:00:00Z'
+
+describe('Exception detail — claim, release and take over', () => {
+  it('offers Claim on an unclaimed exception, with the form enabled and a plain review submit', () => {
+    mockUserId = ME
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByRole('button', { name: 'Claim' })).toBeInTheDocument()
+    fillValidForm()
+    expect(submitButton()).toBeEnabled()
+  })
+
+  it('claims and refetches', async () => {
+    mockUserId = ME
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(mockedClaimException).toHaveBeenCalledWith(EXCEPTION_ID))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('Exception claimed.')).toBeInTheDocument()
+  })
+
+  it('offers Take over and a Take over and review submit when a colleague holds the claim', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(assessmentPanel().getByText(/Claimed by Ana/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Take over' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Take over and review' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Submit review' })).not.toBeInTheDocument()
+  })
+
+  it('takes over and refetches', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Take over' }))
+
+    await waitFor(() => expect(mockedClaimException).toHaveBeenCalledWith(EXCEPTION_ID, true))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+  })
+
+  it('takes over and reviews in one step', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Take over and review' }))
+
+    await waitFor(() =>
+      expect(mockedReviewException).toHaveBeenCalledWith(EXCEPTION_ID, {
+        review_note: NOTE,
+        review_outcome: 'evidence_verified',
+        contact_method: null,
+        take_over: true,
+      }),
+    )
+  })
+
+  it('sends no take_over for an unclaimed or own-claim review', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(mockedReviewException).toHaveBeenCalled())
+    const body = mockedReviewException.mock.calls[0][1]
+    expect(body.take_over ?? false).toBe(false)
+  })
+
+  it('shows my own claim and releases it', async () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(assessmentPanel().getByText(/Claimed by you/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Release' }))
+
+    await waitFor(() => expect(mockedReleaseException).toHaveBeenCalledWith(EXCEPTION_ID))
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+  })
+
+  it('toasts "A colleague got there first" and refetches when a claim hits a 409', async () => {
+    mockUserId = ME
+    mockedClaimException.mockReset().mockRejectedValue(new ApiError(409, 'Already claimed by Ana.'))
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+  })
+
+  it('toasts a generic error, and does not refetch, when a claim fails for another reason', async () => {
+    mockUserId = ME
+    mockedClaimException.mockReset().mockRejectedValue(new ApiError(500, 'boom'))
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claim' }))
+
+    await waitFor(() => expect(screen.getByText('Could not claim this exception')).toBeInTheDocument())
+    expect(refetchSilent).not.toHaveBeenCalled()
+  })
+
+  it('keeps the typed note and refetches when review hits a 409', async () => {
+    mockUserId = ME
+    mockedReviewException.mockReset().mockRejectedValue(new ApiError(409, 'Claimed by Ana.'))
+    mockDetail(baseException())
+    renderPage()
+
+    fillValidForm()
+    fireEvent.click(submitButton())
+
+    await waitFor(() => expect(refetchSilent).toHaveBeenCalled())
+    expect(screen.getByText('A colleague got there first')).toBeInTheDocument()
+    expect(noteField()).toHaveValue(NOTE)
+    expect(push).not.toHaveBeenCalled()
+  })
+
+  it('names the reviewer and claimer on a reviewed exception', () => {
+    mockUserId = ME
+    mockDetail(baseException({
+      review_status: 'reviewed',
+      review_outcome: 'evidence_verified',
+      review_note: 'Done.',
+      reviewed_at: '2026-09-04T09:30:00Z',
+      reviewed_by_user_id: 'ben-id',
+      reviewed_by_name: 'Ben',
+      claimed_by_user_id: ANA,
+      claimed_by_name: 'Ana',
+      claimed_at: CLAIMED_AT,
+    }))
+    renderPage()
+
+    expect(screen.getByText(/Reviewed by Ben/)).toBeInTheDocument()
+    expect(screen.getByText(/Claimed by Ana/)).toBeInTheDocument()
+  })
+
+  it('labels a dispatcher-authored note', () => {
+    mockDetail(baseException({
+      review_status: 'reviewed',
+      review_outcome: 'dispatcher_authored',
+      review_note: 'Cancelled: wrong load.',
+      reviewed_at: '2026-09-04T09:30:00Z',
+      reviewed_by_user_id: 'ben-id',
+      reviewed_by_name: 'Ben',
+      claimed_by_user_id: 'ben-id',
+      claimed_by_name: 'Ben',
+    }))
+    renderPage()
+
+    expect(screen.getByText(/Dispatcher note by Ben/)).toBeInTheDocument()
+    expect(screen.queryByText(/Reviewed by Ben/)).not.toBeInTheDocument()
+    // Reviewer and claimer are the same person, so no separate claim line.
+    expect(screen.queryByText(/Claimed by/)).not.toBeInTheDocument()
+  })
+})
+
+
+describe('assessment redesign', () => {
+  it('lets the dispatcher cancel leaving an unsent assessment', () => {
+    mockDetail(baseException())
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPage()
+    fireEvent.change(screen.getByLabelText(/Review note/), { target: { value: 'Unsent assessment' } })
+    fireEvent.click(screen.getByRole('button', { name: /View trip/ }))
+    expect(confirm).toHaveBeenCalledWith('Leave without submitting this assessment?')
+    expect(push).not.toHaveBeenCalled()
+    expect(screen.getByLabelText(/Review note/)).toHaveValue('Unsent assessment')
+    confirm.mockRestore()
+  })
+})
+
+describe('exception detail header and hierarchy', () => {
+  it('keeps the header to the title and the exception reference', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    const header = screen.getByRole('heading', { level: 1 }).parentElement!
+    expect(header).toHaveTextContent('Seal Mismatch')
+    expect(header).toHaveTextContent('EX-11111111')
+    expect(header).not.toHaveTextContent(/FP-2026-0001|Raised|System/)
+  })
+
+  it('shows the trip, when it was raised and its source in the trip context, where the dispatcher reads', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    const context = screen.getByRole('region', { name: 'Trip context' })
+    expect(within(context).getByText('Trip').nextElementSibling).toHaveTextContent('FP-2026-0001')
+    expect(within(context).getByText('Raised').nextElementSibling).toHaveTextContent(/03 Sep\w* 2026, 12:00 SAST/)
+    expect(within(context).getByText('Source').nextElementSibling).toHaveTextContent('System')
+    // Named once on the page, not again in the header.
+    expect(screen.getAllByText(/FP-2026-0001/)).toHaveLength(1)
+  })
+
+  it('puts severity and a neutral review-state chip in the header', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    expect(screen.getByText('Critical')).toBeInTheDocument()
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent('Needs review')
+    expect(screen.getByTestId('review-state-chip').firstElementChild).toHaveClass('bg-surf-high')
+  })
+
+  it('shows who holds the claim in the header chip, not only inside the assessment', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ANA, claimed_by_name: 'Ana', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent('Needs review · Claimed by Ana')
+  })
+
+  it('labels a reviewed record plainly and leaves the reviewer to the assessment', () => {
+    mockDetail(baseException({
+      review_status: 'reviewed', review_outcome: 'evidence_verified', review_note: 'Done.',
+      reviewed_at: '2026-09-04T09:30:00Z', reviewed_by_user_id: 'ben-id', reviewed_by_name: 'Ben',
+    }))
+    renderPage()
+
+    expect(screen.getByTestId('review-state-chip')).toHaveTextContent(/^Reviewed$/)
+  })
+
+  it('formats the claim time like the raised time, with the year and SAST', () => {
+    mockUserId = ME
+    mockDetail(baseException({ claimed_by_user_id: ME, claimed_by_name: 'Me', claimed_at: CLAIMED_AT }))
+    renderPage()
+
+    expect(assessmentPanel().getByText(/Claimed by you · 03 Sep.* 2026, 13:00 SAST/)).toBeInTheDocument()
+  })
+
+  it('shows the closed-trip notice once and drops the generic one', () => {
+    mockDetail(baseException({ trip_status: 'closed', trip_closed_at: '2026-09-04T08:00:00Z' }))
+    renderPage()
+
+    expect(screen.getByText(/does not reopen the trip/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Reviewing records your assessment/)).not.toBeInTheDocument()
+  })
+
+  it('shows the generic reassurance when the trip needs no lifecycle notice', () => {
+    mockDetail(baseException({ trip_status: 'active' }))
+    renderPage()
+
+    expect(screen.getByText(/Reviewing records your assessment/)).toBeInTheDocument()
+  })
+
+  it('moves focus to the assessment heading from Jump to assessment', () => {
+    mockDetail(baseException())
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to assessment' }))
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Assessment' })).toHaveFocus()
+  })
+})
+
+describe('Exception detail — review-only evidence', () => {
+  it('shows no anchor status, retry message or verification control, even when the exception has anchor events', () => {
+    mockDetail(baseException({
+      anchor_events: [
+        { event_id: 'e1', receipt_type: 'exception_raised', anchor_status: 'pending', receipt_id: null, occurred_at: '2026-09-03T10:00:00Z' },
+        { event_id: 'e2', receipt_type: 'exception_reviewed', anchor_status: 'failed', receipt_id: null, occurred_at: '2026-09-03T11:00:00Z' },
+        { event_id: 'e3', receipt_type: 'trip_cancelled', anchor_status: 'anchored', receipt_id: 'r3', hedera_topic_id: '0.0.4242', hedera_sequence_number: 3, occurred_at: '2026-09-03T12:00:00Z' },
+      ],
+    }))
+    renderPage()
+
+    expect(screen.queryByText(/anchor/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /verify integrity/i })).not.toBeInTheDocument()
+    // Outside forensic mode the anchored event's HashScan link is hidden too.
+    expect(screen.queryByRole('link', { name: /HashScan/ })).not.toBeInTheDocument()
   })
 })

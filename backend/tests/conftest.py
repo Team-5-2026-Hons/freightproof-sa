@@ -29,6 +29,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1, generate_private_key
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
+from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -74,6 +76,48 @@ from app.main import app  # noqa: E402
 # from every other test in the suite.
 settings.RATE_LIMIT_ENABLED = False
 
+# FP-83: new driver-handover arrangements default OFF in every real environment
+# (DRIVER_SUBSTITUTIONS_ENABLED), but the lifecycle tests arrange handovers throughout, so the
+# suite runs with them on. The disabled mode is asserted explicitly where it matters
+# (test_driver_substitution_endpoints.py), by switching it back off.
+settings.DRIVER_SUBSTITUTIONS_ENABLED = True
+
+# ── Parallel runs (pytest -n N, pytest-xdist) ─────────────────────────────────
+# Each worker is its own process with its own test session, so it gets its own PostgreSQL
+# database (test_engine creates and drops the whole schema, which two workers cannot share)
+# and its own Redis database number (mock-state keys are fixed device ids). A plain `pytest`
+# sets no worker id and uses TEST_DATABASE_URL and REDIS_URL unchanged.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+_BASE_TEST_DATABASE_URL = settings.TEST_DATABASE_URL
+# Redis numbers its databases 0-15; 0 is the unchanged default, so workers use 1-15.
+_REDIS_WORKER_DATABASES = 15
+if _XDIST_WORKER and settings.TEST_DATABASE_URL:
+    _base_test_url = make_url(_BASE_TEST_DATABASE_URL)
+    settings.TEST_DATABASE_URL = _base_test_url.set(
+        database=f"{_base_test_url.database}_{_XDIST_WORKER}"
+    ).render_as_string(hide_password=False)
+    _worker_number = int(_XDIST_WORKER.removeprefix("gw"))
+    settings.REDIS_URL = str(make_url(settings.REDIS_URL).set(
+        database=str(1 + _worker_number % _REDIS_WORKER_DATABASES)
+    ).render_as_string(hide_password=False))
+
+
+async def _ensure_database_exists(url: str) -> None:
+    """Create the worker's test database on first use, from a connection to the base one."""
+    target = make_url(url)
+    engine = create_async_engine(_BASE_TEST_DATABASE_URL, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": target.database},
+            )
+            if not exists:
+                # Identifier, not a bind parameter: CREATE DATABASE takes no parameters. The
+                # name is the base test database plus an xdist worker id, never user input.
+                await conn.execute(text(f'CREATE DATABASE "{target.database}"'))
+    finally:
+        await engine.dispose()
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[None, None]:
@@ -83,13 +127,28 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
     queue boundary. Draining before pytest closes the loop keeps tasks from leaking
     into the next test without changing the application's async dispatch behavior.
     """
-    from app.orchestration.phase_service import _BACKGROUND_ANCHOR_TASKS
+    from app.orchestration.phases.anchor_dispatch import _BACKGROUND_ANCHOR_TASKS
     from app.tasks.blockchain import anchor_phase_event_task
 
+    from app.orchestration.evidence_anchors.dispatch import _BACKGROUND_EVIDENCE_TASKS
+    from app.tasks.evidence_anchors import anchor_event_task, register_evidence_publisher
+
     monkeypatch.setattr(anchor_phase_event_task, "delay", Mock(return_value=None))
+    # Evidence anchors too: a committed critical report must never reach the dev broker, and
+    # a failed publish would fall back to a local anchor against DATABASE_URL.
+    monkeypatch.setattr(anchor_event_task, "delay", Mock(return_value=None))
+    register_evidence_publisher()  # app.main does this at startup; service-level tests never import it
+    # FP-83 custody anchors: same rule, a completed test handover never reaches the dev broker.
+    from app.orchestration.substitutions.anchors import _BACKGROUND_CUSTODY_TASKS
+    from app.tasks.driver_substitutions import anchor_record_task, register_custody_publisher
+
+    monkeypatch.setattr(anchor_record_task, "delay", Mock(return_value=None))
+    register_custody_publisher()
     yield
-    while _BACKGROUND_ANCHOR_TASKS:
-        await asyncio.gather(*tuple(_BACKGROUND_ANCHOR_TASKS))
+    while _BACKGROUND_ANCHOR_TASKS or _BACKGROUND_EVIDENCE_TASKS or _BACKGROUND_CUSTODY_TASKS:
+        await asyncio.gather(
+            *tuple(_BACKGROUND_ANCHOR_TASKS), *tuple(_BACKGROUND_EVIDENCE_TASKS), *tuple(_BACKGROUND_CUSTODY_TASKS),
+        )
 
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
@@ -250,6 +309,8 @@ def test_engine():
     if not settings.TEST_DATABASE_URL:
         pytest.skip("TEST_DATABASE_URL not set — skipping integration tests")
 
+    if _XDIST_WORKER:
+        asyncio.run(_ensure_database_exists(settings.TEST_DATABASE_URL))
     engine = create_async_engine(settings.TEST_DATABASE_URL, poolclass=NullPool)
 
     async def _create() -> None:
@@ -320,7 +381,7 @@ class FakeMockStateStore:
 
 
 # ── Warehouse-scan fixtures ─────────────────────────────────────────────────────
-# Shared by test_scan_service.py and test_phase_gate.py, so both agree on one
+# Shared by test_consignment_scans.py and test_phases_gate.py, so both agree on one
 # seeded trip shape instead of drifting apart in duplicated fixture bodies.
 
 
@@ -391,7 +452,7 @@ async def empty_trip(db_session):
     """A trip with TripStop rows but no Consignment rows — no PP reference at all.
 
     manifest.ts documents this shape as common and normal, not a failure: a trip
-    created without a Parcel Perfect reference. phase_gate must never block it.
+    created without a Parcel Perfect reference. phases.blocking must never block it.
     """
     from app.db.models.enums import IdvsStatus, OrganizationType, TripStatus, VehicleType
     from app.db.models.organisations import Organization, Precinct

@@ -67,7 +67,7 @@ scale, and the Inter weight ramp. **Never** use raw Tailwind palette classes
 (`Button`, `Input`, `Card`, `Chip`, `Modal`, `Toast`, `Spinner`, `EmptyState`) rather
 than restyling ad hoc. The driver app is the **light, mobile counterpart** of the
 dispatcher portal (see `docs/superpowers/specs/2026-05-13-dispatcher-ui-redesign.md` and
-`docs/FreightProof_Frontend_Spec_v1.md`): same brand blue (`secondary` `#0051d5`) for
+`docs/archive/root/FreightProof_Frontend_Spec_v1.md`): same brand blue (`secondary` `#0051d5`) for
 primary actions, same card / border / typographic vocabulary — not the dark sidebar
 chrome. This includes migrating the existing `login`, `otp`, and `trips` pages off their
 raw gray/blue classes onto tokens as they are touched.

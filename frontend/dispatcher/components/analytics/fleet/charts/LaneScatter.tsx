@@ -3,10 +3,9 @@
 import type { ReactNode } from 'react'
 import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts'
 
-import { AXIS_TEXT_COLOR, GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
+import { GRID_COLOR, SURFACE_COLOR, TICK_COLOR } from '@/lib/tokens'
 import { useChartHeight } from '../ChartZoom'
 import {
-  AXIS_FONT_SIZE,
   AXIS_TICK,
   CHART_HEIGHT,
   CHART_MARGIN,
@@ -19,11 +18,6 @@ import {
   yAxisHeading,
 } from './chartStyle'
 
-// With this many dots or fewer every dot is named; past it, only the busy-and-risky ones, so
-// the names never pile into an unreadable heap.
-const MAX_NAMED_DOTS = 6
-// A name sits this far from its dot, on the side with more room.
-const DOT_LABEL_OFFSET_PX = 12
 // An average needs at least two dots to split them into anything.
 const MIN_DOTS_FOR_AVERAGES = 2
 
@@ -36,8 +30,6 @@ interface LaneScatterProps<Row> {
   xLabel: string
   yLabel: string
   color: string
-  /** A dot's name, written beside it. */
-  pointLabel: (row: Row) => string
   /** Written in the top-right corner, e.g. "Busy and risky". */
   cornerLabel: string
   height?: number
@@ -49,50 +41,38 @@ interface ScatterDatum {
   [KEY]: string
   x: number
   y: number
-  /** null when this dot goes unnamed (see MAX_NAMED_DOTS). */
-  label: string | null
-  /** Right of the average: its name goes on its left, where there is room. */
-  rightOfAverage: boolean
 }
 
 interface DotShapeProps {
   cx?: number
   cy?: number
-  payload?: ScatterDatum
 }
 
 function mean(values: readonly number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-/** One dot per lane, one series. Each dot is named, two faint lines at the average lane split
- *  the chart into four corners, and the top-right one is named for what it holds. Each dot
- *  sits on a transparent 24px target, so hovering needs no precision. */
+/** One dot per lane, one series. Two faint lines at the average lane split the chart into four
+ *  corners, and the top-right one is named for what it holds. Dots carry no written names: a
+ *  lane's name ("Cape Town Depot (Epping) → Johannesburg Depot (Linbro)") is too long to sit
+ *  beside a dot without running off the chart, so it shows on hover, and every lane is named in
+ *  the table. Each dot sits on a transparent 24px target, so hovering needs no precision. */
 export function LaneScatter<Row>({
-  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, pointLabel, cornerLabel, height: normalHeight = CHART_HEIGHT,
+  rows, rowKey, x, y, renderTooltip, xLabel, yLabel, color, cornerLabel, height: normalHeight = CHART_HEIGHT,
 }: LaneScatterProps<Row>) {
-  // Taller inside the zoom modal (D27), which also spreads crowded dot names apart.
+  // Taller inside the zoom modal, which also spreads crowded dot names apart.
   const height = useChartHeight(normalHeight)
   const byKey = new Map(rows.map((row) => [rowKey(row), row]))
   const points = rows.map((row) => ({ row, x: x(row), y: y(row) }))
   const hasAverages = points.length >= MIN_DOTS_FOR_AVERAGES
   const averageX = hasAverages ? mean(points.map((point) => point.x)) : null
   const averageY = hasAverages ? mean(points.map((point) => point.y)) : null
-  const nameEvery = points.length <= MAX_NAMED_DOTS
-  const data: ScatterDatum[] = points.map((point) => {
-    const busyAndRisky = averageX !== null && averageY !== null && point.x >= averageX && point.y >= averageY
-    return {
-      [KEY]: rowKey(point.row),
-      x: point.x,
-      y: point.y,
-      label: nameEvery || busyAndRisky ? pointLabel(point.row) : null,
-      rightOfAverage: averageX !== null && point.x > averageX,
-    }
-  })
+  const data: ScatterDatum[] = points.map((point) => ({ [KEY]: rowKey(point.row), x: point.x, y: point.y }))
 
   return (
-    <div className="relative">
-      <ResponsiveContainer width="100%" height={height}>
+    // Fills its card when a taller card beside it stretches the row, never shorter than `height`.
+    <div className="relative h-full">
+      <ResponsiveContainer width="100%" height="100%" minHeight={height}>
         <ScatterChart margin={CHART_MARGIN}>
           <CartesianGrid vertical={false} stroke={GRID_COLOR} />
           <XAxis
@@ -120,22 +100,10 @@ export function LaneScatter<Row>({
             data={data}
             fill={color}
             isAnimationActive={false}
-            shape={({ cx, cy, payload }: DotShapeProps) => (
+            shape={({ cx, cy }: DotShapeProps) => (
               <g>
                 <circle cx={cx} cy={cy} r={SCATTER_HIT_RADIUS} fill="transparent" />
                 <circle cx={cx} cy={cy} r={SCATTER_DOT_RADIUS} fill={color} stroke={SURFACE_COLOR} strokeWidth={GAP_WIDTH} />
-                {payload?.label != null && cx !== undefined && cy !== undefined && (
-                  <text
-                    x={payload.rightOfAverage ? cx - DOT_LABEL_OFFSET_PX : cx + DOT_LABEL_OFFSET_PX}
-                    y={cy}
-                    dy="0.35em"
-                    textAnchor={payload.rightOfAverage ? 'end' : 'start'}
-                    fontSize={AXIS_FONT_SIZE}
-                    fill={AXIS_TEXT_COLOR}
-                  >
-                    {payload.label}
-                  </text>
-                )}
               </g>
             )}
           />

@@ -23,7 +23,8 @@ from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
 from app.integrations.pulsit import PulsitFix, PulsitFixSource, PulsitFixStatus
 from app.main import app
-from app.orchestration import checkpoint_service
+from app.orchestration.evidence.checkpoints import _find_by_client_report_id, log_checkpoint
+from app.orchestration.evidence import checkpoints as evidence_checkpoints
 from app.schemas.transit import DriverCheckpointCreateBody
 
 from tests.conftest import auth_header, make_token
@@ -104,7 +105,8 @@ async def test_driver_cannot_log_checkpoint_on_someone_elses_trip(client: AsyncC
         json={"checkpoint_type": "manual"},
         headers=auth_header(token),
     )
-    assert resp.status_code == 403
+    # 404, not 403: a driver who never held the trip must not learn that it exists (FP-83).
+    assert resp.status_code == 404
 
 
 async def test_checkpoint_replay_preserves_validated_phase_context(client: AsyncClient, db_session, seed_trip):
@@ -232,28 +234,38 @@ async def _delete_committed_checkpoint_race_world(session: AsyncSession, ids: di
     await session.commit()
 
 
+# How long the first session waits for a partner that the trip lock keeps out.
+_RACE_BARRIER_SECONDS = 1.0
+
+
 async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separation_finding(
     test_engine, monkeypatch,
 ):
-    """Two sessions cross the real replay lookup together and recover the unique race.
+    """Two sessions replay the same queued checkpoint together and one checkpoint results.
 
-    The barrier sits immediately after the actual first existence SELECT: both sessions
-    have observed no checkpoint, so the loser must recover the database uniqueness race
-    rather than merely taking the ordinary sequential replay branch.
+    The barrier sits immediately after the actual first existence SELECT, to make both
+    sessions observe "no checkpoint" and force the database uniqueness race. Since FP-83 C2
+    log_checkpoint takes the trip lock before that lookup, so the second session cannot reach
+    the barrier until the first has committed: the barrier is bounded and its timeout is the
+    expected outcome, after which the second session takes the ordinary replay branch. The
+    unique index remains as the backstop, and the end state asserted below is unchanged.
     """
     async with AsyncSession(test_engine, expire_on_commit=False) as seed_session:
         ids = await _seed_committed_checkpoint_race_world(seed_session)
 
     barrier = asyncio.Barrier(2)
     lookup_calls = 0
-    original_lookup = checkpoint_service._find_by_client_report_id
+    original_lookup = _find_by_client_report_id
 
     async def synchronized_lookup(*args, **kwargs):
         nonlocal lookup_calls
         existing = await original_lookup(*args, **kwargs)
         if lookup_calls < 2:
             lookup_calls += 1
-            await barrier.wait()
+            try:
+                await asyncio.wait_for(barrier.wait(), _RACE_BARRIER_SECONDS)
+            except (TimeoutError, asyncio.BrokenBarrierError):
+                pass  # serialised by the trip lock: the other session is queued behind this one
         return existing
 
     captured_at = datetime.now(UTC)
@@ -265,8 +277,8 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
     async def fixed_corroboration(*_args, **_kwargs):
         return horse_fix
 
-    monkeypatch.setattr(checkpoint_service, "_find_by_client_report_id", synchronized_lookup)
-    monkeypatch.setattr(checkpoint_service, "record_checkpoint_corroboration", fixed_corroboration)
+    monkeypatch.setattr(evidence_checkpoints, "_find_by_client_report_id", synchronized_lookup)
+    monkeypatch.setattr(evidence_checkpoints, "record_checkpoint_corroboration", fixed_corroboration)
     payload = DriverCheckpointCreateBody(
         checkpoint_type="manual", client_report_id=uuid.uuid4(),
         driver_phone_lat=10, driver_phone_lng=10, driver_captured_at=captured_at,
@@ -275,7 +287,7 @@ async def test_concurrent_checkpoint_replay_keeps_one_checkpoint_and_one_separat
 
     async def attempt() -> uuid.UUID:
         async with AsyncSession(test_engine, expire_on_commit=False) as session:
-            result = await checkpoint_service.log_checkpoint(
+            result = await log_checkpoint(
                 session, trip_id=ids["trip_id"], driver_id=ids["driver_id"], payload=payload,
             )
             await session.commit()

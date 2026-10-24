@@ -1,24 +1,24 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { PackageSearch, Truck } from 'lucide-react'
-import { currentPhase, isDriving, stepsFor, phaseStepRoute } from '@/lib/phase'
+import { Truck } from 'lucide-react'
+import { stepsFor, phaseStepRoute } from '@/lib/phase'
 import { ROUTES } from '@/lib/constants/routes'
 import { useTrip } from '@/lib/hooks/useTrip'
-import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { Button } from '@/components/ui/Button'
-import { Chip } from '@/components/ui/Chip'
-import { EmptyState } from '@/components/ui/EmptyState'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
-import { PhaseProgressBar } from '@/components/trip/PhaseProgressBar'
-import { CurrentPhaseCard } from '@/components/trip/CurrentPhaseCard'
-import { HoldNotice } from '@/components/trip/HoldNotice'
+import { NowCard } from '@/components/home/NowCard'
+import { openDriverExceptions } from '@/lib/utils/trip-attention'
+import { DriverRecord } from '@/components/home/DriverRecord'
+import { DriverSubstitutionPanel } from '@/components/trip/DriverSubstitutionPanel'
+import { TripEndedByDispatchBanner } from '@/components/trip/TripEndedByDispatchBanner'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useMyTrips } from '@/lib/hooks/useMyTrips'
+import { driverRecord } from '@/lib/utils/driver-record'
+import { firstName, partOfDayGreeting } from '@/lib/utils/greeting'
+import { formatLongDate } from '@/lib/utils/format-time'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// Route to the first step of the current phase's own recipe. Mirrors
-// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
-// only export surface for sequencing, this is just route composition, kept local to
-// each caller the same way that file keeps its own.
+// Route to the first step of the current phase.
 function firstStepRoute(phase: PhaseDescriptor): string {
   const steps = stepsFor(phase)
   // Defensive: only trip_creation has an empty recipe, and it resolves before the
@@ -28,7 +28,10 @@ function firstStepRoute(phase: PhaseDescriptor): string {
 
 export function HomeContent() {
   const router = useRouter()
-  const { trip, isLoading } = useTrip()
+  // The context list, not trip.exceptions: it includes everything logged this session.
+  const { trip, isLoading, exceptions } = useTrip()
+  const { user } = useAuth()
+  const { trips, isLoading: tripsLoading, loadError: tripsError } = useMyTrips()
 
   if (isLoading) {
     // Canonical loading state — the one LoadingScreen component every waiting screen in
@@ -37,67 +40,64 @@ export function HomeContent() {
     return <LoadingScreen label="Loading your trip" />
   }
 
+  const name = user ? firstName(user.full_name) : null
+  // The screen's visible heading: today's date over the greeting. The tab's
+  // own "Home" title stays for screen readers only (AppShell).
+  const header = (
+    <div>
+      <p className="text-subhead text-surface-on-variant">{formatLongDate(new Date())}</p>
+      <p className="text-title-1 tracking-tight text-surface-on">
+        {partOfDayGreeting(new Date())}{name ? `, ${name}` : ''}
+      </p>
+    </div>
+  )
+  const record = !tripsLoading && tripsError === null ? <DriverRecord record={driverRecord(trips)} /> : null
+
   if (!trip) {
     return (
-      <main className="flex h-full flex-col gap-4 p-4">
-        <EmptyState
-          icon={<PackageSearch strokeWidth={1.5} aria-hidden />}
-          title="No active trip right now"
-          body="Your dispatcher hasn’t assigned you a trip yet."
-        />
+      <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
+        {header}
+        {/* Above "No trip assigned": an incoming collection is real work even before custody
+            transfers, and it must be the first thing a driver without a trip sees. */}
+        {/* First: the trip the driver was on just ended, and this says so rather than the
+            trip quietly turning into "No trip assigned". */}
+        <TripEndedByDispatchBanner />
+        <DriverSubstitutionPanel />
+        <section aria-label="No trip" className="flex flex-col items-center rounded-[22px] bg-fill px-6 pb-6 pt-7 text-center">
+          <span aria-hidden className="flex size-16 items-center justify-center rounded-full bg-surface">
+            <Truck className="size-8 text-surface-on" strokeWidth={1.7} />
+          </span>
+          <p className="mt-4 text-title-2 text-surface-on">No trip assigned</p>
+          <p className="mt-1.5 max-w-[290px] text-subhead text-surface-on-variant">
+            Your dispatcher assigns trips. The next one appears here the moment it’s ready.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.tripsPast)}
+            className="mt-4 inline-flex min-h-11 items-center rounded-full bg-surface px-5 text-subhead font-semibold text-surface-on transition-transform duration-100 active:scale-95"
+          >
+            See past trips
+          </button>
+        </section>
+        {record}
       </main>
     )
   }
 
-  const { kind, label } = tripStatusChip(trip.status)
-  const current = currentPhase(trip.phases)
-  // isDriving is true only while the ledger's current row is an unresolved in_transit —
-  // i.e. between departure and the driver's own arrival submission. Works the same on
-  // single-stop and cross-dock plans.
-  const driving = isDriving(trip.phases)
-
   return (
-    <main className="flex flex-col gap-4 p-4">
-      {/* Reference and status on one row — same arrangement as a trips-list TripCard,
-          so the card a driver taps and the screen it opens read as the same object.
-          The chip previously sat on its own line below, which cost a full row of
-          vertical space and left the reference block looking orphaned. */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xl font-semibold text-surface-on">{trip.trip_reference}</p>
-          <p className="text-sm text-surface-on-variant">{trip.order_number}</p>
-        </div>
-        <Chip kind={kind} className="mt-0.5 shrink-0">{label}</Chip>
-      </div>
-
-      <PhaseProgressBar phases={trip.phases} />
-
-      {/* A held trip must not offer the next phase — any submit while on hold 409s.
-          HoldNotice explains the pause instead, and that outranks the driving screen too:
-          a driver on hold has been told to stop, not to keep going. */}
-      {trip.status === 'exception_hold' ? (
-        <HoldNotice />
-      ) : driving ? (
-        // While driving, the driving screen IS the primary action — not the arrival
-        // phase's capture card. Offering "Unloading" to a driver doing 100 km/h on the N3
-        // asks them to start an evidence step they cannot complete for another two hours;
-        // the map, panic and exception logging are what they actually need in that window.
-        // The arrival step is one tap away from there ("Arrive at destination").
-        <Button
-          size="lg"
-          iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
-          onClick={() => router.push(ROUTES.inTransit)}
-        >
-          Continue driving
-        </Button>
-      ) : (
-        current !== null && (
-          <CurrentPhaseCard
-            phase={current}
-            onSelect={() => router.push(firstStepRoute(current))}
-          />
-        )
-      )}
+    <main className="flex flex-col gap-5 px-4 pb-4 pt-1">
+      {header}
+      <TripEndedByDispatchBanner />
+      <DriverSubstitutionPanel />
+      {/* Hold, driving and next-phase rules live in NowCard — see its header comment. */}
+      <NowCard
+        trip={trip}
+        exceptions={openDriverExceptions(exceptions)}
+        onStartPhase={(phase) => router.push(firstStepRoute(phase))}
+        onContinueDriving={() => router.push(ROUTES.inTransit)}
+        onViewTrip={() => router.push(ROUTES.activeTripDetail)}
+      />
+      {record}
     </main>
   )
 }

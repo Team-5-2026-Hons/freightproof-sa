@@ -88,6 +88,7 @@ function PerTripCard({ problems, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.perTrip.title}
+      source={COPY.perTrip.source}
       question={COPY.perTrip.question}
       basis={COPY.perTrip.basis(counted, trips)}
       timeAxis
@@ -156,6 +157,7 @@ function TheftCard({ problems, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.theft.title}
+      source={COPY.theft.source}
       question={COPY.theft.question}
       basis={COPY.theft.basis(total)}
       sampleSize={trips}
@@ -223,6 +225,7 @@ function ByTypeCard({ problems }: { problems: FleetQueryResult<FleetProblems> })
   return (
     <ChartCard
       title={COPY.byType.title}
+      source={COPY.byType.source}
       question={COPY.byType.question}
       basis={COPY.byType.basis(total)}
       legend={
@@ -279,6 +282,7 @@ function ByStepCard({ problems }: { problems: FleetQueryResult<FleetProblems> })
   return (
     <ChartCard
       title={COPY.byStep.title}
+      source={COPY.byStep.source}
       question={COPY.byStep.question}
       basis={COPY.byStep.basis(total)}
       {...queryState(problems)}
@@ -334,6 +338,7 @@ function RiskyTimesCard({ problems }: { problems: FleetQueryResult<FleetProblems
   return (
     <ChartCard
       title={COPY.risky.title}
+      source={COPY.risky.source}
       question={COPY.risky.question}
       basis={COPY.risky.basis(fmtMinutes(drivingMinutes), roadProblems)}
       note={COPY.risky.note}
@@ -394,7 +399,6 @@ export function ProblemsTab({ query, allTimeStart, today }: ProblemsTabProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[12px] text-on-surf-v">{COPY.tabNote}</p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PerTripCard problems={problems} grain={grain} today={today} />
         <TheftCard problems={problems} grain={grain} today={today} />

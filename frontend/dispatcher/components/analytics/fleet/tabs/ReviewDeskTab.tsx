@@ -58,6 +58,7 @@ function WaitingNowCard({ review }: { review: FleetQueryResult<FleetReview> }) {
   return (
     <ChartCard
       title={COPY.waitingNow.title}
+      source={COPY.waitingNow.source}
       question={COPY.waitingNow.question}
       basis={COPY.waitingNow.basis(waiting)}
       controls={
@@ -105,6 +106,7 @@ function QueueCard({ review, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.queue.title}
+      source={COPY.queue.source}
       question={COPY.queue.question}
       basis={COPY.queue.basis}
       timeAxis
@@ -159,6 +161,7 @@ function SpeedCard({ review, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.speed.title}
+      source={COPY.speed.source}
       question={COPY.speed.question}
       basis={COPY.speed.basis(reviewed)}
       timeAxis
@@ -223,6 +226,7 @@ function OutcomesCard({ review }: { review: FleetQueryResult<FleetReview> }) {
   return (
     <ChartCard
       title={COPY.outcomes.title}
+      source={COPY.outcomes.source}
       question={COPY.outcomes.question}
       basis={COPY.outcomes.basis(total)}
       note={COPY.outcomes.note}
@@ -271,7 +275,6 @@ export function ReviewDeskTab({ query, allTimeStart, today }: ReviewDeskTabProps
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[12px] text-on-surf-v">{COPY.tabNote}</p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <WaitingNowCard review={review} />
         <QueueCard review={review} grain={grain} today={today} />

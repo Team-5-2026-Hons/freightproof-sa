@@ -1,4 +1,4 @@
-// Display rules for the analytics screen (FP-156 spec §4.5). A rate is never shown
+// Display rules for the analytics screen. A rate is never shown
 // without the counts it came from ("67% (2/3)"), and no data reads "—", never "0%".
 
 import { fmtDelay } from './schedule'
@@ -48,4 +48,37 @@ export function fmtScheduleDelta(minutes: number | null): string {
  *  value and is shown as 0. */
 export function fmtOptionalCount(count: number | null): string {
   return count === null ? NO_DATA : String(count)
+}
+
+// Rand in the South African style ("R 1 284 300"). Whole rand for totals: cents on an
+// estimate would be false precision. Rates show cents, since a fuel rate is quoted that way.
+const RAND_LOCALE = 'en-ZA'
+const RAND_WHOLE = new Intl.NumberFormat(RAND_LOCALE, { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 })
+const RAND_CENTS = new Intl.NumberFormat(RAND_LOCALE, {
+  style: 'currency', currency: 'ZAR', minimumFractionDigits: 2, maximumFractionDigits: 2,
+})
+
+/** A rand total, rounded to the rand. "—" when there is no figure. */
+export function fmtRand(value: number | null): string {
+  return value === null ? NO_DATA : RAND_WHOLE.format(value)
+}
+
+/** A rand rate, to the cent, e.g. "R 17,64". "—" when there is no figure. */
+export function fmtRandRate(value: number | null): string {
+  return value === null ? NO_DATA : RAND_CENTS.format(value)
+}
+
+// Chart axes have room for about four characters beside their heading, so large amounts are
+// shortened there: 160 000 reads "160k". The heading ("Rand") names the unit; tooltips and
+// tables keep the full fmtRand figure.
+const THOUSAND = 1_000
+const MILLION = 1_000_000
+const AXIS_AMOUNT = new Intl.NumberFormat(RAND_LOCALE, { maximumFractionDigits: 1 })
+
+/** An axis tick for an amount: "0", "850", "50k", "160k", "1,2m". */
+export function fmtAxisAmount(value: number): string {
+  const size = Math.abs(value)
+  if (size >= MILLION) return `${AXIS_AMOUNT.format(value / MILLION)}m`
+  if (size >= THOUSAND) return `${AXIS_AMOUNT.format(value / THOUSAND)}k`
+  return AXIS_AMOUNT.format(value)
 }

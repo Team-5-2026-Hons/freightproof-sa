@@ -1,5 +1,4 @@
 // All dispatcher route strings in one place — never write URL literals in components.
-// See spec §7 for the full page catalogue.
 
 export const ROUTES = {
   // The public landing page owns '/', so the signed-in dashboard lives one level down.
@@ -12,6 +11,8 @@ export const ROUTES = {
   history:         '/history',
   exceptions:      '/exceptions',
   exceptionDetail: (id: string) => `/exceptions/${id}`,
+  incidents:       '/incidents',
+  incidentDetail:  (id: string) => `/incidents/${id}`,
   sla:             '/sla',
   fleetVehicles:   '/fleet/vehicles',
   fleetVehicleDetail: (id: string) => `/fleet/vehicles/${id}`,
@@ -21,9 +22,11 @@ export const ROUTES = {
   precinctDetail:  (id: string) => `/precincts/${id}`,
   precinctNew:     '/precincts/new',
   precinctEdit:    (id: string) => `/precincts/${id}/edit`,
-  blockchainReceipts: '/blockchain/receipts',
+  parcels:         '/parcels',
   settings:        '/settings',
+  settingsSection: (id: string) => `/settings?section=${id}`,
   login:           '/login',
+  dev:             '/dev',
   legalPrivacy:    '/legal/privacy',
   legalTerms:      '/legal/terms',
   legalCookies:    '/legal/cookies',

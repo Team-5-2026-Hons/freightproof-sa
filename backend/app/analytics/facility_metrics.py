@@ -1,4 +1,4 @@
-"""Facility grain — Pulsit geofence corroboration per precinct (spec §8).
+"""Facility grain — Pulsit geofence corroboration per precinct.
 
 The one metric every source agreed on: corroboration rate per precinct.
 """

@@ -1,10 +1,8 @@
-// frontend/driver-pwa/components/settings/ThemeSelect.tsx
 'use client'
 
 import { useSyncExternalStore } from 'react'
-import { Monitor, Moon, Sun } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { THEME_PREVIEW_CLASSES } from '@/lib/tokens'
 import {
   DEFAULT_THEME_PREFERENCE,
   THEME_PREFERENCES,
@@ -16,13 +14,12 @@ import {
 
 interface ThemeOption {
   label: string
-  Icon: LucideIcon
 }
 
 const THEME_OPTIONS: Record<ThemePreference, ThemeOption> = {
-  system: { label: 'System', Icon: Monitor },
-  light:  { label: 'Light',  Icon: Sun },
-  dark:   { label: 'Dark',   Icon: Moon },
+  system: { label: 'System' },
+  light:  { label: 'Light' },
+  dark:   { label: 'Dark' },
 }
 
 // Radio group name — one control per screen, but the attribute is what makes the three
@@ -37,7 +34,7 @@ function useThemePref(): ThemePreference {
 }
 
 /**
- * Segmented System / Light / Dark control.
+ * System / Light / Dark as three preview tiles.
  *
  * Real <input type="radio"> elements behind a styled label, not buttons with
  * aria-checked: it buys correct arrow-key navigation, screen-reader group semantics and
@@ -50,13 +47,13 @@ export function ThemeSelect() {
   return (
     <fieldset>
       <legend className="sr-only">Theme</legend>
-      <div className="flex gap-1 rounded-xl bg-surface-container p-1">
+      <div className="grid grid-cols-3 gap-2.5">
         {THEME_PREFERENCES.map((pref) => {
-          const { label, Icon } = THEME_OPTIONS[pref]
+          const { label } = THEME_OPTIONS[pref]
           const isSelected = pref === selected
 
           return (
-            <label key={pref} className="flex-1 cursor-pointer">
+            <label key={pref} className="cursor-pointer">
               <input
                 type="radio"
                 name={THEME_RADIO_NAME}
@@ -65,18 +62,25 @@ export function ThemeSelect() {
                 onChange={() => setThemePref(pref)}
                 className="peer sr-only"
               />
-              {/* The visible segment. peer-focus-visible, because the input itself is
-                  sr-only and so has nothing for the global focus ring to draw on. */}
+              {/* The preview. Literal light/dark faces, not tokens: it shows what each
+                  choice LOOKS like, so it must not itself change with the current theme.
+                  peer-focus-visible because the input is sr-only. */}
               <span
+                aria-hidden
                 className={cn(
-                  'flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-colors',
+                  'block h-28 rounded-[18px] p-1.5 transition-shadow',
                   'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring',
-                  isSelected
-                    ? 'bg-surface-container-lowest text-surface-on shadow-level-1'
-                    : 'text-surface-on-variant',
+                  isSelected ? 'ring-[2.5px] ring-surface-on' : 'ring-1 ring-hairline',
                 )}
               >
-                <Icon className="h-4 w-4" strokeWidth={2} aria-hidden />
+                <span className={cn('block h-full overflow-hidden rounded-xl', THEME_PREVIEW_CLASSES[pref])} />
+              </span>
+              <span
+                className={cn(
+                  'mt-2 block text-center text-subhead',
+                  isSelected ? 'font-semibold text-surface-on' : 'text-surface-on-variant',
+                )}
+              >
                 {label}
               </span>
             </label>

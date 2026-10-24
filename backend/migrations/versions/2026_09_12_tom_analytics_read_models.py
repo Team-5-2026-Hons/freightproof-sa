@@ -13,7 +13,7 @@ migration is a frozen record of what was applied, and must not change meaning wh
 application code later moves on. tests/integration/test_analytics.py loads
 UPGRADE_STATEMENTS from this module directly, so the SQL under test is the SQL shipped.
 
-Design decisions (full rationale: docs/design-notes/2026-09-10-fp153-analytics-read-models-spec.md):
+Design decisions:
   * Only CLOSED trips are counted — an open trip's numbers are not final yet.
   * A trip's departure is read from the phase LEDGER (earliest attested departure
     phase), never from trips.actual_departure_at: that cache is overwritten on every

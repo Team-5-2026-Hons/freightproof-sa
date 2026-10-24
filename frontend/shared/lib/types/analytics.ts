@@ -27,18 +27,24 @@ export interface DriverMetrics {
   loading_dwell_events_count: number
   departure_dwell_minutes_sum: number
   departure_dwell_events_count: number
+  arrival_dwell_minutes_sum: number
+  arrival_dwell_events_count: number
   unloading_dwell_minutes_sum: number
   unloading_dwell_events_count: number
   confirmation_dwell_minutes_sum: number
   confirmation_dwell_events_count: number
   phase_events_count: number
   override_count: number
+  // FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
+  // whole-trip rates (they cannot be fairly split); optional until every consumer's fixtures carry it.
+  shared_trip_count?: number
   exception_trip_rate: number | null
   on_time_departure_rate: number | null
   override_rate: number | null
   activation_dwell_minutes_avg: number | null
   loading_dwell_minutes_avg: number | null
   departure_dwell_minutes_avg: number | null
+  arrival_dwell_minutes_avg: number | null
   unloading_dwell_minutes_avg: number | null
   /** Not purely driver behaviour — a slow receiver also lengthens it; show that caveat beside this number. */
   confirmation_dwell_minutes_avg: number | null

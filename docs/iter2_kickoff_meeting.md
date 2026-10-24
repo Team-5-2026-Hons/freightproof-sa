@@ -344,8 +344,8 @@ Mid-vac checkpoint: meet for 60 min after P1 ends to verify the data-model refac
 
 ## 10. References
 
-- v6 spec: [docs/FreightProof_Full_Picture_v6.md](FreightProof_Full_Picture_v6.md)
-- Frontend spec: [docs/FreightProof_Frontend_Spec_v1.md](FreightProof_Frontend_Spec_v1.md)
+- v6 spec (historical): [docs/archive/root/FreightProof_Full_Picture_v6.md](archive/root/FreightProof_Full_Picture_v6.md)
+- Frontend spec (historical): [docs/archive/root/FreightProof_Frontend_Spec_v1.md](archive/root/FreightProof_Frontend_Spec_v1.md)
 - Bruce minutes: 3 Mar 2026, 26 Mar 2026, 16 Apr 2026, 5 May 2026 (all attached to this brief)
 - Ammar feedback transcript: 25 May 2026 (attached)
 - Iter-1 ERD: [docs/iteration_1_erd.txt](iteration_1_erd.txt)

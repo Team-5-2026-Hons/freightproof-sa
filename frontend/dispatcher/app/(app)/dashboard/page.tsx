@@ -1,173 +1,43 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle } from 'lucide-react'
 import { TopBar }         from '@/components/ui/TopBar'
-import { SecHead }        from '@/components/ui/SecHead'
 import { Button }         from '@/components/ui/Button'
-import { Spinner }        from '@/components/ui/Spinner'
 import { Ic }             from '@/components/ui/Ic'
-import { EmptyState }     from '@/components/ui/EmptyState'
-import { ChecklistRow }   from '@/components/domain/ChecklistRow'
-import type { ColWidths } from '@/components/domain/ChecklistRow'
-import { useTrips }       from '@/lib/hooks/useTrips'
-import { putTripSeeds }   from '@/lib/trips/tripSeed'
+import { DashboardExceptionsPanel } from '@/components/dashboard/DashboardExceptionsPanel'
+import { DashboardIncidentsPanel } from '@/components/dashboard/DashboardIncidentsPanel'
+import { DashboardTripsPanel } from '@/components/dashboard/DashboardTripsPanel'
 import { useAuth }        from '@/lib/hooks/useAuth'
-import { usePrecincts }   from '@/lib/hooks/usePrecincts'
-import { useToast }       from '@/lib/hooks/useToast'
+import { useNow }         from '@/lib/hooks/useNow'
 import { ROUTES }         from '@/lib/constants/routes'
-import { COPY }           from '@shared/lib/constants/copy'
-import type { TripStatus } from '@shared/lib/types/trip'
+import { fmtSastDateParts } from '@shared/lib/utils/datetime'
 
-// Coarse since Stage 2 (parent §2.3): `active` is every trip between creation and
-// closure. The old list enumerated six per-step statuses from the pre-phase model
-// that no longer exist, so every advanced trip silently disappeared from this dashboard.
-// `exception_hold` currently matches nothing — no backend path sets it (see
-// orchestration/phase_service.py's _is_resolved). Kept so a held trip would appear
-// here by default if a manual dispatcher hold lands, rather than vanishing from the
-// dashboard the way the pre-phase statuses did.
-const ACTIVE_STATUSES: TripStatus[] = ['created', 'active', 'exception_hold']
+// A control-room dashboard can stay open overnight; a minute is fine-grained enough for the date to
+// turn over at SAST midnight without a new trip event to re-render it.
+const CLOCK_TICK_MS = 60_000
+const TRIPS_PANEL_MIN_HEIGHT = 'min-h-[16rem]'
 
-type ColId = keyof ColWidths
-
-const COL_HEADERS: { id: ColId; label: string }[] = [
-  { id: 'createdAt', label: 'CREATED'        },
-  { id: 'tripId',    label: 'TRIP ID'        },
-  { id: 'order',     label: 'ORDER'          },
-  { id: 'driver',    label: 'DRIVER / HORSE' },
-  { id: 'route',     label: 'ROUTE'          },
-  { id: 'progress',  label: 'PROGRESS'       },
-  { id: 'status',    label: 'STATUS'         },
-]
-
-const INITIAL_COL_WIDTHS: ColWidths = {
-  createdAt: 60,
-  tripId:    242,
-  order:     155,
-  driver:    150,
-  route:     130,
-  progress:  300,
-  status:    120,
-}
-
-const MIN_COL_W = 80
-
-function formatDate(d: Date): string {
-  return d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-export default function ActiveTripsPage() {
+export default function DashboardPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { notify } = useToast()
-  const [search, setSearch] = useState('')
-  const [colWidths, setColWidths] = useState<ColWidths>(INITIAL_COL_WIDTHS)
-  const resizeRef = useRef<{ id: ColId; startX: number; startW: number; startScale: number } | null>(null)
+  const now = useNow(CLOCK_TICK_MS)
 
-  // Columns stay fixed-width (and manually resizable) up to this total; past it we
-  // stretch every column proportionally to fill the extra space on wide monitors
-  // instead of leaving it blank to the right of the table.
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
-
-  useEffect(() => {
-    const el = scrollAreaRef.current
-    if (!el) return
-    const observer = new ResizeObserver(entries => setContainerWidth(entries[0].contentRect.width))
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const totalColWidth = useMemo(
-    () => Object.values(colWidths).reduce((sum, w) => sum + w, 0),
-    [colWidths],
-  )
-
-  const colScale = containerWidth > totalColWidth ? containerWidth / totalColWidth : 1
-
-  // Rendered widths only — resize-drag math above always reads/writes the raw
-  // (unscaled) colWidths, so dragging a handle behaves identically at any scale.
-  const scaledColWidths = useMemo(() => {
-    if (colScale === 1) return colWidths
-    const entries = Object.entries(colWidths) as [ColId, number][]
-    return Object.fromEntries(entries.map(([id, w]) => [id, w * colScale])) as unknown as ColWidths
-  }, [colWidths, colScale])
-
-  // Single fetch for all trips — active and closed are derived client-side
-  const { trips: allFetchedTrips, isLoading: tripsLoading, error: tripsError, refetch: refetchTrips } = useTrips()
-  // Hand what this list already knows to the detail page, so opening a row paints its
-  // header immediately instead of waiting on the full record.
-  useEffect(() => { putTripSeeds(allFetchedTrips) }, [allFetchedTrips])
-  const { precincts, error: precinctsError } = usePrecincts()
-
-  useEffect(() => {
-    if (tripsError) {
-      notify({ kind: 'error', title: 'Failed to load trips', body: tripsError })
-    }
-  }, [tripsError, notify])
-
-  // Without this the failure is invisible: rows fall back to an em-dash, which is
-  // indistinguishable from a trip that has no origin.
-  useEffect(() => {
-    if (precinctsError) {
-      notify({
-        kind: 'error',
-        title: 'Failed to load precincts',
-        body: `${precinctsError} Origin and destination names may be missing.`,
-      })
-    }
-  }, [precinctsError, notify])
-
-  const allTrips = useMemo(
-    () => allFetchedTrips.filter(t => ACTIVE_STATUSES.includes(t.status)),
-    [allFetchedTrips],
-  )
-
-  const filteredTrips = useMemo(() => {
-    if (!search.trim()) return allTrips
-    const term = search.toLowerCase()
-    return allTrips.filter(t =>
-      t.trip_reference.toLowerCase().includes(term) ||
-      t.driver.full_name.toLowerCase().includes(term) ||
-      t.order_number.toLowerCase().includes(term),
-    )
-  }, [allTrips, search])
-
-  function startResize(id: ColId, e: React.MouseEvent) {
-    e.preventDefault()
-    resizeRef.current = { id, startX: e.clientX, startW: colWidths[id], startScale: colScale }
-
-    function onMove(ev: MouseEvent) {
-      const r = resizeRef.current
-      if (!r) return
-      // Divide the mouse delta by the scale in effect at drag start so the column
-      // edge tracks the cursor 1:1 even when columns are stretched to fill a wide screen.
-      const rawDelta = (ev.clientX - r.startX) / r.startScale
-      setColWidths(p => ({ ...p, [r.id]: Math.max(MIN_COL_W, r.startW + rawDelta) }))
-    }
-
-    function onUp() {
-      resizeRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
+  // The dispatcher's own organisation, so no operator's dashboard carries another's name. The
+  // separator goes with the name while /auth/me has not supplied one.
+  const sastDay = fmtSastDateParts(now.toISOString())?.day ?? ''
+  const subtitle = user?.organization_name ? `${sastDay} · ${user.organization_name}` : sastDay
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <TopBar
         title="Dispatcher Dashboard"
         badge={user?.role === 'admin_dispatcher' ? (
-          <span className="inline-flex items-center gap-[4px] rounded-[var(--r-sm)] bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
+          <span className="inline-flex items-center gap-[4px] rounded-sm bg-surf-high px-[8px] py-[3px] text-[11px] font-[600] tracking-[0.04em] text-on-surf-v">
             <Ic n="shield" s={11} className="text-on-surf-v shrink-0" />
             Admin
           </span>
         ) : undefined}
-        sub={`${formatDate(new Date())} · Load Factor Transport`}
+        sub={subtitle}
       >
         <Button
           size="sm"
@@ -178,102 +48,19 @@ export default function ActiveTripsPage() {
         </Button>
       </TopBar>
 
-      {/* No stat strip: fleet figures live on the Analytics page (fleet analytics spec D15). */}
-
-      {/* Search */}
-      <div className="px-6 py-3 shrink-0">
-        <div className="relative">
-          <Ic n="search" s={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-outline-v" />
-          <input
-            type="text"
-            placeholder="Search trip ID, driver, or order…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-4 py-2 text-[13px] bg-surf-low rounded-md border border-outline-v/30 text-on-surf placeholder:text-on-surf-v/60 outline-none focus:border-sec focus:bg-surf-lowest transition-colors"
-          />
+      {/* Only this area scrolls, so the top bar stays put. On a tall screen nothing scrolls at all. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+        {/* No stat strip: fleet figures live on the Analytics page. */}
+        {/* Takes the height the two panels below leave, but never less than the minimum, so a short
+            screen scrolls the page instead of squeezing the table to nothing. */}
+        <div className={`flex flex-1 flex-col ${TRIPS_PANEL_MIN_HEIGHT}`}>
+          <DashboardTripsPanel />
         </div>
-      </div>
 
-      {/* Trip list card */}
-      <div className="flex-1 overflow-hidden mx-6 mb-6 bg-surf-lowest rounded-lg shadow-level-3 flex flex-col">
-        <SecHead
-          title="Active Trips"
-          action="New Trip"
-          onAction={() => router.push(ROUTES.tripNew)}
-        />
-
-        {/* Table scroll area */}
-        <div ref={scrollAreaRef} className="flex-1 overflow-auto">
-          {tripsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Spinner size="lg" />
-            </div>
-          ) : tripsError ? (
-            <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
-              <AlertCircle className="w-10 h-10 text-error" />
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-bold text-surface-on">Failed to load trips</p>
-                <p className="text-xs text-surface-on-variant">{tripsError}</p>
-              </div>
-              <Button size="sm" variant="ghost" onClick={refetchTrips}>
-                Try again
-              </Button>
-            </div>
-          ) : (
-            <div style={{ minWidth: totalColWidth }}>
-
-              {/* Sticky column header */}
-              <div className="sticky top-0 flex px-6 py-[7px] bg-surf-low border-b border-outline-v/10 divide-x divide-outline/30 select-none">
-                {COL_HEADERS.map(col => {
-                  // Symmetric padding (rather than a flex gap) keeps the divider
-                  // line centred between columns instead of flush against text.
-                  const padCls = col.id === 'createdAt' ? 'pr-[6px]' : col.id === 'status' ? 'pl-[6px]' : 'px-[6px]'
-                  return (
-                    <div
-                      key={col.id}
-                      style={{ width: scaledColWidths[col.id], flexShrink: 0 }}
-                      className={`relative group ${padCls} text-[10px] font-[700] tracking-[0.1em] uppercase text-on-surf-v`}
-                    >
-                      {col.label}
-                      {/* Resize handle — hover to reveal, drag to resize */}
-                      <div
-                        onMouseDown={e => startResize(col.id, e)}
-                        className="absolute right-0 top-0 h-full w-4 cursor-col-resize flex items-center justify-center"
-                      >
-                        <div className="w-[2px] h-3 rounded-full bg-outline-v/50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Rows */}
-              <div className="divide-y divide-outline-v/10">
-                {allTrips.length === 0 ? (
-                  <div className="p-6">
-                    <EmptyState
-                      icon={<Ic n="truck" s={32} className="text-on-surf-v" />}
-                      title={COPY.emptyState.activeTrips.title}
-                      body={COPY.emptyState.activeTrips.body}
-                    />
-                  </div>
-                ) : filteredTrips.length === 0 ? (
-                  <div className="p-6">
-                    <EmptyState
-                      icon={<Ic n="search" s={32} className="text-on-surf-v" />}
-                      title={COPY.emptyState.noResults.title}
-                      body={COPY.emptyState.noResults.body}
-                    />
-                  </div>
-                ) : (
-                  filteredTrips.map(trip => (
-                    <ChecklistRow key={trip.id} trip={trip} colWidths={scaledColWidths} precincts={precincts} />
-                  ))
-                )}
-              </div>
-
-            </div>
-          )}
+        {/* Side by side from xl: below that each panel would be too narrow for its columns. */}
+        <div className="grid shrink-0 grid-cols-1 gap-6 xl:grid-cols-2">
+          <DashboardExceptionsPanel />
+          <DashboardIncidentsPanel />
         </div>
       </div>
     </div>

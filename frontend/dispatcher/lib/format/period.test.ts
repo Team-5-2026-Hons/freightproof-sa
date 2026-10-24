@@ -87,7 +87,7 @@ describe('resolvePeriod', () => {
       .toEqual({ start: '2026-08-01', end: '2026-08-31' })
   })
 
-  it('resolves the presets added for each View by (D25)', () => {
+  it('resolves the presets added for each View by', () => {
     expect(resolvePeriod({ preset: 'last_26_weeks' }, TODAY)).toEqual({ start: '2026-03-23', end: TODAY })
     expect(resolvePeriod({ preset: 'last_3_months' }, TODAY)).toEqual({ start: '2026-07-01', end: TODAY })
     expect(resolvePeriod({ preset: 'last_6_months' }, TODAY)).toEqual({ start: '2026-04-01', end: TODAY })
@@ -103,7 +103,7 @@ describe('resolvePeriod', () => {
   })
 })
 
-describe('presets per View by (D25)', () => {
+describe('presets per View by', () => {
   it('offers only periods that suit the View by', () => {
     expect(PRESETS_BY_GRAIN.week).toEqual(['last_4_weeks', 'last_12_weeks', 'last_26_weeks', 'this_year', 'all_time'])
     expect(PRESETS_BY_GRAIN.month).toEqual(['last_3_months', 'last_6_months', 'last_12_months', 'this_year', 'all_time'])
@@ -201,7 +201,7 @@ describe('partial buckets and days', () => {
   })
 })
 
-describe('week labels (spec §7.7)', () => {
+describe('week labels', () => {
   it('shows a week inside one month as a day range', () => {
     expect(fmtBucketLabel('2026-09-07', 'week')).toBe('7–13 Sep')
   })

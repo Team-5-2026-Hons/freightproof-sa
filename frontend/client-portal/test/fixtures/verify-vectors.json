@@ -1,0 +1,21 @@
+{
+  "_generated_by": "backend canonicalize_payload/compute_payload_hash (app/blockchain/anchor_service.py); regenerate if the canonical form ever changes",
+  "vectors": [
+    {
+      "canonical": "{\"created_at\":\"2026-09-12T06:00:00+00:00\",\"created_by_user_id\":\"00000000-0000-0000-0000-000000000007\",\"destination_precinct_id\":\"00000000-0000-0000-0000-000000000006\",\"driver_id\":\"00000000-0000-0000-0000-000000000002\",\"horse_id\":\"00000000-0000-0000-0000-000000000003\",\"order_number\":\"ORD-77\",\"origin_precinct_id\":\"00000000-0000-0000-0000-000000000005\",\"trailers\":[\"00000000-0000-0000-0000-000000000004\"],\"trip_id\":\"00000000-0000-0000-0000-000000000001\",\"trip_type\":\"loaded\"}",
+      "data_hash": "fe49a1236ac6119373562f404edb19397b431296fa2195671cd9b6e79beb2589"
+    },
+    {
+      "canonical": "{\"payload_version\":2,\"phase_event_id\":\"00000000-0000-0000-0000-000000000008\",\"phase_type\":\"departure\",\"seal_number\":\"SEAL-001\",\"seal_photo_sha256\":\"abababababababababababababababababababababababababababababababab\",\"trip_id\":\"00000000-0000-0000-0000-000000000001\",\"waybill_photo_sha256\":null}",
+      "data_hash": "2ee19a0244debc6cb479af970e6fb3a21049c4e4960390fe4d2bec33f7dc40d0"
+    },
+    {
+      "canonical": "{\"driver_visual_count\":3,\"payload_version\":2,\"phase_event_id\":\"00000000-0000-0000-0000-000000000009\",\"phase_type\":\"confirmation\",\"pod_photo_sha256\":\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"pod_signature_sha256\":\"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\",\"pp_scan_in_count\":3,\"trip_id\":\"00000000-0000-0000-0000-000000000001\"}",
+      "data_hash": "9813c5744743b7cf5e2e5839d1082e1a6213b53c2765a4bd00d92f67e365053f"
+    },
+    {
+      "canonical": "{\"created_at\":\"2026-09-12T06:00:00+00:00\",\"created_by_user_id\":\"00000000-0000-0000-0000-000000000007\",\"destination_precinct_id\":\"00000000-0000-0000-0000-000000000006\",\"driver_id\":\"00000000-0000-0000-0000-000000000002\",\"horse_id\":\"00000000-0000-0000-0000-000000000003\",\"order_number\":\"ORD\\u00c9-\\u00d1-7 \\u2713\",\"origin_precinct_id\":\"00000000-0000-0000-0000-000000000005\",\"trailers\":[],\"trip_id\":\"00000000-0000-0000-0000-000000000001\"}",
+      "data_hash": "75787190daf9c82935b4ff4700a048d80ff6b57dd6c723cd9fc1eb12df718869"
+    }
+  ]
+}

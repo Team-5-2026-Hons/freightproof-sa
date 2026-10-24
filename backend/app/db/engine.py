@@ -1,0 +1,84 @@
+"""Construct the API engine with the same timeout policy in production and tests."""
+
+from sqlalchemy import event
+from sqlalchemy.engine import Dialect, ExceptionContext
+from sqlalchemy.engine.interfaces import DBAPIConnection
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry, PoolProxiedConnection
+
+from app.core.config import Settings
+from app.db.errors import DatabaseUnavailableError, database_unavailable
+
+
+class AvailabilityPool(AsyncAdaptedQueuePool):
+    """Cover checkout failures that SQLAlchemy's handle_error event does not receive.
+
+    Queue exhaustion and raw asyncpg pre-ping timeouts can escape before a SQLAlchemy
+    Connection exists. Wrapping this public pool method preserves lazy acquisition, so
+    invalid credentials are still rejected before the request opens a DB connection.
+    """
+
+    def connect(self) -> PoolProxiedConnection:
+        try:
+            return super().connect()
+        except Exception as exc:
+            failure = database_unavailable(exc, "checkout")
+            if failure is not None and failure is not exc:
+                raise failure from exc
+            raise
+
+
+def _connect(
+    dialect: Dialect, connection_record: ConnectionPoolEntry,
+    cargs: list[object], cparams: dict[str, object],
+) -> DBAPIConnection:
+    # asyncpg can raise a builtin TimeoutError or OSError before SQLAlchemy's DBAPI
+    # wrapping applies. This hook gives those errors an unambiguous DB origin.
+    try:
+        return dialect.connect(*cargs, **cparams)
+    except Exception as exc:
+        failure = database_unavailable(exc, "connect")
+        if failure is not None:
+            raise failure from exc
+        raise
+
+
+def _handle_error(context: ExceptionContext) -> DatabaseUnavailableError | None:
+    # Let SQLAlchemy transparently replace an already-disconnected idle connection.
+    # A failed replacement or stalled ping is classified by AvailabilityPool above.
+    if context.is_pre_ping:
+        return None
+    failure = database_unavailable(
+        context.original_exception, "command", disconnected=context.is_disconnect,
+    )
+    if failure is not None:
+        # A timed-out command must never return a possibly still-busy socket to the
+        # next request. Discard that connection, not every healthy connection.
+        # SQLAlchemy documents these writable flags, but its abstract context type
+        # declares empty __slots__; the runtime ExceptionContextImpl owns the slots.
+        context.is_disconnect = True  # type: ignore[misc]
+        context.invalidate_pool_on_disconnect = False  # type: ignore[misc]
+    return failure
+
+
+def create_db_engine(config: Settings) -> AsyncEngine:
+    # No custom discard listener. SQLAlchemy closes an invalidated asyncpg connection with
+    # close(timeout=2). On asyncpg 0.32+ (the requirements.txt floor) that close first sends
+    # PostgreSQL's cancel for a timed-out statement, then aborts the socket at the deadline,
+    # so a half-open connection cannot hang. Aborting the socket ourselves first would also
+    # cancel that pending cancel request, leaving the statement running on the server (FP-299).
+    engine = create_async_engine(
+        config.DATABASE_URL,
+        poolclass=AvailabilityPool,
+        pool_pre_ping=True,
+        pool_size=config.DB_POOL_SIZE,
+        max_overflow=config.DB_MAX_OVERFLOW,
+        pool_timeout=config.DB_POOL_TIMEOUT_SECONDS,
+        connect_args={
+            "timeout": config.DB_CONNECT_TIMEOUT_SECONDS,
+            "command_timeout": config.DB_COMMAND_TIMEOUT_SECONDS,
+        },
+    )
+    event.listen(engine.sync_engine, "do_connect", _connect)
+    event.listen(engine.sync_engine, "handle_error", _handle_error, retval=True)
+    return engine

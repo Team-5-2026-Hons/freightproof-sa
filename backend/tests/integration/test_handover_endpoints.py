@@ -12,18 +12,28 @@ Two assertions here matter more than the happy path:
 """
 
 import base64
+import logging
 import uuid
+from datetime import datetime, timedelta
 
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.core import realtime
+from app.core.config import settings
 from app.db.models.enums import (
     AnchorStatus,
+    EvidenceRole,
+    HandoverTokenRejectionReason,
     IdvsStatus,
     PhaseStatus,
     PhaseType,
     TripStatus,
 )
+from app.db.models.evidence import EvidenceArtifact
+from app.db.models.handover import HandoverCapabilityToken, HandoverTokenAttempt
 from app.db.models.phases import PhaseEvent
 from app.db.models.trips import Consignment, Trip, TripStop
 from app.db.session import get_db
@@ -121,7 +131,7 @@ def fake_storage(monkeypatch):
             s3_bucket="evidence-artifacts", s3_key=f"{trip_id}/{uuid.uuid4()}", file_hash="a" * 64,
         )
 
-    monkeypatch.setattr("app.orchestration.artifact_service.upload_evidence_file", fake_upload)
+    monkeypatch.setattr("app.orchestration.evidence.artifacts.upload_evidence_file", fake_upload)
 
 
 async def _issue(client: AsyncClient, handover_trip, driver_auth, *, force: bool = False):
@@ -161,8 +171,7 @@ async def test_issue_returns_a_scan_url_and_rotation_interval(client, handover_t
 
 async def test_another_drivers_trip_is_a_404_not_a_403(client, handover_trip, other_driver_auth):
     # A trip id read off dispatch chatter must be indistinguishable from one that does not
-    # exist — the NEW-12 reasoning from the Stage 3 phase-refactor plan. A 403 here would
-    # confirm the trip is real, which is exactly what must not leak.
+    # exist. A 403 here would confirm the trip is real, which is exactly what must not leak.
     trip, event = handover_trip["trip"], handover_trip["event"]
 
     res = await client.post(
@@ -390,3 +399,239 @@ async def test_the_status_route_reports_an_opened_but_unconfirmed_link(
 
     assert res.json()["receiver_opened"] is True
     assert res.json()["confirmed"] is False
+
+
+# ── Route characterisation (stage 3a) ──────────────────────────────────────────
+#
+# Added before endpoints/handover.py was thinned, to pin the behaviour the move must not
+# change: error details, cookie attributes, the commit-before-404 on a lost redemption race,
+# and the three 500 paths. They patch the SESSION (commit/rollback) and the capability
+# module's clock, never a name in the route module, so they hold on both sides of the move.
+
+
+class _TransactionSpy:
+    """Counts commit/rollback on the shared test session, optionally failing one commit.
+
+    `fail_on_commit` is the 1-based commit to fail: the driver routes commit once in
+    get_current_driver (enforce_single_device) before the route body runs.
+    """
+
+    def __init__(self, session, monkeypatch, *, fail_on_commit: int | None = None) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+        real_rollback = session.rollback
+
+        async def commit() -> None:
+            self.commits += 1
+            if self.commits == fail_on_commit:
+                raise SQLAlchemyError("simulated commit failure")
+
+        async def rollback() -> None:
+            self.rollbacks += 1
+            await real_rollback()
+
+        monkeypatch.setattr(session, "commit", commit)
+        monkeypatch.setattr(session, "rollback", rollback)
+
+
+async def test_issuing_for_an_unknown_phase_event_is_the_confirmation_404(
+    client, handover_trip, driver_auth,
+):
+    trip = handover_trip["trip"]
+
+    res = await client.post(
+        f"/api/v1/trips/{trip.id}/phases/{uuid.uuid4()}/handover/tokens", headers=driver_auth,
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Confirmation phase not found."
+
+
+async def test_a_phase_event_that_is_not_a_confirmation_is_the_confirmation_404(
+    client, handover_trip, driver_auth, db_session,
+):
+    trip, event = handover_trip["trip"], handover_trip["event"]
+    event.phase_type = PhaseType.LOADING
+    await db_session.flush()
+
+    res = await client.get(
+        f"/api/v1/trips/{trip.id}/phases/{event.id}/handover", headers=driver_auth,
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Confirmation phase not found."
+
+
+async def test_the_status_route_hides_another_drivers_trip_as_a_404(
+    client, handover_trip, other_driver_auth,
+):
+    trip, event = handover_trip["trip"], handover_trip["event"]
+
+    res = await client.get(
+        f"/api/v1/trips/{trip.id}/phases/{event.id}/handover", headers=other_driver_auth,
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Confirmation phase not found."
+
+
+async def test_issuing_after_confirmation_carries_the_already_confirmed_detail(
+    client, handover_trip, driver_auth,
+):
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+    await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    res = await _issue(client, handover_trip, driver_auth)
+
+    assert res.status_code == 409
+    assert res.json()["detail"] == "This delivery has already been confirmed by the receiver."
+
+
+async def test_issuing_when_the_commit_fails_is_a_500_after_a_rollback(
+    client, handover_trip, driver_auth, db_session, monkeypatch, caplog,
+):
+    spy = _TransactionSpy(db_session, monkeypatch, fail_on_commit=2)
+
+    with caplog.at_level(logging.ERROR):
+        res = await _issue(client, handover_trip, driver_auth)
+
+    assert res.status_code == 500
+    assert res.json()["detail"] == "Could not issue a handover code."
+    assert (spy.commits, spy.rollbacks) == (2, 1)
+    assert "Failed to issue a handover token" in caplog.text
+
+
+async def test_the_scan_names_the_destination_and_sets_the_cookie_attributes(
+    client, handover_trip, driver_auth, seed,
+):
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+
+    res = await client.get(f"/api/v1/handover/{token}")
+
+    assert res.json()["destination_name"] == seed["dest"].name
+    cookie = res.headers["set-cookie"].lower()
+    assert "fp_handover_session=" in cookie
+    assert "httponly" in cookie
+    assert "samesite=strict" in cookie
+    assert "path=/api/v1/handover" in cookie
+    lifetime = (settings.HANDOVER_TOKEN_EXPIRY_MINUTES + settings.IDVS_TOKEN_EXTENSION_MINUTES) * 60
+    assert f"max-age={lifetime}" in cookie
+    assert ("secure" in cookie.split("; ")) == (settings.ENVIRONMENT != "development")
+
+
+async def test_the_scan_commits_so_the_opened_state_survives(
+    client, handover_trip, driver_auth, db_session, monkeypatch,
+):
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    spy = _TransactionSpy(db_session, monkeypatch, fail_on_commit=None)
+
+    res = await client.get(f"/api/v1/handover/{token}")
+
+    assert res.status_code == 200
+    assert (spy.commits, spy.rollbacks) == (1, 0)
+
+
+async def test_confirm_returns_the_confirmation_time_and_trip_reference(
+    client, handover_trip, driver_auth,
+):
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    res = await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    assert res.status_code == 201
+    assert set(res.json()) == {"confirmed_at", "trip_reference"}
+    assert res.json()["trip_reference"] == handover_trip["trip"].trip_reference
+
+
+async def test_a_lost_redemption_race_commits_the_attempt_before_the_generic_404(
+    client, handover_trip, driver_auth, db_session, monkeypatch,
+):
+    # The route's live-token check passes, then the conditional UPDATE loses (here: expiry
+    # between the two). The attempt row IS the evidence, so the route must commit it before
+    # raising — a rollback would erase the only record of the failed attempt.
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    class _TomorrowDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return super().now(tz) + timedelta(days=1)
+
+    monkeypatch.setattr("app.orchestration.handover.capability.datetime", _TomorrowDatetime)
+    spy = _TransactionSpy(db_session, monkeypatch, fail_on_commit=None)
+
+    res = await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "This delivery confirmation link is not valid."
+    assert (spy.commits, spy.rollbacks) == (1, 0)
+    attempts = (
+        await db_session.execute(
+            select(HandoverTokenAttempt.rejection_reason).where(
+                HandoverTokenAttempt.presented_trip_id == handover_trip["trip"].id
+            )
+        )
+    ).scalars().all()
+    assert attempts == [HandoverTokenRejectionReason.EXPIRED]
+    redeemed_at = (
+        await db_session.execute(select(HandoverCapabilityToken.redeemed_at))
+    ).scalars().all()
+    assert redeemed_at == [None]
+
+
+async def test_confirming_when_the_commit_fails_is_a_500_after_a_rollback(
+    client, handover_trip, driver_auth, db_session, monkeypatch, caplog,
+):
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+    spy = _TransactionSpy(db_session, monkeypatch, fail_on_commit=1)
+
+    with caplog.at_level(logging.ERROR):
+        res = await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    assert res.status_code == 500
+    assert res.json()["detail"] == "Could not record the confirmation."
+    assert (spy.commits, spy.rollbacks) == (1, 1)
+    assert "Failed to record a handover confirmation" in caplog.text
+
+
+async def test_receiver_confirmation_image_is_attributed_to_its_phase(
+    client, db_session, handover_trip, driver_auth,
+):
+    """The server stamps the phase and role from the redeemed token, so "Receiver confirmed
+    delivery" can only ever be said of an image this route stored."""
+    event = handover_trip["event"]
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    confirmed = await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    assert confirmed.status_code == 201
+    status = await client.get(
+        f"/api/v1/trips/{handover_trip['trip'].id}/phases/{event.id}/handover", headers=driver_auth,
+    )
+    artifact = await db_session.get(EvidenceArtifact, uuid.UUID(status.json()["signature_artifact_id"]))
+    assert artifact is not None
+    assert artifact.phase_event_id == event.id
+    assert artifact.evidence_role == EvidenceRole.POD_SIGNATURE
+    assert artifact.captured_by_driver_id is None
+
+
+async def test_receiver_confirmation_enqueues_evidence_event(
+    client, handover_trip, driver_auth, monkeypatch,
+):
+    published: list[tuple[uuid.UUID, realtime.TripEvent]] = []
+    monkeypatch.setattr(realtime, "_schedule_publish", lambda org_id, event: published.append((org_id, event)))
+    trip = handover_trip["trip"]
+    token = _token_from(await _issue(client, handover_trip, driver_auth))
+    await client.get(f"/api/v1/handover/{token}")
+
+    await client.post(f"/api/v1/handover/{token}/confirm", json=_CONFIRM_BODY)
+
+    uploaded = [
+        (org_id, event) for org_id, event in published
+        if event.kind == realtime.RealtimeKind.EVIDENCE_UPLOADED
+    ]
+    assert [(org_id, event.id) for org_id, event in uploaded] == [(trip.operator_organization_id, trip.id)]

@@ -6,9 +6,12 @@
 // optimistically advanced so Home does not re-offer it, and the submission settles in the
 // background (lib/submission/phase-submitter.ts) with its own reconcile / queue / rollback
 // paths.
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import PhaseStepPageClient from '../PhaseStepPageClient'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
+import { setCustodyContext } from '@/lib/session/custody-context'
+import { writeDraft } from '@/lib/offline/retained-drafts'
 import { ApiError } from '@/lib/api/client'
 import { __resetPhaseSubmitterForTests } from '@/lib/submission/phase-submitter'
 import type { Trip } from '@shared/lib/types/trip'
@@ -22,7 +25,8 @@ const mockUseParams = vi.fn()
 const mockRouterPush = vi.fn()
 const mockRouterReplace = vi.fn()
 const mockNotify = vi.fn()
-const mockEnqueuePhase = vi.fn()
+// true: stored, as the real queue answers when the phone has room.
+const mockEnqueuePhase = vi.fn(() => true)
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.
@@ -30,6 +34,9 @@ const mockAdoptTrip = vi.fn()
 // Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
+// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
+// hand-off under test runs the same code path the app does.
+const mockNoteTripCompleted = vi.fn()
 const mockLocationCapture = vi.fn()
 const mockPreviewPhaseLocation = vi.fn()
 
@@ -60,6 +67,7 @@ interface MockTripState {
   syncingPhaseIds: readonly string[]
   markPhaseSyncing: typeof mockMarkPhaseSyncing
   clearPhaseSyncing: typeof mockClearPhaseSyncing
+  noteTripCompleted: typeof mockNoteTripCompleted
 }
 
 let tripState: MockTripState
@@ -73,6 +81,7 @@ function setTripState(trip: Trip): void {
     syncingPhaseIds: [],
     markPhaseSyncing: mockMarkPhaseSyncing,
     clearPhaseSyncing: mockClearPhaseSyncing,
+    noteTripCompleted: mockNoteTripCompleted,
   }
 }
 
@@ -117,10 +126,10 @@ function SubmitLoadingStub({ onComplete }: { onComplete: () => void }) {
   return <button onClick={onComplete}>submit-loading</button>
 }
 
-// unloading's first step — the arrival screen the driver reaches from "Arrive at
-// destination", and the one the mismatch guard used to make unreachable. As of
-// 2026-08-08 that first step is the INTACT-seal photo: the recipe was reordered to
-// ['2-seal-verify', '4-visual-count'] and '1-hand-waybill' was deleted.
+// arrival's own step — the seal-verify screen the driver reaches from "Arrive at
+// destination", and the one the mismatch guard used to make unreachable. The seal
+// inspection moved here from unloading (arrival is its own phase, ahead of unloading)
+// so this is now registered under phase_type 'arrival', not 'unloading'.
 function AdvanceSealVerifyStub({ onComplete }: { onComplete: () => void }) {
   return <button onClick={onComplete}>advance-seal-verify</button>
 }
@@ -130,7 +139,7 @@ vi.mock('@/components/phase/steps/registry', () => ({
     if (phaseType === 'departure' && slug === '2-capture-seal') return AdvanceCaptureSealStub
     if (phaseType === 'activation' && slug === '2-verification') return SubmitVerificationStub
     if (phaseType === 'loading' && slug === '1-linehaul') return SubmitLoadingStub
-    if (phaseType === 'unloading' && slug === '2-seal-verify') return AdvanceSealVerifyStub
+    if (phaseType === 'arrival' && slug === '2-seal-verify') return AdvanceSealVerifyStub
     return undefined
   },
 }))
@@ -176,7 +185,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: TRIP_ID as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -209,6 +218,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  authenticateTestDriver(TRIP_ID, 2)
   Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true })
   // The submitter's in-flight registry, failure list and last-known-fix cache all live at
   // module scope (that is the point of it) — vitest's per-test isolation cannot reach them.
@@ -241,17 +251,18 @@ describe('type-mismatch guard', () => {
 
   it('opens the arrival step while the driverless in_transit row is still the ledger-current phase', () => {
     // The deadlock this guard used to create. in_transit is PENDING for the whole drive
-    // (the backend closes it from advance_unloading, i.e. as a RESULT of this step being
-    // submitted), so guarding on currentPhase meant the arrival step demanded a ledger
-    // position that only this step could produce. The driver got bounced to /trips/active
-    // on every "Arrive at destination" and the trip could never be completed.
+    // (the backend closes it from the driver's own "Arrive at Destination" swipe), so
+    // guarding on currentPhase meant the arrival step demanded a ledger position that
+    // only that swipe could produce. The driver got bounced to /trips/active on every
+    // swipe and the trip could never be completed.
     const trip = makeTrip([
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'completed' }),
       makePhase({ phase_type: 'in_transit', sequence_number: 4, status: 'pending' }),
-      makePhase({ phase_type: 'unloading', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'arrival', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'unloading', sequence_number: 6, status: 'pending' }),
     ])
     setTripState(trip)
-    mockUseParams.mockReturnValue({ type: 'unloading', slug: '2-seal-verify' })
+    mockUseParams.mockReturnValue({ type: 'arrival', slug: '2-seal-verify' })
 
     render(<PhaseStepPageClient />)
 
@@ -265,14 +276,15 @@ describe('type-mismatch guard', () => {
     const trip = makeTrip([
       makePhase({ phase_type: 'departure', sequence_number: 3, status: 'completed' }),
       makePhase({ phase_type: 'in_transit', sequence_number: 4, status: 'pending' }),
-      makePhase({ phase_type: 'unloading', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'arrival', sequence_number: 5, status: 'pending' }),
+      makePhase({ phase_type: 'unloading', sequence_number: 6, status: 'pending' }),
     ])
     setTripState(trip)
     mockUseParams.mockReturnValue({ type: 'activation', slug: '2-verification' })
 
     render(<PhaseStepPageClient />)
 
-    expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/unloading/step/2-seal-verify')
+    expect(mockRouterReplace).toHaveBeenCalledWith('/trip/phase/arrival/step/2-seal-verify')
   })
 
   it('renders normally when the URL phase type matches the ledger\'s current phase', () => {
@@ -283,6 +295,32 @@ describe('type-mismatch guard', () => {
 
     expect(screen.getByText('advance-capture-seal')).toBeInTheDocument()
     expect(mockRouterReplace).not.toHaveBeenCalled()
+  })
+})
+
+describe('capture scope during location checks', () => {
+  it.each(['gps', 'preview'] as const)('does not submit an old-period capture when custody changes during %s', async stage => {
+    const loading = makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })
+    setTripState(makeTrip([loading]))
+    mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
+    let complete!: () => void
+    if (stage === 'gps') mockLocationCapture.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(FRESH_LOCATION) }))
+    else mockPreviewPhaseLocation.mockImplementationOnce(() => new Promise(resolve => { complete = () => resolve(PASSING_ASSESSMENT) }))
+    mockSubmitPhase.mockResolvedValue({ ok: true, trip: null, phaseStatus: 'completed' })
+    const view = render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(stage === 'gps' ? mockLocationCapture : mockPreviewPhaseLocation).toHaveBeenCalledTimes(1))
+
+    setCustodyContext({ actorId: 'driver-1', tripId: TRIP_ID, custodySequence: 4 })
+    setTripState(makeTrip([loading], { custody_sequence: 4 }))
+    view.rerender(<PhaseStepPageClient />)
+    await act(async () => { complete(); await Promise.resolve() })
+
+    expect(mockSubmitPhase).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('submit-loading'))
+    await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledTimes(1))
+    expect(mockSubmitPhase.mock.calls[0][8]).toBe(4)
   })
 })
 
@@ -360,7 +398,7 @@ describe('final step — hands the submission off and returns the driver Home', 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: null }), expect.any(String),
       { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
-      FRESH_LOCATION.capturedAt, null,
+      FRESH_LOCATION.capturedAt, null, 2,
     ))
     // The server's own plan replaces the optimistic guess, and the marker is dropped.
     await waitFor(() => expect(mockAdoptTrip).toHaveBeenCalledWith(freshTrip))
@@ -376,7 +414,7 @@ describe('final step — hands the submission off and returns the driver Home', 
   it('clears the draft only once the server confirms, never at hand-off', async () => {
     const trip = renderLoadingFinalStep()
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     let resolveSubmit: (value: unknown) => void = () => {}
     mockSubmitPhase.mockReturnValue(new Promise((resolve) => { resolveSubmit = resolve }))
 
@@ -406,27 +444,27 @@ describe('final step — hands the submission off and returns the driver Home', 
     render(<PhaseStepPageClient />)
     fireEvent.click(screen.getByText('submit-loading'))
 
-    await screen.findByText('Driver and truck were recorded 320 m apart. Limit: 100 m.')
+    await screen.findByText('320 m apart')
     expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
       lat: FRESH_LOCATION.latitude, lng: FRESH_LOCATION.longitude,
       accuracy_metres: FRESH_LOCATION.accuracy, captured_at: FRESH_LOCATION.capturedAt,
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
     expect(screen.getByText('Please provide a reason before continuing.')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry location' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Location' }))
     await waitFor(() => expect(mockPreviewPhaseLocation).toHaveBeenLastCalledWith(TRIP_ID, LOADING_PE, {
       lat: retryCapture.latitude, lng: retryCapture.longitude,
       accuracy_metres: retryCapture.accuracy, captured_at: retryCapture.capturedAt,
     }))
     fireEvent.change(screen.getByLabelText('Reason for continuing'), { target: { value: 'Truck is at the gate.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Continue with exception' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with Exception' }))
 
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenLastCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.anything(), expect.any(String),
       expect.objectContaining({ lat: retryCapture.latitude, capturedAt: retryCapture.capturedAt }),
       retryCapture.capturedAt,
-      expect.objectContaining({ reason: 'Truck is at the gate.' }),
+      expect.objectContaining({ reason: 'Truck is at the gate.' }), 2,
     ))
   })
 })
@@ -506,7 +544,7 @@ describe('offline-queued submit', () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     mockSubmitPhase.mockRejectedValue(new TypeError('network down'))
 
     render(<PhaseStepPageClient />)
@@ -517,10 +555,10 @@ describe('offline-queued submit', () => {
     await waitFor(() => expect(mockEnqueuePhase).toHaveBeenCalledWith(
       TRIP_ID, LOADING_PE, 'loading', expect.objectContaining({ capturedAt: '2026-01-01T00:00:00Z' }),
       { lat: -26.09, lng: 28.13, accuracyM: 8, capturedAt: FRESH_LOCATION.capturedAt },
-      FRESH_LOCATION.capturedAt, null,
+      FRESH_LOCATION.capturedAt, null, { actorId: 'driver-1', custodySequence: 2 }, null, mockSubmitPhase.mock.calls[0][4],
     ))
     expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'success', body: expect.stringContaining('stored on this device') }),
+      expect.objectContaining({ kind: 'success', body: expect.stringContaining('Stored on this device') }),
     )
     // Not cleared and not rolled back: the queue holds the evidence and will replay it,
     // so re-offering the step would only invite a second copy of the same submission.
@@ -537,7 +575,7 @@ describe('terminal failure', () => {
     setTripState(makeTrip([makePhase({ phase_event_id: LOADING_PE, phase_type: 'loading', sequence_number: 2, status: 'in_progress' })]))
     mockUseParams.mockReturnValue({ type: 'loading', slug: '1-linehaul' })
     const draftKey = `fp_draft_${TRIP_ID}_${LOADING_PE}`
-    localStorage.setItem(draftKey, JSON.stringify({ capturedAt: '2026-01-01T00:00:00Z' }))
+    writeDraft(TRIP_ID, LOADING_PE, { actorId: 'driver-1', custodySequence: 2 }, { capturedAt: '2026-01-01T00:00:00Z' })
     mockSubmitPhase.mockRejectedValue(new ApiError(422, 'visual count is required'))
 
     render(<PhaseStepPageClient />)

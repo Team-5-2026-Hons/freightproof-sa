@@ -1,7 +1,7 @@
-"""Phase plan endpoints — the frozen contract's HTTP surface (parent plan §3.2).
+"""Phase plan endpoints — the frozen contract's HTTP surface.
 
-Replaces endpoints/handshakes.py and its five /h{n}/complete routes. Decision S3:
-these are driver-scoped. The dispatcher reads the same plan through
+Replaces endpoints/handshakes.py and its five /h{n}/complete routes. These routes
+are driver-scoped. The dispatcher reads the same plan through
 TripDetailResponse.phases on GET /trips/{id}, which it already calls — giving
 these routes a second auth path would be new security surface with no consumer.
 """
@@ -11,12 +11,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi import status as http_status
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_driver
+from app.api.v1.custody_errors import custody_http_exception
 from app.core.exceptions import (
+    CustodyAccessError,
+    EvidenceAttributionError,
     PhaseBlockedError,
     PhaseSequenceError,
     PhaseTooEarlyError,
@@ -26,13 +28,15 @@ from app.core.exceptions import (
 )
 from app.core.limits import EVIDENCE_WRITE
 from app.core.rate_limit import rate_limit
-from app.db.models.trips import TripStop
+from app.db.errors import DatabaseUnavailableError
 from app.db.session import get_db
-from app.orchestration.phase_gate import blocked_on_by_stop
-from app.orchestration.action_location_service import (
-    PhaseLocationPreviewConflictError, preview_phase_location,
+from app.orchestration.phases.blocking import blocked_on_by_stop
+from app.orchestration.evidence.location_assessment import (
+    PhaseLocationPreviewConflictError,
+    preview_phase_location,
 )
-from app.orchestration.phase_service import complete_phase, list_phases, next_phase
+from app.orchestration.phases.queries import list_phases, next_phase, stop_sequence_map
+from app.orchestration.phases.service import complete_phase
 from app.schemas.action_location import ActionLocationAssessment, DriverLocationCapture
 from app.schemas.people import DriverRead
 from app.schemas.phases import PhaseCompleteRequest, PhaseEventRead
@@ -41,14 +45,6 @@ from app.schemas.trips import TripDetailResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/trips/{trip_id}/phases", tags=["phases"])
-
-
-async def _stop_sequence_map(db: AsyncSession, *, trip_id: UUID) -> dict[UUID, int]:
-    """PhaseEventRead.stop_sequence is a join, not a column — see its docstring."""
-    result = await db.execute(
-        select(TripStop.id, TripStop.sequence).where(TripStop.trip_id == trip_id)
-    )
-    return {stop_id: sequence for stop_id, sequence in result.all()}
 
 
 @router.get("", response_model=list[PhaseEventRead], summary="A trip's committed phase plan")
@@ -61,7 +57,9 @@ async def list_phases_endpoint(
         events = await list_phases(db, trip_id=trip_id, driver_id=current_driver.id)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
+    stop_sequences = await stop_sequence_map(db, trip_id=trip_id)
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return [
         PhaseEventRead.from_event(
@@ -85,9 +83,11 @@ async def next_phase_endpoint(
         event = await next_phase(db, trip_id=trip_id, driver_id=current_driver.id)
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     if event is None:
         return None
-    stop_sequences = await _stop_sequence_map(db, trip_id=trip_id)
+    stop_sequences = await stop_sequence_map(db, trip_id=trip_id)
     gate = await blocked_on_by_stop(db, trip_id=trip_id)
     return PhaseEventRead.from_event(
         event, stop_sequence_by_id=stop_sequences, blocked_on_by_stop=gate,
@@ -119,6 +119,8 @@ async def preview_phase_location_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PhaseLocationPreviewConflictError as exc:
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 @router.post(
@@ -139,7 +141,7 @@ async def complete_phase_endpoint(
 ) -> TripDetailResponse:
     """Always 200 on a successful completion, including when the phase records a
     mismatch (that is evidence, not a client error) and including when its Hedera
-    anchor failed (fail-open, D7 — dispatchers see anchor_status='failed', not a 504).
+    anchor failed (fail-open — dispatchers see anchor_status='failed', not a 504).
     """
     try:
         return await complete_phase(
@@ -148,6 +150,8 @@ async def complete_phase_endpoint(
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
     except (
         PhaseSequenceError, PhaseTooEarlyError, PhaseTypeMismatchError,
         TripActivationBlockedError, PhaseBlockedError,
@@ -158,6 +162,12 @@ async def complete_phase_endpoint(
         # verbatim, so the date reaches the person who needs it. TripActivationBlockedError
         # is here for the same reason, and names the trip standing in the way.
         raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except EvidenceAttributionError as exc:
+        # A cited artifact contradicts its field: a request fault, unlike the sequence
+        # conflicts above, so 422. Raised before any evidence is written.
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except DatabaseUnavailableError:
+        raise
     except SQLAlchemyError as exc:
         # Matches trips.py's create_trip_endpoint exactly — same status constant,
         # same generic detail string, same logger.exception (not .error) so the

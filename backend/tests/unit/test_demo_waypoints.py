@@ -31,7 +31,7 @@ from app.core.demo_waypoints import (
 )
 from app.core.geo import haversine_metres
 from app.db.models.organisations import Precinct
-from app.orchestration.geofence_service import (
+from app.orchestration.evidence.geofence import (
     DEFAULT_GEOFENCE_RADIUS_METRES,
     GeofenceVerdictReason,
     TrackerFix,
@@ -58,6 +58,8 @@ class _FakePrecinct:
         self.latitude = lat
         self.longitude = lng
         self.geofence_radius_metres = radius
+        # A circle precinct: evaluate_geofence reads this to choose the shape.
+        self.geofence_polygon = None
 
 
 def _anchor_precinct() -> Precinct:

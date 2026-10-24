@@ -98,3 +98,41 @@ describe('Driver detail — right panel', () => {
     expect(screen.queryByText(TIMELINE_ENTRY)).not.toBeInTheDocument()
   })
 })
+
+describe('Driver detail — loading', () => {
+  it('shows the header with its back button over a skeleton, not a spinner, while the record loads', () => {
+    mockedUseDriverDetail.mockReturnValue({
+      data: null, isLoading: true, error: null, refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<DriverDetailPage />)
+
+    expect(screen.getByRole('status', { name: 'Loading driver' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Driver')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+})
+
+describe('Driver detail — failed refresh', () => {
+  it('keeps the page and flags the error inline when a refresh fails with data on screen', () => {
+    mockedUseDriverDetail.mockReturnValue({
+      data: makeDriver(), isLoading: false, error: 'Network error', refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<DriverDetailPage />)
+
+    expect(screen.queryByText('Could not load driver.')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Immutable History' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Network error')
+  })
+
+  it('still replaces the page with "Could not load" when nothing has loaded', () => {
+    mockedUseDriverDetail.mockReturnValue({
+      data: null, isLoading: false, error: 'Network error', refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<DriverDetailPage />)
+
+    expect(screen.getByText('Could not load driver.')).toBeInTheDocument()
+  })
+})

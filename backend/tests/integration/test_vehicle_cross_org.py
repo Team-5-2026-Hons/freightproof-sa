@@ -77,7 +77,7 @@ async def _seed(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid
 
 @pytest.mark.asyncio
 async def test_vehicle_detail_excludes_other_org_trips(db_session: AsyncSession) -> None:
-    from app.orchestration.vehicle_service import get_vehicle_detail
+    from app.orchestration.fleet.vehicles import get_vehicle_detail
     horse_id, _, org_a_id, trip_b_id = await _seed(db_session)
     detail = await get_vehicle_detail(db_session, vehicle_id=horse_id, organization_id=org_a_id)
     assert trip_b_id not in detail.trip_ids, "Cross-org trip leaked into vehicle detail"
@@ -85,7 +85,7 @@ async def test_vehicle_detail_excludes_other_org_trips(db_session: AsyncSession)
 
 @pytest.mark.asyncio
 async def test_driver_detail_excludes_other_org_trips(db_session: AsyncSession) -> None:
-    from app.orchestration.driver_service import get_driver_detail
+    from app.orchestration.fleet.drivers import get_driver_detail
     _, driver_id, org_a_id, trip_b_id = await _seed(db_session)
     detail = await get_driver_detail(db_session, driver_id=driver_id, organization_id=org_a_id)
     assert trip_b_id not in detail.trip_ids, "Cross-org trip leaked into driver detail"

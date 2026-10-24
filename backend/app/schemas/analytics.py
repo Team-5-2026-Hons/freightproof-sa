@@ -3,11 +3,11 @@
 Each model carries the RAW ingredients summed across the requested months and derives
 every rate or average from them as a computed field. A rate is therefore divided exactly
 once, after summing, and can never disagree with the counts shipped beside it — averaging
-per-month percentages is wrong whenever the months had different volumes (spec §3 rule 1).
+per-month percentages is wrong whenever the months had different volumes.
 
 A derived value is None when its denominator is zero: "no observations" is not 0%.
 
-No blended score exists anywhere here, by design (spec §3 rule 4): severities are
+No blended score exists anywhere here, by design: severities are
 returned as separate counts and the reader weighs them.
 
 Organisation is not echoed back — every read function is scoped to one organisation by
@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
-from app.analytics.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
+from app.core.stats import MEDIAN_FRACTION, P90_FRACTION, percentile, safe_ratio
 
 
 class DriverMetrics(BaseModel):
@@ -42,12 +42,17 @@ class DriverMetrics(BaseModel):
     loading_dwell_events_count: int
     departure_dwell_minutes_sum: float
     departure_dwell_events_count: int
+    arrival_dwell_minutes_sum: float
+    arrival_dwell_events_count: int
     unloading_dwell_minutes_sum: float
     unloading_dwell_events_count: int
     confirmation_dwell_minutes_sum: float
     confirmation_dwell_events_count: int
     phase_events_count: int
     override_count: int
+    # FP-83: closed trips this driver shared through a handover. Excluded from trip_count and the
+    # whole-trip rates (they cannot be fairly split), so a ranking can say what it left out.
+    shared_trip_count: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -83,10 +88,15 @@ class DriverMetrics(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def arrival_dwell_minutes_avg(self) -> float | None:
+        return safe_ratio(self.arrival_dwell_minutes_sum, self.arrival_dwell_events_count)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def unloading_dwell_minutes_avg(self) -> float | None:
         return safe_ratio(self.unloading_dwell_minutes_sum, self.unloading_dwell_events_count)
 
-    # The caveat travels with the number (spec §4) so a UI built on it cannot drop it.
+    # The caveat travels with the number so a UI built on it cannot drop it.
     @computed_field(  # type: ignore[prop-decorator]
         description=(
             "Not purely driver behaviour: a slow receiver at the destination also "

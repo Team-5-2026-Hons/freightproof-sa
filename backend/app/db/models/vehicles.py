@@ -42,8 +42,7 @@ class Vehicle(Base):
         UniqueConstraint("organization_id", "pulsit_device_id", name=UQ_VEHICLES_ORG_PULSIT),
         UniqueConstraint("organization_id", "registration", name=UQ_VEHICLES_ORG_REGISTRATION),
         # Declared as a unique Index, not column unique=True, to match the deployed DB
-        # and stop autogenerate proposing to swap them (see
-        # docs/design-notes/2026-09-15-alembic-autogenerate-drift.md).
+        # and stop autogenerate proposing to swap them.
         Index("ix_vehicles_vin_number", "vin_number", unique=True),
     )
 

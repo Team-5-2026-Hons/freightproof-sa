@@ -9,12 +9,18 @@ already trusts.
 Fan-out is Redis Pub/Sub (shared with Celery) since the write and the SSE
 connection usually land on different API worker processes.
 
-Publish-after-commit (D9): orchestration only ``flush()``s; ``get_db`` commits
+Publish-after-commit: orchestration only ``flush()``s; ``get_db`` commits
 after the endpoint returns. Callers ``enqueue_event`` onto a per-request
 outbox, and a SQLAlchemy ``after_commit`` listener publishes once the data is
 durable, so a race against an uncommitted transaction can't happen. A
 rollback discards the outbox. The drain is a registered listener rather than
 inline in ``get_db`` because layering forbids ``db/`` importing ``core/``.
+
+SAVEPOINTs: SQLAlchemy fires ``after_commit`` on a savepoint *release* and
+``after_rollback`` on a savepoint *rollback*, neither of which ends the outer
+transaction. So the outbox is owned by the outermost transaction: a release leaves
+events queued for the outer commit, and a nested rollback truncates the outbox back
+to where that savepoint began, discarding only its own events.
 """
 
 from __future__ import annotations
@@ -30,7 +36,7 @@ from uuid import UUID
 import redis.asyncio as redis_async
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, SessionTransaction
 
 from app.core.config import settings
 from app.db.models.enums import ExceptionSeverity
@@ -40,9 +46,13 @@ logger = logging.getLogger(__name__)
 # One Pub/Sub channel per org; each screen filters the stream client-side.
 CHANNEL_PREFIX = "org:"
 
-# Key for the per-request outbox on Session.info (D9); AsyncSession.info
+# Key for the per-request outbox on Session.info; AsyncSession.info
 # proxies to the same dict the commit listener reads.
 _OUTBOX_KEY = "realtime_outbox"
+
+# Outbox length recorded when each SAVEPOINT began, keyed by its SessionTransaction, so
+# a nested rollback can discard exactly the events queued inside that scope.
+_SAVEPOINT_MARKS_KEY = "realtime_savepoint_marks"
 
 
 class RealtimeKind(str, Enum):
@@ -53,7 +63,19 @@ class RealtimeKind(str, Enum):
     PHASE_COMPLETED = "phase_completed"
     EXCEPTION_RAISED = "exception_raised"
     EXCEPTION_REVIEWED = "exception_reviewed"
+    # Claim, release and take-over share one kind: every screen reacts the same way
+    # (silent refetch, never a toast), and the payload stays ids-only either way.
+    EXCEPTION_CLAIMED = "exception_claimed"
     TRIP_CLOSED = "trip_closed"
+    # A new evidence artifact was stored. Refreshes only the artifacts resource; INFO, never a toast.
+    EVIDENCE_UPLOADED = "evidence_uploaded"
+    # FP-83: a driver handover was arranged, cancelled, replaced or completed. Ids only, INFO;
+    # the dispatcher refetches the trip. Drivers learn of it from their durable notices.
+    DRIVER_SUBSTITUTION_CHANGED = "driver_substitution_changed"
+    LATE_DRIVER_EVIDENCE_CHANGED = "late_driver_evidence_changed"
+    # An incident on this trip was reported, followed up, closed or reopened. INFO, never a
+    # toast: the dispatcher who acted already knows, and colleagues refetch the incident list.
+    INCIDENT_CHANGED = "incident_changed"
 
 
 class EventSeverity(str, Enum):
@@ -110,7 +132,7 @@ def _get_redis() -> redis_async.Redis:
 
 async def publish_event(org_id: UUID, event: TripEvent) -> None:
     """Broadcast one event on the org channel. Low-level — request handlers
-    should use ``enqueue_event`` so the publish happens after commit (D9)."""
+    should use ``enqueue_event`` so the publish happens after commit."""
     await _get_redis().publish(_channel(org_id), event.model_dump_json())
 
 
@@ -130,7 +152,7 @@ async def subscribe(org_id: UUID) -> AsyncIterator[TripEvent]:
         await pubsub.aclose()
 
 
-# ── Per-request outbox + after-commit publish (D9) ─────────────────────────────
+# ── Per-request outbox + after-commit publish ───────────────────────────────────
 
 
 def enqueue_event(session: AsyncSession, org_id: UUID, event: TripEvent) -> None:
@@ -180,13 +202,46 @@ def _drain_outbox(info: dict[str, Any], emit: Callable[[UUID, TripEvent], None])
 
 
 def _on_commit(session: Session) -> None:
-    """SQLAlchemy after_commit handler — publishes everything the request queued."""
+    """SQLAlchemy after_commit handler — publishes everything the request queued.
+
+    Fires on SAVEPOINT release too; there the outer transaction is still open and can
+    still roll back, so the events stay queued for the outermost commit."""
+    if session.in_nested_transaction():
+        return
     _drain_outbox(session.info, _schedule_publish)
 
 
 def _on_rollback(session: Session) -> None:
-    """SQLAlchemy after_rollback handler — a rolled-back request publishes nothing."""
+    """SQLAlchemy after_rollback handler.
+
+    A rolled-back SAVEPOINT discards only its own scope's events — the parent's earlier
+    events are still pending on a transaction that may yet commit. The innermost recorded
+    mark is the savepoint being rolled back (its end event has not fired yet). With no
+    savepoint open this is the outermost rollback, which publishes nothing."""
+    marks: dict[SessionTransaction, int] = session.info.get(_SAVEPOINT_MARKS_KEY, {})
+    if marks:
+        outbox: list[tuple[UUID, TripEvent]] | None = session.info.get(_OUTBOX_KEY)
+        if outbox is not None:
+            del outbox[list(marks.values())[-1] :]
+        return
     session.info.pop(_OUTBOX_KEY, None)
+
+
+def _on_transaction_create(session: Session, transaction: SessionTransaction) -> None:
+    """Remember how much of the outbox predates a new SAVEPOINT."""
+    if transaction.nested:
+        marks: dict[SessionTransaction, int] = session.info.setdefault(_SAVEPOINT_MARKS_KEY, {})
+        marks[transaction] = len(session.info.get(_OUTBOX_KEY, ()))
+
+
+def _on_transaction_end(session: Session, transaction: SessionTransaction) -> None:
+    """Forget a finished SAVEPOINT's mark (released or rolled back).
+
+    Ordering is what lets ``_on_rollback`` tell the outermost rollback from a nested one
+    by the marks alone: when an outer rollback unwinds open savepoints, each savepoint's
+    rollback and end event fire before the outermost rollback does, so no marks remain."""
+    if transaction.nested:
+        session.info.get(_SAVEPOINT_MARKS_KEY, {}).pop(transaction, None)
 
 
 _hook_registered = False
@@ -204,4 +259,6 @@ def register_realtime_hook() -> None:
 
     event.listen(Session, "after_commit", _on_commit)
     event.listen(Session, "after_rollback", _on_rollback)
+    event.listen(Session, "after_transaction_create", _on_transaction_create)
+    event.listen(Session, "after_transaction_end", _on_transaction_end)
     _hook_registered = True

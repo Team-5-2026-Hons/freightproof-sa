@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "next dev --port 3000",
+    "dev:capped": "node scripts/dev-capped.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -15,6 +16,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@supabase/supabase-js": "^2.105.4",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.14.0",

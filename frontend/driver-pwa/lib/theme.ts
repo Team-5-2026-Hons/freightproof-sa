@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/theme.ts
-//
 // The driver's light/dark preference: where it is stored, how it resolves against the
 // device, and how it reaches the DOM.
 //
@@ -105,15 +103,23 @@ export function applyTheme(pref: ThemePreference): void {
  * than a component: it has to execute while the parser is still blocked, before React
  * exists on the page.
  *
- * Kept as one expression with no dependencies so it stays inlinable — the key and class
- * name interpolate from the constants above so this copy can never drift from the
+ * Kept as one expression with no dependencies so it stays inlinable — the key, query and
+ * class name come from the constants above so this copy can never drift from the
  * TypeScript one.
+ *
+ * Plain string pieces joined, NOT template literals with ${} interpolation: the production
+ * minifier dropped the text after each interpolation (`getItem('fp:pref:theme` lost its
+ * `');`), so the shipped script was a syntax error on every launch and the pre-paint theme
+ * never applied. JSON.stringify quotes each value safely. The unit tests run the source
+ * string, which can't see a minifier bug: after a build, check the script in out/index.html.
  */
-export const THEME_INIT_SCRIPT = `(function(){try{` +
-  `var p=window.localStorage.getItem('${PREF_THEME}');` +
-  `var dark=p==='dark'||(p!=='light'&&window.matchMedia('${DARK_SCHEME_QUERY}').matches);` +
-  `document.documentElement.classList.toggle('${DARK_CLASS}',dark);` +
-  // Never allowed to throw: an exception here aborts the inline script and the app
-  // paints in the wrong theme. Warn (visible in `npx cap run` logcat / Safari
-  // inspector) and let ThemeManager correct it on mount.
-  `}catch(e){console.warn('theme-init: could not apply stored theme',e)}})()`
+export const THEME_INIT_SCRIPT = [
+  '(function(){try{',
+  'var p=window.localStorage.getItem(' + JSON.stringify(PREF_THEME) + ');',
+  "var dark=p==='dark'||(p!=='light'&&window.matchMedia(" + JSON.stringify(DARK_SCHEME_QUERY) + ').matches);',
+  'document.documentElement.classList.toggle(' + JSON.stringify(DARK_CLASS) + ',dark);',
+  // Never allowed to throw: an exception here aborts the inline script and the app paints
+  // in the wrong theme. Warn (visible in logcat / Safari inspector) and let ThemeManager
+  // correct it on mount.
+  "}catch(e){console.warn('theme-init: could not apply stored theme',e)}})()",
+].join('')

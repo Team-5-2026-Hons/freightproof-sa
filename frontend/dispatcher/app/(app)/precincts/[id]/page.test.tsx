@@ -102,3 +102,15 @@ describe('Precinct detail — change history / analytics', () => {
     expect(screen.queryByText(ANCHORING_NOTE)).not.toBeInTheDocument()
   })
 })
+
+describe('Precinct detail — loading', () => {
+  it('shows the header with its back button over a skeleton, not a spinner, while the record loads', () => {
+    mockedUsePrecinctDetail.mockReturnValue({ precinct: null, isLoading: true, error: null, refetch: vi.fn() })
+
+    render(<PrecinctDetailPage />)
+
+    expect(screen.getByRole('status', { name: 'Loading precinct' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Precinct')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+})

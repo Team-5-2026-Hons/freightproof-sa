@@ -2,15 +2,17 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { X, Shield } from 'lucide-react'
+import { X, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Ic } from '@/components/ui/Ic'
-import { LiveBadge } from '@/components/layout/LiveBadge'
+import { LogoMark } from '@/components/landing/Logo'
+import { ProfileMenu } from '@/components/layout/ProfileMenu'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSidebarCollapse } from '@/lib/context/SidebarCollapseContext'
+import { useForensicMode } from '@/lib/context/ForensicModeContext'
+import { SETTINGS_SECTION_IDS } from '@/lib/settings/section-query'
 import { cn } from '@shared/lib/utils/cn'
 import { ROUTES } from '@/lib/constants/routes'
 import type { IconName } from '@/components/ui/Ic'
-import type { DispatcherUser } from '@/lib/types/user'
 
 interface NavItem {
   label: string
@@ -18,6 +20,9 @@ interface NavItem {
   icon: IconName
   activePatterns: string[]
   adminOnly?: boolean
+  /** Lit only on the exact path. `/trips` is a prefix of `/trips/new` and `/trips/[id]`, which
+   *  belong to Create Trip and to whichever list the trip was opened from. */
+  exact?: boolean
 }
 
 interface NavGroup {
@@ -25,29 +30,39 @@ interface NavGroup {
   items: NavItem[]
 }
 
+// Create Trip is not in NAV_GROUPS: it is the sidebar's one primary action, so it is
+// rendered as a button above the navigation rather than as a row inside it.
+const CREATE_TRIP_ITEM: NavItem = {
+  label: 'Create Trip',
+  href: ROUTES.tripNew,
+  icon: 'plus',
+  activePatterns: ['/trips/new'],
+}
+
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'OVERVIEW',
+    label: 'Overview',
     items: [
       { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: [ROUTES.home] },
-      // Every dispatcher, not admins only: the analytics endpoints are read-only and
-      // org-scoped (get_current_dispatcher), unlike the receipt lookup below.
+      // Analytics and parcel search are read-only and organisation-scoped.
       { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
   },
   {
-    label: 'TRIPS',
+    label: 'Trips',
     items: [
-      { label: 'Create Trip',  href: ROUTES.tripNew, icon: 'plus',  activePatterns: ['/trips/new'] },
+      { label: 'Active Trips', href: ROUTES.trips, icon: 'route', activePatterns: [ROUTES.trips], exact: true },
       { label: 'Trip History', href: ROUTES.history,  icon: 'clock', activePatterns: ['/history'] },
+      { label: 'Parcel Search', href: ROUTES.parcels, icon: 'box', activePatterns: [ROUTES.parcels] },
       // Hidden in 6071ab2 as "not yet live", back now that FP-146 gave the queue a real
       // org-scoped list, detail page and resolve flow. `activePatterns` covers the detail
       // route too, so the entry stays lit while a dispatcher works one exception.
       { label: 'Exceptions',   href: ROUTES.exceptions, icon: 'warn', activePatterns: ['/exceptions'] },
+      { label: 'Incidents',    href: ROUTES.incidents,  icon: 'siren', activePatterns: ['/incidents'] },
     ],
   },
   {
-    label: 'FLEET',
+    label: 'Fleet',
     items: [
       { label: 'Vehicles', href: ROUTES.fleetVehicles, icon: 'truck', activePatterns: ['/fleet/vehicles'] },
       { label: 'Drivers',  href: ROUTES.fleetDrivers,  icon: 'user',  activePatterns: ['/fleet/drivers'] },
@@ -61,18 +76,6 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Precincts', href: ROUTES.precincts, icon: 'map', activePatterns: ['/precincts'] },
     ],
   },
-  {
-    label: 'BLOCKCHAIN',
-    items: [
-      {
-        label: 'Receipt Lookup',
-        href: ROUTES.blockchainReceipts,
-        icon: 'hex',
-        activePatterns: [ROUTES.blockchainReceipts],
-        adminOnly: true,
-      },
-    ],
-  },
 ]
 
 const SETTINGS_ITEM: NavItem = {
@@ -82,51 +85,146 @@ const SETTINGS_ITEM: NavItem = {
   activePatterns: ['/settings'],
 }
 
-// Humanizes the DispatcherUser role for display; falls back to the base
-// "Dispatcher" label when the role is the non-admin variant or user is unknown.
-function roleLabel(role: DispatcherUser['role'] | undefined): string {
-  return role === 'admin_dispatcher' ? 'Admin Dispatcher' : 'Dispatcher'
+function isActive(pathname: string, patterns: string[], exact = false): boolean {
+  return patterns.some(p => {
+    if (p === '/' || exact) return pathname === p
+    return pathname.startsWith(p)
+  })
 }
 
-function isActive(pathname: string, patterns: string[]): boolean {
-  return patterns.some(p => pathname.startsWith(p))
+// Shared by every interactive element on the dark surface so keyboard focus looks the same.
+const FOCUS_RING = 'outline-none focus-visible:ring-2 focus-visible:ring-white/40'
+
+// Light-blue fill on the dark surface, the same `sec` container pair the Chip uses for
+// in-progress states. A solid fill, not a leading bar: it reads as a label, not a selection.
+const FORENSIC_BADGE: NavBadge = {
+  text: 'Forensic',
+  href: ROUTES.settingsSection(SETTINGS_SECTION_IDS.forensic),
+  label: 'Forensic view is on. Open its setting',
+  collapsedLabel: 'Settings, forensic view on',
 }
 
-function NavLink({ item, pathname, onClose, collapsed }: {
+interface NavBadge {
+  text: string
+  /** Where the pill goes. A separate link from the row: anchors cannot nest. */
+  href: string
+  /** Accessible name of the pill link. */
+  label: string
+  /** Accessible name of the row in the icon rail, where the pill shrinks to a dot. */
+  collapsedLabel: string
+}
+
+// Room the pill takes at the row's end, so a long label never runs underneath it.
+const BADGE_GUTTER = 'pr-[88px]'
+
+function NavLink({ item, pathname, onClose, collapsed, badge }: {
   item: NavItem
   pathname: string
   onClose?: () => void
   collapsed?: boolean
+  /** Status pill at the row's end; becomes a dot on the icon in the collapsed rail. */
+  badge?: NavBadge
 }) {
-  const active = isActive(pathname, item.activePatterns)
+  const active = isActive(pathname, item.activePatterns, item.exact)
+  const label = badge && collapsed ? badge.collapsedLabel : item.label
+  return (
+    <div className="relative">
+      <Link
+        href={item.href}
+        onClick={onClose}
+        aria-label={label}
+        aria-current={active ? 'page' : undefined}
+        title={label}
+        className={cn(
+          'group flex items-center gap-3 h-9 px-3 rounded-lg text-[14px] transition-colors duration-[120ms]',
+          FOCUS_RING,
+          collapsed && 'justify-center px-0 h-10',
+          badge && !collapsed && BADGE_GUTTER,
+          // Raised pill rather than a recolour: a lighter fill with an inner hairline reads
+          // as "lifted" on the dark surface without introducing a second accent colour.
+          active
+            ? 'bg-white/[0.10] ring-1 ring-inset ring-white/[0.08] text-white font-medium'
+            : 'text-white/60 hover:text-white hover:bg-white/[0.06]',
+        )}
+      >
+        <span className="relative shrink-0">
+          <Ic
+            n={item.icon}
+            s={16}
+            className={cn('transition-colors', active ? 'text-white' : 'text-white/50 group-hover:text-white/80')}
+          />
+          {/* The ring matches the sidebar surface so the dot reads as cut out of the icon. */}
+          {badge && collapsed && (
+            <span aria-hidden className="absolute -top-1 -right-1 w-[8px] h-[8px] rounded-full bg-sec-c ring-2 ring-primary" />
+          )}
+        </span>
+        {!collapsed && <span className="truncate">{item.label}</span>}
+      </Link>
+      {badge && !collapsed && (
+        <Link
+          href={badge.href}
+          onClick={onClose}
+          aria-label={badge.label}
+          className={cn(
+            'absolute right-2 top-1/2 -translate-y-1/2 rounded-md bg-sec-c px-[6px] py-[1px]',
+            'text-[11px] font-[600] text-sec-onc transition-[filter] duration-[120ms] hover:brightness-95',
+            FOCUS_RING,
+          )}
+        >
+          {badge.text}
+        </Link>
+      )}
+    </div>
+  )
+}
+
+// The primary action. White-on-dark is the inverse of the app's near-black primary
+// Button, so it reads as the same design language while being the brightest thing here.
+function CreateTripButton({ pathname, onClose, collapsed }: {
+  pathname: string
+  onClose?: () => void
+  collapsed: boolean
+}) {
+  const active = isActive(pathname, CREATE_TRIP_ITEM.activePatterns)
   return (
     <Link
-      href={item.href}
+      href={CREATE_TRIP_ITEM.href}
       onClick={onClose}
-      aria-label={item.label}
-      title={item.label}
+      aria-label={CREATE_TRIP_ITEM.label}
+      aria-current={active ? 'page' : undefined}
+      title={CREATE_TRIP_ITEM.label}
       className={cn(
-        'flex items-center gap-[9px] mx-2 px-[14px] py-[9px] rounded-md transition-all duration-[120ms]',
-        collapsed && 'justify-center px-0',
-        active
-          ? 'bg-white/[0.13]'
-          : 'hover:bg-white/[0.06]',
+        'flex items-center justify-center gap-2 rounded-lg bg-white text-primary text-[13px] font-semibold',
+        'transition-[background-color,transform] duration-[120ms] hover:bg-white/90 active:scale-[0.97]',
+        FOCUS_RING,
+        collapsed ? 'h-10 w-10 mx-auto' : 'h-9 px-3',
+        active && 'ring-2 ring-white/30',
       )}
     >
-      <Ic
-        n={item.icon}
-        s={15}
-        className={active ? 'text-sec' : 'text-white/45'}
-      />
-      {!collapsed && (
-        <span className={cn(
-          'text-[14px]',
-          active ? 'font-[600] text-white' : 'font-[400] text-white/55',
-        )}>
-          {item.label}
-        </span>
-      )}
+      <Ic n={CREATE_TRIP_ITEM.icon} s={15} sw={2.25} className="shrink-0" />
+      {!collapsed && <span>{CREATE_TRIP_ITEM.label}</span>}
     </Link>
+  )
+}
+
+function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const Icon = collapsed ? PanelLeftOpen : PanelLeftClose
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar'
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'flex items-center justify-center w-8 h-8 shrink-0 rounded-lg text-white/50',
+        'hover:text-white hover:bg-white/[0.08] transition-colors',
+        FOCUS_RING,
+      )}
+    >
+      <Icon className="w-4 h-4" />
+    </button>
   )
 }
 
@@ -141,6 +239,10 @@ interface SidebarContentProps {
 function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { canViewForensics, forensicOn } = useForensicMode()
+  // Gated on the role as well as the switch: a stale `fp.forensicOn` in a demoted user's
+  // storage must not advertise a mode they can no longer use.
+  const forensicBadge = canViewForensics && forensicOn ? FORENSIC_BADGE : undefined
   const visibleGroups = NAV_GROUPS
     .map(group => ({
       ...group,
@@ -149,75 +251,65 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
     .filter(group => group.items.length > 0)
 
   return (
+    // No background of its own: the dark surface and rounded edge belong to the frame in
+    // DispatcherShell (and to the drawer wrapper below), so this column is just content.
     <div
       className={cn(
-        'flex flex-col h-full bg-primary shrink-0 transition-[width] duration-200 motion-reduce:transition-none',
-        collapsed ? 'w-16' : 'w-[220px]',
+        'flex flex-col h-full shrink-0 transition-[width] duration-200 motion-reduce:transition-none',
+        collapsed ? 'w-[68px]' : 'w-[256px]',
       )}
     >
-      {/* Header — logo mark + wordmark + eyebrow */}
-      <div className={cn(
-        'flex items-center gap-[10px] h-[60px] border-b border-white/[0.08]',
-        collapsed ? 'justify-center px-0' : 'px-[18px]',
-      )}>
-        {/* Hex logo mark — bg-sec container, white polygon, sec-coloured circle */}
-        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shrink-0">
-          <Shield className="w-4 h-4 text-white" />
+      {/* Header — logo mark + wordmark, with the collapse control on the right */}
+      {/* px-3 lines the logo and collapse control up with the Create Trip button's edges below. */}
+      <div className={cn('flex items-center gap-3 h-16', collapsed ? 'justify-center' : 'px-3')}>
+        {/* A paper tile, not a translucent one: the mark is an ink shield, which would
+            vanish on the dark sidebar without a light surface behind it. */}
+        <div className="w-9 h-9 rounded-lg bg-surf flex items-center justify-center shrink-0">
+          <LogoMark size={22} />
         </div>
         {!collapsed && (
           <div className="flex-1 min-w-0">
-            <div className="text-[16px] font-[800] text-white leading-none tracking-[-0.02em]">
+            <div className="text-[15px] font-[800] text-white leading-none tracking-[-0.02em]">
               FreightProof
             </div>
-            <div className="text-[10px] text-white/35 mt-[2px] tracking-[0.06em] uppercase">
+            <div className="text-[10px] text-white/40 mt-[3px] tracking-[0.05em] uppercase whitespace-nowrap">
               Evidence Platform
             </div>
           </div>
+        )}
+        {!collapsed && onToggleCollapse && (
+          <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />
         )}
         {onClose && (
           <button
             onClick={onClose}
             aria-label="Close navigation"
-            className="ml-auto text-white/60 hover:text-white transition-colors"
+            className={cn('ml-auto text-white/60 hover:text-white transition-colors rounded-lg p-1', FOCUS_RING)}
           >
             <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      {/* Collapse toggle — own row so it has room regardless of rail width */}
-      {onToggleCollapse && (
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className={cn(
-            'flex items-center gap-[9px] h-[38px] border-b border-white/[0.08] text-white/45 hover:text-white hover:bg-white/[0.06] transition-colors',
-            collapsed ? 'justify-center px-0' : 'px-[18px]',
-          )}
-        >
-          <Ic
-            n="chev"
-            s={13}
-            className={cn(
-              'transition-transform duration-200 motion-reduce:transition-none',
-              !collapsed && 'rotate-180',
-            )}
-          />
-          {!collapsed && <span className="text-[12px] font-[500]">Collapse</span>}
-        </button>
+      {/* In the icon rail there is no room beside the logo, so the expand control sits beneath it. */}
+      {collapsed && onToggleCollapse && (
+        <div className="flex justify-center pb-2">
+          <CollapseToggle collapsed={collapsed} onToggle={onToggleCollapse} />
+        </div>
       )}
 
-      {/* Nav groups */}
-      <div className="flex-1 py-2 overflow-y-auto">
+      <div className="px-3 pt-1 pb-2">
+        <CreateTripButton pathname={pathname} onClose={onClose} collapsed={collapsed} />
+      </div>
+
+      {/* Nav groups — separated by spacing, not rules */}
+      <nav aria-label="Primary" className="flex-1 px-3 pb-2 overflow-y-auto">
         {visibleGroups.map(group => (
           // Keyed on the first item's href, not the label: groups may be unlabelled,
           // and two unlabelled groups would otherwise collide on an `undefined` key.
-          <div key={group.label ?? group.items[0].href}>
+          <div key={group.label ?? group.items[0].href} className={cn('flex flex-col gap-0.5', collapsed ? 'mt-3' : 'mt-1')}>
             {group.label && !collapsed && (
-              <div className="text-[10px] font-[700] tracking-[0.12em] uppercase text-white/30 px-[18px] pt-3 pb-1">
+              <div className="text-[11px] font-[500] text-white/45 px-3 pt-3 pb-1">
                 {group.label}
               </div>
             )}
@@ -232,41 +324,13 @@ function SidebarContent({ onClose, collapsed = false, onToggleCollapse }: Sideba
             ))}
           </div>
         ))}
+      </nav>
 
-      </div>
+      {/* Footer — settings, then the profile menu (who is signed in, log out, live status) */}
+      <div className="px-3 pb-3 flex flex-col gap-0.5">
+        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} badge={forensicBadge} />
 
-      {/* Settings — pinned above the profile footer */}
-      <div className="border-t border-white/[0.08]">
-        <NavLink item={SETTINGS_ITEM} pathname={pathname} onClose={onClose} collapsed={collapsed} />
-      </div>
-
-      {/* Footer — user avatar + name + role */}
-      <div className={cn(
-        'flex items-center gap-2 border-t border-white/[0.08]',
-        collapsed ? 'flex-col py-3 px-0' : 'px-[18px] py-3',
-      )}>
-        <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-          <Ic n="user" s={13} className="text-white/60" />
-        </div>
-        {!collapsed && (
-          <div>
-            <div className="flex items-center gap-[6px] text-[12px] font-[600] text-white/85 leading-tight">
-              <span>{user?.full_name ?? 'Dispatcher'}</span>
-              {user?.role === 'admin_dispatcher' && (
-                <span className="bg-white/15 text-white/85 text-[9px] font-[700] tracking-[0.04em] rounded-[var(--r-sm)] px-[5px] py-[1px]">
-                  ADMIN
-                </span>
-              )}
-            </div>
-            <div className="text-[10px] text-white/40">{roleLabel(user?.role)}</div>
-          </div>
-        )}
-        {/* Live-connection indicator for the dispatcher's real-time stream — stays
-            visible (dot-only) when collapsed so a dispatcher can still see the SSE
-            stream is alive without expanding the rail. */}
-        <div className={collapsed ? 'shrink-0' : 'ml-auto shrink-0'}>
-          <LiveBadge compact={collapsed} />
-        </div>
+        <ProfileMenu collapsed={collapsed} onClose={onClose} />
       </div>
     </div>
   )
@@ -295,8 +359,12 @@ export function Sidebar({ mobileOpen, onMobileClose }: SidebarProps) {
             onClick={onMobileClose}
             aria-hidden
           />
-          <div className="relative">
-            <SidebarContent onClose={onMobileClose} />
+          {/* The drawer floats outside DispatcherShell's frame, so it carries the same
+              surface, radius and hairline itself. */}
+          <div className="relative h-full p-3">
+            <div className="h-full bg-primary rounded-xl ring-1 ring-white/10 shadow-level-6 overflow-hidden">
+              <SidebarContent onClose={onMobileClose} />
+            </div>
           </div>
         </div>
       )}

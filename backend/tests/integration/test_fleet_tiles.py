@@ -1,4 +1,4 @@
-"""Integration contract for GET /api/v1/analytics/fleet/tiles (fleet analytics spec §5.0).
+"""Integration contract for GET /api/v1/analytics/fleet/tiles.
 
 Each expected number is hand-computed from the rows the test seeds. Timestamps are derived
 from "now" in SAST, so tests say "5 days ago" rather than name a calendar date. The endpoint
@@ -122,7 +122,7 @@ async def test_fleet_tiles_for_an_org_without_trips_returns_zeros(
     body = response.json()
     assert body["live_trips"] == 0
     assert body["critical_waiting"] == {"count": 0, "oldest_created_at": None}
-    # Removed tiles (D26) are gone from the response, not just hidden on the page.
+    # Removed tiles are gone from the response, not just hidden on the page.
     assert "parcels_complete" not in body
     assert "receipts_owed" not in body
     # The seeded driver and horse have no expiry date on file.

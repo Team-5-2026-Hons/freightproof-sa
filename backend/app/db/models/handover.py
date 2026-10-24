@@ -45,7 +45,7 @@ class HandoverCapabilityToken(Base):
     # rotation (rotate_capability_token won't retire or replace an opened token) but is not
     # itself a redemption or claim — an opened, unconfirmed token still expires normally.
     opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Set once when the token's life is extended for identity verification (spec §6.3);
+    # Set once when the token's life is extended for identity verification;
     # NULL-ness gates the single-claim UPDATE in extend_token_for_verification.
     verification_extended_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

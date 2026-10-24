@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
@@ -59,6 +59,13 @@ function valueOf(label: string): string | null {
 
 function hasDot(label: string): boolean {
   return figureFor(label).querySelector('[aria-hidden="true"]') !== null
+}
+
+
+/** The source sits behind the frame's ⓘ, so open it before reading the line. */
+function sourceText(line: RegExp): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'About these figures' }))
+  return screen.getByText(line)
 }
 
 describe('PrecinctAnalyticsSummary — loading and errors', () => {
@@ -148,5 +155,20 @@ describe('PrecinctAnalyticsSummary — no closed trips in the range', () => {
     expect(screen.getByText(fmtMonthRange(defaultMonthRange()))).toBeInTheDocument()
     expect(screen.queryByText(RATE)).not.toBeInTheDocument()
     expect(screen.queryByText(CONFIRMED)).not.toBeInTheDocument()
+  })
+
+  it('says where the figures come from, whether they loaded, were empty or failed', () => {
+    const line = /Tracker checks at this precinct/
+
+    renderSummary()
+    expect(sourceText(line)).toHaveTextContent('simulated Pulsit feed')
+    cleanup()
+
+    renderSummary({ rows: [] })
+    expect(sourceText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ error: 'Server unavailable' })
+    expect(sourceText(line)).toBeInTheDocument()
   })
 })

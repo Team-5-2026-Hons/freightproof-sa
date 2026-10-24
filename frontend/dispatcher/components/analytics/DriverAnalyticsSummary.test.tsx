@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
@@ -36,6 +36,8 @@ function makeDriver(overrides: Partial<DriverMetrics> = {}): DriverMetrics {
     loading_dwell_events_count: 11,
     departure_dwell_minutes_sum: 220,
     departure_dwell_events_count: 11,
+    arrival_dwell_minutes_sum: 150,
+    arrival_dwell_events_count: 10,
     unloading_dwell_minutes_sum: 495,
     unloading_dwell_events_count: 11,
     confirmation_dwell_minutes_sum: 330,
@@ -48,6 +50,7 @@ function makeDriver(overrides: Partial<DriverMetrics> = {}): DriverMetrics {
     activation_dwell_minutes_avg: 12,
     loading_dwell_minutes_avg: 65,
     departure_dwell_minutes_avg: 20,
+    arrival_dwell_minutes_avg: 15,
     unloading_dwell_minutes_avg: 45,
     confirmation_dwell_minutes_avg: 30,
     ...overrides,
@@ -80,8 +83,15 @@ function hasSeverityDot(label: string): boolean {
   return figureFor(label).querySelector('[aria-hidden="true"]') !== null
 }
 
+
+/** The source sits behind the frame's ⓘ, so open it before reading the line. */
+function sourceText(line: RegExp): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'About these figures' }))
+  return screen.getByText(line)
+}
+
 describe('DriverAnalyticsSummary — loading and errors', () => {
-  it('shows a spinner while loading', () => {
+  it('shows a skeleton while loading', () => {
     renderSummary({ rows: [], isLoading: true })
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
@@ -159,6 +169,7 @@ describe('DriverAnalyticsSummary — populated', () => {
     expect(valueOf('Activation')).toBe('12 m')
     expect(valueOf('Loading')).toBe('1 h 5 m')
     expect(valueOf('Departure')).toBe('20 m')
+    expect(valueOf('Arrival')).toBe('15 m')
     expect(valueOf('Unloading')).toBe('45 m')
     expect(valueOf('Confirmation')).toBe('30 m')
   })
@@ -179,6 +190,20 @@ describe('DriverAnalyticsSummary — populated', () => {
     )
   })
 
+  it('shows the shared-after-handover row and its note when there are shared trips', () => {
+    renderSummary({ rows: [makeDriver({ shared_trip_count: 2 })] })
+
+    expect(valueOf('Shared after a handover')).toBe('2')
+    expect(screen.getByText(/Not included in trips or the rates above/)).toBeInTheDocument()
+  })
+
+  it.each([[0], [undefined]])('hides the shared-after-handover row when the count is %s', count => {
+    renderSummary({ rows: [makeDriver({ shared_trip_count: count })] })
+
+    expect(screen.queryByText('Shared after a handover')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Not included in trips or the rates above/)).not.toBeInTheDocument()
+  })
+
   it('shows no score, rating or rank (decision 06)', () => {
     renderSummary()
 
@@ -195,5 +220,20 @@ describe('DriverAnalyticsSummary — no closed trips in the range', () => {
     expect(screen.queryByText('Trips')).not.toBeInTheDocument()
     expect(screen.queryByText('Info')).not.toBeInTheDocument()
     expect(screen.queryByText('Confirmation')).not.toBeInTheDocument()
+  })
+
+  it('says where the figures come from, whether they loaded, were empty or failed', () => {
+    const line = /Closed trips this driver ran/
+
+    renderSummary()
+    expect(sourceText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ rows: [] })
+    expect(sourceText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ error: 'Server unavailable' })
+    expect(sourceText(line)).toBeInTheDocument()
   })
 })

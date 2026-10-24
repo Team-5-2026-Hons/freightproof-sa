@@ -223,6 +223,46 @@ async def test_two_tokens_get_two_budgets(fake_redis, monkeypatch) -> None:
     await dependency(_request(headers={"authorization": "Bearer token-xyz"}))
 
 
+# An ES256 Supabase access token starts with a base64 header carrying alg, kid and typ: the same
+# ~96 characters for every user, so any shorter prefix of the token names no one in particular.
+_SHARED_JWT_HEADER = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjAxOGYyYzRlLTdhMWItNGQ5Mi1hYjNjLTVlNmY3YTgxYjJjZCIsInR5cCI6IkpXVCJ9"
+
+
+@pytest.mark.asyncio
+async def test_two_tokens_sharing_a_long_header_get_two_budgets(fake_redis, monkeypatch) -> None:
+    """Keying on a token prefix put every user of the same signing key in one bucket."""
+    assert len(_SHARED_JWT_HEADER) > 64
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_ENABLED", True)
+    dependency = rate_limit(_LIMIT)
+    alice = f"Bearer {_SHARED_JWT_HEADER}.eyJzdWIiOiJhbGljZSJ9.sig-alice"
+    bob = f"Bearer {_SHARED_JWT_HEADER}.eyJzdWIiOiJib2IifQ.sig-bob"
+
+    for _ in range(_LIMIT.max_requests + 1):
+        try:
+            await dependency(_request(headers={"authorization": alice}))
+        except HTTPException:
+            pass
+
+    await dependency(_request(headers={"authorization": bob}))
+
+
+@pytest.mark.asyncio
+async def test_the_raw_token_is_never_part_of_the_counter_key_or_log(
+    fake_redis, monkeypatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(rate_limit_module.settings, "RATE_LIMIT_ENABLED", True)
+    dependency = rate_limit(_LIMIT)
+    token = f"{_SHARED_JWT_HEADER}.eyJzdWIiOiJhbGljZSJ9.sig-alice"
+
+    for _ in range(_LIMIT.max_requests):
+        await dependency(_request(headers={"authorization": f"Bearer {token}"}))
+    with caplog.at_level("WARNING", logger=rate_limit_module.logger.name), pytest.raises(HTTPException):
+        await dependency(_request(headers={"authorization": f"Bearer {token}"}))
+
+    assert all(_SHARED_JWT_HEADER[:20] not in key for key in fake_redis.store)
+    assert _SHARED_JWT_HEADER[:20] not in caplog.text
+
+
 @pytest.mark.asyncio
 async def test_an_unauthenticated_caller_is_counted_by_ip(fake_redis, monkeypatch) -> None:
     """A flood with no token at all still costs a JWKS check and a DB round-trip per

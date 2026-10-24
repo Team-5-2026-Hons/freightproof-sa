@@ -4,14 +4,23 @@
 
 export type SubjectType =
   | 'trip' | 'vehicle' | 'driver' | 'vehicle_event' | 'driver_event'
-  | 'precinct_event' | 'phase_event';
+  | 'precinct_event' | 'phase_event'
+  // One anchorable action on an exception (raise, review, trip cancellation); subject_id is the
+  // evidence anchor EVENT id, never the exception or trip id.
+  | 'evidence_event';
 
 export type BlockchainReceiptType =
   | 'journey_lock' | 'pickup' | 'delivery' | 'checkpoint_batch'
+  // One per phase anchored since every phase started anchoring (2026-09-23), plus the
+  // dispatcher override record. pickup = departure, delivery = confirmation.
+  | 'activation' | 'loading' | 'transit_arrival' | 'arrival_inspection' | 'unloading'
+  | 'phase_override'
   | 'exception_batch' | 'driver_substitution'
   | 'vehicle_created' | 'vehicle_updated'
   | 'driver_created' | 'driver_updated'
-  | 'precinct_created' | 'precinct_updated';
+  | 'precinct_created' | 'precinct_updated'
+  // FP-290: the three actions on an exception that get their own receipt.
+  | 'exception_raised' | 'exception_reviewed' | 'trip_cancelled';
 
 export type BlockchainReceipt = {
   id: string;
@@ -71,7 +80,7 @@ export type DriverEvent = {
 // are separate types: one changes where the facility is, the other changes how close a
 // phase event must be to count as inside it.
 export type PrecinctEventType =
-  | 'created' | 'relocated' | 'geofence_resized'
+  | 'created' | 'relocated' | 'geofence_resized' | 'geofence_reshaped'
   | 'sharing_changed' | 'cosmetic_update';
 
 export type PrecinctEvent = {

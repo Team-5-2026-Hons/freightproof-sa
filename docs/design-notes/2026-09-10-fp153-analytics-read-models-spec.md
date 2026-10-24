@@ -1,7 +1,9 @@
 # FP-153 — Analytics Read Models — Build Spec
 
 Author: Tom (Thomas Davis) · Written 2026-09-10, after extended metric-design review
-Status: **IMPLEMENTED** (commit `e0cc8e4`, 2026-09-10). §1–§10 are the original spec; §11 is
+Status: **IMPLEMENTED IN THIS BRANCH — source rechecked 2026-09-26** (original commit
+`e0cc8e4`, 2026-09-10). No database or deployed-read-model verification was performed.
+§1–§10 are the original spec; §11 is
 the build record, the decisions that SUPERSEDE parts of §1–§10, and the FP-156 handoff.
 Branch: `fp-153-analytics-read-models` (already exists, already rebased on current `dev`)
 

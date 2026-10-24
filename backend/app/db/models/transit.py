@@ -5,7 +5,7 @@ from typing import Any, Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, column, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, column, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -20,13 +20,18 @@ from app.db.models.enums import (
     ExceptionType,
 )
 
+# FP-83 C3 CP4: the partial unique indexes that make a handover capture's findings idempotent.
+# Named here so the recorders can tell their own insert race apart from any other integrity fault.
+SUBSTITUTION_SEPARATION_INDEX = "uq_exceptions_substitution_separation"
+SUBSTITUTION_SEAL_FINDING_INDEX = "uq_exceptions_substitution_seal"
+
 
 class Checkpoint(Base):
     """Driver-logged or Pulsit-pulled in-transit event between phases."""
 
     __tablename__ = "checkpoints"
-    # Task 8 (not wired by this story — column/index only, see the migration's own
-    # docstring): mirrors uq_exceptions_trip_client_report_id exactly. Declared here,
+    # Not wired by this story — column/index only, see the migration's own
+    # docstring. Mirrors uq_exceptions_trip_client_report_id exactly. Declared here,
     # not just in the migration, so Base.metadata.create_all() (every test's schema)
     # carries the same constraint the real database will.
     #
@@ -51,9 +56,9 @@ class Checkpoint(Base):
     checkpoint_type: Mapped[str] = mapped_column(String(50), nullable=False)
     driver_phone_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     driver_phone_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
-    # Task 0A: the same field as PhaseEvent.driver_captured_at, and for the same reason
+    # The same field as PhaseEvent.driver_captured_at, and for the same reason
     # — a checkpoint is offline-queued exactly like a phase handshake, and its horse
-    # position is likewise superseded by a live Pulsit read (corroboration_service's
+    # position is likewise superseded by a live Pulsit read (evidence.corroboration's
     # record_checkpoint_corroboration) that must not be trusted against a stale replay.
     # See PhaseEvent.driver_captured_at's own comment for the full rationale.
     driver_captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -70,19 +75,26 @@ class Checkpoint(Base):
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
-    # Task 5: the versioned ActionLocationAssessment snapshot for this checkpoint's own
-    # handshake (orchestration/action_location_service.build_checkpoint_assessment,
-    # called from checkpoint_service.log_checkpoint). No precinct-membership facts —
+    # The versioned ActionLocationAssessment snapshot for this checkpoint's own
+    # handshake (evidence.location_assessment.build_checkpoint_assessment,
+    # called from evidence.checkpoints.log_checkpoint). No precinct-membership facts —
     # unlike a phase event, a checkpoint happens on the road between precincts, so
     # those fields are always None here. See schemas/action_location.py.
     action_location_assessment: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
-    # Task 8 columns (not wired by this story): mirrors exceptions.client_report_id /
+    # Not wired by this story: mirrors exceptions.client_report_id /
     # phase_event_id-style scoping — see the migration's own docstring for why they
     # exist now with no caller yet.
     client_report_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     phase_event_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("phase_events.id"), nullable=True
     )
+    # The driver who took this checkpoint and the custody period they held (0 = the trip's
+    # original driver). Lets a retry after a handover be proven to be the same driver's own
+    # report. NULL on older rows; never backfilled from whoever is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_checkpoints_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -90,15 +102,15 @@ class TripException(Base):
     """Anomaly recorded at any point in a trip — system-detected, driver-raised, or dispatcher-raised.
 
     Named TripException (not Exception) to avoid shadowing Python's built-in.
-    The table name remains 'exceptions' for DB consistency with the spec.
+    The table name remains 'exceptions' to match the original schema design.
     """
 
     __tablename__ = "exceptions"
-    # Task 0B: one report per (trip, client_report_id) — see client_report_id's own
+    # One report per (trip, client_report_id) — see client_report_id's own
     # comment below. Declared here, not just in migration ciaran_exc_idempotency,
     # because Base.metadata.create_all() (every test's schema) only picks up indexes
     # the model itself declares — mirrors Trip.__table_args__'s identical
-    # LIVE_ORDER_NUMBER_INDEX above it in db/models/trips.py. Partial: rows with no
+    # PP_MANIFEST_INDEX in db/models/trips.py. Partial: rows with no
     # client_report_id carry no idempotency claim and must never collide with each
     # other under this index.
     __table_args__ = (
@@ -109,8 +121,8 @@ class TripException(Base):
             unique=True,
             postgresql_where=column("client_report_id").isnot(None),
         ),
-        # Task 5 (R13): one DRIVER_VEHICLE_SEPARATION finding per source event — the
-        # idempotency key orchestration/action_location_service.record_separation_finding
+        # One DRIVER_VEHICLE_SEPARATION finding per source event — the
+        # idempotency key evidence.action_location.record_separation_finding
         # relies on, alongside its own pre-insert existence check, to survive a replayed
         # completion or two concurrent requests racing for the same handshake. Scoped
         # to this exception_type only (postgresql_where), so it adds no constraint at
@@ -134,7 +146,7 @@ class TripException(Base):
                 "exception_type = 'driver_vehicle_separation' AND checkpoint_id IS NOT NULL"
             ),
         ),
-        # driver-location-timeline-gap: one DRIVER_LOCATION_MISMATCH finding per
+        # One DRIVER_LOCATION_MISMATCH finding per
         # source phase event — the idempotency key orchestration/action_location_
         # service.record_driver_location_finding relies on, same pattern as the two
         # DRIVER_VEHICLE_SEPARATION indexes above. Phase-scoped only, with no
@@ -148,6 +160,39 @@ class TripException(Base):
             unique=True,
             postgresql_where=text(
                 "exception_type = 'driver_location_mismatch' AND phase_event_id IS NOT NULL"
+            ),
+        ),
+        # One TRAILER_LOCATION_MISMATCH per phase event, however many trailers decoupled
+        # (the description names each one). Same idempotency pattern as the indexes above.
+        Index(
+            "uq_exceptions_phase_trailer_location",
+            "phase_event_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'trailer_location_mismatch' AND phase_event_id IS NOT NULL"
+            ),
+        ),
+        # FP-83 C3 CP4: a driver-handover capture is a third finding scope beside a phase event
+        # and a checkpoint. One separation finding per capture, and one seal finding per vehicle
+        # and type per capture pair (the second confirmation, which runs the comparison).
+        Index(
+            SUBSTITUTION_SEPARATION_INDEX,
+            "substitution_confirmation_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type = 'driver_vehicle_separation' AND substitution_confirmation_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            SUBSTITUTION_SEAL_FINDING_INDEX,
+            "substitution_confirmation_id",
+            "vehicle_id",
+            "exception_type",
+            unique=True,
+            postgresql_where=text(
+                "exception_type IN ('seal_mismatch', 'seal_compromised') AND substitution_confirmation_id IS NOT NULL"
             ),
         ),
         # Declared so autogenerate stops proposing to drop indexes that already exist
@@ -166,8 +211,16 @@ class TripException(Base):
     checkpoint_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checkpoints.id"), nullable=True
     )
+    # FP-83 C3 CP4: the driver-handover capture a system finding was measured on (a capture's
+    # driver/vehicle separation, or a seal discrepancy between the two drivers' captures). A
+    # handover is not a phase, so it never borrows phase_event_id. NULL on every other row.
+    substitution_confirmation_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("driver_substitution_confirmations.id", name="fk_exceptions_substitution_confirmation_id"),
+        nullable=True,
+    )
     # Scope an exception to one client's cargo / one stop on the route, so a multi-client
-    # evidence chain can be cut per client (v7 §6.1: a FedEx discrepancy must not surface
+    # evidence chain can be cut per client (a FedEx discrepancy must not surface
     # in Courier Guy's evidence PDF). Nullable: trip-level exceptions stay unscoped, and
     # nothing populates these yet — phases learn their stop via PhaseEvent.trip_stop_id,
     # introduced by this same phase refactor.
@@ -184,10 +237,10 @@ class TripException(Base):
     supporting_artifact_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("evidence_artifacts.id"), nullable=True
     )
-    # Task 0B: the driver app's own stable id for this report — the offline queue's
+    # The driver app's own stable id for this report — the offline queue's
     # entry UUID (frontend/driver-pwa lib/hooks/useOfflineQueue.ts), sent as
     # client_report_id and never regenerated across a retry of the same submission.
-    # Lets exception_service.raise_exception recognise "this exact report, resent"
+    # Lets exceptions.creation.raise_exception recognise "this exact report, resent"
     # (a lost response, or a retry after its photo uploaded but the POST itself
     # failed) and return the existing row instead of inserting a second one.
     # Nullable: an older installed/queued client omits it, and that submission gets
@@ -206,23 +259,24 @@ class TripException(Base):
     gps_lat: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     gps_lng: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 7), nullable=True)
     # The exact vehicle a MECHANICAL exception belongs to: the trip's horse or one of its
-    # trailers, worked out by exception_service.pick_breakdown_vehicle from the driver's
+    # trailers, worked out by exceptions.creation.pick_breakdown_vehicle from the driver's
     # "truck or trailer" answer. Needed because trailers attach through trip_trailers
     # (many-to-many), so the trip alone cannot say which trailer on an interlink broke
     # down. Nullable and never backfilled: every other exception type, every breakdown
     # recorded before this column existed, and every report from an app that doesn't ask
-    # the question has no vehicle, and the analytics count those for the horse (trailer
-    # analytics spec, decision 2). The FK is named explicitly to match the migration,
-    # because Base has no naming_convention.
+    # the question has no vehicle, and the analytics count those for the horse. The FK is
+    # named explicitly to match the migration, because Base has no naming_convention.
     vehicle_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("vehicles.id", name="fk_exceptions_vehicle_id"), nullable=True
     )
-    # Task 1 (FP-146 review semantics, migration ciaran_exc_review_semantics): replaces
-    # the old `resolved: bool`, which could not distinguish "nobody has looked at this"
+    # Replaces the old `resolved: bool` (migration ciaran_exc_review_semantics, FP-146),
+    # which could not distinguish "nobody has looked at this"
     # from "looked at, still needs a decision" — see ExceptionReviewStatus's own comment.
     # String(20), not a native PG enum, matching every other enum column on this table.
+    # Every exception starts needs_review (FP-280), whatever its severity or source, so a
+    # write site that omits the column still reaches the inbox rather than being silently recorded.
     review_status: Mapped[ExceptionReviewStatus] = mapped_column(
-        String(20), nullable=False, server_default=ExceptionReviewStatus.RECORDED.value
+        String(20), nullable=False, server_default=ExceptionReviewStatus.NEEDS_REVIEW.value
     )
     # What the dispatcher concluded, set only once review_status reaches REVIEWED.
     # Nullable: unreviewed rows (the overwhelming majority at any moment) have no
@@ -246,10 +300,27 @@ class TripException(Base):
     contact_method: Mapped[Optional[ExceptionContactMethod]] = mapped_column(
         String(20), nullable=True
     )
+    # Who is working this exception right now (FP-280); NULL = nobody. Deliberately not
+    # a review_status value of its own: "claimed" is needs_review plus a claimer, so the
+    # history filter, the analytics queries and every needs_review count keep their
+    # meaning unchanged. Kept after review, so the record shows who took it on as well
+    # as who concluded it. The FK is named explicitly to match the migration, because
+    # Base has no naming_convention.
+    claimed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", name="fk_exceptions_claimed_by_user_id"), nullable=True
+    )
+    claimed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The driver who performed this action and the custody period they held at the time
+    # (0 = the trip's original driver). Written by the live action paths from FP-83 C5;
+    # NULL on every older row and never backfilled from whichever driver is current today.
+    performed_by_driver_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("drivers.id", name="fk_exceptions_performed_by_driver_id"), nullable=True
+    )
+    custody_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     merkle_batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("merkle_batches.id"), nullable=True
     )
-    # Task 5 (R13): a driver exception report IS itself the capture the assessment
+    # A driver exception report IS itself the capture the assessment
     # describes, so it carries its own snapshot rather than pointing at another row's.
     # Populated where a caller builds a capture-time comparison, including phase
     # completions, checkpoints, and driver-raised exception reports.

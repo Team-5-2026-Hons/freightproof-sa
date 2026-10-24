@@ -1,0 +1,27 @@
+{
+  "function_line_limit": 100,
+  "functions": {
+    "app/dev/endpoints/pulsit.py::move_truck": 117,
+    "app/orchestration/consignments/sync.py::sync_consignment_from_waybill": 163,
+    "app/orchestration/evidence/action_location.py::record_separation_finding": 123,
+    "app/orchestration/evidence/corroboration.py::record_phase_corroboration": 159,
+    "app/orchestration/exceptions/creation.py::raise_exception": 134,
+    "app/orchestration/exceptions/queries.py::list_exception_history": 103,
+    "app/orchestration/exceptions/review.py::review_exception": 122,
+    "app/orchestration/phases/advance_arrival.py::advance_arrival": 143,
+    "app/orchestration/phases/advance_confirmation.py::advance_confirmation": 119,
+    "app/orchestration/phases/advance_loading.py::advance_loading": 107,
+    "app/orchestration/phases/findings.py::_raise_position_disagreement_if_unrecorded": 135,
+    "app/orchestration/phases/override.py::override_phase": 125,
+    "app/orchestration/trips/creation.py::persist_trip": 227,
+    "app/orchestration/trips/detail.py::get_trip_detail": 103,
+    "app/orchestration/verification/phase_payloads.py::_reconstruct_phase_event_payload": 112,
+    "app/tasks/parcel_perfect.py::_sync_all_active": 122
+  },
+  "files": {
+    "app/integrations/parcel_perfect/__init__.py": 81,
+    "app/orchestration/evidence/action_location.py": 418,
+    "app/schemas/trips.py": 419,
+    "app/api/v1/endpoints/handover.py": 461
+  }
+}

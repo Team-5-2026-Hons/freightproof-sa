@@ -1,0 +1,159 @@
+/* Print stylesheet for the audit-pack PDF (WeasyPrint). A4, black-on-white first:
+   packs get photocopied and faxed into claim files, so colour is never the only signal —
+   every coloured mark also carries a word (tier labels, "Attention", "Pending"). */
+
+@page {
+  size: A4;
+  margin: 22mm 16mm 20mm 16mm;
+  /* The chapter in the top-left tells a reader holding one loose page where it belongs. */
+  @top-left { content: string(chapter); font-size: 8pt; font-weight: bold; color: #1a1a1a; }
+  @top-right { content: string(pack-label) "  ·  " string(trip-ref); font-size: 8pt; color: #555; }
+  @bottom-left { content: string(issued-to); font-size: 7.5pt; color: #777; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #555; }
+}
+/* The cover carries its own title; a running chapter label above it would read as a second heading. */
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+}
+
+html { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9pt; color: #1a1a1a; line-height: 1.4; }
+/* Not display:none — an element that generates no box never fires string-set, which
+   silently dropped the "issued to" line from every page footer. */
+.running { height: 0; overflow: hidden; visibility: hidden; margin: 0; }
+.running-pack { string-set: pack-label content(); }
+.running-trip { string-set: trip-ref content(); }
+.running-issued { string-set: issued-to content(); }
+.running-chapter { string-set: chapter content(); }
+
+p { margin: 1mm 0 2mm; }
+.muted { color: #555; }
+.small { font-size: 7.5pt; }
+.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 7.5pt; word-break: break-all; }
+.flag { color: #b71c1c; font-weight: bold; }
+.ok { color: #1b5e20; font-weight: bold; }
+code { font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; word-break: break-all; }
+
+/* ── Type scale: one size step per level, so hierarchy survives a greyscale photocopy. ── */
+h1 { font-size: 24pt; line-height: 1.1; margin: 0 0 1.5mm; letter-spacing: -0.3pt; }
+h2 { font-size: 17pt; line-height: 1.15; margin: 0; }
+h3 { font-size: 11.5pt; margin: 7mm 0 2mm; padding-bottom: 1mm; border-bottom: 0.8pt solid #1a1a1a;
+  page-break-after: avoid; }
+h4 { font-size: 9.5pt; margin: 4mm 0 1.5mm; page-break-after: avoid; }
+.sub-num { display: inline-block; min-width: 9mm; color: #777; font-weight: normal; }
+
+/* ── Chapters: each starts a page with a number, title and one line saying what it answers. ── */
+section.chapter { page-break-before: always; }
+section.chapter-tail { page-break-before: auto; margin-top: 10mm; }
+.chapter-head { border-top: 3pt solid #1a1a1a; padding-top: 3mm; margin-bottom: 2mm; }
+.ch-num { margin: 0 0 1mm; font-size: 7.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.8pt; color: #555; }
+.lede { margin: 1.5mm 0 0; font-size: 9.5pt; color: #444; }
+.chapter-head + div > h3 { margin-top: 5mm; }
+
+/* ── Cover ── */
+.eyebrow { margin: 0 0 3mm; font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.8pt; color: #555; }
+.subtitle { margin: 0 0 6mm; color: #444; }
+.preview-banner { border: 2pt solid #b71c1c; color: #b71c1c; padding: 3mm; font-weight: bold;
+  text-align: center; margin-bottom: 5mm; }
+h3.cover-h { margin-top: 6mm; }
+
+/* Six facts a claims handler needs before turning the page. Hairline grid, no fills: it must photocopy. */
+table.glance { width: 100%; border-collapse: collapse; margin: 0; table-layout: fixed; }
+table.glance td { width: 33.3%; vertical-align: top; padding: 2.5mm 3mm 2.5mm 0; border-top: 0.8pt solid #1a1a1a; }
+table.glance tr + tr td { border-top: 0.5pt solid #bbb; }
+.g-label { margin: 0 0 0.8mm; font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6pt; color: #555; }
+.g-value { margin: 0; font-size: 11.5pt; font-weight: bold; line-height: 1.2; }
+.g-value.g-flag { color: #b71c1c; }
+.g-sub { margin: 0.8mm 0 0; font-size: 7.5pt; color: #555; }
+
+/* Journey strip — the custody phases as one line, drawn as inline SVG in the template. The rule turns
+   red and dashed after the phase the critical event followed; every dot also carries its word. */
+svg.journey { display: block; width: 100%; height: auto; margin: 1mm 0 1mm; }
+
+table.cover-split { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; }
+table.cover-split > tbody > tr > td, table.cover-split > tr > td { vertical-align: top; padding: 0; border: none; }
+table.cover-split td:first-child { width: 40%; padding-right: 6mm; }
+ol.toc { margin: 0; padding: 0; list-style: none; counter-reset: toc; }
+ol.toc li { counter-increment: toc; padding: 1.3mm 0; border-bottom: 0.5pt solid #ddd; }
+ol.toc li::before { content: counter(toc); display: inline-block; width: 6mm; font-weight: bold; color: #777; }
+ol.toc a { color: #1a1a1a; text-decoration: none; }
+/* Page numbers come from the anchors themselves, so the contents can never drift from the layout. */
+ol.toc a::after { content: leader(dotted) target-counter(attr(href), page); color: #555; }
+table.legend { margin: 0; }
+table.legend td { padding: 1mm 1mm; font-size: 8pt; }
+td.legend-tier { width: 27mm; }
+
+/* ── Tables ── */
+table { width: 100%; border-collapse: collapse; margin: 1mm 0 3mm; }
+th, td { text-align: left; vertical-align: top; padding: 1.2mm 1.5mm; border-bottom: 0.5pt solid #ccc; }
+tr { page-break-inside: avoid; }
+/* Fixed layout where free text shares a row with fixed-width facts, so a description is never squeezed to one word a line. */
+table.fixed { table-layout: fixed; }
+table.grid thead th { background: #f0f0ec; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.3pt; color: #333;
+  border-bottom: 0.8pt solid #1a1a1a; }
+table.kv th { width: 34%; background: none; font-weight: normal; color: #555; }
+table.kv-compact th { width: 19%; font-size: 8pt; }
+table.kv-compact td { width: 31%; }
+.w-num { width: 7mm; }
+.w-time { width: 27mm; }
+.w-phase { width: 42mm; }
+.w-tier { width: 24mm; }
+.w-type { width: 24mm; }
+.w-review { width: 40mm; }
+.w-status { width: 42mm; }
+
+/* Custody: one row per phase; hashes go to an indented sub-row so the row itself stays scannable. */
+table.custody td.facts div { margin: 0 0 0.6mm; }
+table.custody tr.row-pending td { color: #777; }
+table.custody tr.sub-row td { border-top: none; padding-top: 0; font-size: 7.5pt; background: #fafaf7; }
+table.custody tr.sub-row div { margin: 0.4mm 0; }
+
+.tier { display: inline-block; padding: 0.3mm 1.5mm; border: 0.8pt solid; border-radius: 1mm;
+  font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3pt; }
+.tier-anchored { color: #1b5e20; border-color: #1b5e20; }
+.tier-corroborated { color: #0d47a1; border-color: #0d47a1; }
+.tier-recorded { color: #424242; border-color: #9e9e9e; }
+.tier-declared { color: #6a1b9a; border-color: #6a1b9a; border-style: dashed; }
+
+/* ── Summary ── */
+.summary-box { border: 1pt solid #1a1a1a; padding: 3mm; margin: 4mm 0 3mm; }
+.box-title { margin: 0 0 1mm; font-weight: bold; }
+.obs { padding: 1.6mm 2.5mm; margin: 0 0 1.5mm; border-left: 2.5pt solid #9e9e9e; page-break-inside: avoid; }
+.obs-attention { border-left-color: #c62828; background: #fdf3f3; }
+.obs-tag { display: inline-block; margin-right: 1.5mm; font-size: 6.5pt; font-weight: bold; text-transform: uppercase;
+  letter-spacing: 0.4pt; color: #b71c1c; }
+.obs .code { font-size: 7pt; color: #777; }
+
+/* ── Exceptions and handovers: one block each, so a long review note never splits a row across pages. ── */
+.exc, .handover { border: 0.5pt solid #ccc; border-left: 2.5pt solid #9e9e9e; padding: 2mm 3mm; margin: 0 0 2.5mm;
+  page-break-inside: avoid; }
+.exc-critical { border-left-color: #b71c1c; }
+table.exc-head { margin: 0; }
+table.exc-head td { border: none; padding: 0; }
+td.exc-id { width: 9mm; font-size: 11pt; font-weight: bold; color: #555; }
+td.exc-tier { width: 26mm; text-align: right; }
+.exc .sev { text-transform: uppercase; font-size: 7.5pt; font-weight: bold; color: #555; }
+.exc-critical .sev { color: #b71c1c; }
+.exc-desc { margin: 1.5mm 0 1mm 9mm; }
+.exc > p.small, .exc-evidence, .handover-body { margin-left: 9mm; }
+.exc-evidence table { margin: 1mm 0 0; font-size: 7.5pt; }
+.handover-body p { margin: 1mm 0; }
+
+.consignment { page-break-inside: avoid; }
+
+/* ── Location ── */
+.route svg { width: 100%; height: auto; border: 0.5pt solid #ccc; }
+.caveat { border-left: 2.5pt solid #f9a825; padding: 1.5mm 2mm; background: #fffbea; font-size: 8pt; }
+
+/* ── Verification ── */
+ol.steps { margin: 1mm 0 3mm; padding-left: 5mm; }
+ol.steps li { margin: 0 0 1mm; }
+.receipt { border: 0.5pt solid #ccc; padding: 2mm 3mm; margin: 0 0 3mm; page-break-inside: avoid; }
+.receipt-title { margin: 0 0 1.5mm; font-weight: bold; }
+.receipt-num { display: inline-block; min-width: 8mm; color: #777; }
+.receipt-state { float: right; font-size: 7.5pt; }
+.receipt table { margin: 0 0 1.5mm; }
+pre.payload { white-space: pre-wrap; word-break: break-all; background: #f6f6f3; padding: 1.5mm;
+  font-family: "DejaVu Sans Mono", monospace; font-size: 7pt; margin: 0; }
+
+.signature-line { border-bottom: 0.8pt solid #1a1a1a; height: 9mm; margin-bottom: 1mm; }

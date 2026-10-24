@@ -1,6 +1,6 @@
 """Lane grain — origin -> destination precinct pairs.
 
-The one grain where road time is the subject rather than noise (spec §6).
+The one grain where road time is the subject rather than noise.
 """
 
 import uuid
@@ -10,7 +10,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.stats import validate_month_range
+from app.core.stats import validate_month_range
 from app.analytics.views import LaneAnalyticsView
 from app.schemas.analytics import DurationStats, LaneMetrics
 

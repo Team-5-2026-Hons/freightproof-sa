@@ -24,7 +24,14 @@ const LABELS = {
   onTimeDepartures: 'On-time departures',
   dispatcherOverrides: 'Dispatcher overrides',
   tripsWithExceptions: 'Trips with exceptions',
+  sharedTrips: 'Shared after a handover',
 } as const
+
+// FP-83: why shared trips are a separate figure, so a reader does not take a low trip count
+// as the whole story. Exceptions and phase times on those trips ARE counted, by who did them.
+const SHARED_TRIPS_NOTE =
+  'Not included in trips or the rates above, because they cannot be fairly split. Exceptions and phase times on them count against the driver who recorded them.'
+
 
 const SUMMARY_COPY = {
   monthsHeading: 'Selected months',
@@ -36,6 +43,7 @@ type DwellAverageKey =
   | 'activation_dwell_minutes_avg'
   | 'loading_dwell_minutes_avg'
   | 'departure_dwell_minutes_avg'
+  | 'arrival_dwell_minutes_avg'
   | 'unloading_dwell_minutes_avg'
   | 'confirmation_dwell_minutes_avg'
 
@@ -50,6 +58,7 @@ const PHASE_ROWS: readonly PhaseRow[] = [
   { label: 'Activation', key: 'activation_dwell_minutes_avg' },
   { label: 'Loading', key: 'loading_dwell_minutes_avg' },
   { label: 'Departure', key: 'departure_dwell_minutes_avg' },
+  { label: 'Arrival', key: 'arrival_dwell_minutes_avg' },
   { label: 'Unloading', key: 'unloading_dwell_minutes_avg' },
   // The caveat sits with this one figure, not a footnote: a slow receiver also lengthens it.
   { label: 'Confirmation', key: 'confirmation_dwell_minutes_avg', note: ANALYTICS_COPY.confirmationDwellCaveat },
@@ -65,6 +74,7 @@ export function DriverAnalyticsSummary({ driverId }: DriverAnalyticsSummaryProps
 
   return (
     <AnalyticsSummaryFrame
+      source={ANALYTICS_COPY.sources.driver}
       range={range}
       onRangeChange={setRange}
       isLoading={drivers.isLoading}
@@ -104,6 +114,12 @@ function Figures({ rangeLabel, metrics }: { rangeLabel: string; metrics: DriverM
           label={LABELS.dispatcherOverrides}
           value={fmtRate(metrics.override_rate, metrics.override_count, metrics.phase_events_count)}
         />
+        {(metrics.shared_trip_count ?? 0) > 0 && (
+          <>
+            <DetailRow label={LABELS.sharedTrips} value={String(metrics.shared_trip_count)} />
+            <p className="text-[12px] text-on-surf-v">{SHARED_TRIPS_NOTE}</p>
+          </>
+        )}
       </section>
 
       <section>

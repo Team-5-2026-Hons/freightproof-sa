@@ -31,6 +31,11 @@ class LocationPingBatch(BaseModel):
     """The request body — one or more fixes for a single trip."""
 
     pings: list[LocationPingCreate] = Field(min_length=1, max_length=MAX_PINGS_PER_REQUEST)
+    # The custody period this capture belongs to (0 = the trip's original driver; each
+    # completed handover adds one), taken when the evidence was captured. Optional only so
+    # clients that predate substitutions keep working: the server accepts it omitted while the
+    # trip has never changed driver and refuses it afterwards (FP-83 contract).
+    custody_sequence: Optional[int] = Field(default=None, ge=0)
 
 
 class LocationPingRead(BaseModel):

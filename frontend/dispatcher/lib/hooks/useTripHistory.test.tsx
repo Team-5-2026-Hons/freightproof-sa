@@ -22,7 +22,7 @@ function makeItem(overrides: Partial<TripHistoryListItem> = {}): TripHistoryList
   return {
     id: '11111111-1111-1111-1111-111111111111' as TripHistoryListItem['id'],
     trip_reference: 'FP-2026-0001',
-    order_number: 'ORD-0001',
+    pp_manifest: null,
     status: 'closed',
     driver: { full_name: 'Nandi Dlamini' },
     horse: { registration: 'CA 123-456' },
@@ -61,6 +61,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear()
   mockedGet.mockReset()
   mockedUseLiveResource.mockReset()
 })
@@ -124,7 +125,7 @@ describe('useTripHistory', () => {
   it('does not retain page-one rows when loading page two fails', async () => {
     mockedGet
       .mockResolvedValueOnce(makePage({
-        items: [makeItem({ order_number: 'PAGE-ONE' })],
+        items: [makeItem({ trip_reference: 'PAGE-ONE' })],
         next_cursor: 'cursor-2',
         total_items: 40,
       }))
@@ -145,7 +146,7 @@ describe('useTripHistory', () => {
   it('does not retain rows from the previous filters when changed-filter loading fails', async () => {
     mockedGet
       .mockResolvedValueOnce(makePage({
-        items: [makeItem({ order_number: 'OLD-FILTER' })],
+        items: [makeItem({ trip_reference: 'OLD-FILTER' })],
         total_items: 1,
       }))
       .mockRejectedValueOnce(new Error('Filtered history unavailable'))
@@ -209,18 +210,18 @@ describe('useTripHistory', () => {
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2))
 
     await act(async () => {
-      newer.resolve(makePage({ total_items: 9, items: [makeItem({ order_number: 'NEW' })] }))
+      newer.resolve(makePage({ total_items: 9, items: [makeItem({ trip_reference: 'NEW' })] }))
       await newer.promise
     })
     await waitFor(() => expect(result.current.totalItems).toBe(9))
 
     await act(async () => {
-      older.resolve(makePage({ total_items: 99, items: [makeItem({ order_number: 'OLD' })] }))
+      older.resolve(makePage({ total_items: 99, items: [makeItem({ trip_reference: 'OLD' })] }))
       await older.promise
     })
 
     expect(result.current.totalItems).toBe(9)
-    expect(result.current.items[0]?.order_number).toBe('NEW')
+    expect(result.current.items[0]?.trip_reference).toBe('NEW')
   })
 
   it('silently refreshes page one for trip_closed events only', async () => {
@@ -283,5 +284,29 @@ describe('useTripHistory', () => {
 
     await waitFor(() => expect(result.current.page).toBe(1))
     await waitFor(() => expect(result.current.hasNewHistory).toBe(false))
+  })
+})
+
+describe('useTripHistory rows per page preference', () => {
+  it('requests and reports the stored page size', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 50 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useTripHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/trips/history?limit=50')
+    expect(result.current.pageSize).toBe(50)
+  })
+
+  it('ignores a stored page size the backend would not accept', async () => {
+    window.localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'dashboard', rowsPerPage: 500 }))
+    mockedGet.mockResolvedValue(makePage())
+
+    const { result } = renderHook(() => useTripHistory({}))
+
+    await waitFor(() => expect(mockedGet).toHaveBeenCalled())
+    expect(mockedGet).toHaveBeenCalledWith('/api/v1/trips/history?limit=25')
+    expect(result.current.pageSize).toBe(25)
   })
 })

@@ -1,7 +1,7 @@
-"""Integration contract for GET /api/v1/analytics/fleet/on-time (fleet analytics spec §5.2).
+"""Integration contract for GET /api/v1/analytics/fleet/on-time.
 
-Charts 2.1 (on-time departures and arrivals), 2.2 (how late is late) and 2.5 (plans vs reality:
-how far off plan, whole period), as reworked in D23 and D24. Every expected number is
+Covers on-time departures and arrivals, how late is late, and plans vs reality
+(how far off plan, whole period). Every expected number is
 hand-computed from the trips each test seeds. SINGLE_LEG departs 100 minutes after the trip's start and arrives at 400, so each trip's
 plan below is chosen to land its delay on a known band.
 
@@ -54,6 +54,8 @@ _VIEW_MIGRATIONS = (
     ("2026_09_12_tom_analytics_read_models.py", "tom_analytics_read_models"),
     ("2026_09_12_tom_trailer_vehicle_analytics.py", "tom_trailer_vehicle_analytics"),
     ("2026_09_13_tom_live_analytics_views.py", "tom_live_analytics_views"),
+    ("2026_10_19_tim_substitution_driver_analytics.py", "tim_dsub_driver_analytics"),
+    ("2026_10_23_ciaran_driver_analytics_arrival.py", "ciaran_drv_arrival_dwell"),
 )
 
 
@@ -206,7 +208,7 @@ async def test_fleet_on_time_lateness_bands_match_the_on_time_count(
     arrivals = {bar["band"]: bar["trip_count"] for bar in body["lateness"]["arrivals"]}
     assert [departures[band] for band in _BANDS] == [1, 1, 1, 0, 1, 0]
     assert [arrivals[band] for band in _BANDS] == [1, 2, 0, 1, 0, 1]
-    # The spec's invariant: Early + On time is exactly chart 2.1's on-time count.
+    # Invariant: Early + On time is exactly the on-time departures/arrivals count.
     assert departures["early"] + departures["on_time"] == sum(row["on_time_departures"] for row in body["punctuality"])
     assert arrivals["early"] + arrivals["on_time"] == sum(row["on_time_arrivals"] for row in body["punctuality"])
 
@@ -231,7 +233,7 @@ async def test_fleet_on_time_plan_spread_bands_every_trip_with_a_full_plan(
     assert (spread["median_early_minutes"], spread["median_over_minutes"]) == pytest.approx((70, 115))
 
 
-# ── Consistency with the driver pages (spec §8, risk R5) ─────────────────────
+# ── Consistency with the driver pages ─────────────────────────────────────────
 
 
 @pytest_asyncio.fixture

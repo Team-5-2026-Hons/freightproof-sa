@@ -1,7 +1,11 @@
 -r requirements.txt
 pytest>=8.3.0,<9.0.0
 pytest-asyncio>=0.24.0,<1.0.0
+pytest-timeout>=2.3.0,<3.0.0  # per-test time limit (pytest.ini): a hung test fails by name
+pytest-xdist>=3.6.0,<4.0.0  # optional parallel runs: pytest -n auto (tests/conftest.py isolates each worker)
 respx>=0.21.0,<1.0.0  # httpx transport mock — PP client unit tests
 ruff==0.15.22  # pinned: 0.16.0 expanded default rule set (UP045/I001/B008/etc.), breaking CI
 mypy>=1.13.0,<2.0.0
+pypdf>=6.0,<7.0  # reads rendered audit-pack PDFs back in tests
+import-linter>=2.0,<3.0  # layer-order and no-layer-skipping contracts (backend/.importlinter)
 pip-audit>=2.10.0,<3.0.0

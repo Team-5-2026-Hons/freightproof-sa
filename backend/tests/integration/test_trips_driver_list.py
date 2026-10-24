@@ -10,12 +10,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import event as sa_event
 
 from app.db.models.enums import (
+    ExceptionReviewStatus, ExceptionSeverity, ExceptionSource, ExceptionType,
     IdvsStatus, OrganizationType, TripStatus, VehicleType,
 )
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
+from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
 from app.db.session import get_db
@@ -174,6 +177,40 @@ async def test_list_my_trips_excludes_other_drivers_trips(client: AsyncClient, d
     assert [r["trip_reference"] for r in resp.json()] == ["FP-MINE"]
 
 
+async def test_list_my_trips_counts_only_unreviewed_critical_exceptions(client: AsyncClient, db_session):
+    """Every exception starts needs_review (FP-280), but the driver cannot review any of
+    them: their count must stay on unreviewed critical rows, not every routine warning."""
+    org, client_org, user, horse, origin, dest = await _fixture_world(db_session)
+    driver = await _make_driver(db_session, org, name="Driver", id_number="8001015009087", license_number="DRV-1")
+    trip = _make_trip(
+        org=org, client_org=client_org, user=user, driver=driver, horse=horse,
+        origin=origin, dest=dest, reference="FP-COUNT", status=TripStatus.ACTIVE,
+    )
+    db_session.add(trip)
+    await db_session.flush()
+
+    def _exception(severity: ExceptionSeverity, status: ExceptionReviewStatus) -> TripException:
+        return TripException(
+            id=uuid.uuid4(), trip_id=trip.id, exception_type=ExceptionType.SEAL_MISMATCH,
+            source=ExceptionSource.SYSTEM, severity=severity, review_status=status,
+            description=f"{severity.value} {status.value}",
+        )
+
+    db_session.add_all([
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.CRITICAL, ExceptionReviewStatus.REVIEWED),
+        _exception(ExceptionSeverity.WARNING, ExceptionReviewStatus.NEEDS_REVIEW),
+        _exception(ExceptionSeverity.INFO, ExceptionReviewStatus.NEEDS_REVIEW),
+    ])
+    await db_session.flush()
+
+    token = make_token(sub=str(driver.id), role="driver")
+    resp = await client.get("/api/v1/trips/me", headers=auth_header(token))
+
+    assert resp.status_code == 200
+    assert resp.json()[0]["needs_review_count"] == 1
+
+
 async def test_list_my_trips_returns_empty_list_when_none_assigned(client: AsyncClient, db_session):
     org, _client_org, _user, _horse, _origin, _dest = await _fixture_world(db_session)
     driver = await _make_driver(db_session, org, name="Driver", id_number="8001015009087", license_number="DRV-1")
@@ -274,3 +311,56 @@ async def test_me_route_is_not_swallowed_by_the_dispatcher_detail_route(
 
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+async def _statements_for_trip_list(client: AsyncClient, db_session, token: str) -> list[str]:
+    """Every SQL statement one GET /trips/me issues for the driver `token` signs in."""
+    statements: list[str] = []
+    bind = db_session.bind.sync_engine if hasattr(db_session.bind, "sync_engine") else db_session.bind
+
+    def _capture(conn, cursor, statement, *args):
+        statements.append(statement)
+
+    sa_event.listen(bind, "before_cursor_execute", _capture)
+    try:
+        resp = await client.get("/api/v1/trips/me", headers=auth_header(token))
+    finally:
+        sa_event.remove(bind, "before_cursor_execute", _capture)
+    assert resp.status_code == 200
+    return statements
+
+
+async def test_list_my_trips_runs_the_same_number_of_queries_for_one_trip_or_many(
+    client: AsyncClient, db_session,
+):
+    """N+1 guard: this list is a driver's whole history, and a per-trip query made it cost two
+    database round trips per trip. Compared against a one-trip driver rather than a fixed count,
+    so a constant query added elsewhere in the endpoint does not break it."""
+    org, client_org, user, horse, origin, dest = await _fixture_world(db_session)
+    one = await _make_driver(db_session, org, name="One", id_number="8001015009087", license_number="DRV-1")
+    many = await _make_driver(db_session, org, name="Many", id_number="9002026009088", license_number="DRV-2")
+    db_session.add(_make_trip(
+        org=org, client_org=client_org, user=user, driver=one, horse=horse,
+        origin=origin, dest=dest, reference="FP-ONE", status=TripStatus.CREATED,
+    ))
+    db_session.add_all([
+        _make_trip(
+            org=org, client_org=client_org, user=user, driver=many, horse=horse,
+            origin=origin, dest=dest, reference=f"FP-MANY-{i}", status=TripStatus.CREATED,
+        )
+        for i in range(5)
+    ])
+    await db_session.flush()
+    # One token per driver, reused: each make_token is a new device session, and the
+    # one-device-per-driver rule (auth/sessions.py) can refuse a second one minted in the same second.
+    one_token = make_token(sub=str(one.id), role="driver")
+    many_token = make_token(sub=str(many.id), role="driver")
+    # Warm-up, uncaptured: the first request per driver records its session, a write the
+    # comparison must not count. Both drivers warm up so each captured request is a repeat.
+    await _statements_for_trip_list(client, db_session, one_token)
+    await _statements_for_trip_list(client, db_session, many_token)
+
+    for_one = await _statements_for_trip_list(client, db_session, one_token)
+    for_many = await _statements_for_trip_list(client, db_session, many_token)
+
+    assert len(for_many) == len(for_one)

@@ -5,7 +5,7 @@ fixture binds every session to ONE outer connection with
 ``join_transaction_mode="create_savepoint"`` and rolls back at the end, so two sessions
 drawn from it share a transaction and can never contend for a row lock — a race test
 written against it would pass no matter what the service does. The existing conflict test
-in tests/unit/test_exception_service.py is sequential for the same reason: it proves the
+in tests/integration/test_exceptions_review_service.py is sequential for the same reason: it proves the
 409 branch is reachable, and nothing at all about simultaneity.
 
 Proving the FIRST review survives needs two independent connections and real commits,
@@ -33,12 +33,13 @@ from app.db.models.enums import (
     TripStatus,
     VehicleType,
 )
+from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.organisations import Organization, Precinct
 from app.db.models.people import Driver, User
 from app.db.models.transit import TripException
 from app.db.models.trips import Trip
 from app.db.models.vehicles import Vehicle
-from app.orchestration.exception_service import review_exception
+from app.orchestration.exceptions.review import review_exception
 
 _FIRST_NOTE = "Phoned the depot; the seal was cut during a lawful SARS inspection."
 _SECOND_NOTE = "Spoke to the driver in person; he says the inspection was at Beitbridge."
@@ -122,6 +123,7 @@ async def _seed(session: AsyncSession) -> dict:
 
 async def _teardown(session: AsyncSession, ids: dict) -> None:
     """Delete this module's committed rows, children before parents."""
+    await session.execute(delete(EvidenceAnchorEvent).where(EvidenceAnchorEvent.exception_id == ids["exception_id"]))
     await session.execute(delete(TripException).where(TripException.id == ids["exception_id"]))
     await session.execute(delete(Trip).where(Trip.id == ids["trip_id"]))
     await session.execute(delete(Precinct).where(Precinct.id.in_([ids["origin_id"], ids["dest_id"]])))

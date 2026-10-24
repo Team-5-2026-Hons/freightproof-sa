@@ -1,4 +1,4 @@
-"""Queries behind the busy-pattern charts (GET /analytics/fleet/patterns, spec §5.1,
+"""Queries behind the busy-pattern charts (GET /analytics/fleet/patterns,
 chart 1.3). Departures are attested departure steps; arrivals are attested
 in_transit steps. Overridden steps are excluded, since their time is a dispatcher's
 click, not when the truck moved."""

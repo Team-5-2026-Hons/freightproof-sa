@@ -1,6 +1,9 @@
 # Fleet Analytics Page — build spec and executable plan
 
-**Status:** READY TO BUILD — nothing built yet. Update the progress table (§14) as stages complete.
+**Status:** IMPLEMENTED IN THIS BRANCH — verified 2026-09-26 against the fleet analytics
+routes, orchestration service, dispatcher `/analytics` page, and associated tests. The
+original stages below are a build record, not instructions to rebuild the feature. No
+live deployment or production-data verification is claimed here.
 **Owner:** Tom (sign-off after every stage). **Written:** 2026-09-15 by Claude, from a two-day
 decision session with Tom (every choice below was agreed with him; the reasons are recorded).
 **Ticket:** none yet — Tom to create one and put its number here.

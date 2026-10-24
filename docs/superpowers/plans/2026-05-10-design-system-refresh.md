@@ -8,7 +8,7 @@
 
 **Key references:**
 - Mockup HTML (Trip Assignment, P1–P6) — visual source of truth
-- `docs/FreightProof_Frontend_Spec_v1.md §5.1` — component prop interfaces (unchanged)
+- `docs/archive/root/FreightProof_Frontend_Spec_v1.md §5.1` — historical component prop interfaces (unchanged)
 - `frontend/DESIGN_SYSTEM.md` — will be fully replaced
 
 **Tech stack:** Next.js 15, Tailwind v3.4, TypeScript 5.5, Lucide React, Inter (next/font/google), `@shared/lib/utils/cn` path alias available in both surfaces.

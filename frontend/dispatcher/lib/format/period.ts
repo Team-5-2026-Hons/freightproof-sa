@@ -1,4 +1,4 @@
-// South African calendar dates for the fleet Analytics page (fleet analytics spec §3).
+// South African calendar dates for the fleet Analytics page.
 //
 // Dates are "YYYY-MM-DD" strings throughout: zero-padded, so they also sort chronologically as
 // plain strings. Arithmetic runs on Date objects at UTC midnight, used purely as a calendar, so
@@ -10,12 +10,11 @@
 
 import { MONTH_ABBREVIATIONS, addMonths } from '@/lib/format/month'
 import type { Grain } from '@shared/lib/types/fleet-analytics'
-
-const OPERATIONS_TIME_ZONE = 'Africa/Johannesburg'
+import { sastCalendarDay } from '@shared/lib/utils/datetime'
 
 /** Mirrors the backend's MAX_TREND_BUCKETS: one year of weeks. */
 export const MAX_TREND_BUCKETS = 53
-/** Below this many trips a chart still draws, with a "read with care" line (spec §7.6). */
+/** Below this many trips a chart still draws, with a "read with care" line. */
 export const LOW_SAMPLE_TRIPS = 5
 
 /** Finest first, so "the next coarser grain" is the next entry. */
@@ -33,19 +32,12 @@ const PRESET_MONTHS = { last_3_months: 3, last_6_months: 6, last_12_months: 12 }
 const PRESET_YEARS = { last_3_years: 3 } as const
 const MONTHS_IN_A_YEAR = 12
 
-const TODAY_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: OPERATIONS_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
 export type PresetId =
   | 'last_4_weeks' | 'last_12_weeks' | 'last_26_weeks'
   | 'last_3_months' | 'last_6_months' | 'last_12_months'
   | 'this_year' | 'last_3_years' | 'all_time'
 
-/** The Period presets each View by offers (D25): only ranges that make sense in that unit, so
+/** The Period presets each View by offers: only ranges that make sense in that unit, so
  *  View by Year is never offered "Last 4 weeks", which would draw one part-year bar. */
 export const PRESETS_BY_GRAIN: Record<Grain, readonly PresetId[]> = {
   week: ['last_4_weeks', 'last_12_weeks', 'last_26_weeks', 'this_year', 'all_time'],
@@ -72,21 +64,15 @@ export type PeriodSelection =
   | { preset: 'custom'; start: string; end: string }
 
 export interface ResolvedPeriod {
-  /** null means All time: the API is sent no start and begins at the first trip (spec G11). */
+  /** null means All time: the API is sent no start and begins at the first trip. */
   start: string | null
   end: string
 }
 
 /** The SAST calendar date at `now`. */
 export function todaySast(now: Date = new Date()): string {
-  const parts = TODAY_FORMATTER.formatToParts(now)
-  const part = (type: Intl.DateTimeFormatPartTypes): string | undefined =>
-    parts.find((entry) => entry.type === type)?.value
-  const year = part('year')
-  const month = part('month')
-  const day = part('day')
-  if (!year || !month || !day) throw new Error('Unable to resolve the operations date')
-  return `${year}-${month}-${day}`
+  // A valid Date always yields a day; keeps the parameter so callers can ask about any instant.
+  return sastCalendarDay(now)!
 }
 
 function toDate(date: string): Date {
@@ -210,7 +196,7 @@ export function resolveTabQuery(
   }
 }
 
-/** Axis tick for a bucket (spec §7.7): a week is its Monday–Sunday range, "8–14 Sep", or
+/** Axis tick for a bucket: a week is its Monday–Sunday range, "8–14 Sep", or
  *  "29 Jun–5 Jul" / "29 Dec–4 Jan" across a month or year end, never with the year, to keep
  *  ticks short. Months read "Sep 2026" and years "2026". */
 export function fmtBucketLabel(start: string, grain: Grain): string {
@@ -261,12 +247,12 @@ export function daysInclusive(start: string, end: string): number {
   return Math.round((toDate(end).getTime() - toDate(start).getTime()) / (MS_PER_MINUTE * MINUTES_PER_HOUR * HOURS_PER_DAY)) + 1
 }
 
-/** Whether a period is long enough to compare months with each other fairly (chart 1.3). */
+/** Whether a period is long enough to compare months with each other fairly. */
 export function coversFullYear(start: string, end: string): boolean {
   return daysInclusive(start, end) >= DAYS_IN_YEAR
 }
 
-/** Why a partial bucket is faded (spec §3): "so far" while it is still running, otherwise
+/** Why a partial bucket is faded: "so far" while it is still running, otherwise
  *  "part week" / "part month" / "part year" because the period cuts it. */
 export function partialLabel(start: string, grain: Grain, today: string): string {
   const stillRunning = start <= today && today < nextBucketStart(start, grain)

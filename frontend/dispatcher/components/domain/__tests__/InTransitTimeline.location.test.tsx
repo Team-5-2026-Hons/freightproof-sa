@@ -36,7 +36,7 @@ function makeException(overrides: Partial<TripException> = {}): TripException {
     review_note: null,
     contact_method: null,
     vehicle_id: null,
-    merkle_batch_id: null,
+    merkle_batch_id: null, claimed_by_user_id: null, claimed_at: null, claimed_by_name: null, reviewed_by_name: null,
     created_at: '2026-01-02T02:00:00Z',
     updated_at: '2026-01-02T02:00:00Z',
     ...overrides,
@@ -128,7 +128,7 @@ describe('InTransitTimeline: journey nodes', () => {
     expect(within(marker).getByText('Panic Button')).toBeInTheDocument()
     expect(within(marker).getByText('Critical')).toBeInTheDocument()
     // The description, source and review link belong to the full card in the phase's
-    // exception branch; repeating them here would be the duplication task 9 removed.
+    // exception branch; repeating them here would duplicate what that card already shows.
     expect(screen.queryByText('Driver reported feeling unsafe at a roadside stop.')).not.toBeInTheDocument()
     const labels = screen.getAllByText(/Departed|Panic Button|Arrived/).map(node => node.textContent)
     expect(labels[0]).toContain('Departed')
@@ -153,10 +153,10 @@ describe('InTransitTimeline: journey nodes', () => {
   })
 })
 
-// Task 3: the arrival fix is shown, but the ABSENCE of a destination verdict is the
-// required behaviour: an in-transit leg's stop is its ORIGIN, so drawing a boundary
-// against an arrival fix would compare it to the wrong fence (see the brief's binding
-// rule). Kept behind the card's disclosure, separate from the journey above.
+// The arrival fix is shown, but the ABSENCE of a destination verdict is the required
+// behaviour: an in-transit leg's stop is its ORIGIN, so drawing a boundary against an
+// arrival fix would compare it to the wrong fence. Kept behind the card's disclosure,
+// separate from the journey above.
 describe('InTransitArrivalLocation: recorded location at arrival', () => {
   it('renders nothing when no fix was recorded', () => {
     const { container } = render(

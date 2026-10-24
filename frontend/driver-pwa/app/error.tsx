@@ -2,7 +2,7 @@
 
 // Route-level error boundary (Next.js App Router convention file). Catches render and
 // runtime errors from any page under the root layout, so a crash shows recovery UI
-// instead of a blank white screen mid-handshake. This is purely client-side React —
+// instead of a blank white screen mid-phase. This is purely client-side React —
 // exactly what output: 'export' supports, since a static export has no server error page.
 
 import { useEffect } from 'react'
@@ -33,12 +33,12 @@ export default function ErrorPage({ error, reset }: ErrorPageProps) {
         <h1 className="text-lg font-bold">Something went wrong</h1>
         <p className="text-sm opacity-90">
           The app hit a problem and couldn&rsquo;t finish what it was doing.
-          Any photos or details you&rsquo;ve captured are saved on this device — nothing is lost.
+          Any photos or details you&rsquo;ve captured are saved on this device. Nothing is lost.
         </p>
       </div>
       <div className="flex w-full flex-col gap-3">
         <Button size="lg" onClick={reset}>
-          Try again
+          Try Again
         </Button>
         {/* Plain anchor (full page load), not client-side navigation, on purpose: after
             a crash the React tree may be broken, and a hard reload of Home is the most

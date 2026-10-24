@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { api, ApiError } from '@/lib/api/client'
+import { describeRoadCheck } from '@/lib/dev/presets'
 import type {
   CloseScanSessionRequest,
   CloseScanSessionResponse,
@@ -10,16 +11,43 @@ import type {
   ExceptionTriggerRequest,
   ExceptionTriggerResponse,
   FlushMockStateResponse,
+  MovePhoneRequest,
+  MovePhoneResponse,
   MoveTruckRequest,
   MoveTruckResponse,
   PpTriggerRequest,
   PpTriggerResponse,
+  RigScenarioRequest,
+  RigScenarioResponse,
+  RoadCheckResponse,
+  RoadFindingRead,
   ScanTriggerRequest,
   ScanTriggerResponse,
   WaypointRead,
 } from '@/lib/types/dev'
 
 const DEV_BASE = '/api/v1/dev'
+
+// Enough for a whole demo run to stay on screen; older entries only add scrolling.
+const MAX_ACTIVITY_ENTRIES = 20
+
+export interface ActivityEntry {
+  id: number
+  at: string
+  tone: 'ok' | 'error'
+  text: string
+  findings: RoadFindingRead[]
+}
+
+// Module scope rather than inside the hook, so `run`'s dependency list stays honest.
+function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.status === 404
+      ? `${err.message} (is DEV_PANEL_ENABLED set on the backend?)`
+      : err.message
+  }
+  return err instanceof Error ? err.message : String(err)
+}
 
 export interface UseDevTriggersResult {
   trips: DevTripSummary[]
@@ -35,6 +63,13 @@ export interface UseDevTriggersResult {
   flushMockState: () => Promise<FlushMockStateResponse | null>
   loadWaypoints: () => Promise<void>
   moveTruck: (body: MoveTruckRequest) => Promise<MoveTruckResponse | null>
+  // Separate from moveTruck on purpose: the phone and the tracker are independent
+  // controls, so a demo can place one without disturbing the other.
+  movePhone: (body: MovePhoneRequest) => Promise<MovePhoneResponse | null>
+  // Every action's outcome, newest first — the panel's record of what the presenter did.
+  activity: ActivityEntry[]
+  runRigScenario: (body: RigScenarioRequest) => Promise<RigScenarioResponse | null>
+  runRoadCheck: (tripId: string) => Promise<RoadCheckResponse | null>
 }
 
 /**
@@ -48,37 +83,42 @@ export function useDevTriggers(): UseDevTriggersResult {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
+  const nextActivityId = useRef(1)
 
-  const describeError = (err: unknown): string => {
-    if (err instanceof ApiError) {
-      return err.status === 404
-        ? `${err.message} (is DEV_PANEL_ENABLED set on the backend?)`
-        : err.message
-    }
-    return err instanceof Error ? err.message : String(err)
-  }
+  const log = useCallback((tone: ActivityEntry['tone'], text: string, findings: RoadFindingRead[] = []): void => {
+    const entry: ActivityEntry = { id: nextActivityId.current++, at: new Date().toISOString(), tone, text, findings }
+    setActivity(previous => [entry, ...previous].slice(0, MAX_ACTIVITY_ENTRIES))
+  }, [])
 
   // `describe` returning null means "this call has nothing to say" — used by the
   // silent refresh below, which must not overwrite the message from the action
-  // that triggered it.
+  // that triggered it. Every message and every failure also lands in the activity log;
+  // `findingsOf` attaches the exceptions a road check newly recorded to its entry.
   const run = useCallback(async <T,>(
     action: () => Promise<T>,
     describe: (result: T) => string | null,
+    findingsOf?: (result: T) => RoadFindingRead[],
   ): Promise<T | null> => {
     setIsLoading(true)
     setError(null)
     try {
       const result = await action()
       const message = describe(result)
-      if (message !== null) setLastResult(message)
+      if (message !== null) {
+        setLastResult(message)
+        log('ok', message, findingsOf ? findingsOf(result) : [])
+      }
       return result
     } catch (err: unknown) {
-      setError(describeError(err))
+      const message = describeError(err)
+      setError(message)
+      log('error', message)
       return null
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [log])
 
   const loadTrips = useCallback(async (options?: { readonly silent?: boolean }): Promise<void> => {
     await run(
@@ -174,7 +214,7 @@ export function useDevTriggers(): UseDevTriggersResult {
           const verdict = result.geofence_confirmed === null
             ? 'no verdict (tracker dark)'
             : result.geofence_confirmed ? 'geofence confirmed' : 'geofence failed'
-          // FP-197 Task 3: scenario mode names a real target stop; legacy waypoints
+          // FP-197: scenario mode names a real target stop; legacy waypoints
           // don't, so target_precinct_name is null for them and this suffix is empty.
           // The verdict itself always describes the EXPECTED (phase-ledger) stop —
           // named explicitly here so the toast can never read as if it graded the
@@ -189,9 +229,50 @@ export function useDevTriggers(): UseDevTriggersResult {
     [run],
   )
 
+  const movePhone = useCallback(
+    (body: MovePhoneRequest) =>
+      run(
+        () => api.post<MovePhoneResponse>(`${DEV_BASE}/phone/move`, body),
+        (result) => {
+          if (!result.staged) {
+            return "Phone released: the handset's own fix will be recorded again (device)."
+          }
+          // Says "simulated" out loud. A presenter who forgets a position is staged
+          // would otherwise read the resulting phase rows as genuine captures, and the
+          // ledger's own stamp is the only thing that still knows the difference.
+          return `Phone staged at ${result.precinct_name ?? 'the chosen stop'}`
+            + `: phases completed now record driver_position_source=${result.recorded_as}.`
+        },
+      ),
+    [run],
+  )
+
+  const newFindings = (result: RoadCheckResponse): RoadFindingRead[] =>
+    result.findings.filter(f => f.newly_recorded)
+
+  const runRigScenario = useCallback(
+    (body: RigScenarioRequest) =>
+      run(
+        () => api.post<RigScenarioResponse>(`${DEV_BASE}/tracker/scenario`, body),
+        (result) => `${result.label}. ${describeRoadCheck(result)}`,
+        newFindings,
+      ),
+    [run],
+  )
+
+  const runRoadCheck = useCallback(
+    (tripId: string) =>
+      run(
+        () => api.post<RoadCheckResponse>(`${DEV_BASE}/tracker/check`, { trip_id: tripId }),
+        (result) => describeRoadCheck(result),
+        newFindings,
+      ),
+    [run],
+  )
+
   return {
-    trips, waypoints, isLoading, error, lastResult,
+    trips, waypoints, isLoading, error, lastResult, activity,
     loadTrips, triggerScan, closeScanSession, triggerPpChange, triggerException, flushMockState,
-    loadWaypoints, moveTruck,
+    loadWaypoints, moveTruck, movePhone, runRigScenario, runRoadCheck,
   }
 }

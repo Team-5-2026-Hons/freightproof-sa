@@ -1,8 +1,6 @@
-// frontend/driver-pwa/lib/hooks/useTripAutoRefresh.ts
-//
 // Pure timing/visibility mechanism. Owns the interval, the foreground listeners, the
 // single-flight guard, and the offline skip — knows nothing about trips, TripContext, or
-// what a "refresh" means. See docs/superpowers/specs/2026-08-10-driver-pwa-trip-auto-refresh-design.md.
+// what a "refresh" means.
 'use client'
 
 import { useEffect, useRef } from 'react'
@@ -69,8 +67,17 @@ export function useTripAutoRefresh({ pollingEnabled, intervalMs, onRefresh }: Tr
       void runRefresh()
     }
 
+    // Reconnect is the third "catch up now" moment: everything that happened while the
+    // phone had no signal (a handover completed, an arrangement cancelled) is only learned
+    // by asking, and the next interval tick could be a full interval away — or never, when
+    // polling is off. The offline skip above made every tick during the outage a no-op.
+    function handleOnline(): void {
+      void runRefresh()
+    }
+
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
+    window.addEventListener('online', handleOnline)
 
     let intervalId: ReturnType<typeof setInterval> | null = null
     if (pollingEnabled) {
@@ -88,6 +95,7 @@ export function useTripAutoRefresh({ pollingEnabled, intervalMs, onRefresh }: Tr
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('online', handleOnline)
       if (intervalId !== null) clearInterval(intervalId)
     }
   }, [pollingEnabled, intervalMs])

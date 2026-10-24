@@ -5,8 +5,8 @@ from typing import Optional
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, column
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -36,10 +36,23 @@ class Organization(Base):
     )
 
 
+# RTT's JNB and FedEx's JNB are different depots, so a hub code is unique per principal.
+PP_HUB_CODE_INDEX = "uq_precincts_principal_pp_hub_code"
+
+
 class Precinct(Base):
     """Physical depot or warehouse governed by a principal organization."""
 
     __tablename__ = "precincts"
+    __table_args__ = (
+        Index(
+            PP_HUB_CODE_INDEX,
+            "principal_organization_id",
+            "pp_hub_code",
+            unique=True,
+            postgresql_where=column("pp_hub_code").is_not(None),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -50,9 +63,17 @@ class Precinct(Base):
     latitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     longitude: Mapped[Decimal] = mapped_column(Numeric(10, 7), nullable=False)
     geofence_radius_metres: Mapped[int] = mapped_column(Integer, nullable=False, server_default="200")
+    # Property outline as an open ring of [lat, lng] corners. NULL = the fence is the
+    # circle above; set = the outline IS the fence and the radius is not used for any
+    # verdict. JSONB rather than PostGIS: the check runs in Python (core/polygon.py), so
+    # the database only has to store and return the corners.
+    geofence_polygon: Mapped[Optional[list[list[float]]]] = mapped_column(JSONB, nullable=True)
     # Cross-org visibility opt-in; False means only the owning org's dispatchers can
     # see this precinct (SEC-PRECINCT-1).
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # PP hub code (e.g. "JNB") that a manifest's origin/destination resolves to (spec §7.2).
+    # Reference data for the PP mock, set by the seed scripts; not editable in the UI.
+    pp_hub_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

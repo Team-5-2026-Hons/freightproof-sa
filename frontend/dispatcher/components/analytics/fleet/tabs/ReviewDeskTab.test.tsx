@@ -62,13 +62,12 @@ beforeEach(() => {
 })
 
 describe('ReviewDeskTab', () => {
-  it('asks once and says the tab covers open and closed trips alike', async () => {
+  it('asks once for the tab period', async () => {
     mockedGet.mockResolvedValue(makeReview(true))
 
     renderTab()
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(PATH))
-    expect(screen.getByText(/on open and closed trips alike/)).toBeInTheDocument()
   })
 
   it('bands the waiting queue by age and links to it', async () => {
@@ -129,5 +128,17 @@ describe('ReviewDeskTab', () => {
     expect(await screen.findByText('No critical problems were reviewed in this period.')).toBeInTheDocument()
     expect(screen.getByText('No reviews were concluded in this period.')).toBeInTheDocument()
     expect(within(card('Is the pile growing?')).getByRole('button', { name: 'Show table' })).toBeInTheDocument()
+  })
+
+  it('names where What reviews concluded comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeReview(true))
+    renderTab()
+    const element = await waitFor(() => card('What reviews concluded'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: What reviews concluded' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Trips of any status, not just closed ones')
   })
 })

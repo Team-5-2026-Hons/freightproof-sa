@@ -34,7 +34,17 @@ const FIELD_LABELS: Record<string, string> = {
   latitude: 'Latitude',
   longitude: 'Longitude',
   geofence_radius_metres: 'Geofence radius (m)',
+  geofence_polygon: 'Property outline',
   is_shared: 'Shared with other organisations',
+}
+
+// Keys holding a list of [lat, lng] corners. Hundreds of raw coordinates tell a reader
+// nothing; the corner count does, and the anchored payload keeps every coordinate.
+const OUTLINE_KEYS = new Set(['geofence_polygon'])
+
+function formatOutline(value: unknown): string {
+  if (value === null || value === undefined) return 'None (radius applies)'
+  return Array.isArray(value) ? `${value.length} corners` : formatPrimitive(value)
 }
 
 // Keys that are bookkeeping/meta, never real changed-field values.
@@ -56,9 +66,16 @@ function labelFor(key: string): string {
   return FIELD_LABELS[key] ?? humanizeKey(key)
 }
 
-function formatPrimitive(value: unknown): string {
+// Only is_active is a status; every other flag (is_shared, ...) is a plain yes/no, so
+// "Shared with other organisations: Active" cannot appear.
+const STATUS_BOOLEAN_KEYS = new Set(['is_active'])
+
+function formatPrimitive(value: unknown, key?: string): string {
   if (value === null || value === undefined) return 'None'
-  if (typeof value === 'boolean') return value ? 'Active' : 'Inactive'
+  if (typeof value === 'boolean') {
+    if (key !== undefined && STATUS_BOOLEAN_KEYS.has(key)) return value ? 'Active' : 'Inactive'
+    return value ? 'Yes' : 'No'
+  }
   if (typeof value === 'string' || typeof value === 'number') return String(value)
   // Defensive fallback for anything unexpected (arrays, nested objects, etc).
   try {
@@ -94,7 +111,7 @@ export function describeChange(changedFields: Record<string, unknown>): ChangeRo
     if (typeof patch === 'object' && patch !== null) {
       const rows: ChangeRow[] = []
       for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
-        rows.push({ label: labelFor(key), value: formatPrimitive(value) })
+        rows.push({ label: labelFor(key), value: formatPrimitive(value, key) })
       }
       if (rows.length > 0) return rows
     }
@@ -114,14 +131,22 @@ export function describeChange(changedFields: Record<string, unknown>): ChangeRo
       continue
     }
 
+    if (OUTLINE_KEYS.has(key)) {
+      rows.push({
+        label: labelFor(key),
+        value: isFromToShape(value) ? `${formatOutline(value.from)} → ${formatOutline(value.to)}` : formatOutline(value),
+      })
+      continue
+    }
+
     if (isFromToShape(value)) {
-      const from = formatPrimitive(value.from)
-      const to = formatPrimitive(value.to)
+      const from = formatPrimitive(value.from, key)
+      const to = formatPrimitive(value.to, key)
       rows.push({ label: labelFor(key), value: `${from} → ${to}` })
       continue
     }
 
-    rows.push({ label: labelFor(key), value: formatPrimitive(value) })
+    rows.push({ label: labelFor(key), value: formatPrimitive(value, key) })
   }
 
   return rows

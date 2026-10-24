@@ -19,8 +19,7 @@ session_secret_hash is what stops a forwarded link. A capability token in a URL 
 BEARER credential: anyone holding the URL can spend it, so a receiver could screenshot it
 and send it to someone who was never at the delivery. Device binding is not available to
 us — no browser exposes a MAC address, and South African mobile IPs are CGNAT'd to
-uselessness (docs/iteration2-feedback-response-2026-08-25.md §7) — but BROWSER binding
-is. The first load of a token's page mints a second secret, returns it as an HttpOnly
+uselessness — but BROWSER binding is. The first load of a token's page mints a second secret, returns it as an HttpOnly
 cookie, and stores only its hash here; confirming requires both halves. A forwarded URL
 arrives at a browser with no cookie and mints no new one, because the minting is
 conditional on opened_at being NULL.

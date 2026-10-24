@@ -52,6 +52,16 @@ describe('LoginPage return-path redirect', () => {
     expect(mockPush).toHaveBeenCalledWith('/trips/detail/9f1c8b2a')
   })
 
+  it('ignores a saved developer-tools path and lands on the default page', async () => {
+    localStorage.setItem(RETURN_PATH_KEY, '/dev/design')
+    render(<LoginPage />)
+
+    await act(async () => { fillAndSubmit() })
+
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.home)
+    expect(localStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+  })
+
   it('consumes the saved return path so it cannot be reused by a later sign-in', async () => {
     localStorage.setItem(RETURN_PATH_KEY, '/trips/detail/9f1c8b2a')
     render(<LoginPage />)
@@ -78,5 +88,24 @@ describe('LoginPage return-path redirect', () => {
     await act(async () => { fillAndSubmit() })
 
     expect(mockPush).toHaveBeenCalledWith(ROUTES.home)
+  })
+
+  it('lands on the page chosen in Settings when there is no saved return path', async () => {
+    localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'exceptions', rowsPerPage: 25 }))
+    render(<LoginPage />)
+
+    await act(async () => { fillAndSubmit() })
+
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.exceptions)
+  })
+
+  it('lets a saved return path win over the chosen landing page', async () => {
+    localStorage.setItem('fp.preferences.v1', JSON.stringify({ landingPage: 'exceptions', rowsPerPage: 25 }))
+    localStorage.setItem(RETURN_PATH_KEY, '/trips/detail/9f1c8b2a')
+    render(<LoginPage />)
+
+    await act(async () => { fillAndSubmit() })
+
+    expect(mockPush).toHaveBeenCalledWith('/trips/detail/9f1c8b2a')
   })
 })

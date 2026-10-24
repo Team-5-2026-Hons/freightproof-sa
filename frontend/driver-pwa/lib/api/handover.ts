@@ -1,6 +1,4 @@
-// frontend/driver-pwa/lib/api/handover.ts
-//
-// The driver's half of the receiver handover (FP-155). Two calls, both authenticated as
+// The driver's half of the receiver handover. Two calls, both authenticated as
 // the driver: mint the next QR in the rotating series, and ask whether the receiver has
 // confirmed yet.
 //
@@ -52,8 +50,14 @@ export function issueHandoverToken(
   tripId: string,
   phaseEventId: string,
   force = false,
+  // The period the driver is initiating the receiver handover in. A former driver
+  // cannot issue a link; the server refuses a stale period rather than retargeting it.
+  custodySequence: number | null = null,
 ): Promise<HandoverTokenResponse> {
-  const query = force ? '?force=true' : ''
+  const params = new URLSearchParams()
+  if (force) params.set('force', 'true')
+  if (custodySequence !== null) params.set('custody_sequence', String(custodySequence))
+  const query = params.size > 0 ? `?${params.toString()}` : ''
   return api.post<HandoverTokenResponse>(
     `/api/v1/trips/${tripId}/phases/${phaseEventId}/handover/tokens${query}`,
   )

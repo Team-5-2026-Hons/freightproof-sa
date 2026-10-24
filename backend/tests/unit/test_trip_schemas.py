@@ -1,6 +1,6 @@
 """Unit tests for TripCreateRequest validation (trip creation redesign)."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -22,6 +22,8 @@ def _payload(**overrides):
         # (see TripCreateRequest.validate_request); orthogonal to the
         # consignment/trailer behaviour these tests exercise.
         planned_departure_at=datetime.now(timezone.utc),
+        # Arrival is required at creation (FP-139).
+        planned_arrival_at=datetime.now(timezone.utc) + timedelta(hours=10),
     )
     base.update(overrides)
     return base

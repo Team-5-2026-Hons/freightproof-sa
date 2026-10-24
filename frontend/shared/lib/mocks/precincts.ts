@@ -11,7 +11,7 @@ export const PRECINCT_CGY_CT_ID    = precinctId('a6b7c8d9-e0f1-4627-b071-8293041
 export const mockPrecincts: Precinct[] = [
   {
     id: PRECINCT_FEDEX_JHB_ID,
-    name: 'FedEx JHB — Linbro Park',
+    name: 'FedEx JHB · Linbro Park',
     principal_organization_id: FEDEX_ORG_ID,
     address: '14 Electron Avenue, Linbro Park, Johannesburg, 2065',
     latitude: -26.0942,
@@ -22,7 +22,7 @@ export const mockPrecincts: Precinct[] = [
   },
   {
     id: PRECINCT_FEDEX_DBN_ID,
-    name: 'FedEx DBN — Riverhorse Valley',
+    name: 'FedEx DBN · Riverhorse Valley',
     principal_organization_id: FEDEX_ORG_ID,
     address: '12 Sookhai Place, Riverhorse Valley Business Estate, Durban, 4017',
     latitude: -29.7942,
@@ -33,7 +33,7 @@ export const mockPrecincts: Precinct[] = [
   },
   {
     id: PRECINCT_CGY_JHB_ID,
-    name: 'Courier Guy JHB — Linbro Park',
+    name: 'Courier Guy JHB · Linbro Park',
     principal_organization_id: CGY_ORG_ID,
     address: '18 Atom Road, Linbro Park, Johannesburg, 2065',
     latitude: -26.0961,
@@ -44,7 +44,7 @@ export const mockPrecincts: Precinct[] = [
   },
   {
     id: PRECINCT_CGY_CT_ID,
-    name: 'Courier Guy CT — Montague Gardens',
+    name: 'Courier Guy CT · Montague Gardens',
     principal_organization_id: CGY_ORG_ID,
     address: '3 Midas Road, Montague Gardens, Cape Town, 7441',
     latitude: -33.8651,

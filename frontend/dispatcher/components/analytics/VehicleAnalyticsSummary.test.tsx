@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { defaultMonthRange, fmtMonthRange } from '@/lib/format/month'
@@ -88,8 +88,15 @@ function hasSeverityDot(label: string): boolean {
   return figureFor(label).querySelector('[aria-hidden="true"]') !== null
 }
 
+
+/** The source sits behind the frame's ⓘ, so open it before reading the line. */
+function sourceText(line: RegExp): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'About these figures' }))
+  return screen.getByText(line)
+}
+
 describe('VehicleAnalyticsSummary — loading and errors', () => {
-  it('shows a spinner while either request is loading', () => {
+  it('shows a skeleton while either request is loading', () => {
     renderSummary({}, { isLoading: true })
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument()
@@ -258,5 +265,20 @@ describe('VehicleAnalyticsSummary — trailer note', () => {
     renderSummary()
 
     expect(screen.queryByText(ANALYTICS_COPY.trailerNote)).not.toBeInTheDocument()
+  })
+
+  it('says where the figures come from, whether they loaded, were empty or failed', () => {
+    const line = /Closed trips this vehicle ran/
+
+    renderSummary()
+    expect(sourceText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ rows: [] })
+    expect(sourceText(line)).toBeInTheDocument()
+    cleanup()
+
+    renderSummary({ error: 'Server unavailable' })
+    expect(sourceText(line)).toBeInTheDocument()
   })
 })

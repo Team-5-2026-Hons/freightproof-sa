@@ -44,9 +44,6 @@ const phaseWithCounts = () =>
 
 const unloadingDraft: UnloadingEvidence = {
   waybillHandedOver: null,
-  sealNumberAtDestination: null,
-  sealIntactPhotoDataUrl: null,
-  sealIntactPhotoArtifactId: null,
   driverVisualCount: null,
   capturedAt: null,
 }
@@ -81,7 +78,6 @@ describe('F1 — unloading/VisualCount is a blind entry', () => {
   it('renders no reference count and no mismatch banner even when the phase carries every count', () => {
     render(
       <UnloadingVisualCount
-        tripId="t1"
         phase={phaseWithCounts()}
         stepIndex={3}
         draft={unloadingDraft}
@@ -96,7 +92,6 @@ describe('F1 — unloading/VisualCount is a blind entry', () => {
   it('still offers the driver their own destination count field', () => {
     render(
       <UnloadingVisualCount
-        tripId="t1"
         phase={phaseWithCounts()}
         stepIndex={3}
         draft={unloadingDraft}

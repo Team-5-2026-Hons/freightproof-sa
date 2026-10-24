@@ -9,6 +9,7 @@
 //   3. It stops everything once confirmed, so a closed handover does not keep polling.
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { useRotatingHandover } from '@/lib/hooks/useRotatingHandover'
 
 vi.mock('@/lib/api/handover', () => ({
@@ -27,6 +28,7 @@ const UNCONFIRMED = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  authenticateTestDriver(TRIP, 2)
   vi.mocked(issueHandoverToken).mockResolvedValue({
     scan_url: 'https://r.test/h/aaa',
     expires_at: '2026-09-13T10:10:00Z',
@@ -53,6 +55,48 @@ describe('useRotatingHandover', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
 
     expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('follows a server cadence that differs from the fallback', async () => {
+    vi.useFakeTimers()
+    vi.mocked(issueHandoverToken).mockResolvedValue({
+      scan_url: 'https://r.test/h/aaa',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 5,
+      receiver_opened: false,
+    })
+    renderHook(() => useRotatingHandover(TRIP, EVENT))
+    await vi.waitFor(() => expect(issueHandoverToken).toHaveBeenCalledTimes(1))
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+  })
+
+  it('adopts a new cadence the server announces on a later response', async () => {
+    vi.useFakeTimers()
+    vi.mocked(issueHandoverToken).mockResolvedValueOnce({
+      scan_url: 'https://r.test/h/aaa',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 5,
+      receiver_opened: false,
+    })
+    vi.mocked(issueHandoverToken).mockResolvedValue({
+      scan_url: 'https://r.test/h/bbb',
+      expires_at: '2026-09-13T10:10:00Z',
+      rotate_after_seconds: 30,
+      receiver_opened: false,
+    })
+    renderHook(() => useRotatingHandover(TRIP, EVENT))
+    await vi.waitFor(() => expect(issueHandoverToken).toHaveBeenCalledTimes(1))
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(29_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(2)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000) })
+    expect(issueHandoverToken).toHaveBeenCalledTimes(3)
   })
 
   it('stops re-issuing once the receiver has the link open', async () => {
@@ -130,7 +174,7 @@ describe('useRotatingHandover', () => {
 
     await act(async () => { result.current.forceNewCode() })
 
-    await waitFor(() => expect(issueHandoverToken).toHaveBeenCalledWith(TRIP, EVENT, true))
+    await waitFor(() => expect(issueHandoverToken).toHaveBeenCalledWith(TRIP, EVENT, true, 2))
   })
 
   it('a poll failure is swallowed rather than shown under a working QR', async () => {

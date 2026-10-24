@@ -7,8 +7,7 @@ Create Date: 2026-09-13
 FP-153 built the analytics read models as materialized views: a stored snapshot that only
 changes when something runs REFRESH. The refresh was left to a Celery beat schedule, and
 this team runs the app only on developer laptops, so nothing was ever running it. The
-snapshot froze and newly closed trips never appeared on the analytics screen
-(docs/design-notes/2026-09-13-live-analytics-views.md).
+snapshot froze and newly closed trips never appeared on the analytics screen.
 
 Measured on the shared database before this change: computing all five views live costs
 2.7 ms of database work in total, against a ~166 ms network round trip that every page load
@@ -32,7 +31,7 @@ are unchanged.
 A plain view has no index, so the unique indexes that REFRESH ... CONCURRENTLY needed go
 with the materialized views. The downgrade rebuilds them.
 
-As FP-153 §11.8 #2 warns, a later migration that alters or drops a column these views read
+As FP-153 warns, a later migration that alters or drops a column these views read
 must drop and recreate them: Postgres tracks that dependency for plain views too.
 
 Tests load UPGRADE_STATEMENTS and DOWNGRADE_STATEMENTS from this module, so the SQL under

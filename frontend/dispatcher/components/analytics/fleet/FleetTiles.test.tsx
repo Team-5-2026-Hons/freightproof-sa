@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { FleetTiles as FleetTilesData, UnusedVehicle } from '@shared/lib/types/fleet-analytics'
+import { ROUTES } from '@/lib/constants/routes'
 import { FleetTiles } from './FleetTiles'
 
 const NOW = new Date('2026-09-16T12:00:00Z')
@@ -44,7 +45,7 @@ describe('FleetTiles', () => {
     expect(within(tileLink('Live trips')).getByText('7')).toBeInTheDocument()
   })
 
-  it('shows only the four tiles, with no Parcels complete or Receipts owed (D26)', () => {
+  it('shows only the four tiles, with no Parcels complete or Receipts owed', () => {
     renderTiles(makeTiles())
 
     expect(screen.getAllByText(/^(Live trips|Critical Exceptions Waiting|Licences & discs|Unused vehicles)$/)).toHaveLength(4)
@@ -55,7 +56,7 @@ describe('FleetTiles', () => {
   it('links every tile to where the dispatcher acts on it', () => {
     renderTiles(makeTiles())
 
-    expect(tileLink('Live trips')).toHaveAttribute('href', '/dashboard')
+    expect(tileLink('Live trips')).toHaveAttribute('href', ROUTES.home)
     expect(tileLink('Critical Exceptions Waiting')).toHaveAttribute('href', '/exceptions')
     expect(tileLink('Unused vehicles')).toHaveAttribute('href', '/fleet/vehicles')
     expect(screen.getByRole('link', { name: 'Drivers' })).toHaveAttribute('href', '/fleet/drivers')
@@ -96,7 +97,7 @@ describe('FleetTiles', () => {
 
     const tile = tileLink('Unused vehicles')
     expect(within(tile).getByText('4')).toBeInTheDocument()
-    expect(within(tile).getByText('2 trucks · 2 trailers — H1, H2, T1, +1 more')).toBeInTheDocument()
+    expect(within(tile).getByText('2 trucks · 2 trailers: H1, H2, T1, +1 more')).toBeInTheDocument()
   })
 
   it('says every vehicle ran when none is unused', () => {
@@ -119,5 +120,21 @@ describe('FleetTiles', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Server unavailable')
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('says where the headline numbers come from, loaded, loading or errored', () => {
+    const line = /Counted live from this system.s trips/
+
+    const { unmount } = renderTiles(makeTiles())
+    expect(screen.getByText(line)).toBeInTheDocument()
+    unmount()
+
+    // The source does not depend on the data arriving, so it survives both other states.
+    const loading = renderTiles(null, { isLoading: true })
+    expect(screen.getByText(line)).toBeInTheDocument()
+    loading.unmount()
+
+    renderTiles(null, { error: 'Server unavailable' })
+    expect(screen.getByText(line)).toBeInTheDocument()
   })
 })

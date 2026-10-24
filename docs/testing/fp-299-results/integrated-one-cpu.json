@@ -1,0 +1,6803 @@
+{
+  "revision": "pytest-subprocess",
+  "dirty": false,
+  "source_sha256": "1bf17df7f48220cb322fdea8f3849acec8bcba4cc6cbabae74a08f4305cf6ad3",
+  "started_at": "2026-10-21T20:03:12.185592+00:00",
+  "python": "3.13.16",
+  "platform": "Linux-6.6.114.1-microsoft-standard-WSL2-x86_64-with-glibc2.41",
+  "cpu_count": 16,
+  "workers": 1,
+  "packages": {
+    "sqlalchemy": "2.0.55",
+    "asyncpg": "0.32.0",
+    "fastapi": "0.115.14",
+    "httpx": "0.27.0",
+    "pydantic": "2.14.0"
+  },
+  "transport": "in-process ASGI; real PostgreSQL via local TCP relay",
+  "auth": "synthetic identity override; real organization-scoped services",
+  "rate_limiting": false,
+  "provider": "scripted; real SQL and local Redis budget; zero simulated token cost",
+  "percentiles": "nearest rank, separately by outcome, milliseconds; warm-up excluded",
+  "profile": "ci",
+  "repetitions": 3,
+  "container_limits": {
+    "memory_bytes": "max",
+    "cpu_quota_period": "100000 100000"
+  },
+  "passed": true,
+  "budgets_seconds": {
+    "DB_CONNECT_TIMEOUT_SECONDS": 2.0,
+    "DB_POOL_TIMEOUT_SECONDS": 3.0,
+    "DB_COMMAND_TIMEOUT_SECONDS": 2.0,
+    "DB_CLEANUP_TIMEOUT_SECONDS": 1.0
+  },
+  "setup_timeout_seconds": 20.0,
+  "pool": {
+    "size": 2,
+    "max_overflow": 1,
+    "matches_code_default": true
+  },
+  "results": [
+    {
+      "scenario": "pool",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 10.0,
+      "watchdog_seconds": 15.0,
+      "stimulus": {
+        "held_slots": 3
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 3.0156,
+        "completed_http_per_second": 3.979,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "pool_timeout": 12
+        },
+        "database_operations": {
+          "checkout": 12
+        },
+        "latency_ms": {
+          "pool_timeout": {
+            "count": 12,
+            "min": 3008.072,
+            "max": 3013.102,
+            "p50": 3012.61,
+            "p95": 3013.102,
+            "p99": 3013.102
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3008.071652999206,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3009.7881559995585,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3010.1426849942072,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3011.85519000137,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.203956997837,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3012.6097750035115,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3013.085778999084,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3012.9203280012007,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.9812259983737,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3013.0973319974146,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3013.1023509966326,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3013.0812899951707,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1786,
+          "completed_http_per_second": 67.206,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 42.585,
+              "max": 176.971,
+              "p50": 99.941,
+              "p95": 176.971,
+              "p99": 176.971
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 42.650262999814004,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 42.585007002344355,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 62.59531699470244,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 70.79416699707508,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 87.46399499796098,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 99.94143700168934,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 110.80192100052955,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 119.55750400375109,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 140.33082999958424,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 149.23476800322533,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 160.34505900461227,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 176.97074000170687,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0106,
+          "completed_http_per_second": 94.059,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 10.564,
+              "max": 10.564,
+              "p50": 10.564,
+              "p95": 10.564,
+              "p99": 10.564
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 10.564039999735542,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1787
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 7,
+        "checkins": 7,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 7,
+          "min": 6.72,
+          "max": 3033.995,
+          "p50": 69.185,
+          "p95": 3033.995,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 1,
+          "trip_detail": 1,
+          "custody_list": 1,
+          "driver_analytics": 1,
+          "administrative": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 1,
+            "min": 36.219,
+            "max": 36.219,
+            "p50": 36.219,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 1,
+            "min": 69.185,
+            "max": 69.185,
+            "p50": 69.185,
+            "p95": 69.185,
+            "p99": 69.185
+          },
+          "custody_list": {
+            "count": 1,
+            "min": 6.72,
+            "max": 6.72,
+            "p50": 6.72,
+            "p95": 6.72,
+            "p99": 6.72
+          },
+          "driver_analytics": {
+            "count": 1,
+            "min": 18.58,
+            "max": 18.58,
+            "p50": 18.58,
+            "p95": 18.58,
+            "p99": 18.58
+          },
+          "administrative": {
+            "count": 3,
+            "min": 3017.376,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 20,
+        "checkins": 20,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 20,
+          "min": 6.72,
+          "max": 3033.995,
+          "p50": 23.91,
+          "p95": 3025.672,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 4,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 3,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 4,
+            "min": 17.446,
+            "max": 36.219,
+            "p50": 24.289,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 59.847,
+            "max": 86.845,
+            "p50": 69.185,
+            "p95": 86.845,
+            "p99": 86.845
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 6.72,
+            "max": 23.91,
+            "p50": 13.161,
+            "p95": 23.91,
+            "p99": 23.91
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 16.477,
+            "max": 19.7,
+            "p50": 17.429,
+            "p95": 19.7,
+            "p99": 19.7
+          },
+          "administrative": {
+            "count": 3,
+            "min": 3017.376,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 7.404,
+            "max": 7.404,
+            "p50": 7.404,
+            "p95": 7.404,
+            "p99": 7.404
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 1
+    },
+    {
+      "scenario": "pool",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 10.0,
+      "watchdog_seconds": 15.0,
+      "stimulus": {
+        "held_slots": 3
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 3.0155,
+        "completed_http_per_second": 3.979,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "pool_timeout": 12
+        },
+        "database_operations": {
+          "checkout": 12
+        },
+        "latency_ms": {
+          "pool_timeout": {
+            "count": 12,
+            "min": 3012.471,
+            "max": 3013.88,
+            "p50": 3013.314,
+            "p95": 3013.88,
+            "p99": 3013.88
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3013.8803599984385,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3013.747212004091,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3013.623712999106,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3013.5307919990737,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3013.444124000671,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3013.3456730036414,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3013.254625002446,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3013.314101001015,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.6442100008717,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3012.5766290002503,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3012.5058720004745,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3012.4713449986302,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1423,
+          "completed_http_per_second": 84.336,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 48.179,
+              "max": 140.527,
+              "p50": 94.146,
+              "p95": 140.527,
+              "p99": 140.527
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 48.17911300051492,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 50.33370699675288,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 53.94522999995388,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 69.71452499419684,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 80.10849200218217,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 94.14622499753023,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 95.8936579991132,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 103.33994699612958,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 112.80478499975288,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 120.79567099863198,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 125.13962799857836,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 140.52663600159576,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0085,
+          "completed_http_per_second": 118.327,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.382,
+              "max": 8.382,
+              "p50": 8.382,
+              "p95": 8.382,
+              "p99": 8.382
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.381863000977319,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1424
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 23,
+        "checkins": 23,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 23,
+          "min": 6.72,
+          "max": 3033.995,
+          "p50": 29.713,
+          "p95": 3028.299,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 4,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 6,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 4,
+            "min": 17.446,
+            "max": 36.219,
+            "p50": 24.289,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 59.847,
+            "max": 86.845,
+            "p50": 69.185,
+            "p95": 86.845,
+            "p99": 86.845
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 6.72,
+            "max": 23.91,
+            "p50": 13.161,
+            "p95": 23.91,
+            "p99": 23.91
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 16.477,
+            "max": 19.7,
+            "p50": 17.429,
+            "p95": 19.7,
+            "p99": 19.7
+          },
+          "administrative": {
+            "count": 6,
+            "min": 3017.26,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 7.404,
+            "max": 7.404,
+            "p50": 7.404,
+            "p95": 7.404,
+            "p99": 7.404
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 36,
+        "checkins": 36,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 36,
+          "min": 5.58,
+          "max": 3033.995,
+          "p50": 24.289,
+          "p95": 3028.299,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 7,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 6,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 7,
+            "min": 15.824,
+            "max": 36.219,
+            "p50": 26.031,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 39.539,
+            "max": 86.845,
+            "p50": 59.847,
+            "p95": 86.845,
+            "p99": 86.845
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 6.72,
+            "max": 28.549,
+            "p50": 16.179,
+            "p95": 28.549,
+            "p99": 28.549
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 9.155,
+            "max": 19.897,
+            "p50": 18.528,
+            "p95": 19.897,
+            "p99": 19.897
+          },
+          "administrative": {
+            "count": 6,
+            "min": 3017.26,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.58,
+            "max": 7.404,
+            "p50": 5.58,
+            "p95": 7.404,
+            "p99": 7.404
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 2
+    },
+    {
+      "scenario": "pool",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 10.0,
+      "watchdog_seconds": 15.0,
+      "stimulus": {
+        "held_slots": 3
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 3.0148,
+        "completed_http_per_second": 3.98,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "pool_timeout": 12
+        },
+        "database_operations": {
+          "checkout": 12
+        },
+        "latency_ms": {
+          "pool_timeout": {
+            "count": 12,
+            "min": 3012.217,
+            "max": 3012.774,
+            "p50": 3012.541,
+            "p95": 3012.774,
+            "p99": 3012.774
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.4551320041064,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3012.2609050013125,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3012.2168400048395,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3012.5410100008594,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.4426589973154,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3012.4068290024297,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3012.643488997128,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3012.773620997905,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.709807000647,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_detail",
+            "elapsed_ms": 3012.728464003885,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "custody_list",
+            "elapsed_ms": 3012.6590780055267,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "driver_analytics",
+            "elapsed_ms": 3012.6263549973373,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1523,
+          "completed_http_per_second": 78.805,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 50.681,
+              "max": 151.163,
+              "p50": 87.613,
+              "p95": 151.163,
+              "p99": 151.163
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 50.68092899455223,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 52.86937799974112,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 70.80048799980432,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 75.33039400004782,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 79.49821800139034,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 87.61310500267427,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 100.85373599576997,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 101.4112179982476,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 118.99090299993986,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 132.6251769933151,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 145.70509400073206,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 151.16328300064197,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0089,
+          "completed_http_per_second": 112.06,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.857,
+              "max": 8.857,
+              "p50": 8.857,
+              "p95": 8.857,
+              "p99": 8.857
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.856731998093892,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1524
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 39,
+        "checkins": 39,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 39,
+          "min": 5.58,
+          "max": 3033.995,
+          "p50": 28.549,
+          "p95": 3028.299,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 7,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 9,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 7,
+            "min": 15.824,
+            "max": 36.219,
+            "p50": 26.031,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 39.539,
+            "max": 86.845,
+            "p50": 59.847,
+            "p95": 86.845,
+            "p99": 86.845
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 6.72,
+            "max": 28.549,
+            "p50": 16.179,
+            "p95": 28.549,
+            "p99": 28.549
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 9.155,
+            "max": 19.897,
+            "p50": 18.528,
+            "p95": 19.897,
+            "p99": 19.897
+          },
+          "administrative": {
+            "count": 9,
+            "min": 3016.658,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.58,
+            "max": 7.404,
+            "p50": 5.58,
+            "p95": 7.404,
+            "p99": 7.404
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 52,
+        "checkins": 52,
+        "invalidations": 0,
+        "connection_hold_ms": {
+          "count": 52,
+          "min": 5.58,
+          "max": 3033.995,
+          "p50": 24.289,
+          "p95": 3027.422,
+          "p99": 3033.995
+        },
+        "checkouts_by_route": {
+          "trip_list": 10,
+          "trip_detail": 10,
+          "custody_list": 10,
+          "driver_analytics": 10,
+          "administrative": 9,
+          "notice_read": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 10,
+            "min": 11.119,
+            "max": 36.219,
+            "p50": 24.289,
+            "p95": 36.219,
+            "p99": 36.219
+          },
+          "trip_detail": {
+            "count": 10,
+            "min": 39.539,
+            "max": 86.845,
+            "p50": 59.847,
+            "p95": 86.845,
+            "p99": 86.845
+          },
+          "custody_list": {
+            "count": 10,
+            "min": 6.72,
+            "max": 30.025,
+            "p50": 14.728,
+            "p95": 30.025,
+            "p99": 30.025
+          },
+          "driver_analytics": {
+            "count": 10,
+            "min": 9.155,
+            "max": 19.897,
+            "p50": 17.784,
+            "p95": 19.897,
+            "p99": 19.897
+          },
+          "administrative": {
+            "count": 9,
+            "min": 3016.658,
+            "max": 3033.995,
+            "p50": 3025.672,
+            "p95": 3033.995,
+            "p99": 3033.995
+          },
+          "notice_read": {
+            "count": 3,
+            "min": 5.58,
+            "max": 7.404,
+            "p50": 6.021,
+            "p95": 7.404,
+            "p99": 7.404
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 3
+    },
+    {
+      "scenario": "command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "table_lock_acquired": true,
+        "statements_left_waiting": 0
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0488,
+        "completed_http_per_second": 2.964,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "command_timeout": 6,
+          "pool_timeout": 6
+        },
+        "database_operations": {
+          "command": 6,
+          "checkout": 6
+        },
+        "latency_ms": {
+          "command_timeout": {
+            "count": 6,
+            "min": 2024.986,
+            "max": 4047.581,
+            "p50": 2029.839,
+            "p95": 4047.581,
+            "p99": 4047.581
+          },
+          "pool_timeout": {
+            "count": 6,
+            "min": 3010.231,
+            "max": 3010.393,
+            "p50": 3010.275,
+            "p95": 3010.393,
+            "p99": 3010.393
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2024.986242999148,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2027.472943002067,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2029.8393120028777,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.39304099686,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.3564500022912,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.311161997379,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.275451997586,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.2314069954446,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.2322390011977,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4047.339133998321,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4047.581013997842,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4047.578699995938,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1576,
+          "completed_http_per_second": 76.142,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 44.169,
+              "max": 155.805,
+              "p50": 94.167,
+              "p95": 155.805,
+              "p99": 155.805
+            }
+          },
+          "samples": [
+            {
+              "route": "custody_list",
+              "elapsed_ms": 44.1689600047539,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 53.74830400251085,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 67.24544600001536,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 68.72072999976808,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 82.0324750020518,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 94.16711499943631,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 109.20726599579211,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 118.22821899841074,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 135.43216199468588,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 148.11908199772006,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 147.93292199465213,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 155.80476700415602,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0109,
+          "completed_http_per_second": 92.126,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 10.777,
+              "max": 10.777,
+              "p50": 10.777,
+              "p95": 10.777,
+              "p99": 10.777
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 10.776577997603454,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1577
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 10,
+        "checkins": 10,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 10,
+          "min": 7.05,
+          "max": 2012.229,
+          "p50": 2008.121,
+          "p95": 2012.229,
+          "p99": 2012.229
+        },
+        "checkouts_by_route": {
+          "trip_list": 7,
+          "trip_detail": 1,
+          "custody_list": 1,
+          "driver_analytics": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 7,
+            "min": 34.833,
+            "max": 2012.229,
+            "p50": 2011.346,
+            "p95": 2012.229,
+            "p99": 2012.229
+          },
+          "trip_detail": {
+            "count": 1,
+            "min": 64.027,
+            "max": 64.027,
+            "p50": 64.027,
+            "p95": 64.027,
+            "p99": 64.027
+          },
+          "custody_list": {
+            "count": 1,
+            "min": 7.05,
+            "max": 7.05,
+            "p50": 7.05,
+            "p95": 7.05,
+            "p99": 7.05
+          },
+          "driver_analytics": {
+            "count": 1,
+            "min": 18.656,
+            "max": 18.656,
+            "p50": 18.656,
+            "p95": 18.656,
+            "p99": 18.656
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 23,
+        "checkins": 23,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 23,
+          "min": 7.05,
+          "max": 2012.229,
+          "p50": 30.051,
+          "p95": 2012.154,
+          "p99": 2012.229
+        },
+        "checkouts_by_route": {
+          "trip_list": 10,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 10,
+            "min": 12.156,
+            "max": 2012.229,
+            "p50": 2008.121,
+            "p95": 2012.229,
+            "p99": 2012.229
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 41.386,
+            "max": 86.011,
+            "p50": 64.027,
+            "p95": 86.011,
+            "p99": 86.011
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 7.05,
+            "max": 22.311,
+            "p50": 11.24,
+            "p95": 22.311,
+            "p99": 22.311
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 9.366,
+            "max": 22.609,
+            "p50": 9.691,
+            "p95": 22.609,
+            "p99": 22.609
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 8.118,
+            "max": 8.118,
+            "p50": 8.118,
+            "p95": 8.118,
+            "p99": 8.118
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 1
+    },
+    {
+      "scenario": "command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "table_lock_acquired": true,
+        "statements_left_waiting": 0
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0463,
+        "completed_http_per_second": 2.966,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "command_timeout": 6,
+          "pool_timeout": 6
+        },
+        "database_operations": {
+          "command": 6,
+          "checkout": 6
+        },
+        "latency_ms": {
+          "command_timeout": {
+            "count": 6,
+            "min": 2025.791,
+            "max": 4045.492,
+            "p50": 2027.061,
+            "p95": 4045.492,
+            "p99": 4045.492
+          },
+          "pool_timeout": {
+            "count": 6,
+            "min": 3010.464,
+            "max": 3010.507,
+            "p50": 3010.469,
+            "p95": 3010.507,
+            "p99": 3010.507
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2025.9853929965175,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2025.7906959959655,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2027.0609020008123,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.506937993341,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.4902060047607,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.464024999237,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.4674519971013,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.4957170042326,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.4691550004645,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4044.688041001791,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4045.1613500044914,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4045.492462995753,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1662,
+          "completed_http_per_second": 72.199,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 44.558,
+              "max": 163.952,
+              "p50": 100.863,
+              "p95": 163.952,
+              "p99": 163.952
+            }
+          },
+          "samples": [
+            {
+              "route": "custody_list",
+              "elapsed_ms": 44.558437999512535,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 51.72273000061978,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 64.79369899898302,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 73.43110499641625,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 88.46546399581712,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 100.86307800520444,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 114.89889700169442,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 127.10908400185872,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 142.792685997847,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 143.5938009963138,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 154.88358999573393,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 163.95225599990226,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0085,
+          "completed_http_per_second": 118.25,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.384,
+              "max": 8.384,
+              "p50": 8.384,
+              "p95": 8.384,
+              "p99": 8.384
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.38371899590129,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1663
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 29,
+        "checkins": 29,
+        "invalidations": 12,
+        "connection_hold_ms": {
+          "count": 29,
+          "min": 7.05,
+          "max": 2012.229,
+          "p50": 64.027,
+          "p95": 2012.154,
+          "p99": 2012.229
+        },
+        "checkouts_by_route": {
+          "trip_list": 16,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 16,
+            "min": 12.156,
+            "max": 2012.229,
+            "p50": 2010.77,
+            "p95": 2012.229,
+            "p99": 2012.229
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 41.386,
+            "max": 86.011,
+            "p50": 64.027,
+            "p95": 86.011,
+            "p99": 86.011
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 7.05,
+            "max": 22.311,
+            "p50": 11.24,
+            "p95": 22.311,
+            "p99": 22.311
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 9.366,
+            "max": 22.609,
+            "p50": 9.691,
+            "p95": 22.609,
+            "p99": 22.609
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 8.118,
+            "max": 8.118,
+            "p50": 8.118,
+            "p95": 8.118,
+            "p99": 8.118
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 42,
+        "checkins": 42,
+        "invalidations": 12,
+        "connection_hold_ms": {
+          "count": 42,
+          "min": 5.612,
+          "max": 2012.229,
+          "p50": 30.051,
+          "p95": 2011.795,
+          "p99": 2012.229
+        },
+        "checkouts_by_route": {
+          "trip_list": 19,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 19,
+            "min": 11.647,
+            "max": 2012.229,
+            "p50": 2008.666,
+            "p95": 2012.229,
+            "p99": 2012.229
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 38.841,
+            "max": 92.414,
+            "p50": 75.536,
+            "p95": 92.414,
+            "p99": 92.414
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 7.05,
+            "max": 24.235,
+            "p50": 13.818,
+            "p95": 24.235,
+            "p99": 24.235
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 9.302,
+            "max": 25.008,
+            "p50": 16.487,
+            "p95": 25.008,
+            "p99": 25.008
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.612,
+            "max": 8.118,
+            "p50": 5.612,
+            "p95": 8.118,
+            "p99": 8.118
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 2
+    },
+    {
+      "scenario": "command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "table_lock_acquired": true,
+        "statements_left_waiting": 0
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0457,
+        "completed_http_per_second": 2.966,
+        "statuses": {
+          "503": 12
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 0,
+        "database_503s": 12,
+        "database_reasons": {
+          "command_timeout": 6,
+          "pool_timeout": 6
+        },
+        "database_operations": {
+          "command": 6,
+          "checkout": 6
+        },
+        "latency_ms": {
+          "command_timeout": {
+            "count": 6,
+            "min": 2025.176,
+            "max": 4044.753,
+            "p50": 2026.571,
+            "p95": 4044.753,
+            "p99": 4044.753
+          },
+          "pool_timeout": {
+            "count": 6,
+            "min": 3011.565,
+            "max": 3012.092,
+            "p50": 3011.851,
+            "p95": 3012.092,
+            "p99": 3012.092
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2025.1756259967806,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2025.8869969984517,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2026.5706540012616,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.5652090025833,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.7504189984174,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.851294002554,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.9196670057136,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.9789020027383,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.0917909953278,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4044.411090995709,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4044.4475219992455,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4044.7529750017566,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1677,
+          "completed_http_per_second": 71.549,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 46.981,
+              "max": 165.66,
+              "p50": 98.963,
+              "p95": 165.66,
+              "p99": 165.66
+            }
+          },
+          "samples": [
+            {
+              "route": "custody_list",
+              "elapsed_ms": 46.98053300671745,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 51.6902300005313,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 63.083798995648976,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 73.86986300116405,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 87.46912799688289,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 98.96337299869629,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 109.1779950002092,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 127.09342800371815,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 144.36955300334375,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 144.34130799781997,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 152.80481999798212,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 165.65968999930192,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.008,
+          "completed_http_per_second": 124.948,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 7.94,
+              "max": 7.94,
+              "p50": 7.94,
+              "p95": 7.94,
+              "p99": 7.94
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 7.9399820024264045,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1678
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 48,
+        "checkins": 48,
+        "invalidations": 18,
+        "connection_hold_ms": {
+          "count": 48,
+          "min": 5.612,
+          "max": 2012.271,
+          "p50": 38.841,
+          "p95": 2012.154,
+          "p99": 2012.271
+        },
+        "checkouts_by_route": {
+          "trip_list": 25,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 25,
+            "min": 11.647,
+            "max": 2012.271,
+            "p50": 2010.77,
+            "p95": 2012.229,
+            "p99": 2012.271
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 38.841,
+            "max": 92.414,
+            "p50": 75.536,
+            "p95": 92.414,
+            "p99": 92.414
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 7.05,
+            "max": 24.235,
+            "p50": 13.818,
+            "p95": 24.235,
+            "p99": 24.235
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 9.302,
+            "max": 25.008,
+            "p50": 16.487,
+            "p95": 25.008,
+            "p99": 25.008
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.612,
+            "max": 8.118,
+            "p50": 5.612,
+            "p95": 8.118,
+            "p99": 8.118
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 61,
+        "checkins": 61,
+        "invalidations": 18,
+        "connection_hold_ms": {
+          "count": 61,
+          "min": 5.353,
+          "max": 2012.271,
+          "p50": 31.152,
+          "p95": 2011.795,
+          "p99": 2012.271
+        },
+        "checkouts_by_route": {
+          "trip_list": 28,
+          "trip_detail": 10,
+          "custody_list": 10,
+          "driver_analytics": 10,
+          "notice_read": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 28,
+            "min": 10.574,
+            "max": 2012.271,
+            "p50": 2009.413,
+            "p95": 2012.229,
+            "p99": 2012.271
+          },
+          "trip_detail": {
+            "count": 10,
+            "min": 38.841,
+            "max": 92.414,
+            "p50": 75.536,
+            "p95": 92.414,
+            "p99": 92.414
+          },
+          "custody_list": {
+            "count": 10,
+            "min": 7.05,
+            "max": 24.79,
+            "p50": 13.15,
+            "p95": 24.79,
+            "p99": 24.79
+          },
+          "driver_analytics": {
+            "count": 10,
+            "min": 9.302,
+            "max": 25.008,
+            "p50": 16.238,
+            "p95": 25.008,
+            "p99": 25.008
+          },
+          "notice_read": {
+            "count": 3,
+            "min": 5.353,
+            "max": 8.118,
+            "p50": 5.612,
+            "p95": 8.118,
+            "p99": 8.118
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 3
+    },
+    {
+      "scenario": "half_open_command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_after_checkout": true
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0163,
+        "completed_http_per_second": 2.988,
+        "statuses": {
+          "503": 11,
+          "200": 1
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 1,
+        "database_503s": 11,
+        "database_reasons": {
+          "connect_timeout": 1,
+          "pool_timeout": 8,
+          "checkout_timeout": 1,
+          "command_timeout": 1
+        },
+        "database_operations": {
+          "connect": 1,
+          "checkout": 9,
+          "command": 1
+        },
+        "latency_ms": {
+          "200": {
+            "count": 1,
+            "min": 3051.05,
+            "max": 3051.05,
+            "p50": 3051.05,
+            "p95": 3051.05,
+            "p99": 3051.05
+          },
+          "checkout_timeout": {
+            "count": 1,
+            "min": 4016.09,
+            "max": 4016.09,
+            "p50": 4016.09,
+            "p95": 4016.09,
+            "p99": 4016.09
+          },
+          "command_timeout": {
+            "count": 1,
+            "min": 4015.866,
+            "max": 4015.866,
+            "p50": 4015.866,
+            "p95": 4015.866,
+            "p99": 4015.866
+          },
+          "connect_timeout": {
+            "count": 1,
+            "min": 2008.873,
+            "max": 2008.873,
+            "p50": 2008.873,
+            "p95": 2008.873,
+            "p99": 2008.873
+          },
+          "pool_timeout": {
+            "count": 8,
+            "min": 3011.63,
+            "max": 3012.349,
+            "p50": 3011.692,
+            "p95": 3012.349,
+            "p99": 3012.349
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2008.8733900047373,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "connect_timeout",
+            "operation": "connect",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.2424329965725,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.225140002556,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.3488000026555,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.7753999948036,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.692027997924,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.633032998361,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.6763379992335,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.6298770008143,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3051.0502250035643,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4016.0899210022762,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4015.86611699895,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1671,
+          "completed_http_per_second": 71.794,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 25.485,
+              "max": 165.624,
+              "p50": 96.175,
+              "p95": 165.624,
+              "p99": 165.624
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 25.485349004156888,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 44.38592599763069,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 47.964526995201595,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 60.559460005606525,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 83.08478399703745,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 96.17453999817371,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 112.74031500215642,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 114.76745000254596,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 128.70801700046286,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 130.59144400176592,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 148.18947999447118,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 165.6237869974575,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0094,
+          "completed_http_per_second": 106.025,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 9.367,
+              "max": 9.367,
+              "p50": 9.367,
+              "p95": 9.367,
+              "p99": 9.367
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 9.36721699690679,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1672
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 9,
+        "checkins": 10,
+        "invalidations": 2,
+        "connection_hold_ms": {
+          "count": 9,
+          "min": 1.833,
+          "max": 4002.929,
+          "p50": 17.72,
+          "p95": 4002.929,
+          "p99": 4002.929
+        },
+        "checkouts_by_route": {
+          "trip_list": 3,
+          "trip_detail": 1,
+          "custody_list": 1,
+          "driver_analytics": 1,
+          "administrative": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 3,
+            "min": 30.674,
+            "max": 4002.929,
+            "p50": 31.945,
+            "p95": 4002.929,
+            "p99": 4002.929
+          },
+          "trip_detail": {
+            "count": 1,
+            "min": 59.245,
+            "max": 59.245,
+            "p50": 59.245,
+            "p95": 59.245,
+            "p99": 59.245
+          },
+          "custody_list": {
+            "count": 1,
+            "min": 7.314,
+            "max": 7.314,
+            "p50": 7.314,
+            "p95": 7.314,
+            "p99": 7.314
+          },
+          "driver_analytics": {
+            "count": 1,
+            "min": 17.72,
+            "max": 17.72,
+            "p50": 17.72,
+            "p95": 17.72,
+            "p99": 17.72
+          },
+          "administrative": {
+            "count": 3,
+            "min": 1.833,
+            "max": 8.478,
+            "p50": 2.96,
+            "p95": 8.478,
+            "p99": 8.478
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 22,
+        "checkins": 23,
+        "invalidations": 2,
+        "connection_hold_ms": {
+          "count": 22,
+          "min": 1.833,
+          "max": 4002.929,
+          "p50": 16.872,
+          "p95": 90.143,
+          "p99": 4002.929
+        },
+        "checkouts_by_route": {
+          "trip_list": 6,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 3,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 6,
+            "min": 11.889,
+            "max": 4002.929,
+            "p50": 13.422,
+            "p95": 4002.929,
+            "p99": 4002.929
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 46.912,
+            "max": 90.143,
+            "p50": 59.245,
+            "p95": 90.143,
+            "p99": 90.143
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 7.314,
+            "max": 25.745,
+            "p50": 12.127,
+            "p95": 25.745,
+            "p99": 25.745
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 10.166,
+            "max": 17.72,
+            "p50": 16.872,
+            "p95": 17.72,
+            "p99": 17.72
+          },
+          "administrative": {
+            "count": 3,
+            "min": 1.833,
+            "max": 8.478,
+            "p50": 2.96,
+            "p95": 8.478,
+            "p99": 8.478
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 6.684,
+            "max": 6.684,
+            "p50": 6.684,
+            "p95": 6.684,
+            "p99": 6.684
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 1
+    },
+    {
+      "scenario": "half_open_command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_after_checkout": true
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0176,
+        "completed_http_per_second": 2.987,
+        "statuses": {
+          "503": 11,
+          "200": 1
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 1,
+        "database_503s": 11,
+        "database_reasons": {
+          "connect_timeout": 1,
+          "pool_timeout": 8,
+          "checkout_timeout": 1,
+          "command_timeout": 1
+        },
+        "database_operations": {
+          "connect": 1,
+          "checkout": 9,
+          "command": 1
+        },
+        "latency_ms": {
+          "200": {
+            "count": 1,
+            "min": 3052.113,
+            "max": 3052.113,
+            "p50": 3052.113,
+            "p95": 3052.113,
+            "p99": 3052.113
+          },
+          "checkout_timeout": {
+            "count": 1,
+            "min": 4017.341,
+            "max": 4017.341,
+            "p50": 4017.341,
+            "p95": 4017.341,
+            "p99": 4017.341
+          },
+          "command_timeout": {
+            "count": 1,
+            "min": 4017.131,
+            "max": 4017.131,
+            "p50": 4017.131,
+            "p95": 4017.131,
+            "p99": 4017.131
+          },
+          "connect_timeout": {
+            "count": 1,
+            "min": 2008.964,
+            "max": 2008.964,
+            "p50": 2008.964,
+            "p95": 2008.964,
+            "p99": 2008.964
+          },
+          "pool_timeout": {
+            "count": 8,
+            "min": 3009.826,
+            "max": 3012.304,
+            "p50": 3010.305,
+            "p95": 3012.304,
+            "p99": 3012.304
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2008.9638030040078,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "connect_timeout",
+            "operation": "connect",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3009.8779239997384,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3009.8543779968168,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3009.825973000261,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3010.305233001418,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.1638019991224,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.2346999996807,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.3041050028405,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3012.291250000999,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3052.1134470036486,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4017.340691003483,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4017.1312739985297,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1718,
+          "completed_http_per_second": 69.85,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 26.659,
+              "max": 170.231,
+              "p50": 96.257,
+              "p95": 170.231,
+              "p99": 170.231
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 26.65930699731689,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 46.171452006092295,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 48.893746999965515,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 60.95138000091538,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 82.328921998851,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 96.25706299993908,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 114.02709600224625,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 115.44924799818546,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 131.59932599955937,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 135.39010800013784,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 151.22818199597532,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 170.23131099995226,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0081,
+          "completed_http_per_second": 122.902,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.074,
+              "max": 8.074,
+              "p50": 8.074,
+              "p95": 8.074,
+              "p99": 8.074
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.073554003203753,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1718
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 27,
+        "checkins": 29,
+        "invalidations": 4,
+        "connection_hold_ms": {
+          "count": 27,
+          "min": 1.833,
+          "max": 4002.929,
+          "p50": 16.872,
+          "p95": 4002.874,
+          "p99": 4002.929
+        },
+        "checkouts_by_route": {
+          "trip_list": 8,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 6,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 8,
+            "min": 11.889,
+            "max": 4002.929,
+            "p50": 30.674,
+            "p95": 4002.929,
+            "p99": 4002.929
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 46.912,
+            "max": 90.143,
+            "p50": 59.245,
+            "p95": 90.143,
+            "p99": 90.143
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 7.314,
+            "max": 25.745,
+            "p50": 12.127,
+            "p95": 25.745,
+            "p99": 25.745
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 10.166,
+            "max": 17.72,
+            "p50": 16.872,
+            "p95": 17.72,
+            "p99": 17.72
+          },
+          "administrative": {
+            "count": 6,
+            "min": 1.833,
+            "max": 8.478,
+            "p50": 2.96,
+            "p95": 8.478,
+            "p99": 8.478
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 6.684,
+            "max": 6.684,
+            "p50": 6.684,
+            "p95": 6.684,
+            "p99": 6.684
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 40,
+        "checkins": 42,
+        "invalidations": 4,
+        "connection_hold_ms": {
+          "count": 40,
+          "min": 1.833,
+          "max": 4002.929,
+          "p50": 16.621,
+          "p95": 90.799,
+          "p99": 4002.929
+        },
+        "checkouts_by_route": {
+          "trip_list": 11,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 6,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 11,
+            "min": 11.703,
+            "max": 4002.929,
+            "p50": 13.647,
+            "p95": 4002.929,
+            "p99": 4002.929
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 46.912,
+            "max": 90.799,
+            "p50": 78.903,
+            "p95": 90.799,
+            "p99": 90.799
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 7.314,
+            "max": 25.745,
+            "p50": 18.23,
+            "p95": 25.745,
+            "p99": 25.745
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 10.166,
+            "max": 17.912,
+            "p50": 16.872,
+            "p95": 17.912,
+            "p99": 17.912
+          },
+          "administrative": {
+            "count": 6,
+            "min": 1.833,
+            "max": 8.478,
+            "p50": 2.96,
+            "p95": 8.478,
+            "p99": 8.478
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.486,
+            "max": 6.684,
+            "p50": 5.486,
+            "p95": 6.684,
+            "p99": 6.684
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 2
+    },
+    {
+      "scenario": "half_open_command",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_after_checkout": true
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0165,
+        "completed_http_per_second": 2.988,
+        "statuses": {
+          "503": 11,
+          "200": 1
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 1,
+        "database_503s": 11,
+        "database_reasons": {
+          "connect_timeout": 1,
+          "pool_timeout": 8,
+          "checkout_timeout": 1,
+          "command_timeout": 1
+        },
+        "database_operations": {
+          "connect": 1,
+          "checkout": 9,
+          "command": 1
+        },
+        "latency_ms": {
+          "200": {
+            "count": 1,
+            "min": 3044.044,
+            "max": 3044.044,
+            "p50": 3044.044,
+            "p95": 3044.044,
+            "p99": 3044.044
+          },
+          "checkout_timeout": {
+            "count": 1,
+            "min": 4016.302,
+            "max": 4016.302,
+            "p50": 4016.302,
+            "p95": 4016.302,
+            "p99": 4016.302
+          },
+          "command_timeout": {
+            "count": 1,
+            "min": 4016.097,
+            "max": 4016.097,
+            "p50": 4016.097,
+            "p95": 4016.097,
+            "p99": 4016.097
+          },
+          "connect_timeout": {
+            "count": 1,
+            "min": 2008.755,
+            "max": 2008.755,
+            "p50": 2008.755,
+            "p95": 2008.755,
+            "p99": 2008.755
+          },
+          "pool_timeout": {
+            "count": 8,
+            "min": 3011.398,
+            "max": 3011.514,
+            "p50": 3011.462,
+            "p95": 3011.514,
+            "p99": 3011.514
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 2008.755144001043,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "connect_timeout",
+            "operation": "connect",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.461567999504,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.463321003248,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.398464994272,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.51397999638,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.478200001875,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.4183940022485,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.4615580023383,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3011.3987059958163,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "pool_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 3044.0444159976323,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4016.3017149970983,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4016.0966770054074,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "command_timeout",
+            "operation": "command",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1698,
+          "completed_http_per_second": 70.692,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 26.401,
+              "max": 168.07,
+              "p50": 92.417,
+              "p95": 168.07,
+              "p99": 168.07
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 26.40071800124133,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 43.55466899869498,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 47.81964100402547,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 57.844205999572296,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 79.37493200006429,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 92.41723699960858,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 110.87362300168024,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 117.3123049957212,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 132.53329900180688,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 133.5973660025047,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 150.17517399974167,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 168.06980600085808,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0084,
+          "completed_http_per_second": 119.488,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.293,
+              "max": 8.293,
+              "p50": 8.293,
+              "p95": 8.293,
+              "p99": 8.293
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.293204999063164,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1698
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 45,
+        "checkins": 48,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 45,
+          "min": 1.801,
+          "max": 4003.258,
+          "p50": 16.621,
+          "p95": 4002.874,
+          "p99": 4003.258
+        },
+        "checkouts_by_route": {
+          "trip_list": 13,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 9,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 13,
+            "min": 11.703,
+            "max": 4003.258,
+            "p50": 24.552,
+            "p95": 4003.258,
+            "p99": 4003.258
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 46.912,
+            "max": 90.799,
+            "p50": 78.903,
+            "p95": 90.799,
+            "p99": 90.799
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 7.314,
+            "max": 25.745,
+            "p50": 18.23,
+            "p95": 25.745,
+            "p99": 25.745
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 10.166,
+            "max": 17.912,
+            "p50": 16.872,
+            "p95": 17.912,
+            "p99": 17.912
+          },
+          "administrative": {
+            "count": 9,
+            "min": 1.801,
+            "max": 8.478,
+            "p50": 7.171,
+            "p95": 8.478,
+            "p99": 8.478
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 5.486,
+            "max": 6.684,
+            "p50": 5.486,
+            "p95": 6.684,
+            "p99": 6.684
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 58,
+        "checkins": 61,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 58,
+          "min": 1.801,
+          "max": 4003.258,
+          "p50": 15.52,
+          "p95": 4002.874,
+          "p99": 4003.258
+        },
+        "checkouts_by_route": {
+          "trip_list": 16,
+          "trip_detail": 10,
+          "custody_list": 10,
+          "driver_analytics": 10,
+          "administrative": 9,
+          "notice_read": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 16,
+            "min": 11.517,
+            "max": 4003.258,
+            "p50": 13.647,
+            "p95": 4003.258,
+            "p99": 4003.258
+          },
+          "trip_detail": {
+            "count": 10,
+            "min": 46.912,
+            "max": 93.422,
+            "p50": 78.903,
+            "p95": 93.422,
+            "p99": 93.422
+          },
+          "custody_list": {
+            "count": 10,
+            "min": 7.314,
+            "max": 25.745,
+            "p50": 18.23,
+            "p95": 25.745,
+            "p99": 25.745
+          },
+          "driver_analytics": {
+            "count": 10,
+            "min": 9.308,
+            "max": 17.912,
+            "p50": 16.351,
+            "p95": 17.912,
+            "p99": 17.912
+          },
+          "administrative": {
+            "count": 9,
+            "min": 1.801,
+            "max": 8.478,
+            "p50": 7.171,
+            "p95": 8.478,
+            "p99": 8.478
+          },
+          "notice_read": {
+            "count": 3,
+            "min": 5.486,
+            "max": 6.684,
+            "p50": 5.699,
+            "p95": 6.684,
+            "p99": 6.684
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 3
+    },
+    {
+      "scenario": "idle_ping",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_connections": 2
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0094,
+        "completed_http_per_second": 2.993,
+        "statuses": {
+          "200": 10,
+          "503": 2
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 10,
+        "database_503s": 2,
+        "database_reasons": {
+          "checkout_timeout": 2
+        },
+        "database_operations": {
+          "checkout": 2
+        },
+        "latency_ms": {
+          "200": {
+            "count": 10,
+            "min": 41.914,
+            "max": 120.474,
+            "p50": 78.236,
+            "p95": 120.474,
+            "p99": 120.474
+          },
+          "checkout_timeout": {
+            "count": 2,
+            "min": 4008.951,
+            "max": 4009.061,
+            "p50": 4008.951,
+            "p95": 4009.061,
+            "p99": 4009.061
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 41.91404199809767,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 51.57759299618192,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 60.433892998844385,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 69.29547799518332,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 78.23631900100736,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 87.15765999659197,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 95.80000099958852,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 103.95649100246374,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 112.52455500653014,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 120.47373200039146,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4009.061437995115,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4008.9511850019335,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1788,
+          "completed_http_per_second": 67.105,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 29.364,
+              "max": 176.298,
+              "p50": 95.961,
+              "p95": 176.298,
+              "p99": 176.298
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 29.364052999881096,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 49.55815400171559,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 56.77203000232112,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 63.647616996604484,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 85.03607899911003,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 95.96121199865593,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 114.38881199865136,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 121.90516700502485,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 136.80088699766202,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 144.0326890005963,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 157.8592630030471,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 176.29805899923667,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0098,
+          "completed_http_per_second": 101.997,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 9.735,
+              "max": 9.735,
+              "p50": 9.735,
+              "p95": 9.735,
+              "p99": 9.735
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 9.735253996041138,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1789
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 17,
+        "checkins": 19,
+        "invalidations": 2,
+        "connection_hold_ms": {
+          "count": 17,
+          "min": 1.655,
+          "max": 66.665,
+          "p50": 7.631,
+          "p95": 66.665,
+          "p99": 66.665
+        },
+        "checkouts_by_route": {
+          "trip_list": 11,
+          "trip_detail": 1,
+          "custody_list": 1,
+          "driver_analytics": 1,
+          "administrative": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 11,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 7.631,
+            "p95": 31.77,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 1,
+            "min": 66.665,
+            "max": 66.665,
+            "p50": 66.665,
+            "p95": 66.665,
+            "p99": 66.665
+          },
+          "custody_list": {
+            "count": 1,
+            "min": 6.73,
+            "max": 6.73,
+            "p50": 6.73,
+            "p95": 6.73,
+            "p99": 6.73
+          },
+          "driver_analytics": {
+            "count": 1,
+            "min": 16.603,
+            "max": 16.603,
+            "p50": 16.603,
+            "p95": 16.603,
+            "p99": 16.603
+          },
+          "administrative": {
+            "count": 3,
+            "min": 1.655,
+            "max": 7.793,
+            "p50": 2.469,
+            "p95": 7.793,
+            "p99": 7.793
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 30,
+        "checkins": 32,
+        "invalidations": 2,
+        "connection_hold_ms": {
+          "count": 30,
+          "min": 1.655,
+          "max": 92.032,
+          "p50": 8.383,
+          "p95": 83.451,
+          "p99": 92.032
+        },
+        "checkouts_by_route": {
+          "trip_list": 14,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 3,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 14,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 7.71,
+            "p95": 31.77,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 56.524,
+            "max": 92.032,
+            "p50": 66.665,
+            "p95": 92.032,
+            "p99": 92.032
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 6.73,
+            "max": 28.612,
+            "p50": 13.283,
+            "p95": 28.612,
+            "p99": 28.612
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 8.206,
+            "max": 19.224,
+            "p50": 16.603,
+            "p95": 19.224,
+            "p99": 19.224
+          },
+          "administrative": {
+            "count": 3,
+            "min": 1.655,
+            "max": 7.793,
+            "p50": 2.469,
+            "p95": 7.793,
+            "p99": 7.793
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 7.073,
+            "max": 7.073,
+            "p50": 7.073,
+            "p95": 7.073,
+            "p99": 7.073
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 1
+    },
+    {
+      "scenario": "idle_ping",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_connections": 2
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0154,
+        "completed_http_per_second": 2.989,
+        "statuses": {
+          "200": 10,
+          "503": 2
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 10,
+        "database_503s": 2,
+        "database_reasons": {
+          "checkout_timeout": 2
+        },
+        "database_operations": {
+          "checkout": 2
+        },
+        "latency_ms": {
+          "200": {
+            "count": 10,
+            "min": 45.036,
+            "max": 125.281,
+            "p50": 83.29,
+            "p95": 125.281,
+            "p99": 125.281
+          },
+          "checkout_timeout": {
+            "count": 2,
+            "min": 4014.829,
+            "max": 4014.888,
+            "p50": 4014.829,
+            "p95": 4014.888,
+            "p99": 4014.888
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 45.036078001430724,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 55.13695999979973,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 64.4733389999601,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 73.85935400088783,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 83.2897439977387,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 92.401895999501,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 100.6692689988995,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 109.04825799661921,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 117.21671900158981,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 125.28053500136593,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4014.8884410009487,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4014.8285889954423,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.2149,
+          "completed_http_per_second": 55.832,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 35.666,
+              "max": 212.209,
+              "p50": 117.855,
+              "p95": 212.209,
+              "p99": 212.209
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 35.66634600429097,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 62.83974499820033,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 77.76693799678469,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 81.89292099996237,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 104.9383770005079,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 117.85543800215237,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 139.94233799894573,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 150.37606799887726,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 168.01738500362262,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 173.95762899832334,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 189.36115600081393,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 212.20891599659808,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0092,
+          "completed_http_per_second": 108.577,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 9.136,
+              "max": 9.136,
+              "p50": 9.136,
+              "p95": 9.136,
+              "p99": 9.136
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 9.136489999946207,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.215
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 43,
+        "checkins": 47,
+        "invalidations": 4,
+        "connection_hold_ms": {
+          "count": 43,
+          "min": 1.655,
+          "max": 92.032,
+          "p50": 8.159,
+          "p95": 66.665,
+          "p99": 92.032
+        },
+        "checkouts_by_route": {
+          "trip_list": 24,
+          "trip_detail": 4,
+          "custody_list": 4,
+          "driver_analytics": 4,
+          "administrative": 6,
+          "notice_read": 1
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 24,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 7.838,
+            "p95": 26.791,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 4,
+            "min": 56.524,
+            "max": 92.032,
+            "p50": 66.665,
+            "p95": 92.032,
+            "p99": 92.032
+          },
+          "custody_list": {
+            "count": 4,
+            "min": 6.73,
+            "max": 28.612,
+            "p50": 13.283,
+            "p95": 28.612,
+            "p99": 28.612
+          },
+          "driver_analytics": {
+            "count": 4,
+            "min": 8.206,
+            "max": 19.224,
+            "p50": 16.603,
+            "p95": 19.224,
+            "p99": 19.224
+          },
+          "administrative": {
+            "count": 6,
+            "min": 1.655,
+            "max": 7.793,
+            "p50": 2.469,
+            "p95": 7.793,
+            "p99": 7.793
+          },
+          "notice_read": {
+            "count": 1,
+            "min": 7.073,
+            "max": 7.073,
+            "p50": 7.073,
+            "p95": 7.073,
+            "p99": 7.073
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 56,
+        "checkins": 60,
+        "invalidations": 4,
+        "connection_hold_ms": {
+          "count": 56,
+          "min": 1.655,
+          "max": 114.157,
+          "p50": 8.687,
+          "p95": 92.032,
+          "p99": 114.157
+        },
+        "checkouts_by_route": {
+          "trip_list": 27,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 6,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 27,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 8.159,
+            "p95": 26.791,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 56.524,
+            "max": 114.157,
+            "p50": 83.451,
+            "p95": 114.157,
+            "p99": 114.157
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 6.73,
+            "max": 41.809,
+            "p50": 19.325,
+            "p95": 41.809,
+            "p99": 41.809
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 8.206,
+            "max": 22.672,
+            "p50": 18.187,
+            "p95": 22.672,
+            "p99": 22.672
+          },
+          "administrative": {
+            "count": 6,
+            "min": 1.655,
+            "max": 7.793,
+            "p50": 2.469,
+            "p95": 7.793,
+            "p99": 7.793
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 6.072,
+            "max": 7.073,
+            "p50": 6.072,
+            "p95": 7.073,
+            "p99": 7.073
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 2
+    },
+    {
+      "scenario": "idle_ping",
+      "concurrency": 12,
+      "expected_attempts": 12,
+      "envelope_seconds": 20.0,
+      "watchdog_seconds": 25.0,
+      "stimulus": {
+        "silenced_connections": 2
+      },
+      "load": {
+        "attempts": 12,
+        "completed_http": 12,
+        "duration_seconds": 4.0152,
+        "completed_http_per_second": 2.989,
+        "statuses": {
+          "200": 10,
+          "503": 2
+        },
+        "outcomes": {
+          "http": 12
+        },
+        "valid_successes": 10,
+        "database_503s": 2,
+        "database_reasons": {
+          "checkout_timeout": 2
+        },
+        "database_operations": {
+          "checkout": 2
+        },
+        "latency_ms": {
+          "200": {
+            "count": 10,
+            "min": 259.424,
+            "max": 344.457,
+            "p50": 299.721,
+            "p95": 344.457,
+            "p99": 344.457
+          },
+          "checkout_timeout": {
+            "count": 2,
+            "min": 4014.758,
+            "max": 4014.998,
+            "p50": 4014.758,
+            "p95": 4014.998,
+            "p99": 4014.998
+          }
+        },
+        "samples": [
+          {
+            "route": "trip_list",
+            "elapsed_ms": 259.4235939977807,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 269.7747719939798,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 280.0899499998195,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 289.9347560014576,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 299.72052599623566,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 309.85338000027696,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 318.52294399868697,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 327.4658670052304,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 336.1838839991833,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 344.4569880011841,
+            "outcome": "http",
+            "status": 200,
+            "database_failure": false,
+            "valid_success": true,
+            "reason": null,
+            "operation": null,
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4014.9977789988043,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          },
+          {
+            "route": "trip_list",
+            "elapsed_ms": 4014.758495002752,
+            "outcome": "http",
+            "status": 503,
+            "database_failure": true,
+            "valid_success": false,
+            "reason": "checkout_timeout",
+            "operation": "checkout",
+            "error_type": null
+          }
+        ]
+      },
+      "recovery": {
+        "reads": {
+          "attempts": 12,
+          "completed_http": 12,
+          "duration_seconds": 0.1788,
+          "completed_http_per_second": 67.131,
+          "statuses": {
+            "200": 12
+          },
+          "outcomes": {
+            "http": 12
+          },
+          "valid_successes": 12,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 12,
+              "min": 26.48,
+              "max": 176.974,
+              "p50": 95.281,
+              "p95": 176.974,
+              "p99": 176.974
+            }
+          },
+          "samples": [
+            {
+              "route": "trip_list",
+              "elapsed_ms": 26.480049993551802,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 46.579913003370166,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 54.227553999226075,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 60.19931600167183,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 82.97496900195256,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 95.28057699935744,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_list",
+              "elapsed_ms": 113.2907140054158,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 124.64975100010633,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "custody_list",
+              "elapsed_ms": 140.59448899934068,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 143.11613400059287,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "driver_analytics",
+              "elapsed_ms": 161.32715899584582,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            },
+            {
+              "route": "trip_detail",
+              "elapsed_ms": 176.97411900007864,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation": {
+          "attempts": 1,
+          "completed_http": 1,
+          "duration_seconds": 0.0084,
+          "completed_http_per_second": 119.403,
+          "statuses": {
+            "200": 1
+          },
+          "outcomes": {
+            "http": 1
+          },
+          "valid_successes": 1,
+          "database_503s": 0,
+          "database_reasons": {},
+          "database_operations": {},
+          "latency_ms": {
+            "200": {
+              "count": 1,
+              "min": 8.311,
+              "max": 8.311,
+              "p50": 8.311,
+              "p95": 8.311,
+              "p99": 8.311
+            }
+          },
+          "samples": [
+            {
+              "route": "notice_read",
+              "elapsed_ms": 8.310981997055933,
+              "outcome": "http",
+              "status": 200,
+              "database_failure": false,
+              "valid_success": true,
+              "reason": null,
+              "operation": null,
+              "error_type": null
+            }
+          ]
+        },
+        "mutation_persisted": true,
+        "fault_removal_to_reads_seconds": 0.1788
+      },
+      "pool_before_recovery": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 69,
+        "checkins": 75,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 69,
+          "min": 1.655,
+          "max": 114.157,
+          "p50": 8.583,
+          "p95": 83.451,
+          "p99": 114.157
+        },
+        "checkouts_by_route": {
+          "trip_list": 37,
+          "trip_detail": 7,
+          "custody_list": 7,
+          "driver_analytics": 7,
+          "administrative": 9,
+          "notice_read": 2
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 37,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 8.19,
+            "p95": 28.613,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 7,
+            "min": 56.524,
+            "max": 114.157,
+            "p50": 83.451,
+            "p95": 114.157,
+            "p99": 114.157
+          },
+          "custody_list": {
+            "count": 7,
+            "min": 6.73,
+            "max": 41.809,
+            "p50": 19.325,
+            "p95": 41.809,
+            "p99": 41.809
+          },
+          "driver_analytics": {
+            "count": 7,
+            "min": 8.206,
+            "max": 22.672,
+            "p50": 18.187,
+            "p95": 22.672,
+            "p99": 22.672
+          },
+          "administrative": {
+            "count": 9,
+            "min": 1.655,
+            "max": 8.327,
+            "p50": 7.464,
+            "p95": 8.327,
+            "p99": 8.327
+          },
+          "notice_read": {
+            "count": 2,
+            "min": 6.072,
+            "max": 7.073,
+            "p50": 6.072,
+            "p95": 7.073,
+            "p99": 7.073
+          }
+        }
+      },
+      "pool_cumulative": {
+        "peak_checked_out": 3,
+        "final_checked_out": 0,
+        "checkouts": 82,
+        "checkins": 88,
+        "invalidations": 6,
+        "connection_hold_ms": {
+          "count": 82,
+          "min": 1.655,
+          "max": 114.157,
+          "p50": 8.985,
+          "p95": 84.583,
+          "p99": 114.157
+        },
+        "checkouts_by_route": {
+          "trip_list": 40,
+          "trip_detail": 10,
+          "custody_list": 10,
+          "driver_analytics": 10,
+          "administrative": 9,
+          "notice_read": 3
+        },
+        "connection_hold_ms_by_route": {
+          "trip_list": {
+            "count": 40,
+            "min": 6.965,
+            "max": 31.77,
+            "p50": 8.194,
+            "p95": 26.791,
+            "p99": 31.77
+          },
+          "trip_detail": {
+            "count": 10,
+            "min": 56.524,
+            "max": 114.157,
+            "p50": 83.451,
+            "p95": 114.157,
+            "p99": 114.157
+          },
+          "custody_list": {
+            "count": 10,
+            "min": 6.73,
+            "max": 41.809,
+            "p50": 19.325,
+            "p95": 41.809,
+            "p99": 41.809
+          },
+          "driver_analytics": {
+            "count": 10,
+            "min": 8.206,
+            "max": 22.672,
+            "p50": 17.706,
+            "p95": 22.672,
+            "p99": 22.672
+          },
+          "administrative": {
+            "count": 9,
+            "min": 1.655,
+            "max": 8.327,
+            "p50": 7.464,
+            "p95": 8.327,
+            "p99": 8.327
+          },
+          "notice_read": {
+            "count": 3,
+            "min": 5.619,
+            "max": 7.073,
+            "p50": 6.072,
+            "p95": 7.073,
+            "p99": 7.073
+          }
+        }
+      },
+      "settled_tasks": {
+        "unexpected_tasks": 0,
+        "relay_tasks": 2,
+        "relay_pumps": 4,
+        "relay_writers": 4
+      },
+      "relay_errors": [],
+      "failures": [],
+      "repetition": 3
+    }
+  ],
+  "warmups": {
+    "pool": {
+      "attempts": 4,
+      "completed_http": 4,
+      "duration_seconds": 0.1671,
+      "completed_http_per_second": 23.944,
+      "statuses": {
+        "200": 4
+      },
+      "outcomes": {
+        "http": 4
+      },
+      "valid_successes": 4,
+      "database_503s": 0,
+      "database_reasons": {},
+      "database_operations": {},
+      "latency_ms": {
+        "200": {
+          "count": 4,
+          "min": 9.225,
+          "max": 72.4,
+          "p50": 21.566,
+          "p95": 72.4,
+          "p99": 72.4
+        }
+      },
+      "samples": [
+        {
+          "route": "trip_list",
+          "elapsed_ms": 63.655871999799274,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "trip_detail",
+          "elapsed_ms": 72.40026100043906,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "custody_list",
+          "elapsed_ms": 9.225318004610017,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "driver_analytics",
+          "elapsed_ms": 21.565604998613708,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        }
+      ]
+    },
+    "command": {
+      "attempts": 4,
+      "completed_http": 4,
+      "duration_seconds": 0.1457,
+      "completed_http_per_second": 27.454,
+      "statuses": {
+        "200": 4
+      },
+      "outcomes": {
+        "http": 4
+      },
+      "valid_successes": 4,
+      "database_503s": 0,
+      "database_reasons": {},
+      "database_operations": {},
+      "latency_ms": {
+        "200": {
+          "count": 4,
+          "min": 9.439,
+          "max": 66.862,
+          "p50": 21.426,
+          "p95": 66.862,
+          "p99": 66.862
+        }
+      },
+      "samples": [
+        {
+          "route": "trip_list",
+          "elapsed_ms": 47.786586997972336,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "trip_detail",
+          "elapsed_ms": 66.86219300172525,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "custody_list",
+          "elapsed_ms": 9.438664004846942,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "driver_analytics",
+          "elapsed_ms": 21.426227998745162,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        }
+      ]
+    },
+    "half_open_command": {
+      "attempts": 4,
+      "completed_http": 4,
+      "duration_seconds": 0.1369,
+      "completed_http_per_second": 29.213,
+      "statuses": {
+        "200": 4
+      },
+      "outcomes": {
+        "http": 4
+      },
+      "valid_successes": 4,
+      "database_503s": 0,
+      "database_reasons": {},
+      "database_operations": {},
+      "latency_ms": {
+        "200": {
+          "count": 4,
+          "min": 9.807,
+          "max": 61.791,
+          "p50": 20.616,
+          "p95": 61.791,
+          "p99": 61.791
+        }
+      },
+      "samples": [
+        {
+          "route": "trip_list",
+          "elapsed_ms": 44.54385799908778,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "trip_detail",
+          "elapsed_ms": 61.791498999809846,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "custody_list",
+          "elapsed_ms": 9.80675400205655,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "driver_analytics",
+          "elapsed_ms": 20.61639499879675,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        }
+      ]
+    },
+    "idle_ping": {
+      "attempts": 4,
+      "completed_http": 4,
+      "duration_seconds": 0.1419,
+      "completed_http_per_second": 28.198,
+      "statuses": {
+        "200": 4
+      },
+      "outcomes": {
+        "http": 4
+      },
+      "valid_successes": 4,
+      "database_503s": 0,
+      "database_reasons": {},
+      "database_operations": {},
+      "latency_ms": {
+        "200": {
+          "count": 4,
+          "min": 9.066,
+          "max": 69.553,
+          "p50": 19.242,
+          "p95": 69.553,
+          "p99": 69.553
+        }
+      },
+      "samples": [
+        {
+          "route": "trip_list",
+          "elapsed_ms": 43.82797900325386,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "trip_detail",
+          "elapsed_ms": 69.5529969962081,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "custody_list",
+          "elapsed_ms": 9.065892998478375,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        },
+        {
+          "route": "driver_analytics",
+          "elapsed_ms": 19.241586000134703,
+          "outcome": "http",
+          "status": 200,
+          "database_failure": false,
+          "valid_success": true,
+          "reason": null,
+          "operation": null,
+          "error_type": null
+        }
+      ]
+    }
+  },
+  "postgresql": "17.11",
+  "finished_at": "2026-10-21T20:04:05.042642+00:00"
+}

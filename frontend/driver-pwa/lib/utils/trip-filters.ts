@@ -9,6 +9,7 @@
 import type { Trip } from '@shared/lib/types/trip'
 import type { CoarseTripStatus } from '@shared/lib/types/phase'
 import type { DriverId } from '@shared/lib/types/driver'
+import type { DriverParticipation } from '@shared/lib/types/driver-substitution'
 
 // A trip is "active" only once the DRIVER has activated it — completing the Activation
 // phase is what flips the backend's coarse status from 'created' to 'active'
@@ -29,10 +30,14 @@ export interface CategorizedTrips<T> {
   past: T[]
 }
 
-// Minimum a row must carry to be grouped into a tab.
+// Minimum a row must carry to be grouped into a tab. `participation` is optional so a full
+// Trip (which has none) and a row from before driver substitution both still group by status alone.
 interface HasStatus {
   status: CoarseTripStatus
+  participation?: DriverParticipation
 }
+
+const FORMER: DriverParticipation = 'former'
 
 export function categorizeTrips<T extends HasStatus>(trips: readonly T[]): CategorizedTrips<T> {
   const active: T[] = []
@@ -40,7 +45,10 @@ export function categorizeTrips<T extends HasStatus>(trips: readonly T[]): Categ
   const past: T[] = []
 
   for (const trip of trips) {
-    if (TERMINAL_STATUSES.includes(trip.status)) {
+    // A handed-over trip is history for THIS driver whatever the trip itself is doing —
+    // checked first because its status is very often still 'active' (the next driver is
+    // on it), and grouping by status alone would offer the former driver live controls.
+    if (trip.participation === FORMER || TERMINAL_STATUSES.includes(trip.status)) {
       past.push(trip)
     } else if (trip.status === UPCOMING_STATUS) {
       upcoming.push(trip)

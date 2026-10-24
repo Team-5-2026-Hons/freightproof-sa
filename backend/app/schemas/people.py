@@ -42,6 +42,13 @@ class UserRead(UserBase):
     role: DispatcherRole = DispatcherRole.DISPATCHER
 
 
+class DispatcherProfileRead(UserRead):
+    """The dispatcher's own profile for the portal: UserRead plus the organisation's display
+    name, so the UI never hardcodes whose dashboard it is showing."""
+
+    organization_name: str
+
+
 class DriverBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

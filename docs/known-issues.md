@@ -4,7 +4,7 @@ A running list of environment and code issues to raise with the team. Each entry
 records the symptom, root cause, impact, and proposed fix. Delete an entry once it
 is resolved (and, if it changed shared behaviour, note it in the relevant spec).
 
-Two parts. **Known issues** (1-7, 11) are defects and tech debt. **Deferred work** (8 onward) is
+Two parts. **Known issues** (1-7, 11, 12) are defects and tech debt. **Deferred work** (8 onward) is
 scoped work that has been deliberately postponed — not broken, but decided and parked,
 recorded so the reasoning does not have to be re-derived when it is picked up. Both live
 here rather than in separate design notes so there is one place to look.
@@ -12,6 +12,11 @@ here rather than in separate design notes so there is one place to look.
 ---
 
 ## 1. `??` fallback in `supabase.ts` fails on empty-string env vars
+
+**Status: resolved.** `frontend/driver-pwa/lib/supabase.ts` now uses `||`, so an empty
+value falls back to the placeholder. The dispatcher client reads the variable with a
+non-null assertion rather than a `??` fallback, so this bug never applied to it. The
+original entry is kept below for the record.
 
 **Files:** `frontend/driver-pwa/lib/supabase.ts` (and the equivalent
 `frontend/dispatcher/lib/supabase/client.ts` — verify before fixing).
@@ -66,7 +71,7 @@ reproducibility, which the `CLAUDE.md` standards section is meant to guarantee.
 
 ---
 
-## 3. Xcode's "Update to recommended settings" breaks the iOS build
+## 3. Xcode's "Update to recommended settings" breaks the iOS build — resolved on the recorded branch
 
 **Files:** `frontend/driver-pwa/ios/App/App.xcodeproj/project.pbxproj`.
 
@@ -83,73 +88,92 @@ cannot set it for the App target, which is the one Xcode "upgraded".
 **Impact:** Hard build failure, blocks all device testing. Reappears any time the banner
 is accepted again.
 
+**Disposition (recorded 2026-09-26):** the documented source fix remains present; this is
+kept as a resolved incident record rather than an active issue. It was not re-tested on a
+device in this documentation pass.
+
 **Fix (applied):** `ENABLE_USER_SCRIPT_SANDBOXING = NO` in both Debug and Release. If the
 banner returns, do not accept it for the App project — and never for Pods, which
 `pod install` regenerates on every `cap sync` anyway.
 
 ---
 
-## 4. The async engine has no pool or connect timeouts
+## 4. API database timeout policy — local load validated; deployment calibration outstanding
 
-**Files:** `backend/app/db/session.py` (lines 21–24, the `create_async_engine` call).
+**Files:** `backend/app/db/engine.py`, `backend/app/db/session.py`,
+`backend/app/db/errors.py`, `backend/app/core/config.py`, and the API error handlers.
 
-**Symptom:** Nothing visible yet — this is latent. It surfaces as a request that never
-returns rather than one that fails: the client eventually gives up, the server-side
-handler is still sitting there, and the logs show no error because nothing raised.
+**Previous behaviour:** the API inherited asyncpg's 60-second connect timeout and
+SQLAlchemy's 30-second pool wait; commands had no explicit client-side timeout.
+The earlier description of connection establishment as entirely unbounded was inaccurate.
+`/health` had its own probe timeout but did not establish a bound for ordinary requests.
 
-**Root cause:** The engine is built with `pool_pre_ping=True` and nothing else. Three
-separate waits are therefore unbounded, each with its own trigger:
+**FP-275 implementation:** configurable connect, pool-wait, command and cleanup
+budgets; database-specific availability classification (including Supabase pooler
+capacity refusals); controlled HTTP 503 responses; bounded session cleanup, bounded
+discard of half-open connections (asyncpg 0.32+, see below), and cancellation handling.
+The API's normal stale-connection check remains enabled. See [configuration and focused verification](testing/fp-275-database-timeouts.md).
 
-1. **Connecting.** asyncpg is given no `timeout`, so opening a new connection waits on
-   the OS TCP timeout. If Supabase is reachable at the network level but not answering
-   — the usual shape of a Supabase incident, as opposed to a clean outage — that wait is
-   measured in minutes, not seconds.
-2. **Waiting for a free connection.** `pool_timeout` defaults to 30s in SQLAlchemy, which
-   *is* a bound, but a 30s queue wait under pool exhaustion is far longer than any
-   request in this system should live. Every handler inherits it.
-3. **Pre-ping.** `pool_pre_ping=True` issues a `SELECT 1` before handing a connection
-   out. That is exactly the right behaviour for Supabase, which drops idle connections
-   aggressively — but the ping is itself an unbounded round trip on a connection that
-   has just been sitting idle, which is precisely the connection most likely to be
-   half-open. The feature that protects us from stale connections is also the one that
-   inherits their hang.
+**FP-299 evidence (21 October 2026):** the repeatable local runner passed 39/39 smoke
+cycles and 39/39 default-budget cycles. In each profile, all 1,782 load requests ended
+as a valid response, the controlled database 503 or a deliberate cancellation within
+their predeclared bounds, and no request hung. After every fault, 12 reads and a
+committed write succeeded on the same pool, which returned to zero checked-out
+connections; only the pool's two retained connections stayed open, with no leaked
+sockets or tasks. In every command and chat-database lock cycle, no timed-out statement
+was left waiting in PostgreSQL. See [commands, measured results and retained artifacts](testing/fp-299-database-timeout-load.md).
+This closes the missing evidence for API timeout and recovery behaviour under the
+documented local load.
 
-**Relationship to the `/health` fix (issue resolved on this branch):** `/health` was the
-one place where this was *visible*, because it makes an explicit worst-case promise to
-an orchestrator. That endpoint is now bounded from both ends: `asyncio.wait_for` around
-the probe and its cleanup, and a non-committing session dependency so teardown does not
-issue an unbounded `COMMIT`. But that is a bound applied *at one call site*. Every other
-endpoint in the app still sits on the unbounded engine underneath. `/health` is now
-honest about its own latency; it is not evidence that the database layer is bounded.
+**Driver change from FP-299:** repeated faults showed that FP-275's custom discard
+listener could leave sockets open on asyncpg 0.31, and that aborting the socket first
+instead stops PostgreSQL's cancel for the timed-out statement. `requirements.txt` (a
+shared file) therefore requires asyncpg 0.32+, whose close is bounded on its own, and the
+listener is removed. Environments installed before this change must reinstall the
+backend requirements; a unit test fails while an older asyncpg is installed.
 
-**Why it was not fixed in the same change:** it is a different failure mode with a much
-wider blast radius. The `/health` fix touches one endpoint and cannot change behaviour
-anywhere else. Adding `connect_args={"timeout": ...}` and a shorter `pool_timeout` to the
-engine changes the failure behaviour of *every* query on *all four* branches at once,
-including Celery tasks and Alembic — and the correct values depend on numbers nobody has
-measured yet (real Supabase connect latency from `af-south-1`, and the pool's actual
-high-water mark under the load the demo generates). Guessing them converts a rare hang
-into a frequent spurious error, which is a worse trade.
+**Still outstanding:** the defaults bound a failure but do not make it fast: at the default
+budgets a request can wait about 20 s for a pool slot, and a stalled command or pre-ping
+fails after about 30–32 s. Measure representative deployment latency and connection holds
+to calibrate them. Analytics chat holds its database connection while it waits for the
+AI provider: three 5-second waits delayed every concurrent read by about 5 s, and three
+25-second waits made unrelated reads hit the 20-second pool budget. Transaction lifetime
+across provider calls needs a deployment-informed decision. The local synthetic fixture
+establishes neither hosted capacity nor production p99 or a whole-request deadline.
+`pool_recycle` remains deferred because there is no measured deployment idle cutoff to
+size it from.
 
-**Impact:** Low probability, high severity when it fires, and effectively undiagnosable
-from the logs — the signature of the bug is the *absence* of an error. Most likely to
-appear during a live demo on conference wifi, which is the worst possible time.
+**Open from FP-299 — cancelled requests:** when a request is cancelled while its query is
+waiting in PostgreSQL (in FP-299's harness, by cancelling the HTTP call), SQLAlchemy
+force-closes the connection and the statement is never cancelled on the server: it stays
+queued on its lock, holding a server connection, until the lock is released. Timeouts
+are not affected. Whether client disconnects in a deployment trigger this was not
+established. A server-side bound such as a `statement_timeout` or `lock_timeout` would
+cover it, but needs checking against the Supabase pooler first. See the
+[FP-299 report](testing/fp-299-database-timeout-load.md#a-cancelled-requests-statement-keeps-waiting).
 
-**Proposed fix (team decision — `session.py` is imported by every endpoint):**
-1. Measure first. Log connect latency and pool checkout wait for one full demo run;
-   `pool_timeout` and the connect timeout should be set from observed p99, not invented.
-2. Then set `connect_args={"timeout": N, "command_timeout": M}` for asyncpg and an
-   explicit `pool_timeout`, with the values in `core/config.py` rather than as literals,
-   so they can be tuned per environment without a code change.
-3. Consider `pool_recycle` as well, sized under Supabase's idle-connection cutoff. That
-   attacks the same problem from the other side — recycling a connection before it can go
-   stale is cheaper than detecting staleness with a pre-ping that might hang.
+**Error-path review fixes:** optional orchestration work now propagates database outages
+to the structured 503 handler, and service/endpoint rollback failures preserve the
+primary error. Both have regressions using real stalled connections. Lock waits longer
+than the command budget still surface as a 503 `command_timeout`.
 
-**Owner:** unassigned. Raise at the next sprint boundary; do not fold into an unrelated PR.
+**Coverage:** this policy belongs to the API engine/session factory. Celery and Alembic
+construct separate engines; changing `db/session.py` does not automatically change them.
+When the broker is down, the in-process anchor fallback also runs on the task engine,
+inside the API process, without these budgets.
+
+**Owner:** Chiko — FP-275 implementation and FP-299 local load evidence; deployment
+calibration remains separate.
 
 ---
 
-## 5. `alembic --autogenerate` proposes dropping 17 indexes and the Supabase auth FKs
+## 5. `alembic --autogenerate` proposed dropping indexes and Supabase auth FKs — current status unverified
+
+**Disposition (2026-09-26):** the operation counts and result below are historical
+observations. The migration-review precaution remains active, but this documentation pass
+did not connect to a database or run `alembic check`; current drift is deliberately
+recorded as unknown. See the reconciled
+[migration-drift note](design-notes/2026-09-15-alembic-autogenerate-drift.md).
 
 **Files:** `backend/migrations/versions/0001_initial_schema.py`, `backend/app/db/models/`,
 `backend/tests/conftest.py:183-207`.
@@ -372,6 +396,32 @@ on record without opening each one — which is most of the reason to scan histo
 
 ---
 
+## 12. Security review findings accepted for submission (23 October 2026)
+
+**Source:** [`reviews/2026-10-23-submission-readiness-review.md`](reviews/2026-10-23-submission-readiness-review.md).
+The review's R1 (multipart parsing), R2 (JWKS refresh cooldown), R3 (driver build must
+declare demo mode), R7–R9 and R11 were fixed before submission. The items below were
+judged real but out of proportion to an academic demonstration on synthetic data. Each
+must be fixed before an internet-facing deployment that handles real evidence.
+
+- **R4: a forged Bearer header gets its own rate-limit bucket.** `core/rate_limit.py`
+  keys on a hash of any Bearer string without verifying it, including on the public
+  handover, webhook and audit-pack routes. The global per-IP cap of 300/min still applies.
+  Fix: key public routes on IP, and authenticated routes on the verified principal.
+- **R5: capability URLs and provider tokens can reach logs.** The generic 500 handler in
+  `main.py` and the global 429 log in `rate_limit.py` log the raw path, which holds the
+  handover and audit-pack tokens. The Parcel Perfect client puts `token_id` in the request
+  URL, and `endpoints/pp.py` logs the HTTP error that contains it. Fix: log route
+  templates and redact provider errors.
+- **R6: dependency advisories are not triaged.** The dispatcher, receiver and portal lock
+  Next 15.5.25/26 (the patched release is 15.5.28 with sharp 0.35.5). `python-jose` 3.3.0
+  carries advisories that the ES256-only JWT path does not reach. CI scans are
+  report-only.
+- **R10: Android Auto Backup is on.** `AndroidManifest.xml` does not disable backup or
+  exclude WebView storage, which holds sessions and unsent evidence.
+- **R2, remainder:** the JWKS fetch is still synchronous. The cooldown caps it at one
+  forced refresh per minute per worker; it is not yet async or single-flight.
+
 ---
 
 ## Common theme
@@ -486,7 +536,11 @@ is not arriving.
 
 ## 9. Dispatcher call logging and driver substitution
 
-**Status:** neither started. Recorded because neither is safe to bolt on. The read-only
+**Status (23 October 2026):** driver substitution (9b) is implemented along the chosen
+direction: anchored amendments chained by sequence and previous-link hash, with the
+original journey lock left valid (`backend/app/orchestration/substitutions/`). Dispatcher
+call logging (9a) has not been started and is deferred. The text below is the original
+design record. Recorded because neither is safe to bolt on. The read-only
 driver modal (`frontend/dispatcher/components/trips/DriverModal.tsx`) is the surface both
 would eventually attach to.
 
@@ -579,11 +633,13 @@ trade-off worth being able to defend at examination. Keep this section.
 
 ---
 
-## 10. Deferred — dedicated arrival custody-check phase (iteration 4 candidate)
+## 10. Implemented — dedicated arrival custody-check phase (was an iteration 4 candidate)
 
-**Recorded:** 9 September 2026. **Status:** preferred product direction; deferred for
-iteration 4 planning alongside the full phase child ledger. Not implemented, assigned,
-or approved for immediate execution. This entry is the canonical record of the proposal.
+**Recorded:** 9 September 2026. **Status (23 October 2026): implemented.** Arrival is a
+phase in the plan, engine, driver app, dispatcher timeline and analytics (arrival dwell
+is reported separately from unloading). The per-step child ledger it was proposed
+alongside is still not built. The text below is the original proposal, kept as the
+design rationale.
 
 **Reason:** Departure records the outbound seal and location. A corresponding Arrival
 phase should record the seal as found at the destination BEFORE opening, with its own

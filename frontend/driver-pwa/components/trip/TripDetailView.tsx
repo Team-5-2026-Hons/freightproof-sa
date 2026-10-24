@@ -1,145 +1,295 @@
-import type { ReactNode } from 'react'
-import { CheckCircle2, Truck } from 'lucide-react'
+'use client'
+
+import { useState, type ReactNode } from 'react'
+import { ChevronRight, Clock, ShieldCheck, Truck } from 'lucide-react'
 import type { Trip } from '@shared/lib/types/trip'
-import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { PhaseDescriptor, PhaseType } from '@shared/lib/types/phase'
 import { PHASE_NAMES } from '@shared/lib/constants/phase-meta'
-import { currentPhase, isAnchored, isDriving } from '@/lib/phase'
-import { tripStatusChip } from '@/lib/utils/trip-status-chip'
-import { Card } from '@/components/ui/Card'
-import { Chip } from '@/components/ui/Chip'
+import { currentPhase, isDriving, phaseLocation } from '@/lib/phase'
+import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { formatDate, formatDateTime, formatTime } from '@/lib/utils/format-time'
+import { durationLabel, pastOutcome, type PlaceParts } from '@/lib/utils/trip-display'
+import { cn } from '@/lib/utils'
+import { TabSubpage } from '@/components/layout/TabSubpage'
 import { Button } from '@/components/ui/Button'
-import { SubpageHeader } from '@/components/layout/SubpageHeader'
-import { PhaseProgressBar } from '@/components/trip/PhaseProgressBar'
-import { CurrentPhaseCard } from '@/components/trip/CurrentPhaseCard'
-import { HoldNotice } from '@/components/trip/HoldNotice'
-import { AnchorBadge } from '@/components/blockchain/AnchorBadge'
+import { RouteRail, type RouteStop } from '@/components/ui/RouteRail'
+import { SectionHeading } from '@/components/ui/SectionHeading'
+import { StatusBanner } from '@/components/ui/StatusBanner'
+import { PhaseList } from '@/components/trip/PhaseList'
+import { VehicleSheet } from '@/components/trip/VehicleSheet'
 
 export interface TripDetailViewProps {
   trip: Trip
   onBack: () => void
   onInTransitHub: () => void
   onSelectPhase: (phase: PhaseDescriptor) => void
-  // trips/[id] (mock data) lists every phase for context; trips/active shows only the
-  // single actionable one, per the current-phase-only design.
+  /** Open the "All steps" list on arrival rather than leaving it collapsed. */
   showAllPhases: boolean
-  // Page-level banner rendered inside this component's scrollport, not above it. The
-  // trip-detail routes are full-bleed (no AppShell), so a caller-rendered sibling above
-  // <main> would paint under the status bar and push an exact-viewport screen off the bottom.
+  /** Page-level context above the content (activation gate, "Starting trip"). */
   notice?: ReactNode
 }
 
-// Plan order is never trusted off the wire — every render below walks a freshly-sorted copy.
+// What the start of a trip will ask for, in the driver's words. Only the
+// phases before the drive: everything after it happens at the destination, a day away.
+const WHAT_YOU_RECORD: Partial<Record<PhaseType, { title: string; detail: string }>> = {
+  activation: { title: 'Start trip at the gate', detail: 'One swipe, location recorded' },
+  loading: { title: 'Photo of the linehaul sheet', detail: 'After the warehouse loads you' },
+  departure: { title: 'Seal number and photo', detail: 'Then swipe to depart' },
+}
+
+const MAX_NEXT_NAMES = 3
+
 function bySequence(phases: readonly PhaseDescriptor[]): PhaseDescriptor[] {
   return [...phases].sort((a, b) => a.sequence_number - b.sequence_number)
 }
 
-// 'exception' is deliberately excluded (unlike derive.ts's RESOLVED_STATUSES): it still
-// needs its own distinct, non-checkmark treatment in this list.
-function isPhaseDone(phase: PhaseDescriptor): boolean {
-  return phase.status === 'completed' || phase.status === 'overridden'
+function startsLabel(planned: string | null): string {
+  if (planned === null) return 'Departure not scheduled'
+  const isToday = new Date(planned).toDateString() === new Date().toDateString()
+  return isToday ? `Starts today at ${formatTime(planned)}` : `Starts ${formatDateTime(planned)}`
 }
 
-// Shared presentational view for both trip-detail screens: callers supply the trip +
-// navigation callbacks, this component owns none of the data fetching.
-export function TripDetailView({
-  trip, onBack, onInTransitHub, onSelectPhase, showAllPhases, notice,
-}: TripDetailViewProps) {
-  const { kind, label } = tripStatusChip(trip.status)
+function VehicleRow({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
+  if (trip.horse === null) {
+    return <p className="mx-4 mt-4 rounded-xl bg-fill px-4 py-3 text-subhead text-surface-on-variant">No vehicle assigned yet</p>
+  }
+  const n = trip.trailers.length
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="mx-4 mt-4 flex items-center gap-3.5 rounded-[18px] p-2.5 pr-3.5 text-left ring-1 ring-inset ring-hairline transition-colors duration-100 active:bg-fill"
+    >
+      <span aria-hidden className="flex h-11 w-14 shrink-0 items-center justify-center rounded-[10px] bg-fill text-surface-on">
+        <Truck className="size-6" strokeWidth={1.9} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-title-3 tabular-nums text-surface-on">{trip.horse.registration}</span>
+        <span className="block text-subhead text-surface-on-variant">
+          {n === 0 ? 'Truck' : `Truck + ${n} trailer${n === 1 ? '' : 's'}`} · tap for details
+        </span>
+      </span>
+      <ChevronRight aria-hidden className="size-4 shrink-0 text-outline" strokeWidth={2.25} />
+    </button>
+  )
+}
+
+function Band() {
+  return <div aria-hidden className="mt-6 h-2 bg-fill" />
+}
+
+function routeStops(trip: Trip, places: { origin: PlaceParts; destination: PlaceParts }): RouteStop[] {
+  const departed = trip.actual_departure_at
+  const arrived = trip.actual_arrival_at
+  return [
+    {
+      id: 'origin',
+      eyebrow: departed !== null ? `Departed ${formatTime(departed)}`
+        : trip.planned_departure_at !== null ? `Departs ${formatDateTime(trip.planned_departure_at)}` : undefined,
+      name: places.origin.name,
+      detail: places.origin.detail ?? undefined,
+      reached: departed !== null || trip.status !== 'created',
+    },
+    {
+      id: 'destination',
+      eyebrow: arrived !== null ? `Arrived ${formatTime(arrived)}`
+        : trip.planned_arrival_at !== null ? `Due ${formatTime(trip.planned_arrival_at)}` : undefined,
+      name: places.destination.name,
+      detail: places.destination.detail ?? undefined,
+      reached: arrived !== null,
+    },
+  ]
+}
+
+/**
+ * One trip. The status picks the variant: an assignment not yet
+ * started shows what it will ask for; a trip underway shows progress, then the route; a
+ * finished one is a read-only record. The tab bar stays.
+ */
+export function TripDetailView({ trip, onBack, onInTransitHub, onSelectPhase, showAllPhases, notice }: TripDetailViewProps) {
+  const [allSteps, setAllSteps] = useState(showAllPhases)
+  const [vehiclesOpen, setVehiclesOpen] = useState(false)
+  const places = useTripPlaces(trip)
+
   const phases = bySequence(trip.phases)
+  const driverPhases = phases.filter((p) => p.phase_type !== 'trip_creation')
   const current = currentPhase(phases)
-  // A held trip must not offer any phase CTA — submits in this state can only 409.
   const onHold = trip.status === 'exception_hold'
-  // True only while the ledger's current row is an unresolved in_transit.
   const driving = isDriving(phases)
+  const upcoming = trip.status === 'created'
+  const finished = trip.status === 'closed' || trip.status === 'cancelled'
+
+  const title = finished ? 'Trip record' : upcoming ? 'Upcoming trip' : 'Current trip'
+  const route = (
+    <section aria-labelledby="trip-route" className="mt-6">
+      <SectionHeading id="trip-route" title="Route" className="mb-3" />
+      <RouteRail stops={routeStops(trip, places)} className="px-5" />
+    </section>
+  )
+  const sheet = <VehicleSheet open={vehiclesOpen} onClose={() => setVehiclesOpen(false)} horse={trip.horse} trailers={trip.trailers} />
+
+  if (finished) {
+    const needsReview = trip.exceptions.filter((e) => e.review_status === 'needs_review' && e.severity === 'critical').length
+    const outcome = pastOutcome({ ...trip, needs_review_count: needsReview, origin_precinct_name: null, destination_precinct_name: null })
+    const duration = durationLabel(trip.actual_departure_at, trip.actual_arrival_at)
+    const anchorable = driverPhases.filter((p) => p.anchor_status !== 'not_required')
+    const anchored = anchorable.filter((p) => p.anchor_status === 'anchored').length
+    const facts = [
+      trip.actual_arrival_at && `Arrived ${formatTime(trip.actual_arrival_at)}`,
+      trip.planned_arrival_at && `planned ${formatTime(trip.planned_arrival_at)}`,
+    ].filter(Boolean).join(', ')
+    const closed = trip.closed_at === null ? '' : ` Trip closed ${formatTime(trip.closed_at)}.`
+    return (
+      <TabSubpage title={title} subtitle={trip.trip_reference} backLabel="Trips" onBack={onBack}>
+        <div className="px-5 pt-4">
+          <p className="text-subhead text-surface-on-variant">
+            {[trip.actual_departure_at && formatDate(trip.actual_departure_at), duration].filter(Boolean).join(' · ')}
+          </p>
+          <p className="text-title-1 tracking-tight text-surface-on">{`${places.origin.name} → ${places.destination.name}`}</p>
+        </div>
+        <StatusBanner
+          tone={outcome.tone === 'success' ? 'success' : outcome.tone === 'attention' ? 'attention' : 'neutral'}
+          title={outcome.text}
+          className="mx-4 mt-4"
+        >
+          {facts === '' ? undefined : `${facts}.${closed}`}
+        </StatusBanner>
+        <Band />
+        <section aria-labelledby="trip-timeline" className="mt-5">
+          <SectionHeading id="trip-timeline" title="Timeline" className="mb-1" />
+          <PhaseList phases={phases} showTimes />
+        </section>
+        {anchorable.length > 0 && (
+          <div className="mt-4 flex items-center gap-4 px-5">
+            <ShieldCheck aria-hidden className="size-6 shrink-0 text-chain" strokeWidth={1.9} />
+            <div>
+              <p className="text-headline text-surface-on">{anchored} of {anchorable.length} phases anchored</p>
+              <p className="text-subhead text-surface-on-variant">Tamper-evident on Hedera</p>
+            </div>
+          </div>
+        )}
+        {sheet}
+      </TabSubpage>
+    )
+  }
+
+  if (upcoming) {
+    const toRecord = phases
+      .slice(0, Math.max(0, phases.findIndex((p) => p.phase_type === 'in_transit')))
+      .map((p) => WHAT_YOU_RECORD[p.phase_type])
+      .filter((item): item is { title: string; detail: string } => item !== undefined)
+    return (
+      <TabSubpage
+        title={title}
+        subtitle={trip.trip_reference}
+        backLabel="Trips"
+        onBack={onBack}
+        action={current === null ? undefined : (
+          <Button size="pill" className="shadow-level-5" onClick={() => onSelectPhase(current)}>Start Trip</Button>
+        )}
+      >
+        <VehicleRow trip={trip} onOpen={() => setVehiclesOpen(true)} />
+        {notice !== undefined && <div className="mx-4 mt-4">{notice}</div>}
+        <StatusBanner
+          tone="neutral"
+          title={startsLabel(trip.planned_departure_at)}
+          icon={<Clock aria-hidden className="mt-0.5 size-5 shrink-0" strokeWidth={2} />}
+          className="mx-4 mt-4"
+        >
+          {`Start the trip when you’re at the ${places.origin.name} gate.`}
+        </StatusBanner>
+        {route}
+        {toRecord.length > 0 && (
+          <section aria-labelledby="trip-record-ahead" className="mt-6">
+            <SectionHeading id="trip-record-ahead" title="What you’ll record" />
+            <ol className="mt-1">
+              {toRecord.map((item, i) => (
+                <li key={item.title} className="flex min-h-[60px] items-center gap-3.5 px-5 py-2">
+                  <span aria-hidden className="flex size-7 shrink-0 items-center justify-center rounded-full bg-fill text-footnote font-bold">{i + 1}</span>
+                  <span>
+                    <span className="block text-body text-surface-on">{item.title}</span>
+                    <span className="block text-subhead text-surface-on-variant">{item.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {sheet}
+      </TabSubpage>
+    )
+  }
+
+  const position = current === null ? driverPhases.length : driverPhases.indexOf(current) + 1
+  const nextNames = current === null ? [] : driverPhases
+    .slice(driverPhases.indexOf(current) + 1)
+    .map((p) => PHASE_NAMES[p.phase_type])
+    .slice(0, MAX_NEXT_NAMES)
+  const where = current === null ? null : phaseLocation(phases, current)
+
+  // A held trip must offer nothing — any submit while on hold 409s — and that outranks
+  // driving too: a driver on hold has been told to stop.
+  const action = onHold ? undefined
+    : driving ? <Button size="pill" className="shadow-level-5" onClick={onInTransitHub}>Continue Driving</Button>
+    : current !== null ? (
+      <Button size="pill" className="shadow-level-5" onClick={() => onSelectPhase(current)}>
+        Start {PHASE_NAMES[current.phase_type]}
+      </Button>
+    ) : undefined
+
+  const banner = onHold ? (
+    <StatusBanner tone="attention" title="Trip on hold">
+      A critical exception was recorded. Follow your dispatcher’s instructions. Nothing more can be recorded until the hold is cleared.
+    </StatusBanner>
+  ) : driving ? (
+    <StatusBanner tone="success" title="In transit">{`Swipe Arrive when you reach ${places.destination.name}.`}</StatusBanner>
+  ) : current === null ? (
+    <StatusBanner tone="success" title="All phases complete">Everything on this trip is recorded.</StatusBanner>
+  ) : (current.blocked_on ?? null) !== null ? (
+    <StatusBanner tone="attention" title={`${PHASE_NAMES[current.phase_type]}: waiting on the warehouse`}>
+      It unlocks on its own when they finish.
+    </StatusBanner>
+  ) : (
+    <StatusBanner tone="neutral" title={`${PHASE_NAMES[current.phase_type]} next`}>{where === null ? undefined : `At ${where}`}</StatusBanner>
+  )
 
   return (
-    // h-dvh + overflow-y-auto: this main IS the scrollport, so SubpageHeader's sticky
-    // sticks against it. dvh, not vh, since 100vh resolves to the address-bar-hidden height.
-    <main className="flex h-dvh flex-col overflow-y-auto overscroll-contain">
-      <SubpageHeader
-        title={trip.trip_reference}
-        backLabel="My Trips"
-        onBack={onBack}
-        titleVariant="reference"
-        titleCaption="Trip reference"
-        right={
-          <span className="shrink-0 rounded-xl border-2 border-primary px-3 py-1.5 text-xs font-bold tracking-industrial text-surface-on">
-            {trip.order_number}
-          </span>
-        }
-      />
+    <TabSubpage title={title} subtitle={trip.trip_reference} backLabel="Trips" onBack={onBack} action={action}>
+      <VehicleRow trip={trip} onOpen={() => setVehiclesOpen(true)} />
+      {notice !== undefined && <div className="mx-4 mt-4">{notice}</div>}
+      <div className="mx-4 mt-4">{banner}</div>
+      <Band />
 
-      <div className="flex flex-col gap-4 px-4 pt-4 pb-safe">
-        {notice}
-
-        <Chip kind={kind} className="self-start">{label}</Chip>
-
-        <PhaseProgressBar phases={phases} />
-
-        {/* Primary action while driving; a held trip outranks it and shows HoldNotice instead. */}
-        {driving && !onHold && (
-          <Button
-            size="lg"
-            iconLeft={<Truck className="h-5 w-5" strokeWidth={2} aria-hidden />}
-            onClick={onInTransitHub}
-          >
-            Continue driving
+      <section aria-labelledby="trip-progress" className="mt-5">
+        <SectionHeading id="trip-progress" title="Progress" className="mb-3" />
+        <div aria-hidden className="grid gap-1 px-5" style={{ gridTemplateColumns: `repeat(${driverPhases.length}, minmax(0, 1fr))` }}>
+          {driverPhases.map((phase) => {
+            const done = phase.status === 'completed' || phase.status === 'overridden'
+            const isCurrent = phase.phase_event_id === current?.phase_event_id
+            return (
+              <span
+                key={phase.phase_event_id}
+                className={cn('h-1.5 rounded-full', done ? 'bg-surface-on' : isCurrent ? 'bg-secondary' : 'bg-surface-container-high')}
+              />
+            )
+          })}
+        </div>
+        <div className="flex items-center gap-3 px-5 py-3.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-headline text-surface-on">
+              Phase {position} of {driverPhases.length}{current !== null && ` · ${PHASE_NAMES[current.phase_type]}`}
+            </p>
+            {nextNames.length > 0 && <p className="text-subhead text-surface-on-variant">Next: {nextNames.join(', ')}</p>}
+          </div>
+          <Button variant="fill" size="pill-sm" aria-expanded={allSteps} onClick={() => setAllSteps((open) => !open)}>
+            All steps
           </Button>
-        )}
+        </div>
+        {allSteps && <PhaseList phases={phases} onSelectCurrent={onHold ? undefined : onSelectPhase} />}
+      </section>
 
-        {onHold && <HoldNotice />}
-
-        {showAllPhases ? (
-          <section className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium text-surface-on-variant">Phases</h2>
-            {/* Only the current phase is tappable: completed would resubmit anchored
-                evidence, future hasn't unlocked yet. */}
-            {phases.map((phase) => {
-              const isCurrent = phase.phase_event_id === current?.phase_event_id
-              const isCompleted = isPhaseDone(phase)
-
-              return (
-                <Card
-                  key={phase.phase_event_id}
-                  variant={isCurrent ? 'dark' : isCompleted ? 'default' : 'section'}
-                  onClick={isCurrent && !onHold ? () => onSelectPhase(phase) : undefined}
-                  className={!isCurrent && !isCompleted ? 'opacity-50' : undefined}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span>
-                      <span className="font-semibold">{PHASE_NAMES[phase.phase_type]}</span>
-                      {/* Disambiguates a repeated phase type on a cross-dock plan. */}
-                      {phase.stop_sequence !== null && (
-                        <span className="ml-1.5 text-xs font-normal text-surface-on-variant">
-                          Stop {phase.stop_sequence}
-                        </span>
-                      )}
-                    </span>
-                    {isCompleted && <CheckCircle2 className="h-5 w-5 shrink-0 text-success" strokeWidth={2} aria-hidden />}
-                  </div>
-                  {isAnchored(phase) && (
-                    <AnchorBadge
-                      eventHash={phase.event_hash}
-                      receiptId={phase.blockchain_receipt_id}
-                      className="mt-2"
-                    />
-                  )}
-                </Card>
-              )
-            })}
-          </section>
-        ) : (
-          // Suppressed while driving: the current phase is then the arrival phase, whose
-          // steps can't be completed until the truck has arrived. "Continue driving"
-          // above takes its place.
-          !onHold && !driving && current !== null && (
-            <CurrentPhaseCard
-              phase={current}
-              onSelect={() => onSelectPhase(current)}
-            />
-          )
-        )}
-      </div>
-    </main>
+      {route}
+      {sheet}
+    </TabSubpage>
   )
 }

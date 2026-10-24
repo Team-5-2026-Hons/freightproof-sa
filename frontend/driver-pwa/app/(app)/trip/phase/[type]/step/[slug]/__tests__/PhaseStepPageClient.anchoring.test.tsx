@@ -26,7 +26,8 @@ const CONFIRMATION_PE = 'pe-confirmation-1' as PhaseEventId
 const mockUseParams = vi.fn()
 const mockRouterPush = vi.fn()
 const mockNotify = vi.fn()
-const mockEnqueuePhase = vi.fn()
+// true: stored, as the real queue answers when the phone has room.
+const mockEnqueuePhase = vi.fn(() => true)
 const mockSubmitPhase = vi.fn()
 const mockRefetchTrip = vi.fn()
 // The success path adopts the trip the submit already returned instead of refetching it.
@@ -34,6 +35,9 @@ const mockAdoptTrip = vi.fn()
 // Workstream 1's optimistic advance, owned by TripContext.
 const mockMarkPhaseSyncing = vi.fn()
 const mockClearPhaseSyncing = vi.fn()
+// Raised by the final phase of a plan (see TripCompleteOverlay); stubbed so the
+// hand-off under test runs the same code path the app does.
+const mockNoteTripCompleted = vi.fn()
 
 interface MockTripState {
   trip: Trip
@@ -43,6 +47,7 @@ interface MockTripState {
   syncingPhaseIds: readonly string[]
   markPhaseSyncing: typeof mockMarkPhaseSyncing
   clearPhaseSyncing: typeof mockClearPhaseSyncing
+  noteTripCompleted: typeof mockNoteTripCompleted
 }
 
 // Mutable module-level value, reassigned per test — the current PHASE must match
@@ -59,6 +64,7 @@ function setTripState(trip: Trip): void {
     syncingPhaseIds: [],
     markPhaseSyncing: mockMarkPhaseSyncing,
     clearPhaseSyncing: mockClearPhaseSyncing,
+    noteTripCompleted: mockNoteTripCompleted,
   }
 }
 
@@ -144,7 +150,7 @@ function makeTrip(phases: PhaseDescriptor[], overrides: Partial<Trip> = {}): Tri
   return {
     id: TRIP_ID as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -204,7 +210,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
         expect.objectContaining({
           kind: 'success',
           title: 'Departure recorded',
-          body: expect.stringContaining('anchored to Hedera HCS'),
+          anchor: 'anchored',
         }),
       ),
     )
@@ -232,7 +238,7 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
         expect.objectContaining({
           kind: 'success',
           title: 'Confirmation recorded',
-          body: expect.stringContaining('anchored to Hedera HCS'),
+          anchor: 'anchored',
         }),
       ),
     )
@@ -257,13 +263,11 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
         expect.objectContaining({
           kind: 'success',
           title: 'Departure recorded',
-          body: expect.stringContaining('anchoring in progress'),
+          anchor: 'anchoring',
         }),
       ),
     )
-    expect(mockNotify).not.toHaveBeenCalledWith(
-      expect.objectContaining({ body: expect.stringContaining('anchored to Hedera HCS') }),
-    )
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ anchor: 'anchored' }))
   })
 
   it('an offline-queued departure submit (even in real mode) keeps the honest "stored on this device" wording — it never reached the backend, let alone Hedera', async () => {
@@ -281,9 +285,42 @@ describe('PhaseStepPageClient anchoring receipt copy — real mode', () => {
       expect.objectContaining({
         kind: 'success',
         title: 'Departure recorded',
-        body: expect.stringContaining('stored on this device'),
+        body: expect.stringContaining('Stored on this device'),
       }),
     )
+    // No anchor row at all: claiming even "Anchoring…" would be dishonest for evidence
+    // that has not left the phone.
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ anchor: expect.anything() }))
+  })
+
+  it('test_departure_hands_the_driver_straight_to_in_transit', async () => {
+    const departure = makePhase({ phase_type: 'departure', sequence_number: 3, status: 'in_progress' })
+    setTripState(makeTrip([departure]))
+    mockUseParams.mockReturnValue({ type: 'departure', slug: '4-departure' })
+    mockSubmitPhase.mockReturnValue(new Promise(() => {}))
+
+    render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-departure'))
+    await continuePastUnavailableLocationCheck()
+
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/trip/in-transit'))
+    expect(mockRouterPush).not.toHaveBeenCalledWith('/')
+  })
+
+  it('test_confirmation_still_hands_the_driver_home', async () => {
+    const confirmation = makePhase({
+      phase_event_id: CONFIRMATION_PE, phase_type: 'confirmation', sequence_number: 6, status: 'in_progress',
+    })
+    setTripState(makeTrip([confirmation]))
+    mockUseParams.mockReturnValue({ type: 'confirmation', slug: '4-closed' })
+    mockSubmitPhase.mockReturnValue(new Promise(() => {}))
+
+    render(<PhaseStepPageClient />)
+    fireEvent.click(screen.getByText('submit-confirmation'))
+    await continuePastUnavailableLocationCheck()
+
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith('/'))
+    expect(mockRouterPush).not.toHaveBeenCalledWith('/trip/in-transit')
   })
 
   it('a terminal 4xx on departure fires no success toast at all (unaffected by the anchoring change)', async () => {

@@ -7,18 +7,20 @@ import { MapPinOff } from 'lucide-react'
 import { TopBar } from '@/components/ui/TopBar'
 import { BackButton } from '@/components/ui/BackButton'
 import { Button } from '@/components/ui/Button'
-import { Spinner } from '@/components/ui/Spinner'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, type Tab } from '@/components/ui/Tabs'
 import { InfoRow } from '@/components/ui/InfoRow'
 import { AdminOnly } from '@/components/auth/AdminOnly'
+import { ResizableHeight } from '@/components/ui/ResizableHeight'
 import { GeofenceMap } from '@/components/map/GeofenceMap'
+import { PrecinctDetailSkeleton } from '@/components/precincts/PrecinctDetailSkeleton'
 import { EventTimeline } from '@/components/blockchain/EventTimeline'
 import { PrecinctAnalyticsSummary } from '@/components/analytics/PrecinctAnalyticsSummary'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { usePrecinctDetail } from '@/lib/hooks/usePrecinctDetail'
 import { ROUTES } from '@/lib/constants/routes'
 import { RETURN_TO_PARAM, safeReturnTo } from '@/lib/navigation/returnTo'
+import { describeGeofence } from '@/lib/map/polygon'
 
 // 5 dp ≈ 1 m. Coordinates are identifiers here, not measurements — they are read to be
 // compared against a maps app, so they render at a fixed precision.
@@ -33,6 +35,8 @@ const LOWER_PANEL_TABS = [
 type LowerPanelTabId = (typeof LOWER_PANEL_TABS)[number]['id']
 
 const LOWER_PANEL_ID = 'precinct-lower-panel'
+// The map starts at its old fixed height; the dispatcher can drag it taller to see more.
+const MAP_HEIGHT = { initial: 320, min: 240, max: 800 } as const
 
 export default function PrecinctDetailPage(): React.JSX.Element {
   const router = useRouter()
@@ -54,9 +58,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
     return (
       <div className="flex flex-col flex-1">
         <TopBar title="Precinct" left={backButton} />
-        <div className="flex items-center justify-center flex-1">
-          <Spinner size="lg" />
-        </div>
+        <PrecinctDetailSkeleton />
       </div>
     )
   }
@@ -113,12 +115,21 @@ export default function PrecinctDetailPage(): React.JSX.Element {
         <div className="flex-1 min-w-0 flex flex-col lg:overflow-y-auto">
           <div className="p-6 pb-0">
             {/* No onPositionChange: a detail view reads the geofence, it does not move it. */}
-            <GeofenceMap
-              latitude={precinct.latitude}
-              longitude={precinct.longitude}
-              radiusMetres={precinct.geofence_radius_metres}
-              className="w-full h-[320px]"
-            />
+            <ResizableHeight
+              initialHeight={MAP_HEIGHT.initial}
+              minHeight={MAP_HEIGHT.min}
+              maxHeight={MAP_HEIGHT.max}
+              label="Resize map"
+              className="w-full"
+            >
+              <GeofenceMap
+                latitude={precinct.latitude}
+                longitude={precinct.longitude}
+                radiusMetres={precinct.geofence_radius_metres}
+                polygon={precinct.geofence_polygon}
+                className="w-full h-full"
+              />
+            </ResizableHeight>
           </div>
 
           <div className="p-6">
@@ -165,7 +176,7 @@ export default function PrecinctDetailPage(): React.JSX.Element {
                 DESIGN_SYSTEM 5.2 / 10.4. */}
             <InfoRow label="Latitude" value={precinct.latitude.toFixed(COORDINATE_PRECISION)} mono />
             <InfoRow label="Longitude" value={precinct.longitude.toFixed(COORDINATE_PRECISION)} mono />
-            <InfoRow label="Geofence" value={`${precinct.geofence_radius_metres} m`} mono />
+            <InfoRow label="Geofence" value={describeGeofence(precinct)} mono />
             <InfoRow label="Shared" value={precinct.is_shared ? 'Yes' : 'No'} />
             {!isOwner && (
               <p className="text-[11px] text-on-surf-v">

@@ -1,10 +1,13 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { PhaseLocationDetails } from '../PhaseLocationDetails'
 import { PhaseLocationSection } from '../PhaseLocationSection'
 import { VIEW_ON_MAP_LABEL } from '../LocationEvidencePanel'
 import { makePhase } from './testFixtures'
 import type { Precinct } from '@shared/lib/types/precinct'
 import type { PrecinctId, OrganizationId } from '@shared/lib/types/precinct'
+
+vi.mock('@/components/map/LocationComparisonMap', () => ({ LocationComparisonMap: () => null }))
 
 function makePrecinct(overrides: Partial<Precinct> = {}): Precinct {
   return {
@@ -22,6 +25,19 @@ function makePrecinct(overrides: Partial<Precinct> = {}): Precinct {
 }
 
 describe('PhaseLocationSection', () => {
+  it.each(['loading', 'in_transit'] as const)('leaves coordinates only in the timeline map modal for %s', phaseType => {
+    const phase = makePhase(phaseType, { driver_phone_lat: -33.9249, driver_phone_lng: 18.4241, horse_gps_lat: -33.926, horse_gps_lng: 18.4241 })
+    const { container } = render(<PhaseLocationDetails phase={phase} precinct={makePrecinct()} slotTime={null} />)
+
+    expect(container.textContent).not.toMatch(/-?\d+\.\d{4,}, -?\d+\.\d{4,}/)
+    fireEvent.click(screen.getByRole('button', { name: VIEW_ON_MAP_LABEL }))
+    expect(within(screen.getByRole('dialog')).getByText('-33.924900, 18.424100')).toBeInTheDocument()
+  })
+
+  it('keeps coordinate fields by default on other surfaces', () => {
+    render(<PhaseLocationSection phase={makePhase('loading', { driver_phone_lat: -33.9249, driver_phone_lng: 18.4241 })} precinct={makePrecinct()} />)
+    expect(screen.getByText('-33.924900, 18.424100')).toBeInTheDocument()
+  })
   it('renders the panel with the stored verdict and a precinct-derived context label', () => {
     const phase = makePhase('activation', {
       driver_phone_lat: -33.9249,

@@ -17,31 +17,52 @@ from app.core.rate_limit import RateLimitMiddleware, get_redis
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.api.v1.endpoints.analytics import router as analytics_router
 from app.api.v1.endpoints.artifacts import router as artifacts_router
+from app.api.v1.endpoints.assistant import router as assistant_router
 from app.api.v1.endpoints.artifacts import trip_artifacts_router
+from app.api.v1.endpoints.audit_packs import declarations_router as incident_declarations_router
+from app.api.v1.endpoints.audit_packs import packs_router as audit_packs_by_id_router
+from app.api.v1.endpoints.audit_packs import router as audit_packs_router
+from app.api.v1.endpoints.audit_packs import trip_packs_router as trip_audit_packs_router
+from app.api.v1.endpoints.audit_packs_public import router as audit_packs_public_router
 from app.api.v1.endpoints.blockchain import router as blockchain_router
 from app.api.v1.endpoints.checkpoints import router as checkpoints_router
-from app.api.v1.endpoints.dev_pulsit import move_truck_enabled
-from app.api.v1.endpoints.dev_pulsit import router as dev_pulsit_router
-from app.api.v1.endpoints.dev_triggers import dev_panel_enabled
-from app.api.v1.endpoints.dev_triggers import router as dev_triggers_router
+from app.dev.endpoints.pulsit import move_truck_enabled
+from app.dev.endpoints.pulsit import router as dev_pulsit_router
+from app.dev.endpoints.tracker import router as dev_tracker_router
+from app.dev.endpoints.phone import router as dev_phone_router
+from app.dev.endpoints.triggers import dev_panel_enabled
+from app.dev.endpoints.triggers import router as dev_triggers_router
+from app.dev.services import demo_phone as dev_demo_phone
+from app.orchestration.phases.demo_position import configure_demo_position_provider
 from app.api.v1.endpoints.drivers import router as drivers_router
 from app.api.v1.endpoints.exceptions import dispatcher_router as exceptions_dispatcher_router
 from app.api.v1.endpoints.exceptions import router as exceptions_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.manifest import router as manifest_router
+from app.api.v1.endpoints.parcels import router as parcels_router
 from app.api.v1.endpoints.handover import public_router as handover_public_router
+from app.api.v1.endpoints.incidents import router as incidents_router
+from app.api.v1.endpoints.incidents import trip_incidents_router
 from app.api.v1.endpoints.handover import router as handover_router
 from app.api.v1.endpoints.phases import router as phases_router
 from app.api.v1.endpoints.pp import router as pp_router
 from app.api.v1.endpoints.precincts import router as precincts_router
 from app.api.v1.endpoints.stream import router as stream_router
 from app.api.v1.endpoints.trip_admin import router as trip_admin_router
+from app.api.v1.endpoints.driver_substitutions import (
+    dispatcher_router as driver_substitutions_dispatcher_router,
+    driver_router as driver_substitutions_driver_router,
+    late_evidence_router as driver_substitutions_late_evidence_router,
+)
 from app.api.v1.endpoints.trips import router as trips_router
 from app.api.v1.endpoints.vehicles import router as vehicles_router
 from app.auth.router import router as auth_router
 from app.core.config_validation import enforce_production_config
 from app.core.realtime import register_realtime_hook
+from app.db.errors import DATABASE_UNAVAILABLE_DETAIL, DatabaseUnavailableError
 from app.db.session import get_read_only_db
+from app.tasks.driver_substitutions import register_custody_publisher
+from app.tasks.evidence_anchors import register_evidence_publisher
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +108,12 @@ app.add_middleware(
 # rejection still gets these headers too.
 app.add_middleware(SecurityHeadersMiddleware)
 
+# FP-83: the driver's /trips/me/... substitution routes go BEFORE the trips router, whose
+# /trips/me/{trip_id} would otherwise consume /trips/me/driver-substitutions as a trip id.
+app.include_router(driver_substitutions_driver_router, prefix="/api/v1")
 app.include_router(trips_router, prefix="/api/v1")
+app.include_router(driver_substitutions_dispatcher_router, prefix="/api/v1")
+app.include_router(driver_substitutions_late_evidence_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(vehicles_router, prefix="/api/v1")
@@ -107,10 +133,19 @@ app.include_router(exceptions_dispatcher_router, prefix="/api/v1")
 app.include_router(locations_router, prefix="/api/v1")
 app.include_router(checkpoints_router, prefix="/api/v1")
 app.include_router(manifest_router, prefix="/api/v1")
+app.include_router(parcels_router, prefix="/api/v1")
 app.include_router(pp_router, prefix="/api/v1")
 app.include_router(stream_router, prefix="/api/v1")
 app.include_router(trip_admin_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(assistant_router, prefix="/api/v1")
+app.include_router(audit_packs_router, prefix="/api/v1")
+app.include_router(trip_audit_packs_router, prefix="/api/v1")
+app.include_router(audit_packs_by_id_router, prefix="/api/v1")
+app.include_router(incident_declarations_router, prefix="/api/v1")
+app.include_router(trip_incidents_router, prefix="/api/v1")
+app.include_router(incidents_router, prefix="/api/v1")
+app.include_router(audit_packs_public_router, prefix="/api/v1")
 
 # Dev trigger panel. Gated on DEV_PANEL_ENABLED only, not _IS_PRODUCTION —
 # the deployed demo runs ENVIRONMENT="production" and still needs this panel.
@@ -125,10 +160,44 @@ if dev_panel_enabled():
 # would write into a mock nothing reads. See dev_pulsit.move_truck_enabled().
 if move_truck_enabled():
     app.include_router(dev_pulsit_router, prefix="/api/v1")
+    # Same two guards: rig scenarios stage the Pulsit mock too. See dev_tracker.py.
+    app.include_router(dev_tracker_router, prefix="/api/v1")
+    # "Move the phone" — the driver-side counterpart, a separate control from the truck.
+    app.include_router(dev_phone_router, prefix="/api/v1")
+    # "Move the phone", the driver-side counterpart. Installing the provider HERE, behind
+    # the same guard as the routes that stage a position, is what keeps the phase paths
+    # free of any import of app/dev — and what guarantees a deployment without these
+    # flags has no provider at all, so no phase can read a staged position. See
+    # orchestration/phases/demo_position.py.
+    configure_demo_position_provider(dev_demo_phone.staged_position)
 
 # Publishes queued realtime events once a request's transaction is durable
 # (see app/core/realtime.py). Idempotent.
 register_realtime_hook()
+
+# Lets the request path queue evidence-anchor events on the Celery worker without importing
+# the task layer (see orchestration/evidence_anchors/dispatch.py). Idempotent.
+register_evidence_publisher()
+# The same for FP-83 custody anchors (orchestration/substitutions/anchors.py).
+register_custody_publisher()
+
+
+@app.exception_handler(DatabaseUnavailableError)
+async def database_unavailable_handler(request: Request, exc: DatabaseUnavailableError) -> JSONResponse:
+    # Route templates, never raw URLs: public handover/audit links carry secrets in
+    # the path. Driver exception messages can also contain connection/SQL parameters.
+    route = getattr(request.scope.get("route"), "path", "<unmatched>")
+    logger.warning(
+        "Database unavailable reason=%s operation=%s route=%s "
+        "pool_size=%s max_overflow=%s connect_timeout=%s pool_timeout=%s command_timeout=%s cleanup_timeout=%s",
+        exc.reason, exc.operation, route, settings.DB_POOL_SIZE, settings.DB_MAX_OVERFLOW,
+        settings.DB_CONNECT_TIMEOUT_SECONDS, settings.DB_POOL_TIMEOUT_SECONDS,
+        settings.DB_COMMAND_TIMEOUT_SECONDS, settings.DB_CLEANUP_TIMEOUT_SECONDS,
+    )
+    return JSONResponse(
+        status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"detail": DATABASE_UNAVAILABLE_DETAIL},
+    )
 
 
 @app.exception_handler(Exception)

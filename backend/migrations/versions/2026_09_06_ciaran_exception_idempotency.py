@@ -1,6 +1,6 @@
 """add exceptions.client_report_id + partial unique index per trip
 
-Task 0B (FP-150 follow-up). Two problems close with this migration and the service
+FP-150 follow-up. Two problems close with this migration and the service
 change it backs:
 
 1. Nothing stopped a driver-raised exception from citing an EvidenceArtifact that

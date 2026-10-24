@@ -10,6 +10,7 @@ import { Ic } from '@/components/ui/Ic'
 import { BlockchainBadge } from './BlockchainBadge'
 import { ForensicOnly } from './ForensicOnly'
 import { describeChange } from '@/lib/forensic/describeChange'
+import { fmtSastDateTime } from '@shared/lib/utils/datetime'
 import type {
   BlockchainReceipt, DriverEvent, PrecinctEvent, VehicleEvent,
 } from '@shared/lib/types/blockchain'
@@ -36,6 +37,7 @@ function describeEvent(e: Event): string {
   if (t === 'deactivated') return 'Deactivated'
   if (t === 'relocated') return 'Location corrected'
   if (t === 'geofence_resized') return 'Geofence radius changed'
+  if (t === 'geofence_reshaped') return 'Property outline changed'
   if (t === 'sharing_changed') return 'Cross-organisation sharing changed'
   if (t === 'cosmetic_update') {
     if (isPrecinct) return 'Precinct details updated'
@@ -74,10 +76,7 @@ export function EventTimeline({ events, receipts, className = '' }: Props) {
               <div className="text-[13px] font-[600] text-on-surf">{describeEvent(e)}</div>
               <div className="shrink-0 flex items-center gap-[4px] text-[12px] font-[600] tabular-nums tracking-[0.03em] text-sec">
                 <Ic n="clock" s={11} className="text-sec shrink-0" />
-                {new Date(e.created_at).toLocaleString('en-ZA', {
-                  day: '2-digit', month: 'short', year: 'numeric',
-                  hour: '2-digit', minute: '2-digit',
-                })}
+                {fmtSastDateTime(e.created_at) ?? '—'}
               </div>
             </div>
             {/* What changed — visible to every dispatcher, not just forensic mode */}

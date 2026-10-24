@@ -74,13 +74,12 @@ beforeEach(() => {
 })
 
 describe('ProblemsTab', () => {
-  it('asks once for the tab period and says dispatcher notes are not counted', async () => {
+  it('asks once for the tab period', async () => {
     mockedGet.mockResolvedValue(makeProblems(8))
 
     renderTab()
 
     await waitFor(() => expect(mockedGet).toHaveBeenCalledWith(PATH))
-    expect(screen.getByText(/Dispatcher notes .* are not counted as problems/)).toBeInTheDocument()
   })
 
   it('counts problems over time, with the rate per trip beside the trips it rests on', async () => {
@@ -151,7 +150,7 @@ describe('ProblemsTab', () => {
 
     const perTrip = await waitFor(() => card('Problems over time'))
 
-    expect(await within(perTrip).findByText('Based on only 3 trips — read with care')).toBeInTheDocument()
+    expect(await within(perTrip).findByText('Based on only 3 trips, read with care')).toBeInTheDocument()
   })
 
   it('says there is not enough data yet with no closed trips', async () => {
@@ -162,5 +161,17 @@ describe('ProblemsTab', () => {
 
     expect((await screen.findAllByText('No closed trips departed in this period.')).length).toBe(2)
     expect(screen.getAllByText('No problems were recorded on closed trips in this period.')).toHaveLength(2)
+  })
+
+  it('names where Risky times of day comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeProblems(8))
+    renderTab()
+    const element = await waitFor(() => card('Risky times of day'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Risky times of day' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Any severity, closed trips only')
   })
 })

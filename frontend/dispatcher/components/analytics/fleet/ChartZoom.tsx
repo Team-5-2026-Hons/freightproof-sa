@@ -51,7 +51,7 @@ interface ChartZoomProps {
   children: ReactNode
 }
 
-/** The one zoom control every analytics chart shares (D27): a zoom-in button that opens the
+/** The one zoom control every analytics chart shares: a zoom-in button that opens the
  *  chart in a modal at 80% of the page, over a blurred background. It closes on the ×, a click
  *  on the background or Escape (all the Modal's own behaviour). The modal's content renders
  *  only while open, so a closed zoom costs nothing. */

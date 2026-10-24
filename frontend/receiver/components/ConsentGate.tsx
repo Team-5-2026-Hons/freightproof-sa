@@ -1,5 +1,3 @@
-// frontend/receiver/components/ConsentGate.tsx
-//
 // The s27(1)(a) gate. Biometric processing is prohibited under POPIA s26 without an
 // exemption, and explicit consent is the one this feature relies on — so this screen is a
 // legal control, not a nicety.

@@ -14,22 +14,37 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
-from app.core.exceptions import ExceptionAlreadyReviewedError, ResourceNotFoundError
+from app.api.v1.custody_errors import custody_http_exception
+from app.core.exceptions import (
+    CustodyAccessError,
+    BatchReviewRejectedError,
+    ExceptionAlreadyReviewedError,
+    ExceptionClaimedByColleagueError,
+    ExceptionNotOpenError,
+    ResourceNotFoundError,
+)
 from app.core.limits import EVIDENCE_WRITE, FLEET_MUTATION
 from app.core.rate_limit import rate_limit
-from app.db.models.enums import ExceptionReviewStatus, ExceptionSeverity
+from app.db.models.enums import DispatcherRole, ExceptionReviewStatus, ExceptionSeverity
 from app.db.session import get_db
-from app.orchestration.exception_service import (
+from app.orchestration.exceptions.creation import raise_exception
+from app.orchestration.exceptions.queries import (
     get_exception_detail,
     list_exception_history,
     list_review_queue,
-    raise_exception,
+)
+from app.orchestration.exceptions.review import (
+    claim_exception,
+    release_exception,
     review_exception,
+    review_exceptions_batch,
 )
 from app.schemas.pagination import CursorPage
 from app.schemas.people import DriverRead, UserRead
 from app.schemas.transit import (
+    ExceptionClaimRequest,
     DriverExceptionCreateBody,
+    TripExceptionBatchReviewRequest,
     TripExceptionDetail,
     TripExceptionListItem,
     TripExceptionRead,
@@ -60,17 +75,19 @@ async def raise_exception_endpoint(
             db, trip_id=trip_id, driver_id=current_driver.id,
             exception_type=payload.exception_type, description=payload.description,
             supporting_artifact_id=payload.supporting_artifact_id,
+            supporting_artifact_ids=payload.photo_ids,
             phase_event_id=payload.phase_event_id,
             gps_lat=gps_lat, gps_lng=gps_lng,
             driver_captured_at=payload.driver_captured_at,
             driver_accuracy_metres=payload.driver_accuracy_metres,
             client_report_id=payload.client_report_id,
             vehicle_type=payload.vehicle_type, trailer_id=payload.trailer_id,
+            custody_sequence=payload.custody_sequence,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 # Declared BEFORE /{exception_id}: FastAPI matches routes in declaration order, or
@@ -82,6 +99,32 @@ async def review_queue_endpoint(
 ) -> list[TripExceptionListItem]:
     """Every needs_review exception in the dispatcher's organisation, newest first — unpaginated."""
     return await list_review_queue(db, organization_id=current_user.organization_id)
+
+
+# Rate-limited as a single mutation: one request, one bounded transaction. Declared before
+# /{exception_id}/... routes; a POST on a fixed path cannot collide with them, but keeping
+# the fixed paths together is the convention here.
+@dispatcher_router.post("/review-batch", response_model=list[TripExceptionRead],
+                        dependencies=[Depends(rate_limit(FLEET_MUTATION))])
+async def review_batch_endpoint(
+    payload: TripExceptionBatchReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> list[TripExceptionRead]:
+    """Review several non-critical exceptions on one trip with one note and outcome."""
+    try:
+        return await review_exceptions_batch(
+            db, trip_id=payload.trip_id, exception_ids=payload.exception_ids,
+            user_id=current_user.id, organization_id=current_user.organization_id,
+            review_note=payload.review_note, review_outcome=payload.review_outcome,
+            contact_method=payload.contact_method,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BatchReviewRejectedError as exc:
+        raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except (ExceptionAlreadyReviewedError, ExceptionClaimedByColleagueError) as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @dispatcher_router.get("/history", response_model=CursorPage[TripExceptionListItem])
@@ -123,6 +166,8 @@ async def get_exception_detail_endpoint(
     try:
         return await get_exception_detail(
             db, exception_id=exception_id, organization_id=current_user.organization_id,
+            # Receipts are admin-only everywhere else, so the pointer into one is too.
+            include_hedera_refs=current_user.role == DispatcherRole.ADMIN_DISPATCHER,
         )
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -148,6 +193,7 @@ async def review_exception_endpoint(
             review_note=payload.review_note,
             review_outcome=payload.review_outcome,
             contact_method=payload.contact_method,
+            take_over=payload.take_over,
         )
     except ResourceNotFoundError as exc:
         # 404, not 403, on a wrong-organisation id — a 403 would confirm the row exists.
@@ -161,3 +207,45 @@ async def review_exception_endpoint(
                 "Their review is the record; re-read it before reviewing again."
             ),
         ) from exc
+    except ExceptionClaimedByColleagueError as exc:
+        # 409: a colleague claimed it after this page loaded. The message names no person.
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@dispatcher_router.post("/{exception_id}/claim", response_model=TripExceptionRead,
+                        dependencies=[Depends(rate_limit(FLEET_MUTATION))])
+async def claim_exception_endpoint(
+    exception_id: UUID,
+    payload: ExceptionClaimRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> TripExceptionRead:
+    """Claim an unreviewed exception, or take it over from a colleague (take_over=true)."""
+    try:
+        return await claim_exception(
+            db, exception_id=exception_id, user_id=current_user.id,
+            organization_id=current_user.organization_id, take_over=payload.take_over,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (ExceptionClaimedByColleagueError, ExceptionNotOpenError) as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@dispatcher_router.delete("/{exception_id}/claim", response_model=TripExceptionRead,
+                          dependencies=[Depends(rate_limit(FLEET_MUTATION))])
+async def release_exception_endpoint(
+    exception_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> TripExceptionRead:
+    """Release your claim, returning the exception to the unreviewed inbox."""
+    try:
+        return await release_exception(
+            db, exception_id=exception_id, user_id=current_user.id,
+            organization_id=current_user.organization_id,
+        )
+    except ResourceNotFoundError as exc:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except (ExceptionClaimedByColleagueError, ExceptionNotOpenError) as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc

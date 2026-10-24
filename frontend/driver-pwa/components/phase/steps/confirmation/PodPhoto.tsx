@@ -1,11 +1,7 @@
-// frontend/driver-pwa/components/phase/steps/confirmation/PodPhoto.tsx
-// BQ2 resolved 2026-06-29: proof of delivery is a photo of the delivered cargo
-// AND an on-device signature from the receiver — both required, now captured as two
-// separate steps (this one, and PodSignature.tsx) instead of one combined screen, per
-// confirmation's recipe (STEP_SLUGS.confirmation: '1-pod-photo', '2-receiver-handover').
+// POD photo step; the receiver's signature is captured in ReceiverHandover.
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
@@ -22,7 +18,7 @@ interface PodPhotoProps {
 }
 
 export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: PodPhotoProps) {
-  const { uploadNow } = useArtifactUpload(tripId)
+  const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
 
   // Upload starts the moment the photo exists, not when the driver swipes — the walk
   // between the two is dead time otherwise. The data URL is stored either way, so a
@@ -30,7 +26,7 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
   function handleCapture(dataUrl: string) {
     const capturedAt = new Date().toISOString()
     onUpdate({ podPhotoDataUrl: dataUrl, podPhotoArtifactId: null, capturedAt })
-    void uploadNow(dataUrl, 'photo', capturedAt).then((artifactId) => {
+    void uploadNow(dataUrl, 'photo', capturedAt, 'pod_photo').then((artifactId) => {
       if (artifactId !== null) onUpdate({ podPhotoArtifactId: artifactId })
     })
   }
@@ -38,21 +34,27 @@ export function PodPhoto({ tripId, phase, stepIndex, draft, onUpdate, onComplete
   const hasPhoto = draft.podPhotoDataUrl !== null
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
-          Photograph the delivered cargo.
-        </p>
-        <CameraCapture
-          label="Proof of delivery photo"
-          dataUrl={draft.podPhotoDataUrl}
-          onCapture={handleCapture}
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      intro="Show the delivered cargo where it was left."
+      requirements={[{ label: 'Delivery photo', met: hasPhoto }]}
+      action={
+        <SwipeToConfirm
+          label="Swipe to Save Photo"
+          waitingLabel="Add the delivery photo first"
+          onConfirm={onComplete}
+          disabled={!hasPhoto}
         />
-      </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        <SwipeToConfirm label="Swipe to confirm" onConfirm={onComplete} disabled={!hasPhoto} />
-      </div>
-    </main>
+      }
+    >
+      <CameraCapture
+        label="Delivery photo"
+        hint="Whole load in frame"
+        dataUrl={draft.podPhotoDataUrl}
+        capturedAt={draft.capturedAt}
+        onCapture={handleCapture}
+      />
+    </StepLayout>
   )
 }

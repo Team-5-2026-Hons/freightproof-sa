@@ -1,43 +1,101 @@
 'use client'
 
-import { StepHeader } from '@/components/phase/StepHeader'
-import { EvidenceReview } from '@/components/phase/EvidenceReview'
-import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { useRouter } from 'next/navigation'
+import { Camera, Lock, MapPinned } from 'lucide-react'
+import { STEP_SLUGS } from '@shared/lib/constants/phase-meta'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { Trip } from '@shared/lib/types/trip'
+import { StepLayout } from '@/components/phase/StepLayout'
+import { ReviewRow } from '@/components/phase/ReviewRow'
+import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
+import { phaseStepRoute } from '@/lib/phase'
+import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
+import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { markTransition } from '@/lib/navigation/transition-direction'
+import { formatTime } from '@/lib/utils/format-time'
 import type { DepartureEvidence } from '@/lib/types/evidence-draft'
 
 interface ConfirmDepartureProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: DepartureEvidence
   onComplete: () => void | Promise<void>
 }
 
-export function ConfirmDeparture({ tripId, phase, stepIndex, draft, onComplete }: ConfirmDepartureProps) {
+const ICON = 'size-6'
+
+function HeadingTo({ trip }: { trip: Trip }) {
+  const { destination } = useTripPlaces(trip)
+  const due = trip.planned_arrival_at === null ? null : `due ${formatTime(trip.planned_arrival_at)}`
+  return (
+    <ReviewRow
+      icon={<MapPinned className={ICON} strokeWidth={1.8} />}
+      label="Heading to"
+      value={[destination.name, due].filter(Boolean).join(' · ')}
+    />
+  )
+}
+
+export function ConfirmDeparture({ phase, stepIndex, draft, onComplete }: ConfirmDepartureProps) {
+  const router = useRouter()
+  // Outside a trip session (a cold deep link mid-load) the destination row is left out.
+  const trip = useOptionalTrip()?.trip ?? null
+
   // Both halves checked, not just the number: submitPhase's departure branch throws
   // locally without a seal photo, and a swipe that can only fail is worse than a disabled one.
   const isReady = draft.sealNumber !== null && draft.sealPhotoDataUrl !== null
 
+  // Edit and Retake both go back to the capture step, where the number and the photo
+  // live — one place to change either, the draft carried across.
+  function backToCapture() {
+    markTransition('back')
+    router.push(phaseStepRoute(phase.phase_type, STEP_SLUGS[phase.phase_type][0]))
+  }
+
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      <div className="flex flex-1 flex-col gap-6 p-4">
-        <p className="text-lg leading-relaxed text-surface-on-variant">
-          You are about to depart. Swipe to submit. Your departure is recorded and you are now in transit.
-        </p>
-        <EvidenceReview
-          items={[
-            // No GPS line: the fix is taken as this swipe submits, so a "Captured"
-            // receipt here would claim something that hasn't happened yet.
-            { label: 'Seal number', value: draft.sealNumber },
-            { label: 'Seal photo', value: draft.sealPhotoDataUrl, isImage: true },
-          ]}
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      // Names the control the driver actually sees ("Depart").
+      intro="Check the seal one last time. When you swipe Depart, you’re in transit."
+      requirements={[
+        { label: 'Seal number', met: draft.sealNumber !== null },
+        { label: 'Seal photo', met: draft.sealPhotoDataUrl !== null },
+      ]}
+      action={
+        <SwipeToConfirm
+          label="Swipe to Depart"
+          waitingLabel="Add number and photo"
+          committedLabel="Departed"
+          committedHint="Opening In Transit…"
+          onConfirm={onComplete}
+          disabled={!isReady}
         />
+      }
+    >
+      {/* No GPS row: the fix is taken as this swipe submits, so a "Captured" line here
+          would claim something that hasn't happened yet. */}
+      <div className="divide-y divide-hairline">
+        <ReviewRow
+          icon={<Lock className={ICON} strokeWidth={1.8} />}
+          label="Seal number"
+          value={<span className="text-title-3 tracking-wide">{draft.sealNumber ?? '—'}</span>}
+          action={{ label: 'Edit', onClick: backToCapture, accessibleName: 'Edit seal number' }}
+        />
+        <ReviewRow
+          icon={<Camera className={ICON} strokeWidth={1.8} />}
+          label="Seal photo"
+          media={draft.sealPhotoDataUrl !== null && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={draft.sealPhotoDataUrl} alt="Seal photo" className="h-12 w-16 shrink-0 rounded-[10px] object-cover" />
+          )}
+          value={draft.sealPhotoDataUrl === null
+            ? 'Not taken'
+            : draft.capturedAt === null ? 'Captured' : `Captured ${formatTime(draft.capturedAt)}`}
+          action={{ label: 'Retake', onClick: backToCapture, accessibleName: 'Retake seal photo' }}
+        />
+        {trip !== null && <HeadingTo trip={trip} />}
       </div>
-      <div className="flex justify-center px-6 pt-6 pb-safe">
-        <SwipeToConfirm label="Depart" onConfirm={onComplete} disabled={!isReady} />
-      </div>
-    </main>
+    </StepLayout>
   )
 }

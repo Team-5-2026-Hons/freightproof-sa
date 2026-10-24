@@ -382,14 +382,14 @@ async def test_entry_missing_its_timestamp_reads_as_unavailable(pulsit_settings)
 
 
 # ---------------------------------------------------------------------------
-# Task 0A: a naive timestamp or an impossible coordinate must never become evidence
+# A naive timestamp or an impossible coordinate must never become evidence
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_a_naive_timestamp_reads_as_unavailable(pulsit_settings):
-    # A timestamp with no UTC offset at all — corroboration_service compares fixed_at
+    # A timestamp with no UTC offset at all — evidence.corroboration compares fixed_at
     # against the driver's own timezone-aware capture instant, and a naive value would
     # silently be treated as UTC by the subtraction, manufacturing a skew verdict from
     # a value that was never actually anchored to a real instant.

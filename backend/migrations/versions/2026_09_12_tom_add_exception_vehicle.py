@@ -3,11 +3,10 @@
 A breakdown is recorded against its trip only, and trailers attach to a trip through
 the many-to-many trip_trailers table, so nothing said which trailer on an interlink
 broke down. Adds a nullable exceptions.vehicle_id (FK to vehicles) that the server sets
-on MECHANICAL exceptions from the driver's "truck or trailer" answer
-(docs/design-notes/2026-09-12-trailer-analytics-spec.md, Stage 1).
+on MECHANICAL exceptions from the driver's "truck or trailer" answer.
 
 No backfill: an old breakdown can't be tied to a vehicle truthfully, so it stays NULL
-and keeps counting for the trip's horse (spec decision 2).
+and keeps counting for the trip's horse.
 
 Safe beside the FP-153 materialized views: they read the exceptions table, but ADD
 COLUMN leaves dependent views alone, and none of them reference vehicle_id, so the

@@ -9,9 +9,10 @@ import { Ic } from '@/components/ui/Ic'
 import { ROUTES } from '@/lib/constants/routes'
 import { NO_DATA, fmtMinutes } from '@/lib/format/analytics'
 import { fmtExceptionType } from '@/lib/format/exception'
-import { LOW_SAMPLE_TRIPS, fmtSastDay, type TabQuery } from '@/lib/format/period'
+import { LOW_SAMPLE_TRIPS, fmtDay, fmtSastDay, type TabQuery } from '@/lib/format/period'
 import { useFleetIncidents, useFleetRoutes, type FleetQueryResult } from '@/lib/hooks/useFleetAnalytics'
 import { withReturnTo } from '@/lib/navigation/returnTo'
+import { useLiveResource } from '@/lib/realtime/useLiveResource'
 import { LANE_BAD_DAY_COLOR, LANE_TYPICAL_COLOR, SERIES_COLORS, STATUS_COLORS } from '@/lib/tokens'
 import type { FleetIncidents, FleetRoutes, LaneRisk, SiteActivity } from '@shared/lib/types/fleet-analytics'
 import { ChartCard, queryState } from '../ChartCard'
@@ -20,9 +21,11 @@ import { ChartLegend } from '../charts/ChartLegend'
 import { ChartTooltip } from '../charts/ChartTooltip'
 import { PARTIAL_OPACITY } from '../charts/chartStyle'
 import { LaneScatter } from '../charts/LaneScatter'
+import { RadioToggle } from '../controls/RadioToggle'
 import { FLEET_COPY } from '../copy'
 import { sumOf } from '../format'
 import { INCIDENT_MAP_HEIGHT, IncidentMap, type PinSelection } from '../map/IncidentMap'
+import type { MapWindow } from '../navigation'
 
 const COPY = FLEET_COPY.routes
 // Enough to see the busiest places at a glance; "Show all" opens the rest.
@@ -85,6 +88,7 @@ function SitesCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
   return (
     <ChartCard
       title={COPY.sites.title}
+      source={COPY.sites.source}
       question={COPY.sites.question}
       basis={COPY.sites.basis(total)}
       controls={sites.length > TOP_SITES ? (
@@ -161,6 +165,7 @@ function LaneTimesCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
     <ChartCard
       className="lg:col-span-2"
       title={COPY.laneTimes.title}
+      source={COPY.laneTimes.source}
       question={COPY.laneTimes.question}
       basis={COPY.laneTimes.basis(timed)}
       legend={
@@ -236,6 +241,7 @@ function LaneRiskCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
   return (
     <ChartCard
       title={COPY.laneRisk.title}
+      source={COPY.laneRisk.source}
       question={COPY.laneRisk.question}
       basis={COPY.laneRisk.basis(lanes.length)}
       note={COPY.laneRisk.note}
@@ -252,7 +258,6 @@ function LaneRiskCard({ routes }: { routes: FleetQueryResult<FleetRoutes> }) {
         xLabel={COPY.axis.tripsOnLane}
         yLabel={COPY.axis.problemsPerTrip}
         color={SERIES_COLORS[0]}
-        pointLabel={laneName}
         cornerLabel={COPY.laneRisk.corner}
         renderTooltip={(lane) => (
           <ChartTooltip
@@ -282,13 +287,20 @@ interface PinRow {
 interface IncidentsCardProps {
   incidents: FleetQueryResult<FleetIncidents>
   returnTo: string
+  /** The SAST day the Today window asks for; shown in the basis so the window is unambiguous. */
+  today: string
+  /** Named in full rather than `window`: a prop called `window` shadows the browser global
+   *  inside this component, which is a trap for the next edit. */
+  mapWindow: MapWindow
+  onMapWindowChange: (window: MapWindow) => void
 }
 
 /** Chart 3.6: the map, with its table twin always under it and the count of reports that had
  *  no location. Nothing about the driver anywhere: the pins don't carry it. The table shows
  *  ten rows at a time with "Load more"; clicking a row finds its pin on the map, and every
  *  "Open" carries `returnTo` so the report's Back button comes straight back here. */
-function IncidentsCard({ incidents, returnTo }: IncidentsCardProps) {
+function IncidentsCard({ incidents, returnTo, today, mapWindow, onMapWindowChange }: IncidentsCardProps) {
+  const isToday = mapWindow === 'today'
   const [shownCount, setShownCount] = useState(INCIDENT_PAGE_SIZE)
   const [selection, setSelection] = useState<PinSelection | null>(null)
   const pins = incidents.data?.pins ?? []
@@ -342,14 +354,31 @@ function IncidentsCard({ incidents, returnTo }: IncidentsCardProps) {
     </div>
   )
   const unlocatedLine = unlocated > 0 ? COPY.incidents.unlocated(unlocated) : undefined
+  const basis = isToday
+    ? COPY.incidents.basisToday(pins.length, fmtDay(today))
+    : COPY.incidents.basis(pins.length)
+  const emptyText = isToday ? COPY.incidents.emptyToday : COPY.incidents.empty
 
   return (
     <ChartCard
       className="lg:col-span-2"
       title={COPY.incidents.title}
+      source={COPY.incidents.source}
       question={COPY.incidents.question}
-      basis={COPY.incidents.basis(pins.length)}
+      basis={basis}
       caveat={unlocatedLine}
+      controls={
+        <RadioToggle<MapWindow>
+          label={COPY.incidents.window.label}
+          showLabel={false}
+          value={mapWindow}
+          options={[
+            { value: 'today', label: COPY.incidents.window.today },
+            { value: 'period', label: COPY.incidents.window.period },
+          ]}
+          onChange={onMapWindowChange}
+        />
+      }
       legend={
         <ChartLegend
           items={[
@@ -360,7 +389,7 @@ function IncidentsCard({ incidents, returnTo }: IncidentsCardProps) {
       }
       {...queryState(incidents)}
       isEmpty={pins.length === 0}
-      emptyBody={unlocatedLine === undefined ? COPY.incidents.empty : `${COPY.incidents.empty} ${unlocatedLine}`}
+      emptyBody={unlocatedLine === undefined ? emptyText : `${emptyText} ${unlocatedLine}`}
       chartHeight={INCIDENT_MAP_HEIGHT}
       table={table}
     >
@@ -377,22 +406,45 @@ interface RoutesTabProps {
   query: TabQuery
   /** Where a report opened from the map should send Back: this tab, as it is now. */
   returnTo: string
+  /** Today in SAST, from the page, so the tab and the rest of the page agree on the day. */
+  today: string
+  /** The incident map's own window. The sites and lanes charts never follow it. */
+  mapWindow: MapWindow
+  onMapWindowChange: (window: MapWindow) => void
 }
 
 /** Routes & sites tab: busiest sites and lane risk side by side, then driving time per lane
- *  and the map across the full width. Two requests, both for the period alone. */
-export function RoutesTab({ query, returnTo }: RoutesTabProps) {
+ *  and the map across the full width.
+ *
+ *  Two requests. Sites and lanes always use the tab's period; the map uses its own window, so
+ *  asking it for today doesn't empty the charts beside it: few closed trips depart on the day. */
+export function RoutesTab({ query, returnTo, today, mapWindow, onMapWindowChange }: RoutesTabProps) {
   const period = { start: query.start, end: query.end }
+  const incidentPeriod = mapWindow === 'today' ? { start: today, end: today } : period
   const routes = useFleetRoutes(period)
-  const incidents = useFleetIncidents(period)
+  const incidents = useFleetIncidents(incidentPeriod)
+
+  // A report raised anywhere in the organisation may belong on this map, so 'any' trip, as the
+  // review queue does (lib/hooks/useExceptions.ts). Silent, so a report raised on stage appears
+  // without the card dimming; narrowed to exception_raised so ordinary phase traffic doesn't
+  // re-poll it. The map only redraws if the set of pins actually changed; see pinSignature.
+  useLiveResource('trip', 'any', incidents.refetchSilent, { kinds: ['exception_raised'] })
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <SitesCard routes={routes} />
       <LaneRiskCard routes={routes} />
       <LaneTimesCard routes={routes} />
-      {/* Keyed by the period: a new period starts the table at ten rows with nothing chosen. */}
-      <IncidentsCard key={`${period.start ?? 'all'}-${period.end}`} incidents={incidents} returnTo={returnTo} />
+      {/* Keyed by the window it is showing: a new one starts the table at ten rows with
+          nothing chosen, so a selected pin can't survive into a set that no longer has it. */}
+      <IncidentsCard
+        key={`${mapWindow}-${incidentPeriod.start ?? 'all'}-${incidentPeriod.end}`}
+        incidents={incidents}
+        returnTo={returnTo}
+        today={today}
+        mapWindow={mapWindow}
+        onMapWindowChange={onMapWindowChange}
+      />
     </div>
   )
 }

@@ -32,12 +32,15 @@ const { linehaul } = vi.hoisted(() => ({
 
 // Bare draft — every test below that doesn't care about the photo state renders with no
 // captured photo yet, matching what LOADING_INITIAL seeds a fresh step with.
-const EMPTY_DRAFT = { linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null, capturedAt: null }
+const EMPTY_DRAFT = {
+  linehaulPhotoDataUrl: null, linehaulPhotoArtifactId: null,
+  linehaulPdfDataUrl: null, linehaulPdfArtifactId: null, capturedAt: null,
+}
 
 // The blocked branch now renders WarehouseWaitCard (components/phase/WarehouseWaitCard.tsx),
 // which reads useTrip() directly — every test in this file renders Linehaul bare, with no
 // TripProvider ancestor, so the real hook (which throws outside one) is stubbed for the
-// whole file. A single module-scope vi.fn(), not one created per render, so the "Check now"
+// whole file. A single module-scope vi.fn(), not one created per render, so the "Check Now"
 // tests below can assert on it after the click.
 const mockRefreshQuietly = vi.fn().mockResolvedValue(undefined)
 
@@ -110,8 +113,8 @@ describe('Linehaul', () => {
   })
 
   // Task: driver PWA trip auto-refresh (2026-08-10) — the blocked wait is no longer a
-  // dead end. WarehouseWaitCard adds a Check now control alongside the existing copy.
-  it('renders a Check now control when blocked', () => {
+  // dead end. WarehouseWaitCard adds a Check Now control alongside the existing copy.
+  it('renders a Check Now control when blocked', () => {
     render(
       <Linehaul
         tripId="trip-1"
@@ -127,7 +130,7 @@ describe('Linehaul', () => {
     expect(screen.getByRole('button', { name: /check now/i })).toBeInTheDocument()
   })
 
-  it('activating Check now calls refreshQuietly', () => {
+  it('activating Check Now calls refreshQuietly', () => {
     render(
       <Linehaul
         tripId="trip-1"
@@ -160,10 +163,10 @@ describe('Linehaul', () => {
 
     // "Linehaul sheet" also appears in the StepHeader's phase name, so the capture
     // control is identified by its own copy instead — unique to CameraCapture.
-    expect(screen.getByText(/tap to photograph/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /scan the sheet/i })).toBeInTheDocument()
   })
 
-  it('disables the swipe until a photo exists', () => {
+  it('disables the swipe until a photo exists', async () => {
     // SwipeToConfirm renders role="slider" (a draggable track), not a <button>, unless
     // the tap-to-confirm preference is on — mirrors the pattern in
     // departure/__tests__/CaptureSeal.test.tsx.
@@ -179,7 +182,7 @@ describe('Linehaul', () => {
       />,
     )
 
-    expect(screen.getByRole('slider', { name: 'Confirm linehaul' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'true')
 
     rerender(
       <Linehaul
@@ -193,7 +196,9 @@ describe('Linehaul', () => {
       />,
     )
 
-    expect(screen.getByRole('slider', { name: 'Confirm linehaul' })).toHaveAttribute('aria-disabled', 'false')
+    // A draft that arrives with a scan but no PDF rebuilds the PDF first (the swipe says
+    // "Preparing the PDF…" meanwhile), so the enabled state is awaited, not immediate.
+    await waitFor(() => expect(screen.getByRole('slider', { name: 'Confirm Linehaul' })).toHaveAttribute('aria-disabled', 'false'))
   })
 })
 
@@ -246,7 +251,7 @@ function loadingTrip(phase: PhaseDescriptor): Trip {
   return {
     id: 'trip-1' as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status: 'active',
     trip_type: 'loaded',
     journey_lock_hash: null,

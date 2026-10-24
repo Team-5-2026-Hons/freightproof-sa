@@ -1,7 +1,7 @@
-"""Integration contract for GET /api/v1/analytics/fleet/evidence (fleet analytics spec §5.5).
+"""Integration contract for GET /api/v1/analytics/fleet/evidence.
 
-Charts 5.1, 5.2 and 5.7 over one seeded fortnight (two whole past weeks, built from "now"). The
-blockchain receipts chart (5.4) was removed in D25, so the response must not carry `receipts`:
+Multiple charts over one seeded fortnight (two whole past weeks, built from "now"). The
+blockchain receipts chart was removed, so the response must not carry `receipts`:
   A  day 1, closed. Tracker: activation, loading, confirmation confirmed; departure mismatch;
      unloading unwitnessed; in_transit "confirmed" (must be ignored). Departure receipt pending,
      sign-off receipt failed. Receiver scanned the sign-off. Two rejected scans, one accepted.

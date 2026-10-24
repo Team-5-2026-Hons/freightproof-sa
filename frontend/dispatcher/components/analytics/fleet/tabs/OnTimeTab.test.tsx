@@ -88,7 +88,7 @@ describe('OnTimeTab', () => {
     expect(screen.getByText('No closed trip in this period had a full plan to compare with.')).toBeInTheDocument()
   })
 
-  it('has no step tiles: "Where the time goes" was removed (D24)', async () => {
+  it('has no step tiles: "Where the time goes" was removed', async () => {
     mockedGet.mockResolvedValue(makeOnTime(true))
 
     renderTab()
@@ -168,5 +168,17 @@ describe('OnTimeTab', () => {
       ['0–15 min over', '3'], ['15–60 min over', '2'], ['1–3 h over', '0'], ['3 h+ over', '0'],
     ])
     expect(within(card('Plans vs reality')).getByText('11 finished early (typically 40 min) · 5 ran over (typically 20 min)')).toBeInTheDocument()
+  })
+
+  it('names where Plans vs reality comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeOnTime(true))
+    renderTab()
+    const element = await waitFor(() => card('Plans vs reality'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Plans vs reality' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('Only closed trips with both planned times and an arrival')
   })
 })

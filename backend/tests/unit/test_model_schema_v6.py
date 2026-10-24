@@ -1,16 +1,14 @@
 """Unit tests for v6 model changes.
 
 Covers:
-  1. DriverSubstitution model — all four required log fields, is_planned flag,
-     nullable exception_id for unplanned-only linkage.
+  1. DriverSubstitution model — required actors and nullable legacy planning
+     fields, so immediate transfers do not fabricate an exchange location/flag.
   2. updated_at present on tables that previously lacked it:
      organizations, precincts, vehicles, trip_templates, sla_configs.
 
 Run: pytest tests/unit/test_model_schema_v6.py -v
 """
 
-import uuid
-from datetime import datetime, timezone
 
 import pytest
 
@@ -28,9 +26,8 @@ def _column_names(model_cls) -> set[str]:
     return {c.name for c in model_cls.__table__.columns}
 
 
-def test_driver_substitution_has_four_required_log_fields():
-    """Spec §5+H3: original_driver_id, substituting_driver_id, exchange_location,
-    approving_dispatcher_user_id must all be present and non-nullable."""
+def test_driver_substitution_keeps_required_actor_fields() -> None:
+    """Both drivers and dispatcher attribution remain required in either format."""
     from app.db.models.trips import DriverSubstitution
 
     cols = {c.name: c for c in DriverSubstitution.__table__.columns}
@@ -38,21 +35,20 @@ def test_driver_substitution_has_four_required_log_fields():
     for field in (
         "original_driver_id",
         "substituting_driver_id",
-        "exchange_location",
         "approving_dispatcher_user_id",
     ):
         assert field in cols, f"missing required column: {field}"
         assert not cols[field].nullable, f"{field} must be non-nullable"
 
 
-def test_driver_substitution_is_planned_non_nullable():
-    """Planned substitutions are normal events; unplanned are exceptions.
-    is_planned must be a non-nullable boolean to enforce this distinction."""
+def test_driver_substitution_planning_fields_can_be_absent_for_immediate_transfers() -> None:
+    """Legacy values remain representable; immediate records have no invented plan."""
     from app.db.models.trips import DriverSubstitution
 
     cols = {c.name: c for c in DriverSubstitution.__table__.columns}
     assert "is_planned" in cols
-    assert not cols["is_planned"].nullable
+    assert cols["is_planned"].nullable
+    assert cols["exchange_location"].nullable
 
 
 def test_driver_substitution_exception_id_nullable():
@@ -102,39 +98,3 @@ def test_model_has_updated_at(model_cls) -> None:
     assert "updated_at" in _column_names(model_cls)
 
 
-# ---------------------------------------------------------------------------
-# DriverSubstitutionCreate schema — validates the four required log fields
-# ---------------------------------------------------------------------------
-
-def test_driver_substitution_schema_valid():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Harrismith N3 fuel stop",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=True,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-    )
-    assert ds.is_planned is True
-    assert ds.exception_id is None
-
-
-def test_driver_substitution_schema_unplanned_accepts_exception_id():
-    from app.schemas.trips import DriverSubstitutionCreate
-
-    eid = uuid.uuid4()
-    ds = DriverSubstitutionCreate(
-        trip_id=uuid.uuid4(),
-        original_driver_id=uuid.uuid4(),
-        substituting_driver_id=uuid.uuid4(),
-        exchange_location="Side of N3 near Mooi River",
-        approving_dispatcher_user_id=uuid.uuid4(),
-        is_planned=False,
-        substitution_at=datetime(2026, 5, 1, 14, 30, tzinfo=timezone.utc),
-        exception_id=eid,
-    )
-    assert ds.is_planned is False
-    assert ds.exception_id == eid

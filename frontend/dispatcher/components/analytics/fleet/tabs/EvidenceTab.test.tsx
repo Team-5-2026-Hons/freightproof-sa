@@ -86,7 +86,7 @@ describe('EvidenceTab', () => {
     expect(within(overrides).getByText(/the weakest evidence we hold/)).toBeInTheDocument()
   })
 
-  it('has no blockchain receipts chart (D25)', async () => {
+  it('has no blockchain receipts chart', async () => {
     mockedGet.mockResolvedValue(makeEvidence(true))
     renderTab()
 
@@ -115,5 +115,18 @@ describe('EvidenceTab', () => {
     expect(await screen.findByText('No tracker checks at stops in this period.')).toBeInTheDocument()
     expect(screen.getByText('No closed trips departed in this period.')).toBeInTheDocument()
     expect(screen.getByText('No sign-offs on closed trips in this period.')).toBeInTheDocument()
+  })
+
+  it('names where Tracker agreement comes from, inside its i popover', async () => {
+    mockedGet.mockResolvedValue(makeEvidence(true))
+    renderTab()
+    const element = await waitFor(() => card('Tracker agreement'))
+
+    fireEvent.click(within(element).getByRole('button', { name: 'About this chart: Tracker agreement' }))
+
+    const source = within(element).getByText('Source:').closest('p')
+    expect(source).not.toBeNull()
+    expect(source).toHaveTextContent('simulated Pulsit feed')
+    expect(source).toHaveTextContent('not live trackers')
   })
 })

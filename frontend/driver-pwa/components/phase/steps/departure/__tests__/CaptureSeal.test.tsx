@@ -12,11 +12,14 @@
 // (guard_verified_seal is now Optional[bool], where a `False` still writes a CRITICAL
 // seal_mismatch) means a silently-restored field could start flagging real trips.
 import { useState } from 'react'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { CONFIRM_DISPATCH_MS } from '@/components/phase/SwipeToConfirm'
 import { CaptureSeal } from '../CaptureSeal'
 import { makePhase } from '@/components/phase/__tests__/testFixtures'
 import type { DepartureEvidence } from '@/lib/types/evidence-draft'
+import type { SealReading } from '@/lib/ocr/readSeal'
+import type { PhaseEventId } from '@shared/lib/types/phase'
 
 // StepHeader (rendered by the step) calls useRouter — stub it so the component mounts
 // under jsdom, same as every other step-component test.
@@ -34,12 +37,54 @@ vi.mock('@/components/phase/CameraCapture', () => ({
   ),
 }))
 
+// The hook is the seam under test here: what matters is the phase id and role each step
+// hands it, not the upload itself (lib/hooks/__tests__/useArtifactUpload.test.ts).
+const { mockUseArtifactUpload, mockUploadNow } = vi.hoisted(() => ({
+  mockUseArtifactUpload: vi.fn(),
+  mockUploadNow: vi.fn().mockResolvedValue(null),
+}))
+vi.mock('@/lib/hooks/useArtifactUpload', () => ({
+  useArtifactUpload: (...args: unknown[]) => {
+    mockUseArtifactUpload(...args)
+    return { uploadNow: mockUploadNow }
+  },
+}))
+
+// Seal OCR is mocked file-wide: 'unavailable' (the browser answer) unless a test says
+// otherwise, so the older tests keep exercising typing exactly as before.
+// canReadSeals is true (a native phone) so the read itself is what each test controls.
+const { mockReadSeal } = vi.hoisted(() => ({ mockReadSeal: vi.fn() }))
+vi.mock('@/lib/ocr/readSeal', () => ({
+  readSealFromPhoto: (...a: unknown[]) => mockReadSeal(...a),
+  canReadSeals: () => true,
+}))
+
+beforeEach(() => {
+  // Reset, not just default: a test's mockResolvedValueOnce queue must not leak into the next.
+  mockReadSeal.mockReset()
+  mockReadSeal.mockResolvedValue({ kind: 'unavailable' })
+})
+
+// A read the test finishes by hand, to act while OCR is still running.
+function deferredRead() {
+  let resolve: (r: SealReading) => void = () => {}
+  const promise = new Promise<SealReading>((r) => { resolve = r })
+  return { promise, resolve }
+}
+
+// The step reads the seal (mocked) on every photo, and that read resolves after the
+// click. Tests that stop at the click flush it so its state update lands inside act.
+async function flushSealRead() {
+  await act(async () => {})
+}
+
 function makeDraft(overrides: Partial<DepartureEvidence> = {}): DepartureEvidence {
   return {
     sealNumber: null,
     sealPhotoDataUrl: null,
     sealPhotoArtifactId: null,
     capturedAt: null,
+    sealNumberOcr: null,
     ...overrides,
   }
 }
@@ -89,11 +134,11 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
     expect(onUpdate).toHaveBeenCalledWith({ sealNumber: 'AB-1234' })
   })
 
-  it('calls onUpdate with the captured photo data url and clears any stale artifact id', () => {
+  it('calls onUpdate with the captured photo data url and clears any stale artifact id', async () => {
     const onUpdate = vi.fn()
     renderStep({ onUpdate })
 
-    fireEvent.click(screen.getByText('Seal photo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     // The artifact id is reset alongside the new data URL: a retake must not leave the
     // PREVIOUS photo's id in the draft, or the submit would send the discarded shot.
@@ -102,6 +147,8 @@ describe('CaptureSeal — capturing the seal number and photo', () => {
       sealPhotoDataUrl: 'data:image/jpeg;base64,Seal photo',
       sealPhotoArtifactId: null,
     }))
+
+    await flushSealRead()
   })
 
   it('trims stray whitespace so the stored value matches what the format gate validated', () => {
@@ -141,12 +188,12 @@ describe('CaptureSeal — the guard confirmation is gone and must stay gone', ()
     expect(screen.queryByText(/Mismatch/)).not.toBeInTheDocument()
   })
 
-  it('never writes a guard-confirmation field into the draft', () => {
+  it('never writes a guard-confirmation field into the draft', async () => {
     const onUpdate = vi.fn()
     renderStep({ onUpdate })
 
     typeSealNumber('AB-1234')
-    fireEvent.click(screen.getByText('Seal photo'))
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
 
     // Guards against a re-added field being persisted into the draft and reaching
     // lib/api/phases.ts, whose departure branch no longer sends either key.
@@ -154,6 +201,8 @@ describe('CaptureSeal — the guard confirmation is gone and must stay gone', ()
       expect(patch).not.toHaveProperty('sealNumberConfirmed')
       expect(patch).not.toHaveProperty('sealVerifiedMatch')
     }
+
+    await flushSealRead()
   })
 })
 
@@ -161,13 +210,13 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
   it('is disabled until both the seal number and the seal photo are present', () => {
     renderStep({ draft: makeDraft() })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal photo is missing even though the number is valid', () => {
     renderStep({ draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: null }) })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is disabled when the seal number is not validly formatted', () => {
@@ -175,7 +224,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'not-a-seal', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'true')
   })
 
   it('is enabled once the seal number is valid and the photo is captured', () => {
@@ -183,7 +232,7 @@ describe('CaptureSeal — submit readiness (SwipeToConfirm)', () => {
       draft: makeDraft({ sealNumber: 'AB-1234', sealPhotoDataUrl: 'data:image/jpeg;base64,x' }),
     })
 
-    expect(screen.getByRole('slider', { name: 'Swipe to confirm' })).toHaveAttribute('aria-disabled', 'false')
+    expect(screen.getByRole('slider', { name: 'Swipe to Save Seal' })).toHaveAttribute('aria-disabled', 'false')
   })
 })
 
@@ -201,13 +250,143 @@ describe('CaptureSeal — completing the swipe', () => {
       onComplete,
     })
 
-    const slider = screen.getByRole('slider', { name: 'Swipe to confirm' })
+    const slider = screen.getByRole('slider', { name: 'Swipe to Save Seal' })
     fireEvent.keyDown(slider, { key: 'Enter' }) // arm
     fireEvent.keyDown(slider, { key: 'Enter' }) // confirm
     act(() => {
-      vi.advanceTimersByTime(180) // SwipeToConfirm's settle delay before handing off
+      vi.advanceTimersByTime(CONFIRM_DISPATCH_MS) // SwipeToConfirm's delay before handing off
     })
 
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CaptureSeal — evidence attribution', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('captures with this phase and the step\'s role', async () => {
+    const phase = makePhase('departure', { phase_event_id: 'phase-event-77' as PhaseEventId })
+    render(
+      <CaptureSeal
+        tripId="t1"
+        phase={phase}
+        stepIndex={1}
+        draft={makeDraft()}
+        onUpdate={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    // By role: the redesign also names "Seal photo" in the Needed-to-continue list.
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    expect(mockUseArtifactUpload).toHaveBeenCalledWith('t1', 'phase-event-77')
+    expect(mockUploadNow).toHaveBeenCalledWith(
+      'data:image/jpeg;base64,Seal photo', 'photo', expect.any(String), 'seal_photo',
+    )
+
+    await flushSealRead()
+  })
+})
+
+describe('CaptureSeal — reading the seal number from the photo', () => {
+  it('puts the photo before the number', () => {
+    renderStep()
+
+    const photo = screen.getByRole('button', { name: 'Seal photo' })
+    const input = screen.getByLabelText('Seal number')
+    expect(photo.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('fills the number OCR read and asks the driver to check it', async () => {
+    mockReadSeal.mockResolvedValue({ kind: 'found', value: 'AB-1234' })
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    expect(await screen.findByDisplayValue('AB-1234')).toBeInTheDocument()
+    expect(screen.getByText('Read from the photo. Check it matches the seal.')).toBeInTheDocument()
+    expect(onUpdate).toHaveBeenCalledWith({ sealNumberOcr: 'AB-1234', sealNumber: 'AB-1234' })
+  })
+
+  it('never overwrites a number the driver typed', async () => {
+    mockReadSeal.mockResolvedValue({ kind: 'found', value: 'AB-1234' })
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    typeSealNumber('CD-5678')
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    // No OCR value recorded: the number that stands is the driver's own, so it is "typed".
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ sealNumberOcr: null }))
+    expect(screen.getByDisplayValue('CD-5678')).toBeInTheDocument()
+  })
+
+  it('does not credit OCR when it read the same number the driver had already typed', async () => {
+    mockReadSeal.mockResolvedValue({ kind: 'found', value: 'AB-1234' })
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    typeSealNumber('AB-1234')
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ sealNumberOcr: null }))
+    expect(screen.queryByText('Read from the photo. Check it matches the seal.')).not.toBeInTheDocument()
+  })
+
+  it('keeps a number the driver types while the read is still running', async () => {
+    const read = deferredRead()
+    mockReadSeal.mockReturnValue(read.promise)
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+    typeSealNumber('CD-5678')
+    await act(async () => { read.resolve({ kind: 'found', value: 'AB-1234' }) })
+
+    expect(screen.getByLabelText('Seal number')).toHaveValue('CD-5678')
+    expect(onUpdate).toHaveBeenLastCalledWith({ sealNumberOcr: null })
+  })
+
+  it('blocks the swipe until the read of a new photo has finished', async () => {
+    const read = deferredRead()
+    mockReadSeal.mockReturnValue(read.promise)
+    renderStep({ draft: makeDraft({ sealNumber: 'AB-1234' }) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    // Number valid and photo present, yet the swipe waits: a submit now would carry a
+    // capture tag worked out from the previous photo's read.
+    const slider = screen.getByRole('slider', { name: 'Swipe to Save Seal' })
+    expect(slider).toHaveAttribute('aria-disabled', 'true')
+    expect(slider).toHaveTextContent('Reading the seal…')
+
+    await act(async () => { read.resolve({ kind: 'none' }) })
+
+    expect(slider).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('replaces an untouched earlier read when the seal is photographed again', async () => {
+    mockReadSeal
+      .mockResolvedValueOnce({ kind: 'found', value: 'AB-1234' })
+      .mockResolvedValueOnce({ kind: 'found', value: 'AB-1284' })
+    renderStep()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+    await screen.findByDisplayValue('AB-1234')
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    expect(await screen.findByDisplayValue('AB-1284')).toBeInTheDocument()
+  })
+
+  it('leaves the field for the driver when OCR is unavailable', async () => {
+    const onUpdate = vi.fn()
+    renderStep({ onUpdate })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Seal photo' }))
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ sealNumberOcr: null })))
+    expect(screen.getByLabelText('Seal number')).toHaveValue('')
   })
 })

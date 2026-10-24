@@ -4,7 +4,6 @@ Calendar dates are South African (SAST, UTC+2, no daylight saving); the SQL side
 buckets by the named zone, this side by the fixed offset from settings — they agree
 because SAST never shifts."""
 
-import enum
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -17,9 +16,9 @@ from app.analytics.fleet.constants import (
     LATE_BUCKET_EDGES_MINUTES,
     MAX_TREND_BUCKETS,
     REVIEW_AGE_EDGES_HOURS,
-    DayBlock,
 )
 from app.core.config import settings
+from app.core.fleet_bands import DayBlock, ExpiryBand, Grain, LatenessBand, PlanBand, ReviewAgeBand
 
 OPERATIONS_TZ = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 
@@ -29,15 +28,6 @@ SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
 _FIRST_DAY = 1
 _JANUARY = 1
-
-
-class Grain(str, enum.Enum):
-    """How a trend chart groups time. Weeks start Monday (ISO), matching Postgres's
-    date_trunc('week', ...)."""
-
-    WEEK = "week"
-    MONTH = "month"
-    YEAR = "year"
 
 
 @dataclass(frozen=True)
@@ -55,7 +45,7 @@ class Bucket:
     """One bar or point on a trend chart, keyed by its first calendar day."""
 
     start: date
-    # Not a whole week/month/year inside the period; the chart draws it faded (spec G8).
+    # Not a whole week/month/year inside the period; the chart draws it faded.
     is_partial: bool
 
 
@@ -84,7 +74,7 @@ def start_of_day(day: date) -> datetime:
 
 
 def instant_range(start: date, end: date) -> InstantRange:
-    """The instants covering the inclusive SAST dates [start, end] (spec G5)."""
+    """The instants covering the inclusive SAST dates [start, end]."""
     return InstantRange(start=start_of_day(start), end=start_of_day(end + timedelta(days=1)))
 
 
@@ -113,7 +103,7 @@ def next_bucket_start(start: date, grain: Grain) -> date:
 
 def bucket_starts(start: date, end: date, grain: Grain) -> list[date]:
     """From the bucket holding `start` to the bucket holding `end`, empty ones
-    included (spec G7): a chart that skipped a quiet week would hide the gap."""
+    included: a chart that skipped a quiet week would hide the gap."""
     starts: list[date] = []
     current = bucket_start(start, grain)
     while current <= end:
@@ -129,7 +119,7 @@ def bucket_count(start: date, end: date, grain: Grain) -> int:
 def buckets(period: Period) -> list[Bucket]:
     """Every bucket of the period, each marked partial when it isn't a whole one
     inside it. build_period never lets `end` pass today, so "not finished yet"
-    (spec G8) needs no separate check."""
+    needs no separate check."""
     if period.grain is None:
         raise ValueError("a period without a grain has no buckets")
     result: list[Bucket] = []
@@ -150,7 +140,7 @@ def require_grain(period: Period) -> Grain:
 def resolve_start(
     start: date | None, *, end: date, earliest_activity: date | None, today: date,
 ) -> date:
-    """The period's first day. An omitted start means "All time" (spec G11): the day
+    """The period's first day. An omitted start means "All time": the day
     of the organisation's first trip, or today if it has none, never later than `end`."""
     if start is not None:
         return start
@@ -159,7 +149,7 @@ def resolve_start(
 
 
 def build_period(*, start: date, end: date, grain: Grain | None, today: date) -> Period:
-    """Validate a requested period (spec G12). ValueError carries a message for the dispatcher."""
+    """Validate a requested period. ValueError carries a message for the dispatcher."""
     if end > today:
         raise ValueError(f"The period can't end after today ({today.isoformat()}).")
     if start > end:
@@ -244,25 +234,13 @@ def waiting_at(items: Iterable[tuple[datetime, datetime | None]], at: datetime) 
     )
 
 
-class LatenessBand(str, enum.Enum):
-    """Chart 2.2. Early and on time are separate so the strict on-time rule doesn't hide
-    trips that left far ahead of an unrealistic plan."""
-
-    EARLY = "early"
-    ON_TIME = "on_time"
-    LATE_1_15 = "late_1_15"
-    LATE_15_60 = "late_15_60"
-    LATE_60_180 = "late_60_180"
-    LATE_OVER_180 = "late_over_180"
-
-
 _LATE_BANDS: tuple[LatenessBand, LatenessBand, LatenessBand] = (
     LatenessBand.LATE_1_15, LatenessBand.LATE_15_60, LatenessBand.LATE_60_180,
 )
 
 
 def lateness_band(delta_minutes: float) -> LatenessBand:
-    """Band for actual minus planned. On or before plan is on time (strict rule, spec D9)."""
+    """Band for actual minus planned. On or before plan is on time (strict rule)."""
     if delta_minutes < -EARLY_THRESHOLD_MINUTES:
         return LatenessBand.EARLY
     if delta_minutes <= 0:
@@ -271,15 +249,6 @@ def lateness_band(delta_minutes: float) -> LatenessBand:
         if delta_minutes <= edge:
             return band
     return LatenessBand.LATE_OVER_180
-
-
-class ReviewAgeBand(str, enum.Enum):
-    """Chart 4.1: how long critical problems have waited for review."""
-
-    UNDER_1H = "under_1h"
-    HOUR_TO_DAY = "1h_to_24h"
-    DAY_TO_3_DAYS = "1d_to_3d"
-    OVER_3_DAYS = "over_3d"
 
 
 _YOUNGER_AGE_BANDS: tuple[ReviewAgeBand, ReviewAgeBand, ReviewAgeBand] = (
@@ -293,17 +262,6 @@ def review_age_band(age: timedelta) -> ReviewAgeBand:
         if hours < edge:
             return band
     return ReviewAgeBand.OVER_3_DAYS
-
-
-class ExpiryBand(str, enum.Enum):
-    """The Licences & discs tile. Separate bands, never cumulative: a licence expiring in
-    10 days is counted under 30 days only, not also under 90 and 180."""
-
-    EXPIRED = "expired"
-    WITHIN_30_DAYS = "within_30_days"
-    WITHIN_90_DAYS = "within_90_days"
-    WITHIN_180_DAYS = "within_180_days"
-    NO_DATE = "no_date"
 
 
 _FUTURE_EXPIRY_BANDS: tuple[ExpiryBand, ExpiryBand, ExpiryBand] = (
@@ -327,21 +285,6 @@ def expiry_band(expiry: date | None, today: date) -> ExpiryBand | None:
     return None
 
 
-class PlanBand(str, enum.Enum):
-    """Chart 2.5's nine columns, left to right: finished early (furthest first), exactly on plan,
-    ran over (nearest first), so the histogram reads as one line from early to late (spec D23)."""
-
-    EARLY_OVER_180 = "early_over_180"
-    EARLY_60_180 = "early_60_180"
-    EARLY_15_60 = "early_15_60"
-    EARLY_0_15 = "early_0_15"
-    ON_PLAN = "on_plan"
-    OVER_0_15 = "over_0_15"
-    OVER_15_60 = "over_15_60"
-    OVER_60_180 = "over_60_180"
-    OVER_OVER_180 = "over_over_180"
-
-
 # Nearest to the plan first, paired with LATE_BUCKET_EDGES_MINUTES.
 _EARLY_PLAN_BANDS: tuple[PlanBand, PlanBand, PlanBand] = (
     PlanBand.EARLY_0_15, PlanBand.EARLY_15_60, PlanBand.EARLY_60_180,
@@ -352,8 +295,8 @@ _OVER_PLAN_BANDS: tuple[PlanBand, PlanBand, PlanBand] = (
 
 
 def plan_band(delta_minutes: float) -> PlanBand:
-    """The band for actual minus planned trip time. Same edges as the lateness bands (spec
-    §5.2), in absolute minutes off plan: more than 0 up to 15, more than 15 up to 60, more than
+    """The band for actual minus planned trip time. Same edges as the lateness bands,
+    in absolute minutes off plan: more than 0 up to 15, more than 15 up to 60, more than
     60 up to 180, more than 180. Exactly 0 is on plan."""
     if delta_minutes == 0:
         return PlanBand.ON_PLAN

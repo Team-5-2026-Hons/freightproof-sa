@@ -59,16 +59,18 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="listbox"
         aria-expanded={open}
+        // Same filled, borderless 56px field as the number beside it on the sign-in
+        // screen: the pair reads as one phone-number control split in two.
         className={cn(
-          'flex items-center gap-1.5 rounded-xl px-3 py-3 text-sm font-medium text-foreground',
-          'bg-muted border border-input',
-          'focus:outline-none focus:border-ring focus:bg-card',
-          'transition-colors duration-150 min-h-[44px]',
+          'flex h-14 items-center gap-2 rounded-2xl px-4 text-body font-medium tabular-nums text-surface-on',
+          'bg-surface-container-high',
+          'outline-none ring-inset focus:ring-2 focus:ring-surface-on/40',
+          'transition-shadow duration-150',
         )}
       >
-        <span aria-hidden="true">{value.flag}</span>
+        <span aria-hidden="true" className="text-title-3">{value.flag}</span>
         <span>{value.dialCode}</span>
-        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+        <ChevronDown className="h-4 w-4 text-surface-on-variant" aria-hidden />
       </button>
 
       {open && (
@@ -86,9 +88,9 @@ export function CountryCodeSelect({ value, onChange, className }: CountryCodeSel
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search country or code"
             className={cn(
-              // text-base, not text-sm — see components/ui/Input.tsx for why (iOS zoom-on-focus).
+              // 16px+ so iOS doesn't zoom.
               'w-full px-4 py-3 text-base bg-transparent text-foreground',
-              'placeholder:text-muted-foreground/50',
+              'placeholder:text-muted-foreground/80',
               'border-b border-input focus:outline-none',
             )}
           />

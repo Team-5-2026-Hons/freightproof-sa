@@ -1,13 +1,14 @@
 import { notFound } from 'next/navigation'
 import { TOKENS, type TokenKey } from '@shared/lib/tokens'
 import { Z } from '@shared/lib/z-index'
+import { TimelineScenarios } from './_timeline-scenarios/TimelineScenarios'
 
 const COLOR_GROUPS: { label: string; keys: TokenKey[] }[] = [
-  { label: 'Primary — Tarmac Black', keys: ['primary', 'primaryContainer', 'onPrimary', 'onPrimaryContainer'] },
-  { label: 'Secondary — Trust Blue', keys: ['secondary', 'secondaryContainer', 'onSecondary', 'onSecondaryContainer', 'secondaryFixed', 'secondaryFixedDim'] },
-  { label: 'Tertiary — Amber Warning', keys: ['tertiary', 'tertiaryContainer', 'onTertiary', 'onTertiaryContainer', 'tertiaryFixedDim'] },
-  { label: 'Success — Verified Green', keys: ['success', 'successContainer', 'onSuccess', 'onSuccessContainer'] },
-  { label: 'Error — Alert Red', keys: ['error', 'errorContainer', 'onError', 'onErrorContainer'] },
+  { label: 'Primary: Tarmac Black', keys: ['primary', 'primaryContainer', 'onPrimary', 'onPrimaryContainer'] },
+  { label: 'Secondary: Trust Blue', keys: ['secondary', 'secondaryContainer', 'onSecondary', 'onSecondaryContainer', 'secondaryFixed', 'secondaryFixedDim'] },
+  { label: 'Tertiary: Amber Warning', keys: ['tertiary', 'tertiaryContainer', 'onTertiary', 'onTertiaryContainer', 'tertiaryFixedDim'] },
+  { label: 'Success: Verified Green', keys: ['success', 'successContainer', 'onSuccess', 'onSuccessContainer'] },
+  { label: 'Error: Alert Red', keys: ['error', 'errorContainer', 'onError', 'onErrorContainer'] },
   { label: 'Surface Hierarchy', keys: ['surface', 'surfaceContainerLowest', 'surfaceContainerLow', 'surfaceContainer', 'surfaceContainerHigh', 'surfaceContainerHighest', 'surfaceDim', 'onSurface', 'onSurfaceVariant'] },
   { label: 'Outline', keys: ['outline', 'outlineVariant'] },
 ]
@@ -21,23 +22,23 @@ interface TypeRole {
 }
 
 const TYPE_SCALE: TypeRole[] = [
-  { role: 'headline-lg', size: '32px', weight: 800, spacing: '0',       sample: 'Headline Large — Page Titles' },
-  { role: 'headline-md', size: '28px', weight: 700, spacing: '0',       sample: 'Headline Medium — Section Headings' },
-  { role: 'headline-sm', size: '24px', weight: 700, spacing: '0',       sample: 'Headline Small — Card Titles' },
-  { role: 'title-lg',    size: '22px', weight: 700, spacing: '0',       sample: 'Title Large — Card Sub-titles' },
-  { role: 'title-md',    size: '16px', weight: 700, spacing: '0.01em',  sample: 'Title Medium — List Headers, Labels' },
-  { role: 'title-sm',    size: '14px', weight: 700, spacing: '0.01em',  sample: 'Title Small — Chip Labels, Badges' },
-  { role: 'body-lg',     size: '16px', weight: 400, spacing: '0.03em',  sample: 'Body Large — Primary body text. Driver app flows and evidence descriptions.' },
-  { role: 'body-md',     size: '14px', weight: 400, spacing: '0.015em', sample: 'Body Medium — Secondary body text. Descriptions, metadata, notes.' },
-  { role: 'body-sm',     size: '12px', weight: 400, spacing: '0.025em', sample: 'Body Small — Caption text. Use sparingly.' },
-  { role: 'label-lg',    size: '14px', weight: 600, spacing: '0.006em', sample: 'Label Large — Metadata labels, timestamps' },
-  { role: 'label-md',    size: '12px', weight: 600, spacing: '0.03em',  sample: 'Label Medium — Secondary metadata' },
+  { role: 'headline-lg', size: '32px', weight: 800, spacing: '0',       sample: 'Headline Large: Page Titles' },
+  { role: 'headline-md', size: '28px', weight: 700, spacing: '0',       sample: 'Headline Medium: Section Headings' },
+  { role: 'headline-sm', size: '24px', weight: 700, spacing: '0',       sample: 'Headline Small: Card Titles' },
+  { role: 'title-lg',    size: '22px', weight: 700, spacing: '0',       sample: 'Title Large: Card Sub-titles' },
+  { role: 'title-md',    size: '16px', weight: 700, spacing: '0.01em',  sample: 'Title Medium: List Headers, Labels' },
+  { role: 'title-sm',    size: '14px', weight: 700, spacing: '0.01em',  sample: 'Title Small: Chip Labels, Badges' },
+  { role: 'body-lg',     size: '16px', weight: 400, spacing: '0.03em',  sample: 'Body Large: Primary body text. Driver app flows and evidence descriptions.' },
+  { role: 'body-md',     size: '14px', weight: 400, spacing: '0.015em', sample: 'Body Medium: Secondary body text. Descriptions, metadata, notes.' },
+  { role: 'body-sm',     size: '12px', weight: 400, spacing: '0.025em', sample: 'Body Small: Caption text. Use sparingly.' },
+  { role: 'label-lg',    size: '14px', weight: 600, spacing: '0.006em', sample: 'Label Large: Metadata labels, timestamps' },
+  { role: 'label-md',    size: '12px', weight: 600, spacing: '0.03em',  sample: 'Label Medium: Secondary metadata' },
   { role: 'mono-id',     size: '13px', weight: 700, spacing: '0.05em',  sample: 'TRP-2026-0041  ·  SEAL-7789-A  ·  CA 123-456' },
 ]
 
 const SHADOWS = [
   { name: 'shadow-ambient-sm',     value: '0 4px 20px rgba(27, 27, 28, 0.06)',  usage: 'Compact cards, small floats, danger buttons' },
-  { name: 'shadow-ambient',        value: '0 8px 40px rgba(27, 27, 28, 0.06)',  usage: 'Standard cards — the main elevation token' },
+  { name: 'shadow-ambient',        value: '0 8px 40px rgba(27, 27, 28, 0.06)',  usage: 'Standard cards: the main elevation token' },
   { name: 'shadow-ambient-header', value: '0 8px 30px rgba(0, 0, 0, 0.06)',     usage: 'Sticky headers' },
   { name: 'shadow-ambient-up',     value: '0 -4px 24px rgba(0, 0, 0, 0.06)',    usage: 'Bottom CTA bars' },
   { name: 'shadow-ambient-up-lg',  value: '0 -8px 40px rgba(0, 0, 0, 0.08)',    usage: 'Bottom nav bar' },
@@ -59,8 +60,8 @@ export default function TokensPage() {
     <main className="min-h-screen bg-surface p-8 font-sans">
 
       <header className="mb-10 pb-6 border-b border-outline-variant/30">
-        <p className="text-xs font-bold uppercase tracking-wider text-secondary mb-2">DEV ONLY — DISPATCHER</p>
-        <h1 className="text-3xl font-bold text-surface-on">FreightProof Design System — Token Preview</h1>
+        <p className="text-xs font-bold uppercase tracking-wider text-secondary mb-2">DEV ONLY · DISPATCHER</p>
+        <h1 className="text-3xl font-bold text-surface-on">FreightProof Design System: Token Preview</h1>
         <p className="mt-2 text-sm text-surface-on-variant">
           Visual sign-off gate. Verify every token matches{' '}
           <span className="font-mono text-xs tracking-[0.05em]">DESIGN_SYSTEM.md §2</span> before building pages.
@@ -96,7 +97,7 @@ export default function TokensPage() {
 
       {/* ── TYPOGRAPHY ──────────────────────────────────────────── */}
       <section className="mb-12">
-        <h2 className="text-xl font-bold text-surface-on mb-6">Typography — Inter</h2>
+        <h2 className="text-xl font-bold text-surface-on mb-6">Typography: Inter</h2>
         <div className="bg-surface-container-lowest rounded-xl shadow-ambient overflow-hidden">
           <div className="grid grid-cols-[160px_1fr] bg-surface-container-low border-b border-outline-variant/20">
             <div className="px-4 py-2 text-xs font-bold text-surface-on-variant uppercase tracking-wider">Role</div>
@@ -174,7 +175,7 @@ export default function TokensPage() {
       <section className="mb-12">
         <h2 className="text-xl font-bold text-surface-on mb-2">Glassmorphism</h2>
         <p className="text-sm text-surface-on-variant mb-6">
-          Used on sticky headers and bottom nav only — never on cards or content.
+          Used on sticky headers and bottom nav only. Never on cards or content.
         </p>
         <div
           className="glass-nav rounded-xl px-6 py-4 border border-outline-variant/20"
@@ -208,7 +209,7 @@ export default function TokensPage() {
                 {level === 'overlay' && 'Side drawers, slide-over panels'}
                 {level === 'modal'   && 'Modals, confirmation dialogs'}
                 {level === 'toast'   && 'Toast notifications'}
-                {level === 'panic'   && 'Driver panic button — always above everything'}
+                {level === 'panic'   && 'Driver panic button: always above everything'}
               </div>
             </div>
           ))}
@@ -240,9 +241,11 @@ export default function TokensPage() {
         </div>
       </section>
 
+      <TimelineScenarios />
+
       <footer className="border-t border-outline-variant/30 pt-4 mt-8">
         <p className="text-xs text-surface-on-variant">
-          FreightProof SA — Token Preview · Dispatcher · DEV ONLY
+          FreightProof SA · Token Preview · Dispatcher · DEV ONLY
         </p>
       </footer>
 

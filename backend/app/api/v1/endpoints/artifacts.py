@@ -10,16 +10,18 @@ from fastapi import status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_dispatcher, get_current_driver
-from app.core.exceptions import ResourceNotFoundError
+from app.api.v1.custody_errors import custody_http_exception
+from app.core.exceptions import CustodyAccessError, EvidenceAttributionError, ResourceNotFoundError
 from app.core.limits import ARTIFACT_UPLOAD
 from app.core.rate_limit import rate_limit
-from app.db.models.enums import ArtifactType
+from app.db.models.enums import ArtifactType, EvidenceRole
 from app.db.session import get_db
-from app.orchestration.artifact_service import (
+from app.orchestration.evidence.artifacts import (
     MAX_FILE_SIZE_BYTES,
     create_artifact,
     list_artifacts_for_trip,
 )
+from app.orchestration.evidence.attribution import EvidenceAttribution
 from app.schemas.evidence import EvidenceArtifactRead, EvidenceArtifactWithUrl
 from app.schemas.people import DriverRead, UserRead
 
@@ -38,9 +40,24 @@ async def upload_artifact_endpoint(
     file: Annotated[UploadFile, File()],
     captured_lat: Annotated[Decimal | None, Form()] = None,
     captured_lng: Annotated[Decimal | None, Form()] = None,
+    phase_event_id: Annotated[UUID | None, Form()] = None,
+    evidence_role: Annotated[EvidenceRole | None, Form()] = None,
+    custody_sequence: Annotated[int | None, Form(ge=0)] = None,
     db: AsyncSession = Depends(get_db),
     current_driver: DriverRead = Depends(get_current_driver),
 ) -> EvidenceArtifactRead:
+    # Older apps send neither; a half pair is a client bug, not a legacy upload.
+    if (phase_event_id is None) != (evidence_role is None):
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="phase_event_id and evidence_role must be sent together.",
+        )
+    attribution = (
+        EvidenceAttribution(phase_event_id=phase_event_id, role=evidence_role)
+        if phase_event_id is not None and evidence_role is not None
+        else None
+    )
+
     # Reject on the declared size FIRST, before reading the body. UploadFile spools past
     # a threshold, so a large upload is written to the container's disk on its way to
     # being measured and then discarded — checking the header lets an oversized request
@@ -70,13 +87,15 @@ async def upload_artifact_endpoint(
             captured_by_driver_id=current_driver.id,
             captured_lat=captured_lat,
             captured_lng=captured_lng,
+            attribution=attribution,
+            custody_sequence=custody_sequence,
         )
-    except ValueError as exc:
+    except (ValueError, EvidenceAttributionError) as exc:
         raise HTTPException(status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except ResourceNotFoundError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CustodyAccessError as exc:
+        raise custody_http_exception(exc) from exc
 
 
 # Trip-scoped read router. Separate from the /artifacts upload router because the prefix

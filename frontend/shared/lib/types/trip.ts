@@ -7,6 +7,8 @@ import type { Vehicle } from './vehicle'
 import type { CoarseTripStatus, PhaseDescriptor, PhaseType } from './phase'
 import type { TripException } from './exception'
 import type { BlockchainReceipt } from './blockchain'
+import type { PPManifestRef } from './pp-manifest'
+import type { CustodyIntegrityRead, DriverAccess, SubstitutionRequestRead, CompletedSubstitutionSummary } from './driver-substitution'
 
 export type TripId = string & { readonly __brand: 'TripId' }
 
@@ -36,16 +38,33 @@ export interface TripStop {
 // Structural row contract shared by the active-trip list and terminal-trip history.
 // Includes only what ChecklistRow renders, so the history endpoint need not disclose a
 // driver's contact/licence details or a vehicle's full record to paint one row.
+// A trip's unreviewed exceptions split by severity and by claim (GET /trips). A claimed
+// exception still needs review, so critical + warning + info === needs_review_count.
+export interface TripAttention {
+  critical: number
+  warning: number
+  info: number
+  claimed: number
+}
+
 export interface TripChecklistItem {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null for empty legs and trips created
+  // without one. It replaces the order number, which FreightProof no longer captures.
+  pp_manifest: PPManifestRef | null
+  // Sent on active-list rows (TripSummary). History rows do not carry it, so a row with no
+  // manifest cannot be proven to be an empty leg (see lib/format/manifest.ts).
+  trip_type?: TripType
   status: CoarseTripStatus
   driver: { full_name: string }
   horse: { registration: string }
   origin_precinct_id: string | null
   destination_precinct_id: string | null
   needs_review_count: number
+  // Sent on active-list rows (TripSummary) only, like trip_type. History rows have no use for
+  // the split: a closed trip is not ranked against the live ones.
+  attention?: TripAttention
   created_at: string
   current_phase: PhaseType | null
   current_stop: number | null
@@ -60,12 +79,13 @@ export interface TripHistoryListItem extends TripChecklistItem {
 }
 
 // Lightweight shape for list views (GET /trips), nesting full driver/horse/trailers.
-// needs_review_count counts only NEEDS_REVIEW rows — a RECORDED row is on the trip's
-// exception list but not queued for a dispatcher decision.
+// needs_review_count counts every unreviewed exception on the trip, whatever its severity:
+// since FP-280 every exception starts needs_review. (The driver's own trip list counts
+// critical rows only — see DriverTripSummary.)
 export interface TripSummary extends TripChecklistItem {
   id: TripId
   trip_reference: string
-  order_number: string
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   driver: Driver
@@ -123,7 +143,9 @@ export interface ConsignmentRead {
 export interface Trip {
   id: TripId
   trip_reference: string
-  order_number: string
+  // The PP manifest this trip carries (FP-281), or null. The snapshot of it is not here:
+  // it is dispatcher-only, on GET /trips/{id}/manifest (spec §7.3).
+  pp_manifest: PPManifestRef | null
   status: CoarseTripStatus
   trip_type: TripType
   journey_lock_hash: string | null
@@ -150,6 +172,21 @@ export interface Trip {
   blockchain_receipts: BlockchainReceipt[]
   // Creation-transient (e.g. PP sync degraded-mode warnings). Always [] on GET — never persisted.
   warnings: string[]
+  // FP-83 driver substitution (docs/contracts/driver-substitution-v1.md "Existing reads").
+  // `driver` above becomes the DERIVED CURRENT driver; the original never changes. Optional
+  // ONLY until every Trip fixture (including driver-pwa's, owned by another dev) carries
+  // them — the server will send all of them on dispatcher detail, so ordinary trips use the
+  // defaults in the shared mocks: sequence 0, no amendments, flag off.
+  original_driver?: Driver | null
+  driver_substitutions?: SubstitutionRequestRead[]
+  completed_driver_substitutions?: CompletedSubstitutionSummary[]
+  pending_driver_substitution?: SubstitutionRequestRead | null
+  custody_sequence?: number
+  // Dispatcher reads only.
+  custody_integrity?: CustodyIntegrityRead | null
+  driver_substitutions_enabled?: boolean
+  // Populated on current-driver reads, null on dispatcher reads.
+  driver_access?: DriverAccess | null
   created_at: string
   updated_at: string
 }
@@ -158,7 +195,8 @@ export interface Trip {
 // Re-exported here so existing imports from './trip' continue to resolve.
 export type { BlockchainReceipt } from './blockchain'
 
-// Pagination envelope for GET /trips — keys confirmed by API contract §0.2.
+// Pagination envelope for GET /trips — key names match the backend response exactly,
+// do not rename.
 export interface PaginatedList<T> {
   items: T[]
   total: number
@@ -174,7 +212,6 @@ export interface TripConsignmentInput {
 }
 
 export interface TripCreatePayload {
-  order_number: string
   trip_type: TripType
   driver_id: string
   horse_id: string

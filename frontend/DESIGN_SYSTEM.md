@@ -4,8 +4,6 @@
 
 - **Version**: 2.0 (replaces v1 "Industrial Brutalism")
 - **Source of truth**: `FreightProof Hi-Fi.html`
-- **Reference HTMLs**: `docs/reference/*.html` (per-screen extracts — to be split)
-- **Archived**: `docs/archive/DESIGN_SYSTEM_brutalist_v1.md`
 
 ---
 
@@ -106,7 +104,7 @@ Four levels — soft, low-blur, near-black. Never offset shadows; never harsh.
 | 0 | none | Surfaces touching surface |
 | 1 | `0 1px 0 rgba(27,27,28,0.06)` or `0 1px 0 var(--outline-v)33` | Top bar, mobile head, stepper bottom edge |
 | 2 | `0 2px 8px rgba(27,27,28,0.04)` | Sidebar trip-info card, cargo card |
-| 3 | `0 2px 12px rgba(27,27,28,0.06)` | All main cards: stat cards, exception card, table panel, SLA charts |
+| 3 | `0 0 20px rgba(27,27,28,0.17)` (dispatcher) | All main cards: stat cards, exception card, table panel, SLA charts |
 | 4 | `0 2px 16px rgba(27,27,28,0.08)` | Driver "Active Trip" home card |
 | 5 | `0 8px 32px rgba(27,27,28,0.18)` | Floating dark summary panels (Trip Summary, Export Report sidebar) |
 | 6 | `0 16px 64px rgba(0,0,0,0.5)` | App-shell dispatcher panel on `#0a0a0c` chrome |
@@ -162,6 +160,7 @@ Custom 24×24 stroke icon set (`IP` object, 22 paths). All icons:
 | `shield` | Verification badge | IDVS-verified driver, Highest evidence |
 | `sat` | Satellite | GPS / Pulsit geofence reading |
 | `siren` | Emergency | PANIC button |
+| `route` | Journey | Active Trips nav item (`truck` stays the vehicle glyph) |
 | `back`, `chev` | Navigation | Mobile back, "View →" links |
 | `map`, `eye`, `dl`, `filter`, `search` | Utility | Route picker, view, download, table filter |
 
@@ -371,7 +370,7 @@ CTA                  (gradient primary + panic siren)
 
 ## 11. Reference HTMLs
 
-The dispatcher and driver page extracts live in `docs/reference/`:
+Each screen was built from a per-page HTML extract of the hi-fi design:
 
 | File | Component | Notes |
 |---|---|---|
@@ -452,4 +451,4 @@ body { font-family: 'Inter', sans-serif; background: var(--surf); color: var(--o
 
 ---
 
-**End of v2 design system.** Reference HTMLs are split in a follow-up step. Brutalist v1 lives at `docs/archive/DESIGN_SYSTEM_brutalist_v1.md` for trace.
+**End of v2 design system.**

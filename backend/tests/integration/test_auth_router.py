@@ -19,33 +19,40 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.dependencies import get_current_dispatcher
+from app.db.models.enums import DispatcherRole, OrganizationType
+from app.db.models.organisations import Organization
 from app.db.models.people import User
 from app.db.session import get_db
 from app.main import app
+from app.schemas.people import UserRead
 from tests.conftest import auth_header, make_token, make_jwks
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 _ORG_ID = uuid.uuid4()
+_ORG_NAME = "Load Factor Transport"
 _USER_ID = uuid.uuid4()
 
 
-def _make_user(*, is_active: bool = True) -> User:
-    """Return a User ORM instance that does not touch the database."""
-    user = MagicMock(spec=User)
-    user.id = _USER_ID
-    user.organization_id = _ORG_ID
-    user.email = "dispatcher@loadfactor.co.za"
-    user.full_name = "Demo Dispatcher"
-    user.is_active = is_active
-    user.created_at = "2026-05-13T00:00:00+00:00"
-    user.updated_at = "2026-05-13T00:00:00+00:00"
-    return user
+def _make_user(*, is_active: bool = True) -> UserRead:
+    """The authenticated dispatcher as get_current_dispatcher returns it, without a database."""
+    return UserRead(
+        id=_USER_ID,
+        organization_id=_ORG_ID,
+        email="dispatcher@loadfactor.co.za",
+        full_name="Demo Dispatcher",
+        is_active=is_active,
+        created_at="2026-05-13T00:00:00+00:00",
+        updated_at="2026-05-13T00:00:00+00:00",
+        role=DispatcherRole.DISPATCHER,
+    )
 
 
 async def _mock_db() -> AsyncGenerator:
-    """Stub DB session — prevents any real Postgres connection."""
+    """Stub DB session — prevents any real Postgres connection. The only query /auth/me
+    makes is the organisation-name lookup, so that is the one result it needs to answer."""
     session = AsyncMock()
+    session.execute.return_value = MagicMock(scalar_one=MagicMock(return_value=_ORG_NAME))
     yield session
 
 
@@ -93,8 +100,58 @@ async def test_get_me_returns_user_for_valid_dispatcher(
         body = response.json()
         assert body["email"] == "dispatcher@loadfactor.co.za"
         assert body["full_name"] == "Demo Dispatcher"
+        assert body["organization_name"] == _ORG_NAME
     finally:
         app.dependency_overrides.pop(get_current_dispatcher, None)
+
+
+@pytest_asyncio.fixture
+async def client_with_real_db(
+    monkeypatch: pytest.MonkeyPatch, db_session,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Client whose requests run against the rolled-back test database, so the organisation
+    lookup is exercised for real."""
+    monkeypatch.setattr(
+        __import__("app.core.config", fromlist=["settings"]).settings, "DEMO_MODE", False,
+    )
+    monkeypatch.setattr("app.auth.dependencies._get_jwks", make_jwks)
+
+    async def _real_db() -> AsyncGenerator:
+        yield db_session
+
+    app.dependency_overrides[get_db] = _real_db
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app),  # type: ignore[arg-type]
+            base_url="http://test",
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_get_me_returns_the_dispatchers_own_organisation_name(
+    client_with_real_db: AsyncClient, db_session,
+) -> None:
+    own = Organization(id=uuid.uuid4(), name="Own Transport", org_type=OrganizationType.OPERATOR)
+    other = Organization(id=uuid.uuid4(), name="Other Transport", org_type=OrganizationType.OPERATOR)
+    db_session.add_all([own, other])
+    await db_session.flush()
+    user = User(
+        id=uuid.uuid4(), organization_id=own.id,
+        email=f"dispatcher-{uuid.uuid4().hex[:8]}@test.co.za", full_name="Own Dispatcher",
+    )
+    db_session.add(user)
+    await db_session.flush()
+    token = make_token(sub=str(user.id), role="dispatcher", org_id=str(own.id))
+
+    response = await client_with_real_db.get("/api/v1/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["organization_name"] == "Own Transport"
+    assert body["organization_id"] == str(own.id)
 
 
 # ── Rejection paths ───────────────────────────────────────────────────────────

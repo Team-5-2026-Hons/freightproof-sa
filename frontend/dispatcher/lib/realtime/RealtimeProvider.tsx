@@ -8,7 +8,7 @@ import { getAccessToken } from '@/lib/supabase/client'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useToast } from '@/lib/hooks/useToast'
 import { toastForEvent } from './ranking'
-import { FRAME_SEPARATOR, STREAM_PATH, backoffMs, parseFrame } from './sse'
+import { FRAME_SEPARATOR, STREAM_PATH, STREAM_STALL_MS, backoffMs, parseFrame } from './sse'
 import type { RealtimeEvent, RealtimeStatus } from './types'
 
 // One SSE connection per authenticated dispatcher. The backend pushes thin "trip
@@ -23,7 +23,7 @@ interface RealtimeContextValue {
   // Register a listener; returns an unsubscribe fn. Stable across renders.
   subscribe: (listener: Listener) => () => void
   // Increments on every successful (re)connection. Consumers use a *change* after the
-  // first as the cue to refetch — a reconnect may have missed pings while down (D7).
+  // first as the cue to refetch — a reconnect may have missed pings while down.
   reconnectNonce: number
 }
 
@@ -73,11 +73,30 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let attempt = 0
 
+    let stallTimer: ReturnType<typeof setTimeout> | null = null
+
     const clearRetry = () => {
       if (retryTimer) {
         clearTimeout(retryTimer)
         retryTimer = null
       }
+    }
+
+    const clearStall = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+        stallTimer = null
+      }
+    }
+
+    // Any bytes, heartbeats included, prove the connection is alive; so does the server answering
+    // the connection request at all. A connection that dies without
+    // closing (a dropped network, a proxy holding the socket) would otherwise leave reader.read()
+    // waiting forever with the badge still on "Live". Aborting rejects that read, and the catch in
+    // openConnection reconnects.
+    const armStall = (active: AbortController) => {
+      clearStall()
+      stallTimer = setTimeout(() => active.abort(), STREAM_STALL_MS)
     }
 
     const scheduleReconnect = () => {
@@ -88,11 +107,12 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       retryTimer = setTimeout(openConnection, backoffMs(attempt))
     }
 
-    const pump = async (body: ReadableStream<Uint8Array>) => {
+    const pump = async (body: ReadableStream<Uint8Array>, active: AbortController) => {
       const reader = body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
       while (true) {
+        armStall(active)
         const { value, done } = await reader.read()
         if (done) return
         buffer += decoder.decode(value, { stream: true })
@@ -111,6 +131,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (cancelled || document.hidden) return
       clearRetry()
       controller = new AbortController()
+      // Covers the wait for response headers too: a request the server never answers would
+      // otherwise hang here with no reconnect. pump() re-arms it on every read once connected.
+      armStall(controller)
       // Keep the "Live" badge steady across silent heartbeats; only drop to connecting
       // when we're genuinely not live.
       setStatus(prev => (prev === 'live' ? prev : 'connecting'))
@@ -128,9 +151,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         // Bump on every open; consumers ignore the first and refetch on later ones.
         setReconnectNonce(n => n + 1)
 
-        await pump(res.body) // resolves when the server closes the stream
+        await pump(res.body, controller) // resolves when the server closes the stream
+        clearStall()
         if (!cancelled) scheduleReconnect()
       } catch {
+        clearStall()
         // Aborted (unmount/visibility) or a network/HTTP failure. Reconnect unless we're
         // intentionally stopped or the tab is backgrounded (resumes on visibility).
         if (!cancelled && !document.hidden) scheduleReconnect()
@@ -142,6 +167,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (document.hidden) {
         controller?.abort()
         clearRetry()
+        clearStall()
         setStatus('reconnecting')
       } else {
         attempt = 0
@@ -156,6 +182,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       cancelled = true
       controller?.abort()
       clearRetry()
+      clearStall()
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [enabled, handleEvent])

@@ -1,14 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Sidebar } from '../Sidebar'
 import { SidebarCollapseProvider } from '@/lib/context/SidebarCollapseContext'
+import { ForensicModeProvider } from '@/lib/context/ForensicModeContext'
 import { ROUTES } from '@/lib/constants/routes'
 
 // The collapse behaviour is route-driven (auto-collapse on trip detail), so
 // usePathname is mocked at the module boundary with a controllable return value —
 // the same approach ConfirmationDetail.test.tsx uses for useAuth.
 const mockUsePathname = vi.fn((): string => ROUTES.home)
+const mockSignOut = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const mockAuth = vi.hoisted(() => ({
   role: 'dispatcher' as 'dispatcher' | 'admin_dispatcher',
 }))
@@ -29,7 +31,7 @@ vi.mock('@/lib/hooks/useAuth', () => ({
     },
     isLoading: false,
     signIn: vi.fn(),
-    signOut: vi.fn(),
+    signOut: mockSignOut,
   }),
 }))
 
@@ -42,12 +44,15 @@ vi.mock('@/lib/realtime/RealtimeProvider', () => ({
 }))
 
 const SIDEBAR_COLLAPSE_STORAGE_KEY = 'fp.sidebarCollapsed'
+const FORENSIC_STORAGE_KEY = 'fp.forensicOn'
 
 function renderSidebar() {
   return render(
-    <SidebarCollapseProvider>
-      <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-    </SidebarCollapseProvider>,
+    <ForensicModeProvider>
+      <SidebarCollapseProvider>
+        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+      </SidebarCollapseProvider>
+    </ForensicModeProvider>,
   )
 }
 
@@ -55,30 +60,171 @@ beforeEach(() => {
   window.localStorage.clear()
   mockUsePathname.mockReturnValue(ROUTES.home)
   mockAuth.role = 'dispatcher'
+  mockSignOut.mockClear()
 })
 
 describe('Sidebar role-based navigation', () => {
-  it('hides the receipt lookup and its empty group from regular dispatchers', () => {
+  it.each(['dispatcher', 'admin_dispatcher'] as const)('offers parcel search to %s without the retired receipt page', (role) => {
+    mockAuth.role = role
     renderSidebar()
 
+    expect(screen.getByRole('link', { name: 'Parcel Search' })).toHaveAttribute('href', ROUTES.parcels)
     expect(screen.queryByRole('link', { name: 'Receipt Lookup' })).not.toBeInTheDocument()
-    expect(screen.queryByText('BLOCKCHAIN')).not.toBeInTheDocument()
+    expect(screen.queryByText('Blockchain')).not.toBeInTheDocument()
+  })
+})
+
+describe('Sidebar create-trip action', () => {
+  it('renders create trip once, outside the navigation landmark', () => {
+    renderSidebar()
+
+    const links = screen.getAllByRole('link', { name: 'Create Trip' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', ROUTES.tripNew)
+    expect(screen.getByRole('navigation', { name: 'Primary' })).not.toContainElement(links[0])
   })
 
-  it('shows the receipt lookup to admin dispatchers', () => {
+  it('keeps create trip reachable from the collapsed rail', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Create Trip')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create Trip' }))
+      .toHaveAttribute('href', ROUTES.tripNew)
+  })
+
+  it('marks create trip as the current page on its route', () => {
+    mockUsePathname.mockReturnValue(ROUTES.tripNew)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Create Trip' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+describe('Sidebar active state', () => {
+  it('marks only the link for the current route with aria-current', () => {
+    mockUsePathname.mockReturnValue(ROUTES.history)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Trip History' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('Sidebar Active Trips item', () => {
+  it('links to the active trips list, above Trip History', () => {
+    renderSidebar()
+
+    const links = within(screen.getByRole('navigation', { name: 'Primary' })).getAllByRole('link').map(l => l.getAttribute('aria-label'))
+    expect(screen.getByRole('link', { name: 'Active Trips' })).toHaveAttribute('href', ROUTES.trips)
+    expect(links.indexOf('Active Trips')).toBeLessThan(links.indexOf('Trip History'))
+  })
+
+  it('is current on /trips', () => {
+    mockUsePathname.mockReturnValue(ROUTES.trips)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Active Trips' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each([ROUTES.tripNew, ROUTES.tripDetail('abc')])('is not current on %s', (path) => {
+    mockUsePathname.mockReturnValue(path)
+    renderSidebar()
+
+    expect(screen.getByRole('link', { name: 'Active Trips' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('Sidebar profile footer', () => {
+  it('shows initials, name and role, with the live status on its own element', () => {
+    renderSidebar()
+
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByText('Jane Dispatcher')).toBeInTheDocument()
+    expect(screen.getByText('Dispatcher')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Live')
+  })
+
+  it('shows the admin role in words instead of a badge', () => {
     mockAuth.role = 'admin_dispatcher'
     renderSidebar()
 
-    expect(screen.getByRole('link', { name: 'Receipt Lookup' }))
-      .toHaveAttribute('href', ROUTES.blockchainReceipts)
-    expect(screen.getByText('BLOCKCHAIN')).toBeInTheDocument()
+    expect(screen.getByText('Admin Dispatcher')).toBeInTheDocument()
+    expect(screen.queryByText('ADMIN')).not.toBeInTheDocument()
+  })
+
+  it('keeps the live status in the collapsed rail and drops the name', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByText('Jane Dispatcher')).not.toBeInTheDocument()
+    expect(screen.getByText('JD')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveAttribute('title', 'Live updates connected')
+  })
+})
+
+describe('Sidebar forensic indicator', () => {
+  const PILL = 'Forensic view is on. Open its setting'
+
+  it('shows a pill that opens the forensic section when an admin has the mode on', () => {
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    const pill = screen.getByRole('link', { name: PILL })
+    expect(pill).toHaveTextContent('Forensic')
+    expect(pill).toHaveAttribute('href', ROUTES.settingsSection('forensic'))
+  })
+
+  it('keeps the Settings row itself pointing at Settings, beside the pill', () => {
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    const row = screen.getByRole('link', { name: 'Settings' })
+    expect(row).toHaveAttribute('href', ROUTES.settings)
+    // Anchors cannot nest, so the pill is a sibling of the row, not inside it.
+    expect(row).not.toContainElement(screen.getByRole('link', { name: PILL }))
+  })
+
+  it('shows no pill when an admin has forensic mode off', () => {
+    mockAuth.role = 'admin_dispatcher'
+    renderSidebar()
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+  })
+
+  it('shows no pill to a regular dispatcher even with a stale stored switch', () => {
+    // A demoted admin keeps `fp.forensicOn` in their browser; the mode is no longer theirs.
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('keeps the signal in the collapsed rail as a dot on the Settings row', async () => {
+    const user = userEvent.setup()
+    mockAuth.role = 'admin_dispatcher'
+    window.localStorage.setItem(FORENSIC_STORAGE_KEY, 'true')
+    renderSidebar()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    expect(screen.queryByRole('link', { name: PILL })).not.toBeInTheDocument()
+    const settings = screen.getByRole('link', { name: 'Settings, forensic view on' })
+    expect(settings).toHaveAttribute('href', ROUTES.settings)
   })
 })
 
 describe('Sidebar navigation', () => {
   it('links a regular dispatcher to analytics', () => {
     // The analytics endpoints take any dispatcher (get_current_dispatcher, not
-    // require_admin_dispatcher), so unlike the receipt lookup this entry is never hidden.
+    // require_admin_dispatcher), so this entry is never hidden.
     renderSidebar()
 
     expect(screen.getByRole('link', { name: 'Analytics' }))
@@ -149,9 +295,11 @@ describe('Sidebar collapse', () => {
 
     mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
 
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
@@ -180,9 +328,11 @@ describe('Sidebar collapse', () => {
     // Navigating away reverts to the untouched (default expanded) preference.
     mockUsePathname.mockReturnValue(ROUTES.home)
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(screen.getByText('Dashboard')).toBeInTheDocument()
   })
@@ -197,17 +347,21 @@ describe('Sidebar collapse', () => {
 
     mockUsePathname.mockReturnValue(ROUTES.tripDetail('trip-123'))
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
 
     mockUsePathname.mockReturnValue(ROUTES.home)
     rerender(
-      <SidebarCollapseProvider>
-        <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
-      </SidebarCollapseProvider>,
+      <ForensicModeProvider>
+        <SidebarCollapseProvider>
+          <Sidebar mobileOpen={false} onMobileClose={vi.fn()} />
+        </SidebarCollapseProvider>
+      </ForensicModeProvider>,
     )
     expect(window.localStorage.getItem(SIDEBAR_COLLAPSE_STORAGE_KEY)).toBe('true')
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument()
@@ -232,5 +386,64 @@ describe('Sidebar collapse', () => {
     getItemSpy.mockRestore()
     setItemSpy.mockRestore()
     warnSpy.mockRestore()
+  })
+})
+
+describe('Sidebar profile menu', () => {
+  const trigger = () => screen.getByRole('button', { name: /Jane Dispatcher/ })
+
+  it('is closed until the profile row is pressed', () => {
+    renderSidebar()
+
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('offers View profile, pointing at Settings > Account, and Log out', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+
+    expect(trigger()).toHaveAttribute('aria-expanded', 'true')
+    expect(within(screen.getByRole('menu')).getAllByRole('menuitem')).toHaveLength(2)
+    expect(screen.getByRole('menuitem', { name: 'View profile' }))
+      .toHaveAttribute('href', ROUTES.settingsSection('account'))
+  })
+
+  it('signs out straight away from Log out and closes the menu', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+    await user.click(screen.getByRole('menuitem', { name: 'Log out' }))
+
+    expect(mockSignOut).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('closes on Escape, returning focus to the profile row, and on an outside click', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+
+    await user.click(trigger())
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger()).toHaveFocus()
+
+    await user.click(trigger())
+    await user.click(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(mockSignOut).not.toHaveBeenCalled()
+  })
+
+  it('is still reachable from the collapsed rail', async () => {
+    const user = userEvent.setup()
+    renderSidebar()
+    await user.click(screen.getByRole('button', { name: 'Collapse sidebar' }))
+
+    await user.click(screen.getByRole('button', { name: 'Jane Dispatcher, account menu' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
   })
 })

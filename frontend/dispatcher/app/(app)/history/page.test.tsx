@@ -41,7 +41,7 @@ function makeTrip(overrides: Partial<TripHistoryListItem> = {}): TripHistoryList
   return {
     id: 'trip-1' as TripHistoryListItem['id'],
     trip_reference: 'FP-2026-0001',
-    order_number: 'ORD-0001',
+    pp_manifest: null,
     status: 'closed',
     driver: { full_name: 'Nandi Dlamini' },
     horse: { registration: 'CA 123-456' },
@@ -93,7 +93,7 @@ beforeEach(() => {
     precincts: [
       {
         id: 'origin-1' as never,
-        name: 'Cape Town — Depot',
+        name: 'Cape Town · Depot',
         principal_organization_id: 'org-1' as never,
         address: null,
         latitude: -33.9,
@@ -104,7 +104,7 @@ beforeEach(() => {
       },
       {
         id: 'destination-1' as never,
-        name: 'Johannesburg — Depot',
+        name: 'Johannesburg · Depot',
         principal_organization_id: 'org-1' as never,
         address: null,
         latitude: -26.2,
@@ -131,9 +131,11 @@ describe('Trip History page', () => {
     renderPage()
 
     expect(screen.getByText('137 closed trips')).toBeInTheDocument()
-    expect(screen.getByText('CLOSED')).toBeInTheDocument()
-    expect(screen.getByText('05 Sept')).toBeInTheDocument()
-    expect(screen.queryByText('01 Sept')).not.toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Closed' })).toBeInTheDocument()
+    // 14:30Z is 16:30 SAST; the year is shown because closed trips span years.
+    expect(screen.getByText('05 Sep 2026')).toBeInTheDocument()
+    expect(screen.getByText('16:30 SAST')).toBeInTheDocument()
+    expect(screen.queryByText('01 Sep 2026')).not.toBeInTheDocument()
   })
 
   it('passes search, route, and date filters to the history hook', () => {
@@ -178,6 +180,37 @@ describe('Trip History page', () => {
     }
   })
 
+  it('moves the default end date to the new SAST day without calling the list filtered', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-06T21:30:00Z'))
+
+    try {
+      renderPage()
+      expect(screen.getByText('No trip history')).toBeInTheDocument()
+
+      // 22:30Z is 00:30 SAST on the 7th. Any later render builds the query afresh.
+      vi.setSystemTime(new Date('2026-09-06T22:30:00Z'))
+      fireEvent.change(screen.getByDisplayValue('All routes'), { target: { value: 'origin-1' } })
+      fireEvent.change(screen.getByDisplayValue('Cape Town · Depot'), { target: { value: '' } })
+
+      expect(mockedUseTripHistory).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: '2026-09-07' }))
+      expect(screen.getByText('No trip history')).toBeInTheDocument()
+      expect(screen.queryByText('No results')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends the search trimmed, and treats a blank search as none', () => {
+    renderPage()
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: '  abc ' } })
+    expect(mockedUseTripHistory.mock.calls.at(-1)?.[0]).toMatchObject({ q: 'abc' })
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: '   ' } })
+    expect(mockedUseTripHistory.mock.calls.at(-1)?.[0].q).toBeUndefined()
+  })
+
   it('renders shared pagination from server page state and wires navigation', () => {
     const goToNextPage = vi.fn()
     mockedUseTripHistory.mockReturnValue(historyState({
@@ -211,7 +244,8 @@ describe('Trip History page', () => {
     renderPage()
 
     expect(screen.getByText('Page 2')).toBeInTheDocument()
-    const notice = screen.getByRole('status')
+    // The table keeps its own always-mounted status region, so find this one by its text.
+    const notice = screen.getByText('New trip history available')
     expect(notice).toHaveAttribute('aria-live', 'polite')
     fireEvent.click(screen.getByRole('button', { name: /new trip history available/i }))
     expect(showNewHistory).toHaveBeenCalledTimes(1)
@@ -255,5 +289,72 @@ describe('History exceptions column', () => {
     renderPage()
 
     expect(screen.getByText(/2 exceptions/)).toBeInTheDocument()
+  })
+})
+
+describe('History table', () => {
+  it('renders every column and links each row to its trip', () => {
+    mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip()], totalItems: 1 }))
+
+    renderPage()
+
+    for (const name of ['Closed', 'Trip ID', 'Driver / horse', 'Route', 'Exceptions', 'Status']) {
+      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument()
+    }
+    expect(screen.getByRole('link', { name: 'Nandi Dlamini · FP-2026-0001' })).toHaveAttribute('href', '/trips/trip-1')
+    expect(screen.getByText('Cape Town')).toBeInTheDocument()
+    expect(screen.getByText('↓ Johannesburg')).toBeInTheDocument()
+  })
+
+  it('does not offer sorting, because the list is paginated by the server', () => {
+    mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip()], totalItems: 40, hasNext: true }))
+
+    renderPage()
+
+    const headers = screen.getAllByRole('columnheader')
+    expect(headers.length).toBeGreaterThan(0)
+    for (const header of headers) {
+      expect(header).not.toHaveAttribute('aria-sort')
+      expect(header.querySelector('button')).toBeNull()
+    }
+  })
+
+  it('shows a loading state on the first load instead of an empty table', () => {
+    mockedUseTripHistory.mockReturnValue(historyState({ isLoading: true }))
+
+    renderPage()
+
+    expect(screen.getByText('Loading trip history')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.queryByText('No trip history')).toBeNull()
+  })
+
+  it('keeps rows on screen while a later page loads', () => {
+    mockedUseTripHistory.mockReturnValue(historyState({ items: [makeTrip()], totalItems: 40, isLoading: true }))
+
+    renderPage()
+
+    expect(screen.getByText('FP-2026-0001')).toBeInTheDocument()
+    expect(screen.getByRole('table')).toHaveAttribute('aria-busy', 'false')
+  })
+
+  it('shows the error with a retry when nothing has loaded', () => {
+    const refetch = vi.fn()
+    mockedUseTripHistory.mockReturnValue(historyState({ error: 'Network unreachable', refetch }))
+
+    renderPage()
+
+    expect(screen.getByText('Failed to load trip history')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('says there is no history when none exists, and no results when filters narrow it', () => {
+    renderPage()
+    expect(screen.getByText('No trip history')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText(/search trip id/i), { target: { value: 'zzz' } })
+    expect(screen.getByText('No results')).toBeInTheDocument()
   })
 })

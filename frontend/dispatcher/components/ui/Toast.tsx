@@ -73,7 +73,9 @@ export function ToastViewport({ toasts, onDismiss }: ToastViewportProps) {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="fixed bottom-6 right-6 z-[80] flex flex-col gap-3 items-end"
+      // The assistant bubble sets these while it shows, so toasts sit above it and beside its open
+      // pop-up (components/assistant/AssistantBubble.tsx). Unset, they fall back to the usual corner.
+      className="fixed bottom-[calc(1.5rem+var(--fp-assistant-bottom,0px))] right-6 md:right-[calc(1.5rem+var(--fp-assistant-right,0px))] z-[80] flex flex-col gap-3 items-end"
     >
       {toasts.slice(0, 3).map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />

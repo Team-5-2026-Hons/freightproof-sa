@@ -30,7 +30,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             <h1 className="text-lg font-bold">Something went wrong</h1>
             <p className="mt-2 text-sm opacity-90">
               The app hit a problem and couldn&rsquo;t finish what it was doing.
-              Any photos or details you&rsquo;ve captured are saved on this device — nothing is lost.
+              Any photos or details you&rsquo;ve captured are saved on this device. Nothing is lost.
             </p>
           </div>
           <div className="flex w-full flex-col gap-3">
@@ -39,9 +39,9 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             <button
               type="button"
               onClick={reset}
-              className="min-h-[52px] w-full rounded-xl bg-primary px-6 py-4 text-sm font-bold uppercase tracking-wider text-primary-on shadow-ambient"
+              className="min-h-[52px] w-full rounded-xl bg-primary px-6 py-4 text-base font-semibold text-primary-on"
             >
-              Try again
+              Try Again
             </button>
             {/* Literal "/" instead of ROUTES.home: this file must not import app modules
                 (see header comment); a full page load of Home is the safest recovery.
@@ -51,7 +51,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a
               href="/"
-              className="flex min-h-[52px] w-full items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-lowest px-6 py-4 text-sm font-bold uppercase tracking-wider text-surface-on shadow-ambient-sm"
+              className="flex min-h-[52px] w-full items-center justify-center rounded-xl border border-outline-variant/60 bg-surface-container-lowest px-6 py-4 text-base font-semibold text-surface-on"
             >
               Go to Home
             </a>

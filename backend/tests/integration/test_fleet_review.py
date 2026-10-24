@@ -1,6 +1,6 @@
-"""Integration contract for GET /api/v1/analytics/fleet/review (fleet analytics spec §5.4).
+"""Integration contract for GET /api/v1/analytics/fleet/review.
 
-Charts 4.1–4.4 over one seeded fortnight (two whole past weeks, built from "now"):
+Over one seeded fortnight (two whole past weeks, built from "now"):
   E1 critical, raised day 0 10:00, reviewed day 2 10:00 (48 h)   evidence_verified
   E2 critical, raised day 1 10:00, reviewed day 9 10:00 (192 h)  data_discrepancy
   E8 critical, raised day 3 10:00, reviewed day 10 10:00 (168 h) referred_for_follow_up

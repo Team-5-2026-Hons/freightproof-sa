@@ -1,146 +1,31 @@
-"""Pydantic v2 schemas for TripTemplate, Consignment, Parcel, Trip, TripTrailer."""
+"""Pydantic v2 schemas for Consignment, Parcel, Trip creation requests and trip reads."""
 
 from datetime import datetime
-from decimal import Decimal
 from uuid import UUID
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.constants import MINIMUM_TRIP_DURATION
-from app.db.models.enums import IdvsStatus, ParcelStatus, TripStatus, TripType
+from app.db.models.enums import IdvsStatus, TripStatus, TripType
 from app.schemas.blockchain import BlockchainReceiptRead
+from app.schemas.cargo import (
+    ConsignmentBase as ConsignmentBase,
+    ConsignmentRead as ConsignmentRead,
+    ParcelBase as ParcelBase,
+    ParcelRead as ParcelRead,
+)
 from app.schemas.phases import PhaseEventRead
 from app.schemas.people import DriverRead
-from app.schemas.text import OrderNumberStr, RequiredFreeText, ShortNoteStr
+from app.schemas.text import RequiredFreeText, ShortNoteStr
+from app.schemas.pp_manifest import PPManifestRef, PPManifestSnapshotRead
 from app.schemas.transit import TripExceptionRead
 from app.schemas.vehicles import VehicleRead
 
-
-class TripTemplateBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    operator_organization_id: UUID
-    client_organization_id: UUID
-    name: str
-    default_origin_precinct_id: Optional[UUID] = None
-    default_destination_precinct_id: Optional[UUID] = None
-    is_active: bool = True
-
-
-class TripTemplateCreate(TripTemplateBase):
-    pass
-
-
-class TripTemplateUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    name: Optional[str] = None
-    default_origin_precinct_id: Optional[UUID] = None
-    default_destination_precinct_id: Optional[UUID] = None
-    is_active: Optional[bool] = None
-
-
-class TripTemplateRead(TripTemplateBase):
-    id: UUID
-    created_at: datetime
-
-
-class ConsignmentBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: Optional[UUID] = None
-    parcel_perfect_reference: str
-    client_organization_id: Optional[UUID] = None  # resolved from the PP accnum; may be NULL
-    origin_precinct_id: Optional[UUID] = None
-    destination_precinct_id: Optional[UUID] = None
-    declared_value: Optional[Decimal] = None
-    parcel_count_expected: Optional[int] = None
-    slot_time_origin: Optional[datetime] = None
-    slot_time_destination: Optional[datetime] = None
-    pp_raw_json: Optional[Any] = None
-    pickup_stop_id: Optional[UUID] = None
-    delivery_stop_id: Optional[UUID] = None
-    load_priority: Optional[int] = None
-    unit_count_expected: Optional[int] = None
-    pp_manifest_number: Optional[int] = None
-
-
-class ConsignmentCreate(ConsignmentBase):
-    pass
-
-
-class ConsignmentUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: Optional[UUID] = None
-    parcel_count_expected: Optional[int] = None
-    slot_time_origin: Optional[datetime] = None
-    slot_time_destination: Optional[datetime] = None
-    pp_raw_json: Optional[Any] = None
-    pickup_stop_id: Optional[UUID] = None
-    delivery_stop_id: Optional[UUID] = None
-    load_priority: Optional[int] = None
-    unit_count_expected: Optional[int] = None
-    pp_manifest_number: Optional[int] = None
-
-
-class ConsignmentRead(ConsignmentBase):
-    id: UUID
-    created_at: datetime
-    updated_at: datetime
-    # Live scan progress, recomputed per request. Distinct from the phase rows'
-    # parcel_count_origin/_destination, which are stamped once and never revised.
-    scanned_out_count: int = 0
-    scanned_in_count: int = 0
-
-
-class ParcelBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    consignment_id: UUID
-    barcode: str
-    description: Optional[str] = None
-    delivery_stop: Optional[str] = None
-    status: ParcelStatus = ParcelStatus.PENDING
-
-
-class ParcelCreate(ParcelBase):
-    pass
-
-
-class ParcelUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    status: Optional[ParcelStatus] = None
-    pp_scan_out_at: Optional[datetime] = None
-    pp_scan_in_at: Optional[datetime] = None
-
-
-class ParcelRead(ParcelBase):
-    id: UUID
-    pp_scan_out_at: Optional[datetime] = None
-    pp_scan_in_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-
-
-class TripBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_reference: str
-    order_number: str
-    operator_organization_id: UUID
-    client_organization_id: UUID
-    driver_id: UUID
-    horse_id: UUID
-    origin_precinct_id: UUID
-    destination_precinct_id: UUID
-    created_by_user_id: UUID
-    pulsit_trip_reference_id: Optional[str] = None
-    template_id: Optional[UUID] = None
-    planned_departure_at: Optional[datetime] = None
-    planned_arrival_at: Optional[datetime] = None
+if TYPE_CHECKING:  # FP-83: resolved by model_rebuild in schemas/driver_substitutions (it imports this module)
+    from app.schemas.driver_substitutions import (
+        CustodyIntegrityRead, DriverAccess, DriverParticipation, SubstitutionRequestRead, CompletedSubstitutionSummary,
+    )
 
 
 def stop_slot_times(stops: Optional[list["TripStopCreate"]]) -> list[datetime]:
@@ -161,14 +46,14 @@ def validate_declared_schedule(
     *,
     schedule_source: str = "planned_departure_at/planned_arrival_at",
 ) -> None:
-    """Reject a declared schedule that could not have happened.
+    """Reject a declared schedule that could not have happened, or that never ends.
 
-    Shared by both creation schemas so the rule can't drift between two copies. Silent
-    when either end is missing — planned_arrival_at is legitimately optional.
-    schedule_source names where the two times came from (trip-level fields, or stop
-    slot_times on a multi-stop route), since an error naming fields never sent helps no one.
+    Shared by both creation schemas so the rule can't drift. Arrival is required (FP-139): with no
+    end, nobody can say when the crew is free. schedule_source names where the times came from.
     """
-    if not (planned_departure_at and planned_arrival_at):
+    if planned_arrival_at is None:
+        raise ValueError("a planned arrival is required (planned_arrival_at, or a stop slot_time after departure)")
+    if planned_departure_at is None:  # each caller rejects a missing departure with its own error
         return
     if planned_arrival_at <= planned_departure_at:
         raise ValueError(
@@ -185,39 +70,16 @@ def validate_declared_schedule(
         )
 
 
-class TripCreate(TripBase):
-    @model_validator(mode="after")
-    def validate_arrival_after_departure(self) -> "TripCreate":
-        validate_declared_schedule(self.planned_departure_at, self.planned_arrival_at)
-        return self
+class TripAttentionResponse(BaseModel):
+    """A trip's unreviewed exceptions split the two ways the dashboard ranks them: by
+    severity, so a critical outranks any number of warnings, and by claim, so a dispatcher
+    can see which ones nobody has taken on. A claimed exception is still unreviewed (FP-280),
+    so critical + warning + info always equals needs_review_count, claimed or not."""
 
-
-class TripUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    status: Optional[TripStatus] = None
-    pulsit_trip_reference_id: Optional[str] = None
-    journey_lock_hash: Optional[str] = None
-    idvs_check_status: Optional[IdvsStatus] = None
-    idvs_checked_at: Optional[datetime] = None
-    actual_departure_at: Optional[datetime] = None
-    actual_arrival_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-
-
-class TripRead(TripBase):
-    id: UUID
-    status: TripStatus
-    journey_lock_hash: Optional[str] = None
-    idvs_check_status: IdvsStatus
-    idvs_checked_at: Optional[datetime] = None
-    actual_departure_at: Optional[datetime] = None
-    actual_arrival_at: Optional[datetime] = None
-    closed_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    driver: Optional[DriverRead] = None
-    horse: Optional[VehicleRead] = None
+    critical: int
+    warning: int
+    info: int
+    claimed: int
 
 
 class TripListItemResponse(BaseModel):
@@ -227,7 +89,9 @@ class TripListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
     driver: DriverRead
@@ -240,6 +104,7 @@ class TripListItemResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     needs_review_count: int
+    attention: TripAttentionResponse
     # Lets a row read "Unloading · stop 2 · 6/11" without the list view holding a phase
     # plan. phase_total is the plan's own length (7 on single-leg, 11 on cross-dock).
     current_phase: Optional[str] = None
@@ -273,7 +138,9 @@ class TripHistoryListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     driver: TripHistoryDriverResponse
     horse: TripHistoryVehicleResponse
@@ -300,7 +167,6 @@ class DriverTripListItemResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
     status: TripStatus
     trip_type: TripType
     origin_precinct_id: Optional[UUID] = None
@@ -312,48 +178,13 @@ class DriverTripListItemResponse(BaseModel):
     actual_departure_at: Optional[datetime] = None
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
-    needs_review_count: int  # display parity with the dispatcher board; no review workflow here
+    needs_review_count: int  # unreviewed critical rows only; the driver has no review workflow
+    # FP-83: a trip this driver handed over stays listed as history while it is still active.
+    participation: "DriverParticipation | None" = None
+    last_participation_ended_at: Optional[datetime] = None
+    custody_sequence: int = 0
     created_at: datetime
     updated_at: datetime
-
-
-class TripTrailerBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: UUID
-    trailer_id: UUID
-    pulsit_device_id_snapshot: str
-
-
-class TripTrailerCreate(TripTrailerBase):
-    pass
-
-
-class TripTrailerRead(TripTrailerBase):
-    pass
-
-
-class DriverSubstitutionBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    trip_id: UUID
-    original_driver_id: UUID
-    substituting_driver_id: UUID
-    exchange_location: str
-    approving_dispatcher_user_id: UUID
-    is_planned: bool
-    substitution_at: datetime
-    exception_id: Optional[UUID] = None
-    blockchain_receipt_id: Optional[UUID] = None
-
-
-class DriverSubstitutionCreate(DriverSubstitutionBase):
-    pass
-
-
-class DriverSubstitutionRead(DriverSubstitutionBase):
-    id: UUID
-    created_at: datetime
 
 
 class TripStopBase(BaseModel):
@@ -387,7 +218,6 @@ class TripConsignmentInput(BaseModel):
 class TripCreateRequest(BaseModel):
     """Dispatcher-facing trip creation payload — excludes auto-generated and JWT-derived fields."""
 
-    order_number: OrderNumberStr
     driver_id: UUID
     horse_id: UUID
     trailer_ids: list[UUID] = Field(default_factory=list)
@@ -423,10 +253,9 @@ class TripCreateRequest(BaseModel):
         )
         if self.planned_departure_at is None and not has_stop_schedule:
             raise ValueError(
-                "planned_departure_at is required when no stop carries a "
-                "slot_time — a trip with neither can never be activated "
-                "(provide planned_departure_at, or set slot_time on at least "
-                "one of the provided stops)"
+                "planned_departure_at is required when no stop carries a slot_time — a trip with "
+                "neither can never be activated (provide planned_departure_at, or set slot_time on "
+                "at least one of the provided stops)"
             )
         # Falls back to stop bounds so the explicit-stops path can't bypass the
         # duration rule entirely; each half falls back independently.
@@ -510,6 +339,9 @@ class ManifestResponse(BaseModel):
     origin_scan_complete: bool
     consignments: list[ConsignmentManifest]
     pulled_at: datetime
+    # The PP manifest as it stood at creation (H0, FP-281), summarised for display —
+    # null on trips without one.
+    pp_manifest_snapshot: Optional[PPManifestSnapshotRead] = None
 
 
 class LinehaulResponse(BaseModel):
@@ -536,7 +368,9 @@ class TripDetailResponse(BaseModel):
 
     id: UUID
     trip_reference: str
-    order_number: str
+    # The PP manifest this trip carries (FP-281), or null for empty legs and trips
+    # created through the explicit path.
+    pp_manifest: Optional[PPManifestRef] = None
     status: TripStatus
     trip_type: TripType
     journey_lock_hash: Optional[str] = None
@@ -554,7 +388,7 @@ class TripDetailResponse(BaseModel):
     planned_arrival_at: Optional[datetime] = None
     actual_arrival_at: Optional[datetime] = None
     closed_at: Optional[datetime] = None
-    # Denormalised position cache (parent D6). READ PATH ONLY — the ledger in
+    # Denormalised position cache. READ PATH ONLY — the ledger in
     # `phases` below is the truth, and the dispatcher's trip-detail view derives
     # the active phase from it. These exist so list views need not recompute.
     current_phase: Optional[str] = None
@@ -565,5 +399,21 @@ class TripDetailResponse(BaseModel):
     # Creation-transient: populated by POST /trips (e.g. PP sync degraded-mode
     # warnings). Always [] on GET — never persisted.
     warnings: list[str] = []
+    # FP-83 (contract "Existing reads"): `driver` above is the DERIVED current driver; the
+    # original is kept for the journey lock. The substitution lists, integrity and flag are
+    # dispatcher-only (empty/None on driver reads); driver_access is set only on driver reads.
+    original_driver: Optional[DriverRead] = None
+    driver_substitutions: list["SubstitutionRequestRead"] = []
+    completed_driver_substitutions: list["CompletedSubstitutionSummary"] = []
+    pending_driver_substitution: "SubstitutionRequestRead | None" = None
+    custody_sequence: int = 0
+    custody_integrity: "CustodyIntegrityRead | None" = None
+    driver_substitutions_enabled: Optional[bool] = None
+    driver_access: "DriverAccess | None" = None
     created_at: datetime
     updated_at: datetime
+
+
+# FP-83: importing the substitution schemas resolves the forward references above, whichever of
+# the two modules is imported first (a plain module import is safe mid-cycle).
+import app.schemas.driver_substitutions  # noqa: E402,F401

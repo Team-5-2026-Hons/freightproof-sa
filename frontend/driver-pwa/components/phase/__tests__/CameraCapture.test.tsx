@@ -2,6 +2,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { CameraCapture } from '../CameraCapture'
+import { __resetRestoredPhotoForTests, captureKey, markCapturePending, receiveRestoredPhoto } from '@/lib/camera/restored-photo'
 
 const SAMPLE_DATA_URL = 'data:image/png;base64,iVBORw0KGgo='
 
@@ -40,6 +41,54 @@ describe('CameraCapture captured branch', () => {
     expect(img.className).not.toContain('max-h-48')
     expect(img.closest('.aspect-video')).not.toBeNull()
   })
+
+  it('test_stamps_the_capture_time_when_known', () => {
+    const capturedAt = new Date(2026, 9, 14, 9, 58).toISOString()
+    render(<CameraCapture label="Seal photo" dataUrl={SAMPLE_DATA_URL} capturedAt={capturedAt} onCapture={vi.fn()} />)
+
+    expect(screen.getByText('Captured 09:58')).toBeInTheDocument()
+  })
+
+  it('test_marks_the_photo_as_captured', () => {
+    render(<CameraCapture label="Exit gate photo" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.getByText('Captured')).toBeInTheDocument()
+  })
+})
+
+describe('CameraCapture row variant (overhaul 6.3/6.4)', () => {
+  it('test_offers_an_optional_photo_as_one_compact_row', () => {
+    render(<CameraCapture variant="row" label="Photo (optional)" actionLabel="Add a photo" hint="Optional" dataUrl={null} onCapture={vi.fn()} />)
+
+    expect(screen.getByRole('button', { name: /Add a photo/ })).toBeInTheDocument()
+    expect(screen.getByText('Optional')).toBeInTheDocument()
+  })
+
+  it('test_shows_the_added_photo_with_retake', () => {
+    render(<CameraCapture variant="row" label="Photo (optional)" capturedHint="Sends with the report" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.getByAltText('Photo (optional)')).toBeInTheDocument()
+    expect(screen.getByText('Photo added')).toBeInTheDocument()
+    expect(screen.getByText('Sends with the report')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retake' })).toBeInTheDocument()
+  })
+})
+
+describe('CameraCapture empty tile', () => {
+  it('test_names_what_to_photograph_with_a_hint_when_given', () => {
+    render(
+      <CameraCapture
+        label="Linehaul sheet photo"
+        actionLabel="Photograph the sheet"
+        hint="Fill the frame, keep the numbers sharp"
+        dataUrl={null}
+        onCapture={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /Photograph the sheet/ })).toBeInTheDocument()
+    expect(screen.getByText('Fill the frame, keep the numbers sharp')).toBeInTheDocument()
+  })
 })
 
 // Audit fix: handleCapture previously had try/finally with NO catch — a permission
@@ -56,7 +105,7 @@ describe('CameraCapture native capture failures', () => {
     mockGetPhoto.mockResolvedValue({ dataUrl: SAMPLE_DATA_URL })
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={onCapture} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith(SAMPLE_DATA_URL))
     expect(mockGetPhoto).toHaveBeenCalledWith(
@@ -70,7 +119,7 @@ describe('CameraCapture native capture failures', () => {
     mockGetPhoto.mockRejectedValue(new Error('User denied access to camera'))
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
@@ -89,11 +138,11 @@ describe('CameraCapture native capture failures', () => {
     mockGetPhoto.mockRejectedValue(new Error('User cancelled photos app'))
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={onCapture} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     // The button must return to its idle state (finally ran) with no toast fired —
     // a cancel is an intentional action, not a failure.
-    await waitFor(() => expect(screen.getByText('Tap to photograph')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument())
     expect(mockNotify).not.toHaveBeenCalled()
     expect(onCapture).not.toHaveBeenCalled()
   })
@@ -102,13 +151,38 @@ describe('CameraCapture native capture failures', () => {
     mockGetPhoto.mockRejectedValue(new Error('Out of memory'))
 
     render(<CameraCapture label="Selfie" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     await waitFor(() =>
       expect(mockNotify).toHaveBeenCalledWith(
         expect.objectContaining({ kind: 'error', title: 'Could not add the photo' }),
       ),
     )
+  })
+
+  it('uses a provided native source instead of the camera, and stays quiet on cancel', async () => {
+    const onCapture = vi.fn()
+    const nativeSource = vi.fn().mockResolvedValueOnce('data:image/jpeg;base64,SCAN').mockResolvedValueOnce(null)
+
+    render(<CameraCapture label="Linehaul sheet" actionLabel="Scan the sheet" dataUrl={null} onCapture={onCapture} nativeSource={nativeSource} />)
+    fireEvent.click(screen.getByText('Scan the sheet'))
+    await waitFor(() => expect(onCapture).toHaveBeenCalledWith('data:image/jpeg;base64,SCAN'))
+    fireEvent.click(screen.getByText('Scan the sheet'))
+    await waitFor(() => expect(nativeSource).toHaveBeenCalledTimes(2))
+
+    expect(onCapture).toHaveBeenCalledTimes(1)
+    expect(mockGetPhoto).not.toHaveBeenCalled()
+    expect(mockNotify).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the file picker when the native source fails', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const nativeSource = vi.fn().mockRejectedValue(new Error('Document scanner is not supported'))
+
+    render(<CameraCapture label="Linehaul sheet" actionLabel="Scan the sheet" dataUrl={null} onCapture={vi.fn()} nativeSource={nativeSource} />)
+    fireEvent.click(screen.getByText('Scan the sheet'))
+
+    expect(await screen.findByText('Choose a Photo Instead')).toBeInTheDocument()
   })
 })
 
@@ -152,7 +226,7 @@ describe('CameraCapture browser fallback', () => {
     const getInput = interceptFileInput()
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     const input = getInput()
     expect(input).not.toBeNull()
@@ -174,7 +248,7 @@ describe('CameraCapture browser fallback', () => {
     }))
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={onCapture} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
     pickFile(getInput()!, new File(['jpeg-bytes'], 'damage.jpg', { type: 'image/jpeg' }))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalled())
@@ -186,7 +260,7 @@ describe('CameraCapture browser fallback', () => {
     const getInput = interceptFileInput()
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={onCapture} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
     const input = getInput()!
     Object.defineProperty(input, 'files', { value: [], configurable: true })
     input.onchange?.(new Event('change'))
@@ -208,16 +282,16 @@ describe('CameraCapture falls back to the picker when the native camera cannot o
     const getInput = interceptFileInput()
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     // The driver is told how to fix it AND given a way through right now — a driver at a
     // gate cannot stop to change OS settings, and the photo is the evidence.
-    await waitFor(() => expect(screen.getByText('Choose a photo instead')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Choose a Photo Instead')).toBeInTheDocument())
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'error', title: 'Camera access is blocked' }),
     )
 
-    fireEvent.click(screen.getByText('Choose a photo instead'))
+    fireEvent.click(screen.getByText('Choose a Photo Instead'))
 
     // Second tap goes to the file picker; re-asking the plugin would only reproduce the
     // same refusal.
@@ -230,20 +304,20 @@ describe('CameraCapture falls back to the picker when the native camera cannot o
     mockGetPhoto.mockRejectedValue(new Error('No camera available'))
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
-    await waitFor(() => expect(screen.getByText('Choose a photo instead')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Choose a Photo Instead')).toBeInTheDocument())
   })
 
   it('keeps offering the camera after a deliberate cancel', async () => {
     mockGetPhoto.mockRejectedValue(new Error('User cancelled photos app'))
 
     render(<CameraCapture label="Damage photo" dataUrl={null} onCapture={vi.fn()} />)
-    fireEvent.click(screen.getByText('Tap to photograph'))
+    fireEvent.click(screen.getByText('Take Photo'))
 
     // Backing out is not a failure — the control must not degrade to a picker for it.
-    await waitFor(() => expect(screen.getByText('Tap to photograph')).toBeInTheDocument())
-    expect(screen.queryByText('Choose a photo instead')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Take Photo')).toBeInTheDocument())
+    expect(screen.queryByText('Choose a Photo Instead')).not.toBeInTheDocument()
   })
 })
 
@@ -263,5 +337,86 @@ describe('CameraCapture retake', () => {
     fireEvent.click(screen.getByText('Retake'))
 
     await waitFor(() => expect(onCapture).toHaveBeenCalledWith(RETAKEN))
+  })
+})
+
+describe('CameraCapture after Android reclaimed the WebView mid-capture', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    __resetRestoredPhotoForTests()
+  })
+
+  it('test_claims_the_restored_photo_into_its_own_draft_on_mount', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).toHaveBeenCalledWith(SAMPLE_DATA_URL)
+  })
+
+  it('test_does_not_take_another_controls_restored_photo', () => {
+    const onCapture = vi.fn()
+    markCapturePending(captureKey(window.location.pathname, 'Seal photo'))
+    receiveRestoredPhoto(SAMPLE_DATA_URL)
+
+    render(<CameraCapture label="POD photo" dataUrl={null} onCapture={onCapture} />)
+
+    expect(onCapture).not.toHaveBeenCalled()
+  })
+
+  it('test_marks_the_capture_pending_while_the_camera_is_open_and_clears_it_after', async () => {
+    mockIsNativePlatform.mockReturnValue(true)
+    let pendingWhileOpen: string | null = null
+    mockGetPhoto.mockImplementation(async () => {
+      pendingWhileOpen = window.localStorage.getItem('fp:pending-camera-capture')
+      return { dataUrl: SAMPLE_DATA_URL }
+    })
+    render(<CameraCapture label="Seal photo" dataUrl={null} onCapture={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Take Photo/ }))
+
+    await waitFor(() => expect(mockGetPhoto).toHaveBeenCalled())
+    expect(pendingWhileOpen).toContain('Seal photo')
+    await waitFor(() => expect(window.localStorage.getItem('fp:pending-camera-capture')).toBeNull())
+  })
+})
+
+// Tim, 21 Oct: after the linehaul scan the sheet sat there looking finished while the PDF
+// was still building, and the only sign of the wait was the swipe's label — which the
+// driver is not looking at. The veil puts the wait on the thing causing it.
+describe('CameraCapture busy veil', () => {
+  it('test_lays_a_veil_and_a_spinner_over_the_capture_while_it_is_being_processed', () => {
+    render(
+      <CameraCapture
+        label="Linehaul sheet"
+        dataUrl={SAMPLE_DATA_URL}
+        onCapture={vi.fn()}
+        busy
+        busyLabel="Preparing the PDF"
+      />,
+    )
+
+    const veil = screen.getByRole('status', { name: 'Preparing the PDF' })
+
+    expect(veil).toBeInTheDocument()
+    // Faint, not opaque: the driver must still be able to read the sheet they captured.
+    expect(veil.className).toContain('bg-black/35')
+  })
+
+  it('test_the_capture_and_its_retake_stay_readable_through_the_veil', () => {
+    render(
+      <CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} busy />,
+    )
+
+    expect(screen.getByAltText('Linehaul sheet')).toBeInTheDocument()
+    expect(screen.getByText('Retake')).toBeInTheDocument()
+  })
+
+  it('test_no_veil_once_the_step_is_done_with_the_capture', () => {
+    render(<CameraCapture label="Linehaul sheet" dataUrl={SAMPLE_DATA_URL} onCapture={vi.fn()} />)
+
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

@@ -252,7 +252,7 @@ async def seed_trip(
         created_by_user_id=operator.dispatcher.id,
         planned_departure_at=None if planned_departure_minute is None else at(planned_departure_minute),
         planned_arrival_at=None if planned_arrival_minute is None else at(planned_arrival_minute),
-        # The final leg's attested arrival, as phase_service sets it; None until then.
+        # The final leg's attested arrival, as phases.completion sets it; None until then.
         actual_arrival_at=arrivals[-1] if arrivals else None,
         created_at=start,
         closed_at=(
@@ -263,7 +263,7 @@ async def seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,

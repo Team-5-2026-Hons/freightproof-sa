@@ -6,7 +6,7 @@ HederaService is patched so no real network calls are made.
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -76,7 +76,10 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
     db_session.add(client_org)
     await db_session.flush()
 
+    # Client depots are shared, as in seed_demo.py: an operator may only route a trip through its
+    # own or shared precincts (SEC-PRECINCT-1).
     origin = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Cape Town Depot",
         principal_organization_id=client_org.id,
@@ -84,6 +87,7 @@ async def seed_trip_data(db_session: AsyncSession, seed_org: dict) -> dict:
         longitude="18.4241",
     )
     destination = Precinct(
+        is_shared=True,
         id=uuid.uuid4(),
         name="Johannesburg Depot",
         principal_organization_id=client_org.id,
@@ -141,9 +145,11 @@ def _make_trip_payload(seed: dict) -> dict:
         "origin_precinct_id": str(seed["origin_id"]),
         "destination_precinct_id": str(seed["destination_id"]),
         # Required: a trip with no schedule (neither this nor a stop slot_time)
-        # can never pass phase_service._reject_if_not_due (see TripCreateRequest
+        # can never pass phases.scheduling._reject_if_not_due (see TripCreateRequest
         # .validate_request).
         "planned_departure_at": datetime.now(UTC).isoformat(),
+        # Arrival is required at creation (FP-139).
+        "planned_arrival_at": (datetime.now(UTC) + timedelta(hours=10)).isoformat(),
         "consignments": [{"pp_reference": "MOCKWAY001", "unit_count_expected": 2}],
     }
 

@@ -23,6 +23,8 @@ function renderOtpPage() {
   const authValue: AuthState = {
     user: null,
     isLoading: false,
+    connectionFault: false,
+    retryProfile: vi.fn(),
     requestOtp: mockRequestOtp,
     signIn: mockSignIn,
     signOut: vi.fn(),
@@ -164,12 +166,12 @@ describe('OtpPage auto-submit and navigation', () => {
     expect(mockSignIn).not.toHaveBeenCalled()
   })
 
-  it('offers a way back to login for a mistyped phone number', () => {
+  it('offers a way back to phone entry for a mistyped phone number', () => {
     renderOtpPage()
 
-    fireEvent.click(screen.getByRole('button', { name: /wrong number\? go back/i }))
+    fireEvent.click(screen.getByRole('button', { name: /use a different number/i }))
 
-    expect(mockPush).toHaveBeenCalledWith(ROUTES.login)
+    expect(mockPush).toHaveBeenCalledWith(ROUTES.loginPhone)
   })
 })
 

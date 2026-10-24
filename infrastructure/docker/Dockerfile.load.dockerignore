@@ -1,0 +1,20 @@
+# Allowlist for Dockerfile.load: ignore everything, then re-include only what it copies.
+# Re-including a parent folder (e.g. !backend/) would re-include everything under it.
+**
+!backend/requirements.txt
+!backend/requirements-dev.txt
+!backend/pytest.ini
+!backend/ruff.toml
+!backend/mypy.ini
+!backend/.importlinter
+!backend/structure-baseline.json
+!backend/app/**
+!backend/migrations/**
+!backend/scripts/**
+!backend/tests/**
+!frontend/shared/**
+!frontend/dispatcher/components/analytics/fleet/copy.ts
+!frontend/dispatcher/components/analytics/fleet/costCopy.ts
+# Backstops, applied last: never send caches or any .env file.
+**/__pycache__/**
+**/.env*

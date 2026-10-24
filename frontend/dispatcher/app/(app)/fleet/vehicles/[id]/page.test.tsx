@@ -127,3 +127,41 @@ describe('Vehicle detail — right panel for a trailer', () => {
     expect(screen.queryByText(TIMELINE_ENTRY)).not.toBeInTheDocument()
   })
 })
+
+describe('Vehicle detail — loading', () => {
+  it('shows the header with its back button over a skeleton, not a spinner, while the record loads', () => {
+    mockedUseVehicleDetail.mockReturnValue({
+      data: null, isLoading: true, error: null, refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<VehicleDetailPage />)
+
+    expect(screen.getByRole('status', { name: 'Loading vehicle' })).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByText('Vehicle')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+})
+
+describe('Vehicle detail — failed refresh', () => {
+  it('keeps the page and flags the error inline when a refresh fails with data on screen', () => {
+    mockedUseVehicleDetail.mockReturnValue({
+      data: makeVehicle(), isLoading: false, error: 'Network error', refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<VehicleDetailPage />)
+
+    expect(screen.queryByText('Could not load vehicle.')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Immutable History' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Network error')
+  })
+
+  it('still replaces the page with "Could not load" when nothing has loaded', () => {
+    mockedUseVehicleDetail.mockReturnValue({
+      data: null, isLoading: false, error: 'Network error', refetch: vi.fn(), refetchSilent: vi.fn(),
+    })
+
+    render(<VehicleDetailPage />)
+
+    expect(screen.getByText('Could not load vehicle.')).toBeInTheDocument()
+  })
+})

@@ -108,3 +108,15 @@ def test_the_configured_browser_origins_are_preserved_in_order() -> None:
     origins = settings.cors_allowed_origins
 
     assert origins[:2] == ["https://a.example.com", "https://b.example.com"]
+
+
+def test_the_audit_pack_portal_origin_is_folded_in_without_trailing_slash() -> None:
+    # The insurer's browser calls the public audit-pack API from the portal origin.
+    settings = _settings(
+        ALLOWED_ORIGINS=["https://www.freightproof.co.za"],
+        AUDIT_PACK_PORTAL_BASE_URL="https://portal.freightproof.co.za/",
+    )
+
+    origins = settings.cors_allowed_origins
+
+    assert "https://portal.freightproof.co.za" in origins

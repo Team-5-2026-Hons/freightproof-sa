@@ -24,6 +24,12 @@ describe('isFullBleedRoute', () => {
     expect(isFullBleedRoute('/trip/phase/activation/step/2-verification')).toBe(true)
   })
 
+  it('exempts Kept on this phone, whose TabSubpage brings its own header and tab bar', () => {
+    // Regression: without this entry AppShell also rendered its large "FreightProof" title,
+    // a second sticky header and a second tab bar around the page's own.
+    expect(isFullBleedRoute('/evidence')).toBe(true)
+  })
+
   it('does NOT exempt the bare trips list — it has no SubpageHeader and keeps AppShell', () => {
     expect(isFullBleedRoute('/trips')).toBe(false)
   })
@@ -31,6 +37,7 @@ describe('isFullBleedRoute', () => {
   it('does not exempt unrelated top-level routes', () => {
     expect(isFullBleedRoute('/')).toBe(false)
     expect(isFullBleedRoute('/settings')).toBe(false)
+    expect(isFullBleedRoute('/profile')).toBe(false)
     expect(isFullBleedRoute('/login')).toBe(false)
   })
 })

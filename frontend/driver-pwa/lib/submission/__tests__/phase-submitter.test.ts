@@ -12,6 +12,7 @@ import {
   type PhaseSubmissionOutcome,
   type PhaseSubmissionRequest,
 } from '../phase-submitter'
+import { authenticateTestDriver } from '@/lib/session/testing/custody'
 import { ApiError } from '@/lib/api/client'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseEventId, PhaseStatus } from '@shared/lib/types/phase'
@@ -68,7 +69,7 @@ function makeTrip(phase: PhaseDescriptor, status: Trip['status'] = 'active'): Tr
   return {
     id: TRIP_ID as unknown as Trip['id'],
     trip_reference: 'TRP-TEST-0001',
-    order_number: 'ORD-1',
+    pp_manifest: null,
     status,
     trip_type: 'loaded',
     journey_lock_hash: null,
@@ -105,7 +106,8 @@ interface Harness {
 }
 
 function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
-  const enqueuePhase = vi.fn()
+  // true: stored, as the real queue answers when the phone has room (see the queue test for false).
+  const enqueuePhase = vi.fn(() => true)
   const refetchTrip = vi.fn().mockResolvedValue(null)
   let settle: (outcome: PhaseSubmissionOutcome) => void = () => {}
   const outcome = new Promise<PhaseSubmissionOutcome>((resolve) => { settle = resolve })
@@ -132,6 +134,7 @@ function harness(overrides: Partial<PhaseSubmissionRequest> = {}): Harness {
 beforeEach(() => {
   vi.clearAllMocks()
   __resetPhaseSubmitterForTests()
+  authenticateTestDriver(TRIP_ID, 2)
 })
 
 afterEach(() => {
@@ -148,7 +151,7 @@ describe('startPhaseSubmission — success paths', () => {
     const outcome = await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX, '2026-01-01T00:00:00Z', null,
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, 'idem-1', FIX, '2026-01-01T00:00:00Z', null, 2,
     )
     expect(outcome.kind).toBe('recorded')
     if (outcome.kind !== 'recorded') throw new Error('unreachable')
@@ -235,7 +238,7 @@ describe('startPhaseSubmission — failure paths', () => {
 
     expect((await h.outcome).kind).toBe('queued')
     expect(h.enqueuePhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null,
+      TRIP_ID, LOADING_PE, 'loading', h.request.evidence, FIX, '2026-01-01T00:00:00Z', null, { actorId: 'driver-1', custodySequence: 2 }, null, h.request.idempotencyKey,
     )
   })
 
@@ -308,7 +311,7 @@ describe('position budget', () => {
     await h.outcome
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null, 2,
     )
   })
 
@@ -324,7 +327,7 @@ describe('position budget', () => {
     await second.outcome
 
     expect(mockSubmitPhase).toHaveBeenLastCalledWith(
-      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX, expect.any(String), null,
+      TRIP_ID, 'pe-departure-1', 'loading', expect.anything(), 'idem-1', FIX, expect.any(String), null, 2,
     )
   })
 
@@ -339,7 +342,7 @@ describe('position budget', () => {
     await vi.advanceTimersByTimeAsync(12_000)
 
     expect(mockSubmitPhase).toHaveBeenCalledWith(
-      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null,
+      TRIP_ID, LOADING_PE, 'loading', expect.anything(), 'idem-1', null, expect.any(String), null, 2,
     )
   })
 
@@ -367,5 +370,76 @@ describe('failure notices', () => {
     // after the notice has already gone.
     dismissPhaseSubmissionFailure(LOADING_PE)
     dismissPhaseSubmissionFailure(LOADING_PE)
+  })
+})
+
+// A dispatcher override closes a phase the driver could not complete. Evidence the driver
+// captured before that, and sends after it, was never recorded — so it must be kept, never
+// reported as recorded (backend A1: 409 PHASE_OVERRIDDEN).
+describe('startPhaseSubmission — phase overridden by dispatch', () => {
+  const SERVER_MESSAGE = 'The dispatcher closed this step while your capture was waiting. It is kept on this phone.'
+  const overriddenError = () => new ApiError(409, SERVER_MESSAGE, undefined, {
+    code: 'PHASE_OVERRIDDEN', requestId: null, currentVersion: null, evidenceId: null,
+  })
+
+  it('keeps the capture and says so when the server answers a coded PHASE_OVERRIDDEN', async () => {
+    mockSubmitPhase.mockRejectedValue(overriddenError())
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toEqual({ kind: 'retained', message: SERVER_MESSAGE, persisted: true, handedOver: false })
+    expect(h.enqueuePhase).toHaveBeenCalledTimes(1)
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({
+      code: 'PHASE_OVERRIDDEN', status: 409, reason: SERVER_MESSAGE, lateEligible: false,
+    })
+    expect(h.refetchTrip).not.toHaveBeenCalled()
+  })
+
+  it('reports persisted false when the retained capture could not be stored', async () => {
+    mockSubmitPhase.mockRejectedValue(overriddenError())
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(false)
+
+    startPhaseSubmission(h.request)
+
+    expect(await h.outcome).toMatchObject({ kind: 'retained', persisted: false })
+  })
+
+  it('does not report recorded when an older backend answers 200 for an overridden phase', async () => {
+    mockSubmitPhase.mockResolvedValue({ trip: makeTrip(makePhase('overridden')) })
+    const h = harness()
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toMatchObject({ kind: 'retained', persisted: true, handedOver: false })
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({ code: 'PHASE_OVERRIDDEN' })
+  })
+
+  it('does not report recorded when an uncoded 409 refetch shows the phase overridden', async () => {
+    mockSubmitPhase.mockRejectedValue(new ApiError(409, 'already resolved'))
+    const h = harness()
+    h.refetchTrip.mockResolvedValue(makeTrip(makePhase('overridden')))
+    h.enqueuePhase.mockReturnValue(true)
+
+    startPhaseSubmission(h.request)
+    const outcome = await h.outcome
+
+    expect(outcome).toMatchObject({ kind: 'retained', persisted: true, handedOver: false })
+    expect(h.enqueuePhase.mock.calls[0][8]).toMatchObject({ code: 'PHASE_OVERRIDDEN' })
+  })
+
+  it('still reports recorded for a completed phase', async () => {
+    mockSubmitPhase.mockResolvedValue({ trip: makeTrip(makePhase('completed')) })
+    const h = harness()
+
+    startPhaseSubmission(h.request)
+
+    expect((await h.outcome).kind).toBe('recorded')
+    expect(h.enqueuePhase).not.toHaveBeenCalled()
   })
 })

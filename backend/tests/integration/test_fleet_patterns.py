@@ -1,4 +1,4 @@
-"""Integration contract for GET /api/v1/analytics/fleet/patterns (fleet analytics spec §5.1, 1.3).
+"""Integration contract for GET /api/v1/analytics/fleet/patterns.
 
 The period is two whole past weeks, Monday to Sunday, built from "now", so every weekday has
 exactly two occurrences and every hour fourteen. Each expected number is hand-computed from the

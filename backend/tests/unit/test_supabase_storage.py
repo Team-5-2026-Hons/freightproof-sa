@@ -1,11 +1,18 @@
 import asyncio
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
+from threading import get_ident
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import httpx
 import pytest
 import respx
+from storage3 import SyncStorageClient
+from storage3.exceptions import StorageApiError
 
 from app.core.config import settings
+from app.storage import supabase_storage
 from app.storage.supabase_storage import (
     MAX_EVIDENCE_FILE_SIZE_BYTES,
     EvidenceObjectIntegrityError,
@@ -15,6 +22,103 @@ from app.storage.supabase_storage import (
     hash_stored_evidence_file,
     upload_evidence_file,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_signing_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Worker-local clients must not outlive the SDK double belonging to a test.
+    monkeypatch.setattr(supabase_storage, "_SIGNING_CLIENTS", type(supabase_storage._SIGNING_CLIENTS)())
+
+
+@pytest.mark.parametrize("failure", [
+    StorageApiError("Object not found", "not_found", 404),
+    httpx.ConnectError("Storage is unavailable"),
+    httpx.ReadTimeout("Storage timed out"),
+])
+async def test_signing_failure_preserves_metadata_only_fallback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, failure: Exception,
+) -> None:
+    bucket = SimpleNamespace(create_signed_url=Mock(side_effect=failure))
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: bucket))
+    monkeypatch.setattr(supabase_storage, "_get_client", lambda: client)
+
+    url = await create_signed_url(s3_bucket="evidence-artifacts", s3_key="unavailable", ttl_seconds=300)
+
+    assert url is None
+    assert "Storage could not sign" in caplog.text
+
+
+@pytest.mark.parametrize("failure", [ValueError("invalid SDK use"), AttributeError("invalid SDK use")])
+async def test_signing_does_not_hide_programming_errors(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception,
+) -> None:
+    bucket = SimpleNamespace(create_signed_url=Mock(side_effect=failure))
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: bucket))
+    monkeypatch.setattr(supabase_storage, "_get_client", lambda: client)
+
+    with pytest.raises(type(failure), match="invalid SDK use"):
+        await create_signed_url(s3_bucket="evidence-artifacts", s3_key="artifact", ttl_seconds=300)
+
+
+async def test_signing_re_raises_instead_of_looping_on_a_cyclic_cause_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = AttributeError("invalid SDK use")
+    second = AttributeError("invalid SDK use")
+    first.__cause__ = second
+    second.__cause__ = first
+    bucket = SimpleNamespace(create_signed_url=Mock(side_effect=first))
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: bucket))
+    monkeypatch.setattr(supabase_storage, "_get_client", lambda: client)
+
+    with pytest.raises(AttributeError, match="invalid SDK use"):
+        await asyncio.wait_for(
+            create_signed_url(s3_bucket="evidence-artifacts", s3_key="artifact", ttl_seconds=300),
+            timeout=5,
+        )
+
+
+@pytest.mark.parametrize("status,body", [(502, b"<html>Bad Gateway</html>"), (503, b'{"message":"Unavailable"}')])
+async def test_signing_retains_fallback_when_sdk_cannot_parse_gateway_error(
+    monkeypatch: pytest.MonkeyPatch, status: int, body: bytes,
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, content=body)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+        storage = SyncStorageClient("https://storage.test/storage/v1/", {}, http_client=transport)
+        monkeypatch.setattr(supabase_storage, "_get_client", lambda: SimpleNamespace(storage=storage))
+
+        url = await create_signed_url(s3_bucket="evidence-artifacts", s3_key="artifact", ttl_seconds=300)
+
+    assert url is None
+
+
+async def test_signing_runs_off_the_event_loop_and_reuses_its_worker_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop_thread = get_ident()
+    signing_threads: list[int] = []
+
+    def sign(path: str, expires_in: int) -> dict[str, str]:
+        signing_threads.append(get_ident())
+        return {"signedURL": f"https://storage.test/{path}?ttl={expires_in}"}
+
+    client = SimpleNamespace(storage=SimpleNamespace(from_=lambda _: SimpleNamespace(create_signed_url=sign)))
+    make_client = Mock(return_value=client)
+    monkeypatch.setattr(supabase_storage, "_get_client", make_client)
+    # One worker makes reuse deterministic without sharing a mutable SDK client across threads.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        asyncio.get_running_loop().set_default_executor(executor)
+
+        first = await create_signed_url(s3_bucket="evidence-artifacts", s3_key="first", ttl_seconds=300)
+        second = await create_signed_url(s3_bucket="evidence-artifacts", s3_key="second", ttl_seconds=300)
+
+    assert first == "https://storage.test/first?ttl=300"
+    assert second == "https://storage.test/second?ttl=300"
+    assert len(signing_threads) == 2
+    assert all(thread != loop_thread for thread in signing_threads)
+    assert make_client.call_count == 1
 
 
 @pytest.mark.asyncio

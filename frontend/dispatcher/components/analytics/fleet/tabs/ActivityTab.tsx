@@ -67,6 +67,7 @@ function TripsCard({ activity, grain, today }: TrendCardProps) {
   return (
     <ChartCard
       title={COPY.trips.title}
+      source={COPY.trips.source}
       question={COPY.trips.question}
       basis={COPY.trips.basis(total)}
       sampleSize={total}
@@ -160,6 +161,7 @@ function CancellationsCard({ activity, grain, today }: TrendCardProps) {
   return (
     <ChartCard
       title={COPY.cancellations.title}
+      source={COPY.cancellations.source}
       question={COPY.cancellations.question}
       basis={COPY.cancellations.basis(cancelled, ended)}
       sampleSize={ended}

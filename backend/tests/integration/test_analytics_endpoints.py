@@ -74,6 +74,17 @@ _LIVE_MIGRATION_PATH = (
     Path(__file__).resolve().parents[2]
     / "migrations" / "versions" / "2026_09_13_tom_live_analytics_views.py"
 )
+# FP-83: the driver view recreated with handover-aware attribution. Always run after the live views.
+_SUBSTITUTION_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
+)
+
+# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
+_ARRIVAL_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
+)
 
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
@@ -93,6 +104,8 @@ def _load_migration(path: Path, name: str) -> ModuleType:
 _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
+_SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
+_ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
 
 # ── The one hand-computed timeline ───────────────────────────────────────────
@@ -240,7 +253,7 @@ async def _seed_trip(
     db.add(trip)
     await db.flush()
 
-    # Linked exactly as trip creation does it (trip_service), snapshot included.
+    # Linked exactly as trip creation does it (trips.creation), snapshot included.
     db.add_all([
         TripTrailer(
             trip_id=trip.id, trailer_id=trailer.id,
@@ -313,6 +326,8 @@ async def views(db_session: AsyncSession) -> None:
         *_MIGRATION.UPGRADE_STATEMENTS,
         *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
         *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
+        *_SUBSTITUTION_MIGRATION.UPGRADE_STATEMENTS,
+        *_ARRIVAL_MIGRATION.UPGRADE_STATEMENTS,
     ):
         await db_session.execute(text(statement))
 
@@ -327,7 +342,7 @@ def operator(seed: dict[str, Any]) -> _Operator:
 @pytest_asyncio.fixture
 async def lane(db_session: AsyncSession, seed: dict[str, Any]) -> list[Precinct]:
     """Two depots owned by the CLIENT and not shared — the normal case the precinct
-    name lookup has to handle (spec §3.3). is_shared is set explicitly, not left to the
+    name lookup has to handle. is_shared is set explicitly, not left to the
     server default, so the tests can assert it without a lazy load."""
     precincts = [
         Precinct(

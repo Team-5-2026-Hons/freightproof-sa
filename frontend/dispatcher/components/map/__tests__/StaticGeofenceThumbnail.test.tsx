@@ -200,3 +200,21 @@ describe('StaticGeofenceThumbnail', () => {
     })
   })
 })
+
+describe('StaticGeofenceThumbnail outline', () => {
+  it('test_draws_the_outline_over_the_tiles_instead_of_the_circle', () => {
+    const box: [number, number][] = [
+      [LATITUDE + 0.0005, LONGITUDE - 0.0005], [LATITUDE + 0.0005, LONGITUDE + 0.0005],
+      [LATITUDE - 0.0005, LONGITUDE + 0.0005], [LATITUDE - 0.0005, LONGITUDE - 0.0005],
+    ]
+
+    render(
+      <StaticGeofenceThumbnail
+        latitude={LATITUDE} longitude={LONGITUDE} radiusMetres={RADIUS_METRES} polygon={box} name={PRECINCT_NAME}
+      />,
+    )
+
+    expect(screen.getByTestId('thumbnail-fence-outline').getAttribute('points')?.split(' ')).toHaveLength(4)
+    expect(screen.queryByTestId('thumbnail-fence-circle')).not.toBeInTheDocument()
+  })
+})

@@ -14,7 +14,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
-from app.orchestration.receiver_verification_service import sweep_abandoned_verifications
+from app.orchestration.handover.receiver_verification import sweep_abandoned_verifications
 from app.tasks import celery
 
 logger = logging.getLogger(__name__)

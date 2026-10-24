@@ -1,21 +1,21 @@
 "use client"
 
-import { createContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useState, useEffect, useCallback } from 'react'
 import type { AuthState, DriverUser } from '@/lib/types/user'
-import { mockDrivers } from '@shared/lib/mocks/drivers'
-import { supabase } from '@/lib/supabase'
-import { api, ApiError } from '@/lib/api/client'
-import { IS_DEMO_MODE } from '@/lib/constants/env'
+import type { OtpAuthPort } from '@shared/lib/auth/port'
+import { defaultOtpAuth, defaultProfileSource } from '@/lib/auth/defaults'
+import { isProfileUnreachable } from '@/lib/auth/DriverProfileSource'
+import type { DriverProfileSource } from '@/lib/auth/DriverProfileSource'
 import { useIdleTimeout } from '@/lib/hooks/useIdleTimeout'
 import { clearActivity, recordActivity } from '@shared/lib/session/idle'
 import { clearReturnPath, saveReturnPath } from '@shared/lib/session/return-path'
 import { ROUTES } from '@/lib/constants/routes'
+import { actorGeneration, bindActorLease, captureActorLease, invalidateActorLease, observeAuthSession } from '@/lib/session/custody-context'
 
-// Demo mode (default) drives auth from a mock OTP flow with a fixture driver.
-// Real mode exchanges a Supabase phone OTP for a session, then fetches the
-// driver's own profile from the backend — the Driver row whose id equals the
-// Supabase auth user's UUID.
-const MOCK_DRIVER: DriverUser = mockDrivers[0]
+// Which backend proves identity and where the profile comes from is injected (see
+// AuthProviderProps): demo mode (default) wires a mock OTP flow and a fixture driver, real
+// mode a Supabase phone OTP and the backend's own driver profile. This provider owns only
+// the session state machine around them.
 
 // Routes a saved return path must never point back into. '/otp' isn't in ROUTES (see
 // app/login/page.tsx, which hardcodes it the same way) — there is nowhere useful to
@@ -30,167 +30,177 @@ const AUTH_ROUTE_PREFIXES = [ROUTES.login, '/otp']
 // a fresh session. Exported for the layout only.
 export const SUPPRESS_RETURN_SAVE_KEY = 'fp:suppress-return-save'
 
-// Marks an active demo session so a page refresh doesn't log the demo user out
-// mid-walkthrough. sessionStorage (not localStorage) on purpose: closing the
-// tab still ends the demo. Exported for tests only.
-export const DEMO_SESSION_KEY = 'fp:demo-session'
-
 export const AuthContext = createContext<AuthState | null>(null)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+interface AuthProviderProps {
+  children: React.ReactNode
+  /** Proves who is signed in. Defaults to the demo or Supabase adapter per IS_DEMO_MODE. */
+  port?: OtpAuthPort
+  /** Loads the signed-in driver's profile. Defaults to the demo fixture or the backend API. */
+  profiles?: DriverProfileSource
+}
+
+export function AuthProvider({ children, port: injectedPort, profiles: injectedProfiles }: AuthProviderProps) {
+  // Defaults are resolved here, lazily, and are stable across renders (see defaults.ts).
+  const port = injectedPort ?? defaultOtpAuth()
+  const profiles = injectedProfiles ?? defaultProfileSource()
   const [user, setUser] = useState<DriverUser | null>(null)
   // Starts true in both modes so guarded routes wait for session restoration
-  // (Supabase getSession in real mode, sessionStorage in demo mode) instead of
-  // flashing to /login on refresh.
+  // (the port's getSession, then the profile load) instead of flashing to /login on
+  // refresh. It only turns false after BOTH have settled, which is what keeps the login
+  // screen from rendering in the gap while an async restore is in flight.
   const [isLoading, setIsLoading] = useState(true)
+  // Set only by a profile load that got no answer. Distinct from `user === null`,
+  // which means "signed out" and is what sends a driver to /login.
+  const [connectionFault, setConnectionFault] = useState(false)
 
-  // Tracks the currently-loaded driver id outside React state so the
-  // onAuthStateChange listener (subscribed once, see below) can compare
-  // against it without needing `user` in its dependency array.
-  const userIdRef = useRef<string | null>(null)
+  const fetchProfile = useCallback(() => profiles.loadProfile(), [profiles])
+
+  // On app load, restore a session if one exists (a page refresh, or a demo walkthrough
+  // the tab already started) and keep following the port's session changes.
   useEffect(() => {
-    userIdRef.current = user ? String(user.id) : null
-  }, [user])
+    let active = true
+    let revision = 0
+    let loadedSubject: string | null = null
 
-  const fetchProfile = useCallback(async (): Promise<DriverUser | null> => {
-    try {
-      return await api.get<DriverUser>('/api/v1/drivers/me')
-    } catch (err) {
-      // Logged so a backend 500/network failure here is distinguishable from a
-      // driver whose phone simply isn't provisioned yet — both currently end up
-      // with user = null, but only one of them should be silent.
-      //
-      // Formatted INTO the message rather than passed as a second argument. On iOS the
-      // Capacitor console bridge serialises each log argument with JSON.stringify, and an
-      // Error's `message`/`stack` are non-enumerable — so `console.error(msg, err)` arrives
-      // in the Xcode console as the literal `{}`, dropping precisely the status and detail
-      // that say which auth invariant broke ("Driver account not found." vs "Invalid
-      // token." vs a 403 role failure). Interpolating survives the bridge.
-      console.error(
-        `Failed to fetch driver profile: ${
-          err instanceof ApiError ? `${err.status} ${err.message}` : String(err)
-        }`,
-      )
-      return null
-    }
-  }, [])
-
-  // Demo mode: on app load, restore the mock session if this tab signed in
-  // before — otherwise a refresh mid-demo logs the stakeholder out. Effects
-  // only run client-side, so sessionStorage is safe under output: 'export'.
-  useEffect(() => {
-    if (!IS_DEMO_MODE) return
-
-    // Deliberate one-time mount hydration from sessionStorage. A lazy useState
-    // initializer would mismatch the prerendered shell (output: 'export' renders
-    // with user = null), and useSyncExternalStore doesn't fit because signIn/
-    // signOut also set this state imperatively. The cascade this rule guards
-    // against is bounded to a single intentional re-render. (react-hooks v6's
-    // set-state-in-effect rule flags this pattern; the pinned v5 toolchain has no
-    // such rule, so no disable directive — an unknown-rule directive is itself a
-    // lint error under v5. Re-add the disable if the plugin is ever bumped to v6.)
-    if (sessionStorage.getItem(DEMO_SESSION_KEY) === 'true') {
-      setUser(MOCK_DRIVER)
-    }
-    setIsLoading(false)
-  }, [])
-
-  // On app load, check whether a Supabase session already exists (e.g. page refresh).
-  useEffect(() => {
-    if (IS_DEMO_MODE) return
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        setUser(await fetchProfile())
-      }
-      setIsLoading(false)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const restore = async (session: { userId: string } | null): Promise<void> => {
+      const requestRevision = ++revision
+      const generation = observeAuthSession(session?.userId ?? null)
       if (!session) {
-        setUser(null)
+        // Also invalidates demo/injected ports, which have no Supabase listener.
+        invalidateActorLease()
+        loadedSubject = null
+        if (active) { setUser(null); setIsLoading(false) }
         return
       }
-      // Supabase can re-fire SIGNED_IN/INITIAL_SESSION for a session that hasn't
+      if (loadedSubject === session.userId && captureActorLease() !== null) return
+      const result = await fetchProfile()
+      if (!active || revision !== requestRevision || actorGeneration() !== generation) return
+      if (isProfileUnreachable(result)) {
+        // There IS a session — the backend just didn't answer. Leave `user` untouched
+        // (so a driver already signed in keeps their screen) and let the layout offer a
+        // retry instead of redirecting to /login over an infrastructure fault.
+        setConnectionFault(true)
+        setIsLoading(false)
+        return
+      }
+      const profile = result
+      if (profile !== null && !bindActorLease(String(profile.id), generation)) return
+      setConnectionFault(false)
+      loadedSubject = session.userId
+      setUser(profile)
+      setIsLoading(false)
+    }
+
+    const startRevision = revision
+    const startupGeneration = actorGeneration()
+    port.getSession().then(async session => {
+      if (active && revision === startRevision && actorGeneration() === startupGeneration) await restore(session)
+    }).catch((err: unknown) => {
+      console.error('AuthContext: session restore failed', err)
+      if (active) setIsLoading(false)
+    })
+
+    const unsubscribe = port.onChange(async (_event, session) => {
+      // The backend can re-fire SIGNED_IN/INITIAL_SESSION for a session that hasn't
       // actually changed (e.g. its own tab-visibility/multi-tab sync) — only refetch
       // the driver profile when the signed-in identity is actually different.
       // Otherwise this creates a new `user` object every time, which cascades into
       // every consumer keyed on it by reference (e.g. TripContext refetching the
       // active trip and toggling isLoading on a loop, blanking the page).
-      if (session.user.id === userIdRef.current) return
-      setUser(await fetchProfile())
+      try { await restore(session) } catch (err: unknown) {
+        console.error('AuthContext: profile restore failed', err)
+        if (active) setIsLoading(false)
+      }
     })
 
-    return () => subscription.unsubscribe()
-  }, [fetchProfile])
+    return () => {
+      active = false
+      unsubscribe()
+    }
+  }, [port, fetchProfile])
 
   const requestOtp = useCallback(async (phone_number: string) => {
     setIsLoading(true)
-
-    if (IS_DEMO_MODE) {
-      await new Promise(resolve => setTimeout(resolve, 600))
+    try {
+      await port.requestOtp(phone_number)
+    } finally {
       setIsLoading(false)
-      return
     }
-
-    // shouldCreateUser: false blocks unregistered phone numbers — a driver
-    // auth account only exists if a dispatcher provisioned it via /drivers.
-    // channel: 'whatsapp' — Twilio's WhatsApp Sandbox for dev/testing, since SMS
-    // requires Twilio geo permissions + A2P 10DLC registration we haven't set up
-    // for South African destinations yet. Switch back to 'sms' once that's done.
-    const { error } = await supabase.auth.signInWithOtp({
-      phone: phone_number,
-      options: { channel: 'whatsapp', shouldCreateUser: false },
-    })
-    setIsLoading(false)
-    if (error) throw error
-  }, [])
+  }, [port])
 
   const signIn = useCallback(async (credentials: { phone_number: string; otp: string }) => {
     setIsLoading(true)
 
-    if (IS_DEMO_MODE) {
-      await new Promise(resolve => setTimeout(resolve, 600))
-      // Persist so the demo session survives a page refresh (see DEMO_SESSION_KEY).
-      sessionStorage.setItem(DEMO_SESSION_KEY, 'true')
-      recordActivity(window.localStorage)
-      setUser(MOCK_DRIVER)
+    try {
+      await port.verifyOtp(credentials.phone_number, credentials.otp)
+    } catch (err) {
       setIsLoading(false)
-      return
-    }
-
-    const { error } = await supabase.auth.verifyOtp({
-      phone: credentials.phone_number,
-      token: credentials.otp,
-      type: 'sms',
-    })
-    if (error) {
-      setIsLoading(false)
-      throw error
+      throw err
     }
 
     // Start the idle clock at the sign-in itself — see the dispatcher's AuthContext for
     // why the first activity stamp cannot be left to the driver's next tap.
     recordActivity(window.localStorage)
-    setUser(await fetchProfile())
+    const sessionGeneration = actorGeneration()
+    const session = await port.getSession()
+    // A lookup started before sign-out/account change cannot restore its old subject.
+    if (actorGeneration() !== sessionGeneration) return
+    if (session === null) { setIsLoading(false); return }
+    const generation = observeAuthSession(session?.userId ?? null)
+    const result = await fetchProfile()
+    if (isProfileUnreachable(result)) {
+      // The OTP was accepted (that leg talks to Supabase directly) and only the backend
+      // profile fetch failed. Saying so is the whole point: the old behaviour dropped the
+      // driver back on the login screen, which reads as "your code was wrong".
+      setConnectionFault(true)
+      setIsLoading(false)
+      return
+    }
+    setConnectionFault(false)
+    if (result !== null && bindActorLease(String(result.id), generation)) setUser(result)
     setIsLoading(false)
-  }, [fetchProfile])
+  }, [port, fetchProfile])
+
+  // Offered by the guarded layout's connection-fault screen. Re-reads the session (it
+  // may have refreshed while the backend was unreachable) and tries the profile again.
+  const retryProfile = useCallback(async () => {
+    setConnectionFault(false)
+    setIsLoading(true)
+    try {
+      const session = await port.getSession()
+      if (session === null) { setIsLoading(false); return }
+      const generation = observeAuthSession(session.userId)
+      const result = await fetchProfile()
+      if (isProfileUnreachable(result)) {
+        setConnectionFault(true)
+        return
+      }
+      if (result !== null && bindActorLease(String(result.id), generation)) setUser(result)
+    } catch (err: unknown) {
+      // getSession itself failing is the same class of fault as the profile call failing.
+      console.error('AuthContext: profile retry failed', err)
+      setConnectionFault(true)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [port, fetchProfile])
 
   // The actual exit mechanics, shared by both ways a session ends below. Deliberately
   // silent on the return path — callers decide that, since a manual sign-out and an idle
   // expiry want opposite outcomes for it.
   const performSignOut = useCallback(async () => {
-    if (IS_DEMO_MODE) {
-      // End the persisted demo session so the next load lands on /login.
-      sessionStorage.removeItem(DEMO_SESSION_KEY)
-    } else {
-      await supabase.auth.signOut()
-    }
+    invalidateActorLease()
+    // A deliberate exit is not a connection fault; leaving it set would show the retry
+    // screen over the login screen.
+    setConnectionFault(false)
+    await port.signOut()
     clearActivity(window.localStorage)
     setUser(null)
-  }, [])
+    setIsLoading(false)
+  }, [port])
 
-  // Manual sign-out (the profile panel's "Log out"): clears any saved return path — a
+  // Manual sign-out (the profile panel's "Log Out"): clears any saved return path — a
   // driver who deliberately leaves a screen should not be dropped back onto it next time
   // they sign in.
   const signOut = useCallback(async () => {
@@ -217,11 +227,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [performSignOut])
 
   // The inactivity timeout, armed only while signed in. Applies in demo mode too: the
-  // walkthrough should behave like the real app, and performSignOut already handles both.
+  // walkthrough should behave like the real app, and the port's signOut handles both.
   useIdleTimeout(user !== null, handleIdleExpiry)
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, requestOtp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, connectionFault, retryProfile, requestOtp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

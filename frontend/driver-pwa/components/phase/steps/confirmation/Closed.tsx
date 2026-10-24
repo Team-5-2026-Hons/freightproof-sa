@@ -1,72 +1,113 @@
 'use client'
 
-import { CheckCircle2 } from 'lucide-react'
-import { StepHeader } from '@/components/phase/StepHeader'
+import type { ReactNode } from 'react'
+import { Check, ShieldCheck } from 'lucide-react'
+import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
+import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
+import { deliveredSummary } from '@/lib/phase/delivered-summary'
+import { isPhaseBlocked } from '@/lib/phase'
+import { formatTime } from '@/lib/utils/format-time'
+import { cn } from '@/lib/utils'
+import type { Trip } from '@shared/lib/types/trip'
+import { StepLayout } from '@/components/phase/StepLayout'
 import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
-import { WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
+import { WarehouseWaitAction, WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
 interface ClosedProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: ConfirmationEvidence
   onComplete: () => void | Promise<void>
 }
 
-export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedProps) {
+export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
+  // The trip summary rows need the session trip; outside one (tests, a cold deep link
+  // mid-load) they are left out rather than guessed.
+  const trip = useOptionalTrip()?.trip ?? null
   // Only THIS phase's draft: unloading fields (waybillHandedOver etc.) belong to a
   // separate phase_event_id and are already resolved server-side by this point.
   // driverVisualCount is deliberately excluded — it's optional, and gating on it made a
-  // skipped count silently unclosable. The signature half is the receiver's confirmation
-  // (FP-155), so this checks the artifact id the handover poll wrote into the draft.
+  // skipped count silently unclosable. The signature half is the receiver's confirmation,
+  // so this checks the artifact id the handover poll wrote into the draft.
   const isReady =
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureArtifactId)
 
   // Gated on the destination warehouse's scan-IN session (GATED_PHASES, phase_gate.py).
-  // Coalesced to null first: `blocked_on` is optional on the shared type, so a bare
-  // `!== null` reads `undefined !== null` and is permanently true.
-  const isBlocked = (phase.blocked_on ?? null) !== null
+  const isBlocked = isPhaseBlocked(phase)
 
-  // Navigation stays with the caller: onComplete() submits, clears the draft, and
-  // advances. Its promise is returned so SwipeToConfirm holds the "Submitting…" lock.
-  function handleClose(): void | Promise<void> {
-    return onComplete()
+  // No success tick and no swipe while blocked: the control is omitted entirely rather
+  // than left visible-but-disabled, and the wait card says why.
+  if (isBlocked) {
+    return (
+      <StepLayout phase={phase} stepIndex={stepIndex} showTitle={false} action={<WarehouseWaitAction />}>
+        <WarehouseWaitCard title="Scanning in progress">
+          The warehouse is still scanning the parcels in at this stop. The trip will
+          close on its own once they finish. Your evidence is saved. No action is
+          needed from you.
+        </WarehouseWaitCard>
+      </StepLayout>
+    )
   }
 
   return (
-    <main className="flex min-h-dvh flex-col">
-      <StepHeader phase={phase} stepIndex={stepIndex} />
-      {isBlocked ? (
-        // No success tick and no swipe while blocked: hide the control entirely rather
-        // than leave it visible-but-disabled, and say why.
-        <div className="flex flex-1 flex-col justify-center gap-2 p-4">
-          <WarehouseWaitCard>
-            The warehouse is still scanning the parcels in at this stop. The trip will
-            close on its own once they finish. Your evidence is saved — no action is
-            needed from you.
-          </WarehouseWaitCard>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/10">
-              <CheckCircle2 className="h-10 w-10 text-success" strokeWidth={2} aria-hidden />
-            </div>
-            <div>
-              <p className="text-xl font-bold">Trip Complete</p>
-              <p className="mt-1 text-base text-surface-on-variant">
-                All phases are complete. Evidence has been recorded.
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-center px-6 pt-6 pb-safe">
-            <SwipeToConfirm label="Close trip" onConfirm={handleClose} disabled={!isReady} />
-          </div>
-        </>
+    <StepLayout
+      phase={phase}
+      stepIndex={stepIndex}
+      showTitle={false}
+      requirements={[
+        { label: 'Proof of delivery photo', met: draft.podPhotoDataUrl !== null },
+        { label: 'Receiver confirmation', met: Boolean(draft.podSignatureArtifactId) },
+      ]}
+      // onComplete itself, not a wrapper: its promise is what holds SwipeToConfirm in Submitting.
+      action={<SwipeToConfirm label="Swipe to Close Trip" onConfirm={onComplete} disabled={!isReady} />}
+    >
+      <div className="flex flex-col items-center pt-8 text-center">
+        <span className="flex size-28 items-center justify-center rounded-full bg-success-tint">
+          <span className="flex size-20 items-center justify-center rounded-full bg-success text-success-on">
+            <Check className="size-10" strokeWidth={2.6} aria-hidden />
+          </span>
+        </span>
+        <h1 className="mt-6 text-large-title font-extrabold tracking-tight text-surface-on">Delivered</h1>
+        <p className="mt-2 text-body text-surface-on-variant">Every phase is on the record. Close the trip to finish.</p>
+      </div>
+      {trip !== null && <TripFacts trip={trip} />}
+    </StepLayout>
+  )
+}
+
+/** Route, arrival and proof — read from the session trip's own ledger. */
+function TripFacts({ trip }: { trip: Trip }) {
+  const places = useTripPlaces(trip)
+  const { arrivedAt, onTime, anchored, total } = deliveredSummary(trip)
+  return (
+    <dl className="mt-2 divide-y divide-hairline rounded-[18px] bg-fill px-4">
+      <Fact label="Route">{`${places.origin.name} → ${places.destination.name}`}</Fact>
+      {arrivedAt !== null && (
+        <Fact label="Arrived">
+          <span className={cn(onTime === true && 'text-success-ink')}>
+            {formatTime(arrivedAt)}
+            {onTime !== null && (onTime ? ' · on time' : ' · late')}
+          </span>
+        </Fact>
       )}
-    </main>
+      <Fact label="Proof">
+        <span className="inline-flex items-center gap-1.5 text-chain">
+          <ShieldCheck className="size-4" strokeWidth={2.4} aria-hidden />
+          {anchored} of {total} anchored
+        </span>
+      </Fact>
+    </dl>
+  )
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 py-2">
+      <dt className="shrink-0 text-body text-surface-on-variant">{label}</dt>
+      <dd className="min-w-0 break-words text-right text-body font-semibold tabular-nums text-surface-on">{children}</dd>
+    </div>
   )
 }

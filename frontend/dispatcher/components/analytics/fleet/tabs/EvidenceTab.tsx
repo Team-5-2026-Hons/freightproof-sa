@@ -42,10 +42,10 @@ interface TrackerRow {
   agreement: string
 }
 
-/** Chart 5.1: confirmed · unwitnessed · mismatch, stacked in that order so the neutral grey
- *  always sits between the green and the red and the two never touch (spec §5.5). Each keyed
+/** Confirmed · unwitnessed · mismatch, stacked in that order so the neutral grey
+ *  always sits between the green and the red and the two never touch. Each keyed
  *  by an icon as well as colour. The headline agreement rate leaves "could not check" out; it
- *  describes the chart, so it lives behind the "i" (D25), and each period's rate is in the
+ *  describes the chart, so it lives behind the "i", and each period's rate is in the
  *  tooltip and the table. */
 function TrackerCard({ evidence, grain, today }: TabCardProps) {
   const rows = evidence.data?.tracker ?? []
@@ -72,6 +72,7 @@ function TrackerCard({ evidence, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.tracker.title}
+      source={COPY.tracker.source}
       question={COPY.tracker.question}
       basis={`${COPY.tracker.agreement(fmtShare(overall), confirmed, checked)}. ${COPY.tracker.basis(checked, unwitnessed)}`}
       note={ANALYTICS_COPY.facilityRateNote}
@@ -124,7 +125,7 @@ interface OverridesRow {
   share: string
 }
 
-/** Chart 5.2: the override share, the same definition as the driver pages' override_rate.
+/** The override share, the same definition as the driver pages' override_rate.
  *  Closed trips only, like every trend: an override on a trip later cancelled never counts. */
 function OverridesCard({ evidence, grain, today }: TabCardProps) {
   const rows = evidence.data?.overrides ?? []
@@ -146,6 +147,7 @@ function OverridesCard({ evidence, grain, today }: TabCardProps) {
   return (
     <ChartCard
       title={COPY.overrides.title}
+      source={COPY.overrides.source}
       question={COPY.overrides.question}
       basis={COPY.overrides.basis(overridden, steps)}
       note={COPY.overrides.note}
@@ -185,8 +187,8 @@ interface SignoffRow {
   share: string
 }
 
-/** Chart 5.7 (trial): the share of sign-offs the receiver scanned. The period's same-phone and
- *  rejected-scan figures describe it, so they sit behind the "i" (D25). The go-live date stays
+/** Trial feature: the share of sign-offs the receiver scanned. The period's same-phone and
+ *  rejected-scan figures describe it, so they sit behind the "i". The go-live date stays
  *  on the card face: it explains why earlier weeks read zero. */
 function SignoffCard({ evidence, grain, today }: TabCardProps) {
   const rows = evidence.data?.receiver_signoff ?? []
@@ -210,6 +212,7 @@ function SignoffCard({ evidence, grain, today }: TabCardProps) {
     <ChartCard
       className="lg:col-span-2"
       title={COPY.signoff.title}
+      source={COPY.signoff.source}
       question={COPY.signoff.question}
       basis={COPY.signoff.basis(scans, confirmations)}
       note={COPY.signoff.flags(flags.same_phone_count, flags.rejected_attempt_count)}
@@ -250,9 +253,9 @@ interface EvidenceTabProps {
   today: string
 }
 
-/** Evidence tab (spec §5.5, D25): how strong the record is. Tracker agreement and overrides
+/** Evidence tab: how strong the record is. Tracker agreement and overrides
  *  side by side, then receiver sign-off across the full width. The blockchain receipts chart
- *  (D25) and the Receipts owed tile (D26) were both removed. One request, for the tab's own
+ *  and the Receipts owed tile were both removed. One request, for the tab's own
  *  period and grain. */
 export function EvidenceTab({ query, allTimeStart, today }: EvidenceTabProps) {
   const evidence = useFleetEvidence(query, allTimeStart)

@@ -1,4 +1,4 @@
-"""FastAPI router for the fleet-wide Analytics page (fleet analytics spec §6).
+"""FastAPI router for the fleet-wide Analytics page.
 
 GET /analytics/fleet/tiles      headline numbers, always "right now" (no parameters)
 GET /analytics/fleet/activity   trips and cancellations over time (start?, end, grain)
@@ -9,6 +9,7 @@ GET /analytics/fleet/review     review queue: waiting now, pile over time, time 
 GET /analytics/fleet/evidence   tracker agreement, overrides, blockchain receipts, receiver sign-off
 GET /analytics/fleet/routes     busiest sites and lanes over a period (start?, end)
 GET /analytics/fleet/incidents  located reports for the incident map (start?, end)
+GET /analytics/fleet/cost       estimated operating and delay cost, waybill value exposed (start?, end, grain)
 
 Mounted under /analytics by endpoints/analytics.py rather than registered in main.py, so the
 shared main.py needs no change. Read-only, so any dispatcher may call these
@@ -16,7 +17,7 @@ shared main.py needs no change. Read-only, so any dispatcher may call these
 
 Periods: `end` is required and may not be after today (SAST). An omitted `start` means All
 time. FastAPI's own validation rejects a malformed date or an unknown grain. _require_valid_period
-rejects the rest as a 422 (spec G12).
+rejects the rest as a 422.
 """
 
 import uuid
@@ -25,12 +26,14 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.analytics.fleet.periods import Grain, Period
+from app.analytics.fleet.periods import Period
+from app.core.fleet_bands import Grain
 from app.auth.dependencies import get_current_dispatcher
 from app.db.session import get_db
-from app.orchestration.fleet_analytics_service import (
+from app.orchestration.analytics.fleet import (
     check_period,
     get_activity,
+    get_cost,
     get_evidence,
     get_incidents,
     get_on_time,
@@ -52,6 +55,7 @@ from app.schemas.fleet_analytics import (
     ReviewResponse,
     RoutesResponse,
 )
+from app.schemas.cost_analytics import CostResponse
 from app.schemas.people import UserRead
 
 router = APIRouter(prefix="/fleet", tags=["analytics"])
@@ -228,3 +232,21 @@ async def get_fleet_incidents_endpoint(
         db, organization_id=current_user.organization_id, start=start, end=end, grain=None,
     )
     return await get_incidents(db, organization_id=current_user.organization_id, period=period)
+
+
+@router.get(
+    "/cost",
+    response_model=CostResponse,
+    summary="Estimated operating and delay cost, and declared cargo value on theft-signal trips (FP-294)",
+)
+async def get_fleet_cost_endpoint(
+    end: date,
+    grain: Grain,
+    start: date | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRead = Depends(get_current_dispatcher),
+) -> CostResponse:
+    period = await _require_valid_period(
+        db, organization_id=current_user.organization_id, start=start, end=end, grain=grain,
+    )
+    return await get_cost(db, organization_id=current_user.organization_id, period=period)

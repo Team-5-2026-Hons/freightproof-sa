@@ -49,6 +49,8 @@ vi.mock('@/lib/api/exceptions', () => ({
 const authValue: AuthState = {
   user: demoDriver,
   isLoading: false,
+  connectionFault: false,
+  retryProfile: vi.fn(),
   requestOtp: vi.fn(),
   signIn: vi.fn(),
   signOut: vi.fn(),
@@ -75,6 +77,10 @@ function createdException(overrides: Partial<TripException>): TripException {
     contact_method: null,
     vehicle_id: null,
     merkle_batch_id: null,
+    claimed_by_user_id: null,
+    claimed_at: null,
+    claimed_by_name: null,
+    reviewed_by_name: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -145,6 +151,30 @@ function Probe() {
         }
       >
         log-breakdown-unknown-kind
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('cargo_damage', {
+            description: 'Pallet damaged.',
+            supporting_artifact_ids: ['photo-a', 'photo-b', 'photo-c'],
+          })
+        }
+      >
+        log-exception-with-photos
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('cargo_damage', { description: 'Pallet damaged.', supporting_artifact_ids: [] })
+        }
+      >
+        log-exception-empty-photo-list
+      </button>
+      <button
+        onClick={() =>
+          ctx.logException('cargo_damage', { description: 'Pallet damaged.' })
+        }
+      >
+        log-exception-without-photos
       </button>
     </div>
   )
@@ -278,5 +308,51 @@ describe('TripContext.logException (real mode) — the breakdown vehicle reaches
     const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
     expect(body).toMatchObject({ exception_type: 'mechanical' })
     expect(body).not.toHaveProperty('vehicle_type')
+  })
+})
+
+// FP-290: the driver can attach several photos. The page uploads them first and hands the
+// complete ordered id list in; the first id also rides in the legacy single field so an
+// older backend still receives the lead photo.
+describe('TripContext.logException (real mode) — photo ids reach raiseException', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetchMyActiveTrip.mockResolvedValue(activeTrip)
+    mockRaiseException.mockResolvedValue(createdException({}))
+  })
+
+  async function click(label: string) {
+    await renderAndWaitForTrip()
+    await act(async () => {
+      fireEvent.click(screen.getByText(label))
+    })
+  }
+
+  it('logException_sends_supporting_artifact_ids_and_first_as_legacy_field', async () => {
+    await click('log-exception-with-photos')
+
+    expect(mockRaiseException).toHaveBeenCalledWith(
+      String(activeTrip!.id),
+      expect.objectContaining({
+        supporting_artifact_ids: ['photo-a', 'photo-b', 'photo-c'],
+        supporting_artifact_id: 'photo-a',
+      }),
+    )
+  })
+
+  it('logException_omits_both_when_no_photos', async () => {
+    await click('log-exception-without-photos')
+
+    const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
+    expect(body).not.toHaveProperty('supporting_artifact_ids')
+    expect(body.supporting_artifact_id).toBeUndefined()
+  })
+
+  it('omits both when the id list is empty', async () => {
+    await click('log-exception-empty-photo-list')
+
+    const body = mockRaiseException.mock.calls[0][1] as Record<string, unknown>
+    expect(body).not.toHaveProperty('supporting_artifact_ids')
+    expect(body.supporting_artifact_id).toBeUndefined()
   })
 })

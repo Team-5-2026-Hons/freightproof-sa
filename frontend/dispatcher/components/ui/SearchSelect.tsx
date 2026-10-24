@@ -8,6 +8,10 @@ export interface SearchSelectOption {
   value: string
   label: string
   sublabel?: string
+  /** Shown but not choosable: the dispatcher can see it exists and read why (FP-142). */
+  disabled?: boolean
+  /** A second line that wraps rather than truncates, e.g. why the option is disabled. */
+  note?: string
 }
 
 interface Props {
@@ -18,13 +22,21 @@ interface Props {
   searchPlaceholder?: string
   disabled?: boolean
   error?: boolean
+  /** id of the visible caption naming this field: the trigger's own text is only its value. */
+  labelledBy?: string
+  /** id of the error or hint under the field. */
+  describedBy?: string
 }
 
-// Matches the underline field style used across the trip wizard.
+// Matches the underline field style used across the trip wizard. The border colour is
+// one of two exclusive classes: cn() is a plain join (no tailwind-merge), so adding
+// border-err beside border-outline-v left the winner to stylesheet order, and the grey won.
 const inputCls =
-  'w-full bg-surf-low border-0 border-b-2 border-outline-v rounded-t-sm ' +
+  'w-full bg-surf-low border-0 border-b-2 rounded-t-sm ' +
   'px-3 py-[10px] text-[14px] text-on-surf font-[Inter,sans-serif] ' +
-  'outline-none focus:bg-sec-c focus:border-sec transition-all duration-150'
+  'outline-none focus:bg-sec-c transition-all duration-150'
+const BORDER_OK = 'border-outline-v focus:border-sec'
+const BORDER_ERROR = 'border-err focus:border-err'
 
 export function SearchSelect({
   options, value, onChange,
@@ -32,6 +44,8 @@ export function SearchSelect({
   searchPlaceholder = 'Search…',
   disabled = false,
   error = false,
+  labelledBy,
+  describedBy,
 }: Props) {
   const [open, setOpen]       = useState(false)
   const [query, setQuery]     = useState('')
@@ -56,6 +70,7 @@ export function SearchSelect({
   }
 
   function select(opt: SearchSelectOption) {
+    if (opt.disabled) return
     onChange(opt.value)
     setOpen(false)
     setQuery('')
@@ -85,10 +100,18 @@ export function SearchSelect({
         type="button"
         onClick={openDropdown}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        // aria-invalid is not valid on a button; the error reaches assistive tech through
+        // aria-describedby, and data-invalid lets a form find the field to focus.
+        data-invalid={error || undefined}
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
         className={cn(
           inputCls,
+          // Also when a value is chosen: "origin and destination must differ" faults a filled field.
+          error ? BORDER_ERROR : BORDER_OK,
           'flex items-center justify-between cursor-pointer text-left',
-          error && !value && 'border-err',
           disabled && 'opacity-50 cursor-not-allowed',
         )}
       >
@@ -121,6 +144,7 @@ export function SearchSelect({
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
                 className="flex-1 bg-transparent text-[13px] text-on-surf outline-none placeholder:text-on-surf-v"
               />
             </div>
@@ -136,9 +160,13 @@ export function SearchSelect({
                   key={opt.value}
                   type="button"
                   onClick={() => select(opt)}
+                  // disabled, not only aria-disabled: it must not be clickable or reachable by Tab.
+                  disabled={opt.disabled}
+                  aria-disabled={opt.disabled || undefined}
                   className={cn(
                     'w-full flex items-start gap-3 px-4 py-[10px] text-left',
-                    'transition-colors duration-100 hover:bg-sec-c',
+                    'transition-colors duration-100',
+                    opt.disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-sec-c',
                     opt.value === value && 'bg-sec-c',
                   )}
                 >
@@ -146,6 +174,9 @@ export function SearchSelect({
                     <div className="text-[13px] font-[500] text-on-surf truncate">{opt.label}</div>
                     {opt.sublabel && (
                       <div className="text-[11px] text-on-surf-v mt-[1px] truncate">{opt.sublabel}</div>
+                    )}
+                    {opt.note && (
+                      <div className="text-[11px] font-[600] text-on-surf mt-[2px]">{opt.note}</div>
                     )}
                   </div>
                   {opt.value === value && (

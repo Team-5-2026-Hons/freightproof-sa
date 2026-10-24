@@ -3,17 +3,29 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
+// What this component reads of an artifact. A narrower shape than EvidenceArtifactWithUrl so an
+// exception photo (which carries no storage key or coordinates) can be shown the same way.
+export type PhotoArtifact = Pick<EvidenceArtifactWithUrl, 'signed_url' | 'captured_at' | 'file_hash'>
+  & { id: string }
+  & Partial<Pick<EvidenceArtifactWithUrl, 'captured_lat' | 'captured_lng'>>
+
 interface Props {
   label: string
-  artifact: EvidenceArtifactWithUrl | undefined
+  artifact: PhotoArtifact | undefined
   artifactId?: string | null
   loading?: boolean
   error?: string | null
   onRetry?: () => void
+  /** `compact` is the 44 px thumbnail a Recorded row uses; the default keeps the 96 px every
+   *  other caller has always had. The same modal opens from either. */
+  size?: 'default' | 'compact'
 }
+
+const THUMBNAIL_CLASS = { default: 'w-[96px] h-[96px]', compact: 'w-11 h-11' } as const
 
 /**
  * Where and when this image was captured, and the hash that binds it to the chain.
@@ -23,8 +35,9 @@ interface Props {
  * and with it the image is proof. The backend has sent all four fields since artifacts
  * existed; the panel rendered the picture and dropped every one of them.
  */
-function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl }) {
-  const hasFix = artifact.captured_lat !== null && artifact.captured_lng !== null
+function ArtifactProvenance({ artifact }: { artifact: PhotoArtifact }) {
+  const { copy } = useCopyToClipboard()
+  const hasFix = artifact.captured_lat != null && artifact.captured_lng != null
 
   return (
     <ForensicOnly>
@@ -40,7 +53,7 @@ function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl })
         <button
           onClick={e => {
             e.stopPropagation()
-            navigator.clipboard.writeText(artifact.file_hash).catch(() => {})
+            void copy(artifact.file_hash)
           }}
           title={artifact.file_hash}
           className="font-mono tracking-[0.02em] hover:text-on-surf transition-colors"
@@ -53,7 +66,7 @@ function ArtifactProvenance({ artifact }: { artifact: EvidenceArtifactWithUrl })
 }
 
 /** Optional lookup state distinguishes absent capture from an unavailable recorded artifact. */
-export function EvidencePhoto({ label, artifact, artifactId, loading = false, error, onRetry }: Props) {
+export function EvidencePhoto({ label, artifact, artifactId, loading = false, error, onRetry, size = 'default' }: Props) {
   const artifactKey = artifactId ?? artifact?.id ?? label
   const [openKey, setOpenKey] = useState<string | null>(null)
   const isOpen = openKey === artifactKey
@@ -81,21 +94,21 @@ export function EvidencePhoto({ label, artifact, artifactId, loading = false, er
         <div className="text-[12px] text-on-surf-v" role="status">
           {message}
           {onRetry && !loading && (artifactId || artifact || error) && (
-            <button type="button" onClick={retry} className="ml-2 underline">Retry {label}</button>
+            <button type="button" onClick={retry} className="ml-2 inline-flex min-h-11 items-center underline">Retry {label}</button>
           )}
         </div>
       ) : (
         <button type="button" onClick={() => setOpenKey(artifactKey)} aria-label={`Open ${label}`}
           className="block rounded-md overflow-hidden border border-outline-v/30 hover:border-outline-v transition-colors">
           {/* Signed URLs expire and cannot usefully be cached by the image optimiser. */}
-          <img key={retryAttempt} src={artifact.signed_url!} alt={label}
-            onError={() => setFailedUrl(artifact.signed_url)} className="w-[96px] h-[96px] object-cover" />
+          <img key={retryAttempt} src={artifact.signed_url!} alt={label} loading="lazy"
+            onError={() => setFailedUrl(artifact.signed_url)} className={`${THUMBNAIL_CLASS[size]} object-cover`} />
         </button>
       )}
       {artifact && <ArtifactProvenance artifact={artifact} />}
       <Modal open={isOpen} onClose={() => setOpenKey(null)} title={label} size="lg">
         {imageFailed ? <div role="status">Image failed to load{onRetry && <button onClick={retry}>Retry {label}</button>}</div>
-          : artifact?.signed_url && <img src={artifact.signed_url} alt={label}
+          : artifact?.signed_url && <img src={artifact.signed_url} alt={label} loading="lazy"
             onError={() => setFailedUrl(artifact.signed_url)} className="max-w-full max-h-[70dvh] mx-auto object-contain rounded-md" />}
       </Modal>
     </div>

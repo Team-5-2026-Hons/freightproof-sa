@@ -40,12 +40,18 @@ class DriverAnalyticsView(AnalyticsViewBase):
     loading_dwell_events_count: Mapped[int] = mapped_column(Integer)
     departure_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
     departure_dwell_events_count: Mapped[int] = mapped_column(Integer)
+    # ciaran_drv_arrival_dwell: time at the gate, from the end of the drive to arrival.
+    arrival_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
+    arrival_dwell_events_count: Mapped[int] = mapped_column(Integer)
     unloading_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
     unloading_dwell_events_count: Mapped[int] = mapped_column(Integer)
     confirmation_dwell_minutes_sum: Mapped[float] = mapped_column(Double)
     confirmation_dwell_events_count: Mapped[int] = mapped_column(Integer)
     phase_events_count: Mapped[int] = mapped_column(Integer)
     override_count: Mapped[int] = mapped_column(Integer)
+    # FP-83 (tim_dsub_driver_analytics): trips this driver shared with another through a
+    # handover. Their whole-trip metrics are excluded above, so this labels that scope.
+    shared_trip_count: Mapped[int] = mapped_column(Integer)
 
 
 class VehicleAnalyticsView(AnalyticsViewBase):
@@ -65,7 +71,7 @@ class VehicleAnalyticsView(AnalyticsViewBase):
 
 
 class VehicleIncidentStreaksView(AnalyticsViewBase):
-    """Whole-history streaks — one row per vehicle, not month-bucketed (spec §3a)."""
+    """Whole-history streaks — one row per vehicle, not month-bucketed."""
 
     __tablename__ = "vehicle_incident_streaks"
 

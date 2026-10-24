@@ -1,6 +1,6 @@
 // ActionLocationAssessment: a versioned, pure snapshot of one driver-vs-truck
-// proximity check (Task 4 of the trip-location-timeline story), plus the
-// precinct-membership facts evaluated alongside it. Mirrors backend
+// proximity check, plus the precinct-membership facts evaluated alongside it.
+// Mirrors backend
 // ActionLocationAssessment in backend/app/schemas/action_location.py — keep both
 // in lockstep; this shape is what preview, persistence and display all share.
 //
@@ -52,14 +52,18 @@ export interface ActionLocationAssessment {
   precinct_lat: number | null
   precinct_lng: number | null
   precinct_radius_metres: number | null
+  // The outline as it stood at evaluation time. Set = the verdicts were judged against it
+  // and precinct_radius_metres is null. Optional only for fixtures predating policy
+  // 2026-10-14.1; the server always sends it.
+  precinct_geofence_polygon?: [number, number][] | null
   precinct_tolerance_metres: number | null
   driver_in_precinct: boolean | null
   truck_in_precinct: boolean | null
 }
 
 // DriverLocationCapture: the driver phone's own GPS reading at capture time.
-// Needed by Task 6 to carry a live capture (from the driver-pwa) through to the
-// point an ActionLocationAssessment is assembled, before anything is persisted.
+// Carries a live capture (from the driver-pwa) through to the point an
+// ActionLocationAssessment is assembled, before anything is persisted.
 export interface DriverLocationCapture {
   lat: number | null
   lng: number | null

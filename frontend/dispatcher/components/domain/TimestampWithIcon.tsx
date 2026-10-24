@@ -1,5 +1,6 @@
 import { Clock } from 'lucide-react'
 import { cn } from '@shared/lib/utils/cn'
+import { fmtSastDateParts } from '@shared/lib/utils/datetime'
 
 interface TimestampWithIconProps {
   timestamp: string
@@ -7,31 +8,17 @@ interface TimestampWithIconProps {
 }
 
 /**
- * Formats an ISO 8601 timestamp as "HH:MM · D Mon YYYY" in SAST.
- * Clock icon uses secondary colour; text stays on-surface for WCAG compliance.
+ * Formats an ISO 8601 timestamp as "HH:MM SAST · DD Mon YYYY", from the same helper as every
+ * other date in the app. Clock icon uses secondary colour; text stays on-surface for WCAG compliance.
  */
 export function TimestampWithIcon({ timestamp, className }: TimestampWithIconProps) {
-  const date = new Date(timestamp)
-
-  const time = date.toLocaleTimeString('en-ZA', {
-    timeZone: 'Africa/Johannesburg',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-
-  const day = date.toLocaleDateString('en-ZA', {
-    timeZone: 'Africa/Johannesburg',
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
+  const parts = fmtSastDateParts(timestamp)
 
   return (
     <span className={cn('inline-flex items-center gap-1.5 text-sm text-surface-on', className)}>
       <Clock className="w-3.5 h-3.5 text-secondary shrink-0" />
       <span>
-        {time} · {day}
+        {parts ? `${parts.time} · ${parts.day}` : '—'}
       </span>
     </span>
   )

@@ -23,7 +23,7 @@ WHAT TO WATCH
 
 Note that a Mode: Customer PP account cannot manifest, dispatch or deliver — those are
 depot functions. From a customer account the only triggerable transition is
-"Collect this waybill". See docs/parcel-perfect-integration-spec.md §B2a.
+"Collect this waybill".
 
 USAGE (run from backend/ as a module — plain `python scripts/pp_watch.py` puts scripts/ on
 sys.path rather than backend/, so the `app` import fails)

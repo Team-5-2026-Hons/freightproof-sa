@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* DESIGN_SYSTEM.md §5.2: IDs, hashes, times, coordinates, seals and counts are tabular. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+}
+
+/* Disclosures draw their own chevron; Safari still paints its marker unless told not to. */
+summary::-webkit-details-marker { display: none; }
+
+@media print {
+  /* Controls and the map's own buttons mean nothing on paper. */
+  .no-print, .leaflet-control { display: none !important; }
+
+  /* The dark header would print as a solid block of ink; print it as dark text on white instead. */
+  .bg-ink { background-color: theme('colors.surf.lowest') !important; }
+  .bg-ink, .bg-ink * { color: theme('colors.ink.DEFAULT') !important; }
+
+  /* Cards break between each other, not through the middle of one; a whole chapter is allowed to span pages. */
+  section:not(.chapter) { break-inside: avoid; }
+
+  /* Paper has no disclosure to open: print folded detail as if it were open. */
+  details::details-content { content-visibility: visible; display: block; }
+
+  /* Tier badges are the page's evidence legend: browsers drop background colours when printing unless told not to. */
+  .tier-badge {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
