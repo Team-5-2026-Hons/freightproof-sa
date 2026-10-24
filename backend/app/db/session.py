@@ -19,8 +19,9 @@ class DatabaseSession(AsyncSession):
 
     Driver command_timeout covers SQL round trips. A separate cleanup budget also
     covers rollback and close, including a failure during rollback itself. The
-    invalidate() fallback needs no timeout here: the engine bounds every discard
-    (see _bounded_discard in db/engine.py).
+    invalidate() fallback needs no timeout here: SQLAlchemy closes a discarded
+    connection within its own 2 s limit, which asyncpg 0.32+ enforces (see
+    create_db_engine in db/engine.py).
     """
 
     async def _cleanup(
