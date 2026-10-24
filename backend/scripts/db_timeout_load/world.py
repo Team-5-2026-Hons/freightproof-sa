@@ -33,6 +33,7 @@ SCHEMA_PREFIX = "fp299_"
 VIEW_MIGRATIONS = (
     "2026_09_12_tom_analytics_read_models.py", "2026_09_12_tom_trailer_vehicle_analytics.py",
     "2026_09_13_tom_live_analytics_views.py", "2026_10_19_tim_substitution_driver_analytics.py",
+    "2026_10_23_ciaran_driver_analytics_arrival.py",
 )
 # (phase, index of its stop) for a two-stop, single-leg trip: the 7-row plan.
 SINGLE_LEG = (
