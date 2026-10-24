@@ -295,6 +295,8 @@ jobs:
           NEXT_PUBLIC_API_URL: https://api.example.invalid
           NEXT_PUBLIC_SUPABASE_URL: https://test.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          # Builds the real-backend app, the one a release ships.
+          NEXT_PUBLIC_DEMO_MODE: "false"
         run: npm run build
 
       # Report-only for now — see the matching pip-audit step in the backend job for why.

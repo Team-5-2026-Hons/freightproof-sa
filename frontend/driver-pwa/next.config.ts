@@ -21,6 +21,16 @@ if (process.env.NODE_ENV === "production") {
         "for a local cap:sync build) before building.",
     );
   }
+  // Demo mode is on unless the variable is exactly "false", and it swaps in simulated sign-in
+  // and evidence responses. A release built with the variable forgotten would look like it
+  // works while recording nothing, so a production build has to state which one it is.
+  const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE;
+  if (demoMode !== "true" && demoMode !== "false") {
+    throw new Error(
+      "[next.config.ts] NEXT_PUBLIC_DEMO_MODE must be set to \"false\" (real backend) or " +
+        "\"true\" (simulated demo build) for a production build.",
+    );
+  }
 }
 
 // Reused for the SW precache revision and the NEXT_PUBLIC_APP_VERSION injection. A

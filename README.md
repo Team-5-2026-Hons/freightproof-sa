@@ -85,9 +85,13 @@ cross-dock has 13, because `arrival`, `loading`, and `unloading` recur per stop.
 completed phase has a canonical payload hashed for Hedera anchoring, with its anchor
 status (pending, failed, anchored) kept on the ledger. Only hashes go to Hedera. The
 journey lock commits to the trip ID, order number, driver, horse, trailer IDs, origin
-and destination precinct IDs, creator, creation time, and trip type. Changes to those
-fields can be detected against the anchored hash; intermediate stops and consignments
-are outside the current journey-lock payload.
+and destination precinct IDs, creator, creation time, and trip type. New trips use the v2
+payload, which adds the ordered stops and their slot times, so changing an intermediate
+stop breaks the lock too. Trips created before v2 keep their v1 lock, which covers only
+origin and destination, and still verify against it. Consignments and the phase plan
+are deliberately outside the lock: the phase ledger records cargo custody, and a
+manifest trip's cargo is pinned by its manifest snapshot hash
+(`backend/app/crypto/hashing.py`).
 
 ---
 
@@ -130,6 +134,7 @@ frontend/
 ├── dispatcher/             Dispatcher dashboard (port 3000)
 ├── driver-pwa/             Driver phase-capture app (port 3001)
 ├── receiver/               Receiver QR handover page (port 3002)
+├── client-portal/          Audit-pack share-link portal for insurers and clients (port 3003)
 └── shared/                 Types, constants and utilities shared via @shared/*
 infrastructure/docker/      Dev stack (Redis, API, Celery worker, dispatcher) and test Postgres
 ```
@@ -138,16 +143,25 @@ infrastructure/docker/      Dev stack (Redis, API, Celery worker, dispatcher) an
 
 ## Implementation status
 
-- **Implemented:** trips, phase plan and phase ledger, evidence capture, exceptions,
-  manifests, analytics, the receiver handover, Hedera anchoring, and dev tooling for
-  demonstrations.
+- **Implemented:** trips, phase plan and phase ledger (including the destination
+  `arrival` phase), evidence capture, exceptions, incidents, manifests, analytics, the
+  receiver handover, driver substitution (an anchored amendment chain; the original
+  journey lock stays valid), audit packs, the client evidence portal (share-link access,
+  with hash verification against the public Hedera mirror run in the reader's browser),
+  Hedera anchoring, and dev tooling for demonstrations.
 - **Mocked for local use and demos:** Parcel Perfect, Pulsit tracking, IDVS identity
   checks, and the warehouse scan feed, each selected by a `*_USE_MOCK` flag. Mock output
   is not provider evidence.
 - **Live-capable, not verified against a live provider:** the Pulsit and Didit (IDVS)
   clients, which are selected when their mock flags are off and credentials are present.
-- **Not built:** the client evidence portal (`frontend/client-portal/` holds a README
-  only) and Ed25519 evidence signing.
+- **Simulated, no live contract:** the Parcel Perfect manifest lookup and the warehouse
+  scan feed run on their mocks only; the live clients refuse rather than fake success.
+- **Not built (deferred):** Ed25519 evidence signing, the per-step child-event ledger and
+  Merkle batching (the Merkle tables are scaffolding; every anchor today is an individual
+  hash), dispatcher call logging, and live SLA metrics.
+- **Not validated:** behaviour under concurrent load (FP-299). Accepted security
+  limitations from the 23 October review are listed in
+  [`docs/known-issues.md`](docs/known-issues.md) §12.
 
 ---
 
@@ -178,6 +192,7 @@ pip install -r backend/requirements.txt
 cd frontend/dispatcher && npm install
 cd ../driver-pwa && npm install
 cd ../receiver && npm install
+cd ../client-portal && npm install
 ```
 
 ### 3. Run
@@ -189,6 +204,7 @@ cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
 cd frontend/dispatcher && npm run dev
 cd frontend/driver-pwa && npm run dev
 cd frontend/receiver && npm run dev
+cd frontend/client-portal && npm run dev
 ```
 
 The API serves Swagger docs at `http://localhost:8000/docs` in development.
@@ -198,6 +214,10 @@ runs Redis, the API, a Celery worker, and the dispatcher. It does not run Postgr
 database is the Supabase project in `DATABASE_URL`.
 
 ### 4. Driver Android APK (optional)
+
+A production build refuses to start unless `NEXT_PUBLIC_DEMO_MODE` is set explicitly:
+`false` for the real backend, `true` for a simulated demo build. `NEXT_PUBLIC_API_URL`
+must point at a reachable, non-localhost backend.
 
 ```bash
 cd frontend/driver-pwa

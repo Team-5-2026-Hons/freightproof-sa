@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TripTimeline } from '@/components/trips/TripTimeline'
 import { line } from '@/components/domain/__tests__/textLine'
 import { EXCEPTION_ROW_CAP } from '@/lib/phase/exception-rows'
+import { splitPrecinctName } from '@shared/lib/utils/precinct-name'
 import {
   FIXTURE_IMAGES, FIXTURE_LONG_DESCRIPTION_LENGTH, SCENARIO_IDS, artifactsByIdOf, buildScenarios,
   type ScenarioId, type TimelineScenario,
@@ -412,7 +413,7 @@ describe('timeline scenario fixtures: each scenario shows what it claims', () =>
   it('long-precinct-name: the full precinct label reaches the phase header', () => {
     const scenario = scenarioOf(LONG_PRECINCT_SCENARIO)
     const longPrecinct = scenario.precincts.find(precinct => scenario.trip.stops.some(stop => stop.precinct_id === precinct.id && precinct.name.length > 60))
-    const label = longPrecinct?.name.split(' · ')[0]?.trim() ?? ''
+    const label = longPrecinct ? splitPrecinctName(longPrecinct.name).place.trim() : ''
 
     renderScenario(scenario)
 

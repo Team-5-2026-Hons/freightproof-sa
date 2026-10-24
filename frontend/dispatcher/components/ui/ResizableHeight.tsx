@@ -42,14 +42,18 @@ export function ResizableHeight({ initialHeight, minHeight, maxHeight, label, cl
     function onMove(move: globalThis.PointerEvent): void {
       setHeight(nextHeight(startHeight, move.clientY - startY, minHeight, maxHeight))
     }
+    // pointercancel as well as pointerup: a drag the browser takes over (a touch scroll, a
+    // system gesture) never sends pointerup, and would otherwise keep resizing on every move.
     function stop(): void {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
       stopDragRef.current = null
     }
     stopDragRef.current?.()
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
     stopDragRef.current = stop
   }
 

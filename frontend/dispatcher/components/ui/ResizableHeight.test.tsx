@@ -59,6 +59,16 @@ describe('ResizableHeight', () => {
     expect(frame.style.height).toBe('320px')
   })
 
+  it('stops following the pointer once the browser cancels the drag', () => {
+    const { handle, frame } = renderFrame()
+
+    fireEvent.pointerDown(handle, { clientY: 100 })
+    fireEvent.pointerCancel(window)
+    fireEvent.pointerMove(window, { clientY: 400 })
+
+    expect(frame.style.height).toBe('320px')
+  })
+
   it('resizes from the keyboard with the arrow keys', () => {
     const { handle, frame } = renderFrame()
 

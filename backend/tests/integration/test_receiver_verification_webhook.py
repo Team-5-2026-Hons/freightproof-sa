@@ -117,6 +117,12 @@ def test_a_wrong_signature_does_not_verify(monkeypatch):
     assert verify_webhook_signature(body, _sign(body, "wrong-secret")) is False
 
 
+def test_a_non_ascii_signature_does_not_verify(monkeypatch):
+    monkeypatch.setattr(settings, "IDVS_WEBHOOK_SECRET", _SECRET)
+
+    assert verify_webhook_signature(b"{}", "é" * 64) is False
+
+
 def test_a_missing_signature_does_not_verify(monkeypatch):
     monkeypatch.setattr(settings, "IDVS_WEBHOOK_SECRET", _SECRET)
 
