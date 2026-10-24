@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/api/exceptions.ts
 import { api } from './client'
 import type { ExceptionType, TripException } from '@shared/lib/types/exception'
 import type { VehicleType } from '@shared/lib/types/vehicle'
@@ -29,8 +28,8 @@ export interface RaiseExceptionBody {
   driver_accuracy_metres?: number
   // Stable id for this exact report, not echoed back on the response. The offline
   // queue stamps its own entry UUID here at enqueue time and resends it unchanged on
-  // every retry of that entry (lib/hooks/useOfflineQueue.ts enqueueException/
-  // sendException) — so a resubmission caused by a lost response, or by a retry after
+  // every retry of that entry (lib/hooks/useOfflineQueue.ts enqueueException,
+  // lib/offline/exception-sync.ts sendExceptionReport) — so a resubmission caused by a lost response, or by a retry after
   // the photo uploaded but this POST itself failed, returns the SAME exception
   // instead of raising a second one for one real-world report. Omitted by the direct
   // (non-queued) online submit, which has no retry of its own to correlate.
@@ -43,7 +42,7 @@ export interface RaiseExceptionBody {
   // Sent only for a trailer breakdown on a trip with two or more trailers, where
   // "Trailer" alone can't say which one: the trailer whose plate the driver picked.
   trailer_id?: string
-  // FP-83: the custody period this report was captured in, stamped at the driver's tap
+  // The custody period this report was captured in, stamped at the driver's tap
   // (lib/session/custody-context.ts) and never re-read at flush time. Omitted when the
   // server has sent none — accepted only on a trip that has had no substitution.
   custody_sequence?: number

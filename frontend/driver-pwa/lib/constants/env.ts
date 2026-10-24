@@ -1,4 +1,4 @@
-// true/unset = demo mode: skips real Supabase auth, drives login/OTP from AuthContext's mock flow.
+// true/unset = demo mode: the DemoOtpAuth and DemoDriverProfileSource adapters stand in for Supabase auth and the profile API.
 export const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false'
 
 // Google Maps JS API key (components/map/DriverMap.tsx). Absent is a supported state —

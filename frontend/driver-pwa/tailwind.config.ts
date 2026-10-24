@@ -78,40 +78,7 @@ const config: Config = {
         // `var(--x)` compiles, but Tailwind v3 then drops every modifier silently — the
         // frames and dividers throughout the app would flatten to full opacity with no
         // build error to catch it.
-        //
-        // Target vocabulary for new components going forward (mirrors frontend/dispatcher's already-completed migration). Not yet consumed in driver-pwa — adopted incrementally as components are rebuilt.
-        canvas:       'rgb(var(--fp-canvas) / <alpha-value>)',
-        surf:         'rgb(var(--fp-surface) / <alpha-value>)',
-        'surf-low':   'rgb(var(--fp-surface-container-low) / <alpha-value>)',
-        'surf-lowest':'rgb(var(--fp-surface-container-lowest) / <alpha-value>)',
-        'surf-high':  'rgb(var(--fp-surface-container-high) / <alpha-value>)',
-        'on-surf':    'rgb(var(--fp-surface-on) / <alpha-value>)',
-        'on-surf-v':  'rgb(var(--fp-surface-on-variant) / <alpha-value>)',
 
-        sec: {
-          DEFAULT: 'rgb(var(--fp-secondary) / <alpha-value>)',
-          c:       'rgb(var(--fp-secondary-container) / <alpha-value>)',
-          on:      'rgb(var(--fp-secondary-on) / <alpha-value>)',
-          onc:     'rgb(var(--fp-secondary-on-container) / <alpha-value>)',
-        },
-        ok: {
-          DEFAULT: 'rgb(var(--fp-success) / <alpha-value>)',
-          c:       'rgb(var(--fp-success-container) / <alpha-value>)',
-          on:      'rgb(var(--fp-success-on) / <alpha-value>)',
-          onc:     'rgb(var(--fp-success-on-container) / <alpha-value>)',
-        },
-        err: {
-          DEFAULT: 'rgb(var(--fp-error) / <alpha-value>)',
-          c:       'rgb(var(--fp-error-container) / <alpha-value>)',
-          on:      'rgb(var(--fp-error-on) / <alpha-value>)',
-          onc:     'rgb(var(--fp-error-on-container) / <alpha-value>)',
-        },
-        warn: {
-          DEFAULT: 'rgb(var(--fp-tertiary) / <alpha-value>)',
-          c:       'rgb(var(--fp-tertiary-container) / <alpha-value>)',
-          on:      'rgb(var(--fp-tertiary-on) / <alpha-value>)',
-          onc:     'rgb(var(--fp-tertiary-on-container) / <alpha-value>)',
-        },
         chain: {
           DEFAULT: 'rgb(var(--fp-chain) / <alpha-value>)',
           c:       'rgb(var(--fp-chain-container) / <alpha-value>)',
@@ -120,7 +87,7 @@ const config: Config = {
           tint:    'rgb(var(--fp-chain-tint) / <alpha-value>)',
         },
 
-        // Overhaul (Oct 2026) flat-grouping tokens: the grey face of pills, tiles and
+        // Flat-grouping tokens: the grey face of pills, tiles and
         // fields, and the inset rule between list rows. See app/globals.css.
         fill:     'rgb(var(--fp-fill) / <alpha-value>)',
         hairline: 'rgb(var(--fp-hairline) / <alpha-value>)',
@@ -134,13 +101,10 @@ const config: Config = {
 
         outline: {
           DEFAULT: 'rgb(var(--fp-outline) / <alpha-value>)',
-          v:       'rgb(var(--fp-outline-variant) / <alpha-value>)',
-          variant: 'rgb(var(--fp-outline-variant) / <alpha-value>)',   // backwards-compat alias used by existing components
+          variant: 'rgb(var(--fp-outline-variant) / <alpha-value>)',
         },
 
-        // ── Semantic tokens — backwards-compat names ──
-        // Same variables as the shorthand tokens above; kept so existing class names
-        // work during the migration. New components should use the shorthand tokens.
+        // ── Semantic tokens ──
         primary: {
           DEFAULT:       'rgb(var(--fp-primary) / <alpha-value>)',
           container:     'rgb(var(--fp-primary-container) / <alpha-value>)',
@@ -205,14 +169,9 @@ const config: Config = {
       // Pro, which brings Apple's optical sizes, size-specific tracking and Dynamic Type
       // metrics with it — none of which a webfont can reproduce — and on Android it
       // resolves to Roboto. The driver app is demoed on iPhones first, where Inter read as
-      // a ported website. headline/display/body/label stay as aliases so existing
-      // font-* classes keep resolving; they all mean "the system face" now.
+      // a ported website.
       fontFamily: {
         sans:     SYSTEM_SANS,
-        headline: SYSTEM_SANS,
-        display:  SYSTEM_SANS,
-        body:     SYSTEM_SANS,
-        label:    SYSTEM_SANS,
         // Real monospace for measured data (coordinates, seal numbers) — the old alias
         // pointed back at Inter, so `font-mono` silently did nothing.
         mono:     SYSTEM_MONO,
@@ -258,14 +217,6 @@ const config: Config = {
       },
 
       keyframes: {
-        'accordion-down': {
-          from: { height: '0' },
-          to: { height: 'var(--radix-accordion-content-height)' },
-        },
-        'accordion-up': {
-          from: { height: 'var(--radix-accordion-content-height)' },
-          to: { height: '0' },
-        },
         'fade-in-scale': {
           from: { opacity: '0', transform: 'scale(0.95)' },
           to: { opacity: '1', transform: 'scale(1)' },
@@ -276,10 +227,6 @@ const config: Config = {
         'toast-in': {
           from: { opacity: '0', transform: 'translateY(-8px) scale(0.97)' },
           to: { opacity: '1', transform: 'translateY(0) scale(1)' },
-        },
-        'confirm-pulse': {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.15)' },
         },
         'radar-pulse': {
           from: { transform: 'scale(1)', opacity: '0.6' },
@@ -292,15 +239,13 @@ const config: Config = {
           '0%, 100%': { transform: 'translateY(0)' },
           '50%': { transform: 'translateY(-2px)' },
         },
-        // iOS push/pop (app/(app)/template.tsx). Starts at 0.6 opacity, never 0: the
-        // incoming screen is legible from the first frame, it only settles into place.
         // An indeterminate run along the receipt's anchoring bar: Hedera gives no progress
         // to report, so the bar says "working", never a made-up percentage.
         'anchor-slide': {
           from: { transform: 'translateX(-100%)' },
           to: { transform: 'translateX(250%)' },
         },
-        // The panic screen's red vignette while a finger is on the swipe (7.1b): one full
+        // The panic screen's red vignette while a finger is on the swipe: one full
         // cycle a second (1 Hz), far under WCAG 2.3.1's three flashes, and never below a
         // third of its strength so it reads as a glow, not a flash.
         'panic-pulse': {
@@ -312,6 +257,8 @@ const config: Config = {
           from: { transform: 'translate3d(0, 2rem, 0)', opacity: '0' },
           to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
         },
+        // iOS push/pop (app/(app)/template.tsx). Starts at 0.6 opacity, never 0: the
+        // incoming screen is legible from the first frame, it only settles into place.
         'push-in': {
           from: { transform: 'translate3d(1.5rem, 0, 0)', opacity: '0.6' },
           to: { transform: 'translate3d(0, 0, 0)', opacity: '1' },
@@ -329,11 +276,8 @@ const config: Config = {
         },
       },
       animation: {
-        'accordion-down': 'accordion-down 0.2s ease-out',
-        'accordion-up': 'accordion-up 0.2s ease-out',
         'fade-in-scale': 'fade-in-scale 200ms ease-out',
         'toast-in': 'toast-in 250ms ease-out',
-        'confirm-pulse': 'confirm-pulse 400ms ease-in-out',
         'radar-pulse': 'radar-pulse 1.2s ease-out infinite',
         'truck-drive': 'truck-drive 500ms ease-in-out infinite',
         'road-scroll': 'road-scroll 500ms linear infinite',

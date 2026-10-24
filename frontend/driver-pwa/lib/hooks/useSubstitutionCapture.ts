@@ -1,6 +1,6 @@
 'use client'
 
-// FP-83 T2: one driver's own handover (outgoing) or takeover (incoming) check, captured on
+// One driver's own handover (outgoing) or takeover (incoming) check, captured on
 // their own device, persisted before anything is sent, and sent so a retry is provably the
 // same request (contract v1, "Driver endpoints" and "Common wire rules").
 //
@@ -226,9 +226,9 @@ export type CaptureSendOutcome =
   /** Another send of this capture is running, or it is not this driver's. */
   | { kind: 'busy' }
 
-const VERSION_CHANGED_NOTE = 'Dispatch changed this arrangement after you started your check. Your check is kept — review the details and confirm again.'
+const VERSION_CHANGED_NOTE = 'Dispatch changed this arrangement after you started your check. Your check is kept. Review the details and confirm again.'
 const NOT_PENDING_NOTE = 'This arrangement is no longer open (cancelled, replaced or already complete). Your check is kept on this phone and was not used.'
-const KEY_REUSED_NOTE = 'The server already holds a different version of this check. Yours is kept — review it and confirm again.'
+const KEY_REUSED_NOTE = 'The server already holds a different version of this check. Yours is kept. Review it and confirm again.'
 const PHOTO_REFUSED_NOTE = 'A photo was not accepted. Retake it and confirm again.'
 
 async function backToDraft(capture: SubstitutionCapture, note: string): Promise<void> {

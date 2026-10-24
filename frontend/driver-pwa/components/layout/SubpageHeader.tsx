@@ -16,7 +16,7 @@ interface SubpageHeaderProps {
   /**
    * 'heading' (default): plain h1 for page names. 'reference': an identifier (trip ref).
    * 'bar': the title centred in the bar beside the back button, iOS-inline — for forms
-   * whose body opens with its own large question (overhaul 6.2, 6.3).
+   * whose body opens with its own large question.
    */
   titleVariant?: 'heading' | 'reference' | 'bar'
   /** What a 'reference' title is (e.g. "Trip reference"). Read to screen readers only. */
@@ -60,7 +60,7 @@ export function SubpageHeader({
     // The current iOS back button: an ink chevron in a quiet round well, no text. HIG
     // (Toolbars › Navigation) asks for the standard symbol rather than a "Back" label, and
     // the blue chevron-plus-label read as a web link. The well is a light tone, not black:
-    // the old filled black pill outranked the page (audit H3). The destination still
+    // the old filled black pill outranked the page. The destination still
     // reaches screen readers through the accessible name.
     <button
       type="button"

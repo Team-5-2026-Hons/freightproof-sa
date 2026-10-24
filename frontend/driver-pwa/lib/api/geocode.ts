@@ -1,8 +1,6 @@
-// frontend/driver-pwa/lib/api/geocode.ts
-//
 // Reverse-geocodes GPS coordinates to a human-readable address via the Google
-// Geocoding API. Display-only — never blocks handshake submission. No API key
-// has been provisioned yet, so an unset key is an expected, non-error state.
+// Geocoding API. Display-only — never blocks a phase submit. An unset
+// key is an expected, non-error state.
 
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json'
 
@@ -14,7 +12,7 @@ interface GoogleGeocodeResponse {
 export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
-  // Key not provisioned yet — expected during this phase, not a failure worth warning about.
+  // No key set — expected, not a failure worth warning about.
   if (!apiKey) return null
 
   try {

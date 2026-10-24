@@ -235,7 +235,7 @@ export interface CheckpointRecord {
   tier: EvidenceTier
 }
 
-// Manifest v2 (FP-290) added per-photo receipts and per-action anchors on an exception.
+// Manifest v2 added per-photo receipts and per-action anchors on an exception.
 // These are the three anchorable actions on an exception.
 export type AnchorAction = 'raised' | 'reviewed' | 'cancelled'
 
@@ -521,7 +521,7 @@ export interface ErrorBody {
   email_hint?: string
 }
 
-// ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+// ── Emailed one-time code ───────────────────────────────────────────────────────────
 
 export interface EmailCodeSent {
   /** Masked, e.g. j***@santam.co.za. */

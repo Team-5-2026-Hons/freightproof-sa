@@ -19,7 +19,7 @@ function makeDraft(overrides: Partial<ConfirmationEvidence> = {}): ConfirmationE
 
 describe('Reconciliation (9.4)', () => {
   it('test_shows_the_count_and_that_photo_and_signature_are_in', () => {
-    render(<Reconciliation tripId="t1" phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft()} onUpdate={vi.fn()} onComplete={vi.fn()} />)
+    render(<Reconciliation phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft()} onUpdate={vi.fn()} onComplete={vi.fn()} />)
 
     expect(screen.getByText('Parcels you counted')).toBeInTheDocument()
     expect(screen.getByText('46')).toBeInTheDocument()
@@ -28,13 +28,13 @@ describe('Reconciliation (9.4)', () => {
   })
 
   it('test_says_not_counted_rather_than_zero', () => {
-    render(<Reconciliation tripId="t1" phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft({ driverVisualCount: null })} onUpdate={vi.fn()} onComplete={vi.fn()} />)
+    render(<Reconciliation phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft({ driverVisualCount: null })} onUpdate={vi.fn()} onComplete={vi.fn()} />)
 
     expect(screen.getByText('Not counted')).toBeInTheDocument()
   })
 
   it('test_marks_a_missing_signature_as_missing', () => {
-    render(<Reconciliation tripId="t1" phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft({ podSignatureArtifactId: null })} onUpdate={vi.fn()} onComplete={vi.fn()} />)
+    render(<Reconciliation phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft({ podSignatureArtifactId: null })} onUpdate={vi.fn()} onComplete={vi.fn()} />)
 
     expect(screen.getByLabelText('Receiver signature: missing')).toBeInTheDocument()
   })
@@ -43,7 +43,7 @@ describe('Reconciliation (9.4)', () => {
     vi.useFakeTimers()
     const onUpdate = vi.fn()
     const onComplete = vi.fn()
-    render(<Reconciliation tripId="t1" phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft()} onUpdate={onUpdate} onComplete={onComplete} />)
+    render(<Reconciliation phase={makePhase('confirmation')} stepIndex={2} draft={makeDraft()} onUpdate={onUpdate} onComplete={onComplete} />)
     const slider = screen.getByRole('slider', { name: 'Swipe to Confirm All' })
 
     fireEvent.keyDown(slider, { key: 'Enter' })

@@ -57,7 +57,7 @@ describe('evidenceStateLabel', () => {
     ['submitted', false, 'Submitted at completion'],
     ['not_submitted', false, 'Not submitted'],
     ['after_close', false, 'Received after the phase closed'],
-    ['trip_cancelled', false, 'Not submitted — trip cancelled'],
+    ['trip_cancelled', false, 'Not submitted: trip cancelled'],
     ['trip_cancelled', true, 'Received after the trip was cancelled'],
   ] as const)('words %s (after cancellation: %s) as "%s"', (state, afterCancel, expected) => {
     expect(evidenceStateLabel(evidence({ state, receivedAfterCancellation: afterCancel }))).toBe(expected)
@@ -115,7 +115,7 @@ describe('completionTitle', () => {
   })
 
   it('marks an exception variant and an override', () => {
-    expect(completionTitle(completion({ outcome: 'exception' }), 'loading', 'x', 'y')).toBe('Driver confirmed loading — exception recorded')
+    expect(completionTitle(completion({ outcome: 'exception' }), 'loading', 'x', 'y')).toBe('Driver confirmed loading, exception recorded')
     expect(completionTitle(completion({ outcome: 'overridden' }), 'loading', 'x', 'y')).toBe('Closed by dispatcher override')
   })
 })

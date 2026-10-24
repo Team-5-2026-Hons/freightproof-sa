@@ -40,7 +40,7 @@ interface VehicleSheetProps {
 }
 
 /**
- * The truck and trailers on this trip (overhaul 3.7), opened from the trip page's vehicle
+ * The truck and trailers on this trip, opened from the trip page's vehicle
  * row. Only details actually on record are shown — no rows of dashes.
  */
 export function VehicleSheet({ open, onClose, horse, trailers }: VehicleSheetProps) {

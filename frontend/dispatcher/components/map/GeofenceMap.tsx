@@ -109,6 +109,10 @@ export function attachTileFailureTracking(
   }
 }
 
+// Wheel zoom on: placing a pin or tracing an outline needs quick zooming, and Leaflet only
+// takes the wheel while the pointer is over the map, so the page still scrolls elsewhere.
+export const GEOFENCE_MAP_INTERACTION = { scrollWheelZoom: true } as const
+
 interface GeofenceMapProps {
   latitude: number
   longitude: number
@@ -201,8 +205,7 @@ export function GeofenceMap({
         const map = L.map(containerRef.current, {
           center: [latitude, longitude],
           zoom: DEFAULT_ZOOM,
-          // Disabled so scrolling the form past the map doesn't zoom it.
-          scrollWheelZoom: false,
+          ...GEOFENCE_MAP_INTERACTION,
         })
 
         const chosen = TILE_SOURCES.satellite
@@ -366,6 +369,16 @@ export function GeofenceMap({
     // mapReady as a dependency ensures a source chosen before Leaflet finishes loading is still applied.
   }, [source, mapReady])
 
+  // Leaflet measures its container once, so a resized frame would leave grey, untiled
+  // bands until something else nudged it. Re-measure whenever the box changes size.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!mapReady || container === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => mapRef.current?.invalidateSize())
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [mapReady])
+
   // The schematic is an overlay, not a replacement — the map stays mounted beneath it,
   // so a tile that succeeds after an outage resets the streak and the overlay lifts on its own.
   return (
@@ -384,7 +397,7 @@ export function GeofenceMap({
             className="w-[200px] h-[200px]"
           />
           <p className="text-[11px] text-on-surf-v">
-            Map unavailable — showing the geofence to scale.
+            Map unavailable. Showing the geofence to scale.
           </p>
           <button
             type="button"

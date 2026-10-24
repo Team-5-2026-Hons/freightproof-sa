@@ -1,4 +1,5 @@
 import { fmtExceptionType } from '@/lib/format/exception'
+import { sastCalendarDay } from '@shared/lib/utils/datetime'
 import type { DevConsignment, PpTriggerRequest, RoadCheckResponse } from '@/lib/types/dev'
 
 export type ScanPreset = 'all' | 'one_short' | 'stray'
@@ -27,8 +28,10 @@ export function barcodesForPreset(consignments: readonly DevConsignment[], prese
 
 /** dd/mm/yyyy — the format Parcel Perfect itself returns for a POD date. */
 export function ppDate(now: Date): string {
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${pad(now.getUTCDate())}/${pad(now.getUTCMonth() + 1)}/${now.getUTCFullYear()}`
+  // The SAST day, not the UTC one: between 00:00 and 02:00 SAST they differ.
+  // A valid Date always has a day, so the null branch cannot occur.
+  const [year, month, day] = sastCalendarDay(now)!.split('-')
+  return `${day}/${month}/${year}`
 }
 
 export function ppRequestForPreset(tripId: string, consignment: DevConsignment, preset: PpPreset, now: Date): PpTriggerRequest {

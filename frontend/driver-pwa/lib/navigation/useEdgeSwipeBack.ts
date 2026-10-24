@@ -7,7 +7,7 @@
 // full of screens a driver must not return to (see lib/navigation/back-stack). This performs
 // the screen's own registered back action (lib/navigation/edge-back) instead.
 //
-// Feel, per emil-apple-design: the screen follows the finger 1:1 from where it was grabbed
+// Feel: the screen follows the finger 1:1 from where it was grabbed
 // (§2), commits on where the gesture is GOING, not where it stopped (§6, projection), carries
 // the finger's speed into the spring (§5), and a system cancel never commits (§10).
 
@@ -18,7 +18,7 @@ import { getEdgeBackHandler, useHasEdgeBack } from '@/lib/navigation/edge-back'
 // Only a touch that starts this close to the left edge is a back swipe. Clear of the round
 // back button, which starts 16px in, so a tap on the button is never taken as a swipe.
 const EDGE_ZONE_PX = 16
-// Movement before the gesture picks a direction (emil-apple-design §10, hysteresis): a
+// Movement before the gesture picks a direction: a
 // vertical scroll that starts at the edge must stay a scroll.
 const INTENT_PX = 10
 // Released past this share of the screen width (after projection), the swipe goes back.

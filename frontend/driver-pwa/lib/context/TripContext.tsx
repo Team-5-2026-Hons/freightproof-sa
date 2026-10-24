@@ -1,13 +1,11 @@
 "use client"
 
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import type { Trip } from '@shared/lib/types/trip'
 import type { PhaseDescriptor, PhaseStatus } from '@shared/lib/types/phase'
 import type { TripException, ExceptionType } from '@shared/lib/types/exception'
 import type { VehicleId, VehicleType } from '@shared/lib/types/vehicle'
 import { mockTrips } from '@shared/lib/mocks/trips'
-import { ROUTES } from '@/lib/constants/routes'
 import { IS_DEMO_MODE } from '@/lib/constants/env'
 import { TRIP_POLL_INTERVAL_MS, UNASSIGNED_TRIP_POLL_INTERVAL_MS } from '@/lib/constants/app'
 import { fetchMyActiveTrip, fetchMyTrip } from '@/lib/api/trips'
@@ -23,7 +21,7 @@ import { ToastContext } from './ToastContext'
 
 // A trip in one of these states is finished — it can no longer be the trip the driver is
 // working, so a pinned selection pointing at one is dropped. Mirrors the backend's
-// `inactive` set in trip_service.get_active_trip_for_driver.
+// `inactive` set in orchestration/trips/queries.py (get_active_trip_for_driver).
 const TERMINAL_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
 
 // sessionStorage, not localStorage: a selection is a within-session intent ("I am
@@ -33,7 +31,7 @@ const TERMINAL_STATUSES: readonly Trip['status'][] = ['closed', 'cancelled']
 const SELECTED_TRIP_KEY = 'fp.selectedTripId'
 
 // Demo mode has no server to work out which vehicle a breakdown belongs to, so it
-// mirrors what exception_service.pick_breakdown_vehicle decides for a well-formed report:
+// mirrors what orchestration/exceptions/creation.py (pick_breakdown_vehicle) decides for a well-formed report:
 // the truck, the trailer the driver named, or the trip's only trailer. The server's rules
 // are the real ones; this only keeps the demo record shaped like a real one.
 function demoBreakdownVehicleId(
@@ -57,7 +55,7 @@ function readSelectedTripId(): string | null {
 }
 
 // Mirrors lib/phase/derive.ts's RESOLVED_STATUSES by inversion (that constant is private
-// to its module, and lib/phase/ is not this task's to change): only a row the ledger
+// to its module): only a row the ledger
 // still considers open may be optimistically advanced. A phase the server has already
 // called completed/exception/overridden is its own answer and must never be overwritten
 // by a local guess.
@@ -96,8 +94,6 @@ export interface TripState {
   isLoading: boolean
   exceptions: TripException[]
   logException: (type: ExceptionType, payload: Record<string, unknown>) => Promise<void>
-  triggerPanic: () => void
-  reset: () => void
   refetchTrip: () => Promise<Trip | null>
   // Point the whole phase flow at one specific trip. Needed because the phase step pages
   // resolve which phase_event_id to submit from THIS context (they cannot take the trip
@@ -135,8 +131,8 @@ export interface TripState {
   isRefreshing: boolean
   /** ISO timestamp of the last successful quiet refresh, or null if none yet. */
   lastRefreshedAt: string | null
-  // The trip the server most recently told this driver they handed over (FP-83
-  // TRIP_HANDED_OVER), so a screen can offer its participation history. Only the WORKING
+  // The trip the server most recently told this driver they handed over (TRIP_HANDED_OVER),
+  // so a screen can offer its participation history. Only the WORKING
   // context is dropped — nothing local is deleted and the trip is not presented as closed.
   handedOverTripId: string | null
   // A handover learned some other way (a completion notice, a live write's 409). Drops the
@@ -188,7 +184,6 @@ export function TripProvider({ children }: { children: React.ReactNode }) {
 }
 
 function AccountTripProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const authCtx = useContext(AuthContext)
   const isCurrentAccount = useAccountGuard(authCtx?.user ? String(authCtx.user.id) : null)
 
@@ -227,7 +222,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   // pick stops returning it, this is the one to ask about: was it ended by dispatch?
   const workingTripIdRef = useRef<string | null>(null)
 
-  // FP-83: publish who is signed in and which custody period the SERVER says this trip is
+  // Publish who is signed in and which custody period the SERVER says this trip is
   // in, so every capture can stamp both at the moment it happens. Read from serverTrip, not
   // the optimistic trip: the period is the server's fact, never something this phone moves.
   // Set during render, not in an effect, on purpose: child effects run BEFORE this parent's,
@@ -302,7 +297,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     return active
   }, [selectedTripId, persistSelection, isCurrentAccount, noticeEndedWorkingTrip])
 
-  // refetchTrip is exposed for manual re-fetching after a handshake submission. It's
+  // refetchTrip is exposed for manual re-fetching after a phase submission. It's
   // deliberately not called directly inside the useEffect below — calling a setState-
   // containing callback synchronously from an effect causes cascading renders (same
   // anti-pattern AuthContext.tsx avoids); the effect inlines its own fetch instead.
@@ -460,7 +455,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
   // them it arrived: the foreground refresh fires when the app comes BACK, and a phone
   // propped on the dash never leaves the foreground. Until this arm existed, the only way
   // to see a new assignment was to kill and relaunch the app, which is exactly what a
-  // driver had to do (Tim, 21 Oct). It also recovers a Home whose first load failed and
+  // driver had to do. It also recovers a Home whose first load failed and
   // left `trip` null, which otherwise reads as "No trip assigned" until the next launch.
   //
   // Gated on isLoading so the hook's leading-edge refresh does not duplicate the mount
@@ -510,7 +505,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     toastCtx?.notify({
       kind: 'info',
       title: 'You can continue',
-      body: 'The warehouse has finished — this step is ready.',
+      body: 'The warehouse has finished. This step is ready.',
     })
   }, [actionablePhaseEventId, actionableBlockedOn, toastCtx])
 
@@ -555,13 +550,11 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     if (!trip) return
     const description = typeof payload.description === 'string' ? payload.description : ''
     // The page uploads every photo first and hands over the COMPLETE ordered id list; the
-    // first id also rides in the legacy single field so an older backend still gets the
-    // lead photo. A lone legacy id (no list) is still honoured for older callers.
+    // first id also rides in the single field so an older backend still gets the lead photo.
     const photoIds = Array.isArray(payload.supporting_artifact_ids)
       ? payload.supporting_artifact_ids.filter((id): id is string => typeof id === 'string')
       : []
-    const legacyArtifactId = typeof payload.supporting_artifact_id === 'string' ? payload.supporting_artifact_id : undefined
-    const supportingArtifactId = photoIds[0] ?? legacyArtifactId
+    const supportingArtifactId = photoIds[0]
     const clientReportId = typeof payload.clientReportId === 'string'
       ? payload.clientReportId
       : crypto.randomUUID()
@@ -622,7 +615,7 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
         gps_lng: hasGpsFix ? gpsLng : null,
         vehicle_id: demoBreakdownVehicleId(trip, type, vehicleType, trailerId),
         // Mirrors backend initial_review_status: every exception starts needs_review,
-        // whatever its severity (FP-280), so demo mode matches the real backend path.
+        // whatever its severity, so demo mode matches the real backend path.
         review_status: 'needs_review',
         review_outcome: null, reviewed_by_user_id: null,
         reviewed_at: null, review_note: null, contact_method: null,
@@ -655,21 +648,11 @@ function AccountTripProvider({ children }: { children: React.ReactNode }) {
     setExceptions(prev => [...prev, created])
   }, [trip])
 
-  const triggerPanic = useCallback(() => {
-    if (!trip) return
-    router.push(ROUTES.panic)
-  }, [trip, router])
-
-  const reset = useCallback(() => {
-    if (!trip) return
-    setExceptions(trip.exceptions)
-  }, [trip])
-
   return (
     <TripContext.Provider
       value={{
         trip, isLoading, exceptions,
-        logException, triggerPanic, reset, refetchTrip,
+        logException, refetchTrip,
         selectTrip, clearSelectedTrip, adoptTrip,
         syncingPhaseIds, markPhaseSyncing, clearPhaseSyncing,
         refreshQuietly, isRefreshing, lastRefreshedAt,

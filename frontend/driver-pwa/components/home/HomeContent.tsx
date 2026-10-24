@@ -18,10 +18,7 @@ import { firstName, partOfDayGreeting } from '@/lib/utils/greeting'
 import { formatLongDate } from '@/lib/utils/format-time'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 
-// Route to the first step of the current phase's own recipe. Mirrors
-// PhaseStepPageClient.tsx's local currentStepRoute — lib/phase/ itself stays the
-// only export surface for sequencing, this is just route composition, kept local to
-// each caller the same way that file keeps its own.
+// Route to the first step of the current phase.
 function firstStepRoute(phase: PhaseDescriptor): string {
   const steps = stepsFor(phase)
   // Defensive: only trip_creation has an empty recipe, and it resolves before the
@@ -44,7 +41,7 @@ export function HomeContent() {
   }
 
   const name = user ? firstName(user.full_name) : null
-  // The screen's visible heading (overhaul 2.1): today's date over the greeting. The tab's
+  // The screen's visible heading: today's date over the greeting. The tab's
   // own "Home" title stays for screen readers only (AppShell).
   const header = (
     <div>

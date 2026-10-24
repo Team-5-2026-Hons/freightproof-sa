@@ -16,7 +16,7 @@ import {
 interface CameraCaptureProps {
   /** What the photo is — the field label and the captured image's alt text. */
   label: string
-  /** The tile's verb (overhaul 4.3: "Photograph the sheet"). Defaults to Take Photo. */
+  /** The tile's verb ("Photograph the sheet"). Defaults to Take Photo. */
   actionLabel?: string
   /** One line under the verb on what makes a usable photo. */
   hint?: string
@@ -25,7 +25,7 @@ interface CameraCaptureProps {
   capturedAt?: string | null
   /**
    * 'tile' (default) is the large evidence tile; 'row' is a compact line for an optional
-   * photo on a longer form (overhaul 6.3), where a 196px tile would bury the submit.
+   * photo on a longer form, where a 196px tile would bury the submit.
    */
   variant?: 'tile' | 'row'
   /** The row variant's second line once a photo is added ("Sends with the report"). */

@@ -112,7 +112,7 @@ describe('PhaseEvidence: routing', () => {
 
     render(<PhaseEvidence trip={trip} phase={arrival} precincts={mockPrecincts} {...evidence} />)
 
-    expect(screen.getByText(/seal compromised — recorded as a critical exception/i)).toBeInTheDocument()
-    expect(screen.getByText(/mismatch — recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/seal compromised: recorded as a critical exception/i)).toBeInTheDocument()
+    expect(screen.getByText(/mismatch: recorded as a critical exception/i)).toBeInTheDocument()
   })
 })

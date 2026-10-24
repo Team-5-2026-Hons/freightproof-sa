@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { TileLayer } from 'leaflet'
 
-import { attachTileFailureTracking } from '../GeofenceMap'
+import { GEOFENCE_MAP_INTERACTION, attachTileFailureTracking } from '../GeofenceMap'
 import { TILE_ERROR_FALLBACK_THRESHOLD } from '@/lib/map/tiles'
 
 /**
@@ -138,5 +138,11 @@ describe('attachTileFailureTracking', () => {
     fire('tileerror', TILE_ERROR_FALLBACK_THRESHOLD * 2)
 
     expect(onExceeded).not.toHaveBeenCalled()
+  })
+})
+
+describe('GeofenceMap interaction', () => {
+  it('zooms with the scroll wheel on the precinct detail, create and edit maps', () => {
+    expect(GEOFENCE_MAP_INTERACTION.scrollWheelZoom).toBe(true)
   })
 })

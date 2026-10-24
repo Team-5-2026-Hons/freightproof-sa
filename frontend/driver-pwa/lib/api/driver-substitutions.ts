@@ -1,6 +1,6 @@
-// Driver-side reads for FP-83 driver substitution (docs/contracts/driver-substitution-v1.md,
+// Driver-side reads for driver substitution (docs/contracts/driver-substitution-v1.md,
 // "Driver endpoints"). Every shape is the shared contract type — this file adds no DTO of its
-// own, so the live OpenAPI comparison at C6 has exactly one schema to check against.
+// own, so the live OpenAPI comparison has exactly one schema to check against.
 //
 // Kept apart from lib/api/trips.ts on purpose: a pending substitution is NOT the driver's
 // current trip. GET /trips/me/active stays the current-assignment read; these are a second,
@@ -45,7 +45,7 @@ export const fetchSubstitutionNotices = (unreadOnly = true): Promise<Substitutio
   api.get<SubstitutionNoticeRead[]>(`${TRIPS_ME}/substitution-notices?unread_only=${unreadOnly}`)
 
 // Marking read only hides the notice. It is never a handover confirmation and never moves
-// custody — those are separate, evidence-bearing actions (T2).
+// custody — those are separate, evidence-bearing actions.
 export const markSubstitutionNoticeRead = (noticeId: string): Promise<SubstitutionNoticeRead> =>
   api.post<SubstitutionNoticeRead>(`${TRIPS_ME}/substitution-notices/${noticeId}/read`)
 
@@ -54,7 +54,7 @@ export const markSubstitutionNoticeRead = (noticeId: string): Promise<Substituti
 export const fetchDriverParticipation = (tripId: string): Promise<DriverParticipationHistoryRead> =>
   api.get<DriverParticipationHistoryRead>(`${TRIPS_ME}/${tripId}/participation`)
 
-// ── T2: the driver's own handover check ─────────────────────────────────────────
+// ── The driver's own handover check ─────────────────────────────────────────
 
 /**
  * A photo for this driver's handover check, through the request's dedicated route. A pending
@@ -93,7 +93,7 @@ export const confirmDriverSubstitution = (
 ): Promise<SubstitutionRequestRead> =>
   api.post<SubstitutionRequestRead>(`${TRIPS_ME}/${tripId}/driver-substitutions/${requestId}/confirmations`, body)
 
-// ── T3: late evidence (retained for review, never a live phase action) ──────────
+// ── Late evidence (retained for review, never a live phase action) ──────────
 
 /** A photo for a late-evidence report, tagged with the custody period it was captured in. */
 export async function uploadLateEvidenceArtifact(

@@ -179,6 +179,11 @@ export default function ExceptionsPage() {
     update({ q: '', severity: '', fromDate: undefined, toDate: undefined }, true)
   }
 
+  // Resets only the cursor: the dispatcher's search and filters are what they were looking at.
+  function returnToFirstPage(): void {
+    update({}, true)
+  }
+
   function selectTab(next: ExceptionTab): void {
     update({ tab: next })
   }
@@ -355,7 +360,7 @@ export default function ExceptionsPage() {
             subject={tab === 'history' ? 'exception history' : 'exceptions'}
             message={error}
             onRetry={refetch}
-            onReturnToFirstPage={tab === 'history' && history.hasPrevious ? clearFilters : undefined}
+            onReturnToFirstPage={tab === 'history' && history.hasPrevious ? returnToFirstPage : undefined}
           />
         ) : (
           <>

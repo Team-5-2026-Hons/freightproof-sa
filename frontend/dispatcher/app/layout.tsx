@@ -14,7 +14,7 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'FreightProof SA — Dispatcher',
+  title: 'FreightProof SA · Dispatcher',
   description: 'Cargo theft and disputed delivery evidence platform',
 }
 

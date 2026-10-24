@@ -3,7 +3,10 @@
 How FreightProof runs on real infrastructure, and how to keep running it entirely on
 localhost afterwards. Written for the four of us, not for a marker.
 
-Last verified against the live deployment on 2026-09-15.
+Last verified against the live deployment on 2026-09-15, when the API still ran on
+Railway. The API host changed to Fly.io on 2026-10-24: section 3 and `backend/fly.toml`
+are written but **not yet verified against a live Fly deploy** — treat the first cutover
+as the verification.
 
 ---
 
@@ -11,7 +14,7 @@ Last verified against the live deployment on 2026-09-15.
 
 | Surface | Host | Origin | Deployed from |
 |---|---|---|---|
-| API (FastAPI) | Railway | `https://api.freightproof.co.za` | `backend/`, via `backend/Dockerfile` |
+| API (FastAPI) | Fly.io | `https://api.freightproof.co.za` | `backend/`, via `backend/Dockerfile` + `backend/fly.toml` |
 | Dispatcher | Vercel | `https://www.freightproof.co.za` | `frontend/dispatcher/` |
 | Receiver | Vercel | `https://receiver.freightproof.co.za` | `frontend/receiver/` |
 | Driver | Apple TestFlight | `capacitor://localhost` (in-app) | `frontend/driver-pwa/` static export in a Capacitor iOS shell |
@@ -63,10 +66,28 @@ three follow. Set it wrong and all three break together.
 
 ---
 
-## 3. Railway — API environment
+## 3. Fly.io — API environment
 
-Set these on the Railway service. Values marked **required** have no safe default and the
-app will refuse to boot without them.
+Deployed from `backend/`, which is where `fly.toml` lives:
+
+```bash
+cd backend
+fly deploy
+# First deploy only. Beat must never exceed one machine: two schedulers fire every sweep
+# twice, which for the anchor-recovery jobs means duplicate Hedera submissions and spend.
+fly scale count app=2 worker=1 beat=1
+```
+
+`fly.toml` runs three processes from the one image — `app` (uvicorn), `worker` (Celery) and
+`beat` (the scheduler). This is a change in behaviour, not just in host: `railway.json`
+built the image and ran only the Dockerfile's uvicorn command, so every Hedera anchor an
+endpoint queued sat in Redis unclaimed and none of the five scheduled jobs in
+`app/tasks/__init__.py` ever ran — including the three anchor-recovery sweeps, so nothing
+retried a failed anchor either.
+
+Set the values below with `fly secrets set KEY=value`; each one restarts the machine.
+Values marked **required** have no safe default and the app will refuse to boot without
+them.
 
 ```bash
 ENVIRONMENT=production
@@ -86,9 +107,15 @@ HANDOVER_RECEIVER_BASE_URL=https://receiver.freightproof.co.za
 AUDIT_PACK_PORTAL_BASE_URL=https://portal.freightproof.co.za
 
 # required in production — an explicit statement about topology, not a default.
-# true: Railway's edge overwrites X-Forwarded-For, so it is the real client address.
 # Governs the rate-limit bucket key AND the receiver_ip evidence field on every handover.
 RATE_LIMIT_TRUST_PROXY_HEADERS=true
+# REQUIRED ON FLY, and the one setting the platform move genuinely changes. Fly's proxy
+# APPENDS to X-Forwarded-For rather than overwriting it, so that header's left-most entry
+# is whatever the caller sent — trusting it hands any caller a fresh rate-limit bucket per
+# forged value and lets them dictate the receiver_ip recorded as evidence on a handover.
+# fly-proxy sets Fly-Client-IP itself, so a caller cannot. Production refuses to start
+# with trust on and x-forwarded-for named (app/core/config_validation.py).
+CLIENT_IP_HEADER=fly-client-ip
 RATE_LIMIT_ENABLED=true
 
 # Didit, live
@@ -111,8 +138,8 @@ that fabricate evidence events. Turn it off when the demo closes.
 ### What happens if you get it wrong
 
 The API now refuses to start and names every problem at once, rather than coming up green
-and failing later at a handover nobody can debug. Railway's health check will show the
-deploy as failed and the log line begins `Refusing to start:`. Rules and reasoning live in
+and failing later at a handover nobody can debug. Fly's health check (`/health`, defined
+in `fly.toml`) will fail the deploy and the log line begins `Refusing to start:`. Rules and reasoning live in
 `backend/app/core/config_validation.py`.
 
 ---
@@ -143,7 +170,7 @@ verifies anchors against the public Hedera mirror node **from the visitor's own 
 1. New Vercel project, root directory `frontend/client-portal`, framework preset Next.js,
    Node 22. Not a static export: `next.config.js` `headers()` sets `Referrer-Policy:
    no-referrer` and `X-Frame-Options: DENY`, and both matter (the URL path is the credential).
-2. Domain: `portal.freightproof.co.za` — must equal `AUDIT_PACK_PORTAL_BASE_URL` on Railway,
+2. Domain: `portal.freightproof.co.za` — must equal `AUDIT_PACK_PORTAL_BASE_URL` on Fly,
    or issued PDFs print a verification address nobody can open.
 3. Environment variables:
 
@@ -159,7 +186,7 @@ NEXT_PUBLIC_TILE_URL=
   `audit_pack_access_events`, `incident_declarations`) **from `dev` after merge** — never
   from a feature branch (CLAUDE.md).
 - The API image needs Pango/HarfBuzz for WeasyPrint (already in `backend/Dockerfile`). Check
-  the first Railway build log; if the PDF endpoints 500, this is the first suspect. The
+  the first Fly build log; if the PDF endpoints 500, this is the first suspect. The
   container build was not verified before merge (no Docker on the development machine).
 - Issued PDFs are stored under `audit-packs/` in the existing `evidence-artifacts` bucket; no
   new bucket is needed.
@@ -208,7 +235,7 @@ Two things that are already correct and should stay that way:
 ## 7. Didit dashboard
 
 1. **Webhook URL**: `https://api.freightproof.co.za/api/v1/handover/webhooks/didit`
-2. Copy the signing secret into Railway as `IDVS_WEBHOOK_SECRET`.
+2. Copy the signing secret into Fly with `fly secrets set IDVS_WEBHOOK_SECRET=<secret>`.
    Signature verification **fails closed** — an unset secret rejects every genuine
    delivery with a 401 logged as an invalid signature, which is indistinguishable from an
    attacker in the logs. This is why the app now refuses to boot in that state.

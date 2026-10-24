@@ -33,7 +33,7 @@ export function PdfCheck({ seal, sealCheck }: Props) {
   const expected = sealedString(sealRead, 'pdf_sha256')
   const sealVerified = sealCheck?.state === 'verified'
 
-  async function onFile(file: File | undefined) {
+  async function onFile(file: File | undefined): Promise<void> {
     if (!file || busy) return
     if (!expected) {
       setResult({
@@ -79,19 +79,19 @@ export function PdfCheck({ seal, sealCheck }: Props) {
       <label
         onDragOver={(event) => event.preventDefault()}
         onDrop={onDrop}
-        className="block cursor-pointer rounded-md border-2 border-dashed border-outline-v px-4 py-5 text-center text-[13px] hover:bg-surf-low focus-within:ring-2 focus-within:ring-sec"
+        className="block cursor-pointer rounded-md border-2 border-dashed border-outline-v px-4 py-5 text-center text-small hover:bg-surf-low focus-within:ring-2 focus-within:ring-sec"
       >
         <span className="font-semibold">Check a PDF copy</span>
         <span className="block text-muted">Choose or drop the PDF you were sent. It is hashed here in your browser and never uploaded.</span>
         <input type="file" accept="application/pdf" className="sr-only" disabled={busy} onChange={onChange} />
       </label>
       {/* aria-live rather than role=status: the result below is the page's one status message. */}
-      {busy && <p aria-live="polite" className="mt-2 text-[13px] text-muted">Hashing…</p>}
-      {result && 'error' in result && <p role="alert" className="mt-2 text-[13px] text-warn">{result.error}</p>}
+      {busy && <p aria-live="polite" className="mt-2 text-small text-muted">Hashing…</p>}
+      {result && 'error' in result && <p role="alert" className="mt-2 text-small text-warn">{result.error}</p>}
       {result && 'matches' in result && (
         <p
           role="status"
-          className={`mt-2 text-[13px] font-semibold ${result.matches ? (sealVerified ? 'text-ok' : 'text-warn') : 'text-err'}`}
+          className={`mt-2 text-small font-semibold ${result.matches ? (sealVerified ? 'text-ok' : 'text-warn') : 'text-err'}`}
         >
           {result.matches
             ? sealVerified

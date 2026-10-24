@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { ForensicOnly } from '@/components/blockchain/ForensicOnly'
+import { useCopyToClipboard } from '@/lib/hooks/useCopyToClipboard'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 
@@ -35,6 +36,7 @@ const THUMBNAIL_CLASS = { default: 'w-[96px] h-[96px]', compact: 'w-11 h-11' } a
  * existed; the panel rendered the picture and dropped every one of them.
  */
 function ArtifactProvenance({ artifact }: { artifact: PhotoArtifact }) {
+  const { copy } = useCopyToClipboard()
   const hasFix = artifact.captured_lat != null && artifact.captured_lng != null
 
   return (
@@ -51,7 +53,7 @@ function ArtifactProvenance({ artifact }: { artifact: PhotoArtifact }) {
         <button
           onClick={e => {
             e.stopPropagation()
-            navigator.clipboard.writeText(artifact.file_hash).catch(() => {})
+            void copy(artifact.file_hash)
           }}
           title={artifact.file_hash}
           className="font-mono tracking-[0.02em] hover:text-on-surf transition-colors"

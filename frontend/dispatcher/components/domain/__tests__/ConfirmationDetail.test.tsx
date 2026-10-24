@@ -45,6 +45,21 @@ describe('ConfirmationDetail', () => {
     expect(screen.getByText(/1 parcel unaccounted for/i)).toBeInTheDocument()
   })
 
+  it('pluralises the unaccounted count', () => {
+    render(
+      <ConfirmationDetail
+        phase={{
+          ...makePhase('confirmation'),
+          parcel_count_destination: 1,
+          driver_visual_count: 1,
+        }}
+        originScannedCount={3}
+      />,
+    )
+
+    expect(screen.getByText(/2 parcels unaccounted for/i)).toBeInTheDocument()
+  })
+
   it('marks the driver parcel count as recorded, not checked', () => {
     render(
       <ConfirmationDetail

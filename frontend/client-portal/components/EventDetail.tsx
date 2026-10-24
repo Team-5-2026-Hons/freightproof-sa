@@ -28,7 +28,7 @@ function LocationCheck({ assessment }: { assessment: LocationAssessment }) {
       {assessment.truck_in_precinct != null && ` · truck ${assessment.truck_in_precinct ? 'inside' : 'outside'} precinct`}
       {reasons.length > 0 && (
         // Why a check was "unverified" (stale fix, poor accuracy…): a verdict without its reason reads as a failure.
-        <span className="block text-[12px] text-muted">{reasons.map(humanise).join('; ')}</span>
+        <span className="block text-meta text-muted">{reasons.map(humanise).join('; ')}</span>
       )}
     </Field>
   )
@@ -36,19 +36,19 @@ function LocationCheck({ assessment }: { assessment: LocationAssessment }) {
 
 export function EventDetail({ token, item }: { token: string; item: TimelineItem | null }) {
   if (!item) {
-    return <p className="text-[13px] text-muted">Select an event on the timeline to see its evidence.</p>
+    return <p className="text-small text-muted">Select an event on the timeline to see its evidence.</p>
   }
   const evidence = item.record.evidence
 
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="text-[15px] font-extrabold">{item.title}</h3>
+        <h3 className="text-lead font-extrabold">{item.title}</h3>
         <TierBadge tier={item.tier} />
       </div>
       {item.anchorWarning && (
         // The server's tier is overridden in buildTimeline; say why, or the missing badge looks like an omission.
-        <p role="alert" className="mb-2 text-[13px] font-semibold text-err">
+        <p role="alert" className="mb-2 text-small font-semibold text-err">
           One or more anchored fields differ from Hedera; the Anchored badge is withheld.
         </p>
       )}

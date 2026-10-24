@@ -61,6 +61,13 @@ function hasDot(label: string): boolean {
   return figureFor(label).querySelector('[aria-hidden="true"]') !== null
 }
 
+
+/** The source sits behind the frame's ⓘ, so open it before reading the line. */
+function sourceText(line: RegExp): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: 'About these figures' }))
+  return screen.getByText(line)
+}
+
 describe('PrecinctAnalyticsSummary — loading and errors', () => {
   it('shows a spinner while loading', () => {
     renderSummary({ rows: [], isLoading: true })
@@ -154,15 +161,14 @@ describe('PrecinctAnalyticsSummary — no closed trips in the range', () => {
     const line = /Tracker checks at this precinct/
 
     renderSummary()
-    expect(screen.getByText(line)).toBeInTheDocument()
-    expect(screen.getByText(line)).toHaveTextContent('simulated Pulsit feed')
+    expect(sourceText(line)).toHaveTextContent('simulated Pulsit feed')
     cleanup()
 
     renderSummary({ rows: [] })
-    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(sourceText(line)).toBeInTheDocument()
     cleanup()
 
     renderSummary({ error: 'Server unavailable' })
-    expect(screen.getByText(line)).toBeInTheDocument()
+    expect(sourceText(line)).toBeInTheDocument()
   })
 })

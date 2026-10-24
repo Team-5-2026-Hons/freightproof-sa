@@ -5906,6 +5906,26 @@
             "title": "Activation Dwell Minutes Sum",
             "type": "number"
           },
+          "arrival_dwell_events_count": {
+            "title": "Arrival Dwell Events Count",
+            "type": "integer"
+          },
+          "arrival_dwell_minutes_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "title": "Arrival Dwell Minutes Avg"
+          },
+          "arrival_dwell_minutes_sum": {
+            "title": "Arrival Dwell Minutes Sum",
+            "type": "number"
+          },
           "confirmation_dwell_events_count": {
             "title": "Confirmation Dwell Events Count",
             "type": "integer"
@@ -6103,6 +6123,8 @@
           "loading_dwell_events_count",
           "departure_dwell_minutes_sum",
           "departure_dwell_events_count",
+          "arrival_dwell_minutes_sum",
+          "arrival_dwell_events_count",
           "unloading_dwell_minutes_sum",
           "unloading_dwell_events_count",
           "confirmation_dwell_minutes_sum",
@@ -6116,6 +6138,7 @@
           "activation_dwell_minutes_avg",
           "loading_dwell_minutes_avg",
           "departure_dwell_minutes_avg",
+          "arrival_dwell_minutes_avg",
           "unloading_dwell_minutes_avg",
           "confirmation_dwell_minutes_avg"
         ],

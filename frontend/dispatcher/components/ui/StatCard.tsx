@@ -14,8 +14,8 @@ export function StatCard({ value, label, warn, success, loading }: StatCardProps
     <div className="bg-surf-lowest rounded-lg p-[16px_20px] flex-1 shadow-level-3">
       {loading ? (
         <>
-          <div className="h-[28px] w-[60px] rounded-[var(--r-sm)] bg-surf-high animate-pulse" />
-          <div className="h-[12px] w-[90px] rounded-[var(--r-sm)] bg-surf-high animate-pulse mt-[6px]" />
+          <div className="h-[28px] w-[60px] rounded-sm bg-surf-high animate-pulse" />
+          <div className="h-[12px] w-[90px] rounded-sm bg-surf-high animate-pulse mt-[6px]" />
         </>
       ) : (
         <>

@@ -19,7 +19,7 @@ import { PhaseCardBody, type RecordedProps } from './PhaseCardBody'
 import { nextTripStop } from './PhaseEvidence'
 import { PHASE_ANCHOR_PREFIX, TIMELINE_TOOLBAR_HEIGHT_VAR, PhaseTimelineItem } from './PhaseTimelineItem'
 
-const ANCHOR_FAILED_WARNING = 'Anchor failed — receipt still owed'
+const ANCHOR_FAILED_WARNING = 'Anchor failed, receipt still owed'
 
 interface Props {
   trip: Trip

@@ -15,12 +15,12 @@ const buttonVariants = cva(
     'rounded-xl transition-all duration-200 active:scale-[0.98]',
     // Disabled reads as "not yet", not "broken": each variant gets a full-strength muted
     // look below instead of the whole button faded to 40% (2.6:1, which drivers took for
-    // a dead control). What it is waiting for is said next to it (RequirementChecklist).
+    // a dead control). What it is waiting for is said next to it (RequirementChips).
     'disabled:cursor-not-allowed disabled:pointer-events-none',
   ),
   {
     variants: {
-      // Flat fills, no drop shadows (audit M10): controls sit ON the surface like iOS
+      // Flat fills, no drop shadows: controls sit ON the surface like iOS
       // buttons; elevation is reserved for layers that actually float (tab bar, sheets,
       // map chips), so a shadow keeps meaning "this is above the page".
       variant: {
@@ -32,24 +32,22 @@ const buttonVariants = cva(
         // active: because touch has no hover (hoverOnlyWhenSupported), the press needs
         // its own tone alongside the base scale-dip.
         secondary: 'bg-surface-container-lowest text-surface-on border border-outline-variant hover:bg-surface-container-low active:bg-surface-container-low disabled:bg-surface-container-low disabled:text-surface-on-variant',
-        danger:    'bg-error-container text-error-on-container hover:opacity-90 disabled:opacity-40',
-        // Overhaul secondary action (Directions, Edit, Retake, See all): a grey face, no
+        // Secondary action (Directions, Edit, Retake, See all): a grey face, no
         // hairline — on a white page the fill itself is the edge, as in Uber's app.
         fill:      'bg-fill text-surface-on active:bg-surface-container-high disabled:text-surface-on-variant',
-        // The confirm step of an irreversible action only (Sign Out in its sheet). The
-        // entry point stays the quieter `danger` tint, so red at full strength means
-        // "this is the last tap".
+        // The confirm step of an irreversible action only (Sign Out in its sheet), so
+        // full-strength red means "this is the last tap".
         destructive: 'bg-error text-error-on active:opacity-90 disabled:opacity-40',
       },
       size: {
-        // 44px is the app's documented touch-target minimum (see IconButton/Switch/
+        // 44px is the app's documented touch-target minimum (see Switch/
         // SubpageHeader) — sm was 36px, below it. Padding/text stay compact; only the
         // hit area grows, so dense sm buttons (filter toggles, inline pill actions)
         // still read as "small" while staying tappable one-handed in a truck.
         sm: 'px-4 py-2 text-subhead min-h-[44px] gap-1.5',
         md: 'px-6 py-3 text-body min-h-[44px] gap-2',
         lg: 'px-6 py-4 text-body min-h-[52px] gap-2 w-full',
-        // Overhaul capsules. Added, not changed: sign-in uses `lg` and must stay
+        // Capsules. Added, not changed: sign-in uses `lg` and must stay
         // pixel-identical, so the existing sizes keep their 14px corners. The base
         // `rounded-xl` loses to these `rounded-full`s in cn()'s merge.
         pill:      'px-6 text-body min-h-[56px] gap-2 w-full rounded-full',

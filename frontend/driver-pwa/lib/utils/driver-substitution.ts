@@ -1,4 +1,4 @@
-// Pure presentation rules for FP-83 driver substitution. No I/O, no React.
+// Pure presentation rules for driver substitution. No I/O, no React.
 //
 // Everything here READS the server's answer; nothing decides custody. Who is current, whether
 // a transfer completed and why it is blocked all come from the contract fields — this module
@@ -52,8 +52,8 @@ export function blockerMessage(blocker: SubstitutionCompletionBlocker): string {
 // own, so it must not word PENDING as if a verification were in progress on this phone.
 const IDENTITY_COPY: Record<IdvsStatus, string> = {
   verified: 'Identity verified on the fleet record',
-  pending: 'Identity not yet verified — an admin at dispatch must review it',
-  failed: 'Identity verification failed — this handover cannot complete',
+  pending: 'Identity not yet verified: an admin at dispatch must review it',
+  failed: 'Identity verification failed: this handover cannot complete',
 }
 
 export function identityLabel(status: IdvsStatus): string {
@@ -71,9 +71,9 @@ export function substitutionStatusLine(request: SubstitutionRequestRead, role: S
     return request.replacement_request_id !== null ? 'Replaced by a new arrangement' : 'Handover cancelled'
   }
   if (request.request_format === 'immediate_v2' && role === 'outgoing') {
-    return hasConfirmed(request, 'incoming') ? 'Incoming acceptance saved — waiting on dispatch' : 'Transfer authorised — waiting for incoming driver'
+    return hasConfirmed(request, 'incoming') ? 'Incoming acceptance saved, waiting on dispatch' : 'Transfer authorised, waiting for incoming driver'
   }
-  if (request.completion_blocked_by !== null) return 'Saved — waiting on dispatch'
+  if (request.completion_blocked_by !== null) return 'Saved, waiting on dispatch'
   if (!hasConfirmed(request, role)) return 'Waiting for your handover check'
   const other = role === 'incoming' ? 'outgoing' : 'incoming'
   return request.missing_confirmations.includes(other)

@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/loading/Linehaul.tsx
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -8,6 +7,7 @@ import { SwipeToConfirm } from '@/components/phase/SwipeToConfirm'
 import { CameraCapture } from '@/components/phase/CameraCapture'
 import { WarehouseWaitAction, WarehouseWaitCard } from '@/components/phase/WarehouseWaitCard'
 import { useArtifactUpload } from '@/lib/hooks/useArtifactUpload'
+import { isPhaseBlocked } from '@/lib/phase'
 import { scanLinehaulSheet } from '@/lib/scan/scanLinehaulSheet'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { Linehaul as LinehaulDocument } from '@shared/lib/types/manifest'
@@ -23,11 +23,9 @@ interface LinehaulProps {
   onComplete: () => void | Promise<void>
 }
 
-// Replaces loading/VisualCount.tsx. The driver never enters the warehouse, so he cannot
-// honestly count what was loaded; what he IS given is the linehaul sheet — the driver-safe
-// summary (vehicle, driver, consolidated unit count, no contents). This step restores
-// H2Linehaul.tsx, deleted in 493b9fe, and reconnects manifest_service.get_linehaul_for_driver,
-// which has had no driver-side consumer since.
+// The driver never enters the warehouse, so he cannot honestly count what was loaded;
+// what he IS given is the linehaul sheet — the driver-safe summary (vehicle, driver,
+// consolidated unit count, no contents).
 //
 // NEVER render per-parcel data here. LinehaulResponse is deliberately narrow (its docstring
 // enforces the theft-risk rule); widening what this screen shows would defeat the reason the
@@ -38,11 +36,7 @@ export function Linehaul({
   // The server is the authority — it 409s a blocked completion regardless of what this
   // renders. This is the courteous half: tell the driver why nothing is actionable rather
   // than showing him a control that will fail.
-  //
-  // `blocked_on` is optional on the shared PhaseDescriptor type (not yet guaranteed by
-  // every fixture) — `phase.blocked_on !== null` would read `undefined !== null` and be
-  // permanently true, so the field is coalesced to null first.
-  const isBlocked = (phase.blocked_on ?? null) !== null
+  const isBlocked = isPhaseBlocked(phase)
 
   const { uploadNow } = useArtifactUpload(tripId, phase.phase_event_id)
 

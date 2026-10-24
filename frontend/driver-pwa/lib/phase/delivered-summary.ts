@@ -11,7 +11,7 @@ export interface DeliveredSummary {
 }
 
 /**
- * The facts on the "Delivered" screen (overhaul 9.5), read from the trip's own ledger:
+ * The facts on the "Delivered" screen, read from the trip's own ledger:
  * the last arrival's completion, the plan's due time, and each phase's anchor status.
  */
 export function deliveredSummary(trip: Trip): DeliveredSummary {

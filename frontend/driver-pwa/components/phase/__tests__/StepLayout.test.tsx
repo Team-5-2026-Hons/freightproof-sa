@@ -8,7 +8,6 @@ vi.mock('next/navigation', () => ({
 }))
 
 const departure = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'departure')!
-const arrival = SINGLE_LEG_PHASE_PLAN.find((p) => p.phase_type === 'arrival')!
 
 describe('StepLayout', () => {
   it('lists what the step needs, marking each item done or still needed', () => {

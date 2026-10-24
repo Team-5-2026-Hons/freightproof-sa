@@ -11,7 +11,7 @@ interface ExceptionCardProps {
 }
 
 /**
- * One open exception or dispatcher note as a row (overhaul 2.1/2.4). A note is
+ * One open exception or dispatcher note as a row. A note is
  * information — grey; a driver-visible exception needs attention — amber, never red: it
  * is already recorded, and red would read as "something is broken right now". Tapping
  * expands the full description.

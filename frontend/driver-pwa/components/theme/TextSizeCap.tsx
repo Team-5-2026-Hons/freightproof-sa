@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { rootFontPx } from '@/lib/hooks/useAccessibilityTextSize'
 
 // iOS Body at the first accessibility text size (AX1). The app's layouts are verified up
-// to here (Stage 9 audit: 25 screens clean, and read by eye). Above it, because spacing,
+// to here (25 screens checked, and read by eye). Above it, because spacing,
 // icons and tiles are rem-based and grow with the text, the In Transit map collapses and
 // paired controls stop fitting side by side. Capping is Apple's own answer for content
 // that cannot reflow further (UIKit's maximumContentSizeCategory): a driver on AX2–AX5

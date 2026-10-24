@@ -12,7 +12,7 @@ const orgId = (v: string): OrganizationId => v as unknown as OrganizationId
 function makePrecinct(overrides: Partial<Precinct> = {}): Precinct {
   return {
     id: precinctId('11111111-1111-4111-8111-111111111111'),
-    name: 'FedEx JHB — Linbro Park',
+    name: 'FedEx JHB · Linbro Park',
     principal_organization_id: orgId('22222222-2222-4222-8222-222222222222'),
     address: '14 Electron Avenue, Linbro Park, Johannesburg, 2065',
     latitude: -29.08520123,

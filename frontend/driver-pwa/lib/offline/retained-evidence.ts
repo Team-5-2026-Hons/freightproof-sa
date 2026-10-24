@@ -1,5 +1,4 @@
-// frontend/driver-pwa/lib/offline/retained-evidence.ts
-// FP-83: one read-only view over everything this phone is holding for the driver's decision —
+// One read-only view over everything this phone is holding for the driver's decision —
 // refused queue entries, refused exception reports, quarantined captures of unknown origin,
 // retained drafts and the unreadable-queue backup — plus the explicit actions on each one.
 // Nothing here deletes evidence except discardRetainedItem, which only the review screen

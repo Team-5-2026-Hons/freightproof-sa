@@ -83,7 +83,7 @@ function CollectionDetails({ context }: { context: DriverSubstitutionContextRead
 }
 
 /**
- * One driver-handover arrangement as the server states it (FP-83 T1): where and when, who the
+ * One driver-handover arrangement as the server states it: where and when, who the
  * other driver is, which vehicles change hands, and what is still outstanding. It offers no
  * confirm control — recording the handover is its own evidence flow (T2) — and it never
  * presents a pending arrangement as a completed custody change.
@@ -133,7 +133,7 @@ export function DriverSubstitutionCard({ request, role, context: preloaded }: Dr
         {blocker !== null && isPending ? `${request.request_format === 'immediate_v2' && role === 'outgoing' ? "Incoming acceptance is saved." : "Your check is saved."} ${blockerMessage(blocker)}` : undefined}
       </StatusBanner>
 
-      {request.request_format === 'immediate_v2' && role === 'outgoing' && <p className="mt-2 text-subhead">Not requested — notification only. You do not need to confirm or record a location.</p>}
+      {request.request_format === 'immediate_v2' && role === 'outgoing' && <p className="mt-2 text-subhead">Not requested (notification only). You do not need to confirm or record a location.</p>}
       <dl className="mt-2 divide-y divide-hairline">
         {request.exchange && <Fact label="Exchange point">
           <span className="block">{request.exchange.label}</span>

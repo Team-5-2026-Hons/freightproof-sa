@@ -67,8 +67,9 @@ export function ProfileMenu({ collapsed = false, onClose }: Props): JSX.Element 
 
   function logOut(): void {
     setOpen(false)
-    // Errors from the auth port surface as an unhandled rejection otherwise; the session
-    // is cleared locally either way, so there is nothing for the dispatcher to retry.
+    // The session is cleared locally even when the auth port call fails (AuthContext logs
+    // that), so there is nothing for the dispatcher to retry. This only keeps any other
+    // failure from becoming an unhandled rejection.
     signOut().catch((error: unknown) => console.error('ProfileMenu: sign-out failed', error))
   }
 

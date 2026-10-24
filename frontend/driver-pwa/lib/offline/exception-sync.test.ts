@@ -10,8 +10,9 @@ import {
   type ExceptionPhotoRecord,
 } from './exception-store'
 import {
-  DEFAULT_RATE_LIMIT_RETRY_MS, __resetExceptionSyncForTests, sendExceptionReport, tryReportLock, waitReportLock,
+  __resetExceptionSyncForTests, sendExceptionReport, tryReportLock, waitReportLock,
 } from './exception-sync'
+import { DEFAULT_RATE_LIMIT_RETRY_MS } from './live-write-conflict'
 import { createFakeIndexedDb } from './testing/fake-indexeddb'
 
 vi.mock('@/lib/api/artifacts', () => ({ uploadArtifact: vi.fn() }))

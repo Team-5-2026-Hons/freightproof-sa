@@ -1,4 +1,3 @@
-// frontend/driver-pwa/lib/offline/exception-sync.ts
 // The one place that uploads an exception report's photos and posts the report. Photo
 // uploads and the report POST are separate requests, so every step is ordered to be safe
 // to repeat: an artifact id is persisted the moment it exists (a crash never re-uploads),
@@ -13,13 +12,10 @@ import {
   type ExceptionEnvelope,
 } from './exception-store'
 import {
-  DEFAULT_RATE_LIMIT_RETRY_MS,
   classifyLiveWriteFailure,
   retainedAttention,
   type RetainedAttention,
 } from './live-write-conflict'
-
-export { DEFAULT_RATE_LIMIT_RETRY_MS }
 
 export type ExceptionSendOutcome =
   | { kind: 'acknowledged' }
@@ -30,7 +26,7 @@ export type ExceptionSendOutcome =
   /** Another caller already holds this report. */
   | { kind: 'busy' }
   /**
-   * FP-83: captured by a different account than the one signed in now (or by an unknown one).
+   * Captured by a different account than the one signed in now (or by an unknown one).
    * Nothing is sent: replaying A's report with B's token would file it as B's.
    */
   | { kind: 'not-yours' }
@@ -158,7 +154,7 @@ async function run(envelope: ExceptionEnvelope, options: ExceptionSendOptions): 
   const { durable, post, onProgress } = options
   const id = envelope.clientReportId
   const lease = captureActorLease()
-  // FP-83: only the capturing account may send. A legacy envelope (no actor) is quarantined
+  // Only the capturing account may send. A legacy envelope (no actor) is quarantined
   // by the migration and never reaches here; this guards a report from a previous sign-in.
   if (envelope.status === 'quarantined' || lease === null || envelope.actorId !== lease.actorId) {
     return { kind: 'not-yours' }

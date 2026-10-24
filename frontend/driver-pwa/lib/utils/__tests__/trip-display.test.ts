@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { dayTile, durationLabel, groupByMonth, pastOutcome, placeParts } from '../trip-display'
+import { dayTile, durationLabel, groupByMonth, pastOutcome, placeOf, placeParts } from '../trip-display'
+import { precinctName } from '../precinct-name'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 
 function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
@@ -10,8 +11,8 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
     trip_type: 'loaded',
     origin_precinct_id: null,
     destination_precinct_id: null,
-    origin_precinct_name: 'FedEx JHB — Linbro Park',
-    destination_precinct_name: 'FedEx DBN — Riverhorse Valley',
+    origin_precinct_name: 'FedEx JHB · Linbro Park',
+    destination_precinct_name: 'FedEx DBN · Riverhorse Valley',
     planned_departure_at: '2026-05-03T09:00:00Z',
     actual_departure_at: '2026-05-03T09:00:00Z',
     planned_arrival_at: '2026-05-03T19:30:00Z',
@@ -23,8 +24,26 @@ function summary(overrides: Partial<DriverTripSummary>): DriverTripSummary {
   }
 }
 
+describe('placeOf', () => {
+  it('prefers the server-resolved name', () => {
+    expect(placeOf('FedEx JHB · Linbro Park', 'any-id')).toBe('FedEx JHB · Linbro Park')
+  })
+
+  it('falls back to the local precinct lookup when the server sent no name', () => {
+    expect(placeOf(null, 'some-precinct-id')).toBe(precinctName('some-precinct-id'))
+  })
+
+  it('says Unknown rather than showing nothing when there is neither', () => {
+    expect(placeOf(null, null)).toBe('Unknown')
+  })
+})
+
 describe('placeParts', () => {
   it('test_splits_a_precinct_name_into_place_and_area', () => {
+    expect(placeParts('FedEx JHB · Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
+  })
+
+  it('test_splits_a_name_saved_with_the_older_em_dash_separator', () => {
     expect(placeParts('FedEx JHB — Linbro Park')).toEqual({ name: 'FedEx JHB', detail: 'Linbro Park' })
   })
 

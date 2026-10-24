@@ -86,7 +86,7 @@ export function DriverTransferDetail({ trip, substitutionId, onChanged }: Props)
     </Group>
 
     <Group title="Driver notifications">
-      {data.confirmation_policy === 'incoming_acceptance_v2' && <InfoRow label="Outgoing driver’s confirmation" value="Not requested — notification only" />}
+      {data.confirmation_policy === 'incoming_acceptance_v2' && <InfoRow label="Outgoing driver’s confirmation" value="Not requested (notification only)" />}
       {(data.outgoing_notices ?? []).map(notice => <InfoRow key={notice.id} label="Outgoing driver notified"
         value={`${NOTICE_KIND_LABELS[notice.kind]}, recorded ${fmtDateTime(notice.created_at)} · ${notice.read_at ? `read ${fmtDateTime(notice.read_at)}` : 'Unread'}`} />)}
       {!data.outgoing_notices?.length && <p>Outgoing notification facts not recorded.</p>}

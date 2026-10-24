@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/confirmation/Reconciliation.tsx
 'use client'
 
 import type { ReactNode } from 'react'
@@ -34,7 +33,6 @@ function Row({ icon, label, children }: { icon: ReactNode; label: string; childr
 }
 
 interface ReconciliationProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: ConfirmationEvidence
@@ -42,9 +40,8 @@ interface ReconciliationProps {
   onComplete: () => void | Promise<void>
 }
 
-export function Reconciliation({ tripId, phase, stepIndex, draft, onUpdate, onComplete }: ReconciliationProps) {
-  // See loading/VisualCount.tsx — onComplete's result is forwarded, never dropped, so
-  // SwipeToConfirm can tell an in-flight submit from a finished one.
+export function Reconciliation({ phase, stepIndex, draft, onUpdate, onComplete }: ReconciliationProps) {
+  // Return onComplete's promise so SwipeToConfirm can show in-flight state.
   function handleConfirm(): void | Promise<void> {
     onUpdate({ reconciliationNote: 'Driver confirmed delivery reconciliation at destination.' })
     return onComplete()

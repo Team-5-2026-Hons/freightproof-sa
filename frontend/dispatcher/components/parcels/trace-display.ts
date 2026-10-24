@@ -71,8 +71,8 @@ export function progressLabel(progress: ParcelProgress, phases: readonly ParcelT
   if (progress.position === 'before_pickup') return 'Awaiting pickup'
   if (progress.position === 'after_delivery') return progress.has_overrides ? 'Journey resolved with an override' : 'Delivery phase recorded'
   const current = phases.find(phase => phase.id === progress.phase_event_id)
-  if (current?.relevance === 'trip_context') return 'At an intermediate stop — other cargo handling'
-  if (progress.phase_type === 'in_transit') return 'In transit — awaiting arrival attestation'
+  if (current?.relevance === 'trip_context') return 'At an intermediate stop (other cargo handling)'
+  if (progress.phase_type === 'in_transit') return 'In transit, awaiting arrival attestation'
   const name = progress.phase_type ? PHASE_NAMES[progress.phase_type] : 'Next phase'
   return progress.phase_status === 'in_progress' ? `${name} in progress` : `Awaiting ${name.toLowerCase()}`
 }
@@ -88,7 +88,7 @@ export function locationLabel(journey: ParcelJourney): string {
   if (!fix) return 'No recorded position within this consignment’s journey'
   if (fix.precinct_confirmed === true && fix.precinct_name) return `Vehicle recorded at ${fix.precinct_name}`
   if (fix.precinct_confirmed === false && fix.precinct_name) return `Vehicle recorded outside ${fix.precinct_name} tolerance`
-  return 'Position recorded — facility unverified'
+  return 'Position recorded, facility unverified'
 }
 
 // --- Recorded-state helpers ------------------------------------------------------------------------

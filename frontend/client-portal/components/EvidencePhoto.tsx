@@ -127,29 +127,29 @@ export function EvidencePhoto({ token, file, label, receiptId }: Props) {
             className="h-full w-full object-contain"
           />
         )}
-        {load.state === 'ready' && isImage && imageFailed && <span className="text-[12px] text-warn">Could not display this image</span>}
-        {load.state === 'ready' && !isImage && <span className="text-[12px] text-muted">{file.mime_type} document</span>}
+        {load.state === 'ready' && isImage && imageFailed && <span className="text-meta text-warn">Could not display this image</span>}
+        {load.state === 'ready' && !isImage && <span className="text-meta text-muted">{file.mime_type} document</span>}
         {load.state === 'ready' && (!isImage || imageFailed) && (
-          <a href={load.url} target="_blank" rel="noopener" className="no-print inline-flex min-h-11 items-center text-[12px] font-semibold text-sec underline">
+          <a href={load.url} target="_blank" rel="noopener" className="no-print inline-flex min-h-11 items-center text-meta font-semibold text-sec underline">
             Open file
           </a>
         )}
-        {load.state === 'loading' && <span className="text-[12px] text-muted">Loading…</span>}
-        {failure && <span className="text-center text-[12px] text-warn">{failure.text}</span>}
+        {load.state === 'loading' && <span className="text-meta text-muted">Loading…</span>}
+        {failure && <span className="text-center text-meta text-warn">{failure.text}</span>}
         {failure?.retry && (
-          <button type="button" onClick={retry} className="no-print min-h-11 rounded-md bg-surf-high px-3 py-2 text-[12px] font-semibold">
+          <button type="button" onClick={retry} className="no-print min-h-11 rounded-md bg-surf-high px-3 py-2 text-meta font-semibold">
             Retry
           </button>
         )}
       </div>
-      <figcaption className="mt-2 space-y-1 text-[12px]">
+      <figcaption className="mt-2 space-y-1 text-meta">
         <span className="flex items-center justify-between gap-2">
           <span className="font-semibold">{name}</span>
           <TierBadge tier={file.tier} />
         </span>
-        <span className="num block break-all text-[11px] text-muted">sha256 {file.sha256}</span>
+        <span className="num block break-all text-caption text-muted">sha256 {file.sha256}</span>
         {receiptId !== undefined && (
-          <span className="num block break-all text-[11px] text-muted">
+          <span className="num block break-all text-caption text-muted">
             {receiptId === null ? 'Not covered by a receipt' : `Committed by receipt ${receiptId}`}
           </span>
         )}
@@ -157,7 +157,7 @@ export function EvidencePhoto({ token, file, label, receiptId }: Props) {
           type="button"
           disabled={load.state !== 'ready'}
           onClick={() => void verifyAgain()}
-          className="no-print min-h-11 rounded-md bg-surf-high px-3 py-2 text-[12px] font-semibold disabled:opacity-50"
+          className="no-print min-h-11 rounded-md bg-surf-high px-3 py-2 text-meta font-semibold disabled:opacity-50"
         >
           Verify again
         </button>

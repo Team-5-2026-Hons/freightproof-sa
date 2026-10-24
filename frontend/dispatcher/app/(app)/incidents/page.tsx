@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import { TopBar } from '@/components/ui/TopBar'
+import { InfoPopover } from '@/components/analytics/fleet/InfoPopover'
 import { SecHead } from '@/components/ui/SecHead'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -117,7 +118,10 @@ function IncidentsList(): React.JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <TopBar title="Incidents" />
+      <TopBar
+        title="Incidents"
+        badge={<InfoPopover title="Incidents" ariaLabel="About incidents" question={REPORT_HINT} />}
+      />
       <div className="px-6 pt-4">
         <Tabs
           tabs={STATUS_TABS}
@@ -138,8 +142,6 @@ function IncidentsList(): React.JSX.Element {
         <FilterSelect value={incidentType} onChange={changeType} options={TYPE_OPTIONS} ariaLabel="Incident type" />
         <FilterSelect value={owner} onChange={changeOwner} options={OWNER_OPTIONS} ariaLabel="Investigated by" />
       </ListToolbar>
-      {/* Muted, not the TopBar's `sub`: that is link blue, and this is a hint rather than a link. */}
-      <p className="-mt-1 px-6 pb-3 text-xs text-on-surf-v">{REPORT_HINT}</p>
 
       <div
         id="incident-results"

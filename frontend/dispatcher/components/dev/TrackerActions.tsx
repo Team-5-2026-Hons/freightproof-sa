@@ -58,7 +58,7 @@ export function TrackerActions({ tripId, stage, vehicles, busy, onScenario, onCh
   return (
     <section aria-label="Tracker" className="space-y-2">
       <h3 className="font-medium">
-        Tracker <span className="text-xs font-normal text-slate-500">(simulated — every finding comes from the real check)</span>
+        Tracker <span className="text-xs font-normal text-slate-500">(simulated: every finding comes from the real check)</span>
       </h3>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {buttons.map(b => (

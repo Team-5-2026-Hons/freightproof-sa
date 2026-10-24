@@ -81,6 +81,10 @@ _DEMO_DRIVER = DriverRead(
 _jwks_cache: dict | None = None
 _jwks_fetched_at: float = 0.0
 _JWKS_TTL_SECONDS: float = 3600.0  # 1-hour TTL; force-refresh on unknown kid for rotation.
+# The kid is read before the signature is checked, so anyone can send an unknown one. The
+# fetch blocks the event loop, so a forced refresh happens at most once per window rather
+# than once per forged token; a real rotation waits at most this long to be picked up.
+_JWKS_MIN_REFRESH_SECONDS: float = 60.0
 
 
 def _fetch_jwks() -> dict:
@@ -104,13 +108,15 @@ def _get_signing_key(kid: str) -> dict:
     for key in _get_jwks().get("keys", []):
         if key.get("kid") == kid:
             return key
-    # Not found — key may have rotated since last TTL refresh. Refresh once.
+    # Not found — key may have rotated since last TTL refresh. Refresh once, unless the
+    # cache is already fresher than the cooldown.
     global _jwks_cache, _jwks_fetched_at
-    _jwks_cache = _fetch_jwks()
-    _jwks_fetched_at = time.monotonic()
-    for key in _jwks_cache.get("keys", []):
-        if key.get("kid") == kid:
-            return key
+    if time.monotonic() - _jwks_fetched_at >= _JWKS_MIN_REFRESH_SECONDS:
+        _jwks_cache = _fetch_jwks()
+        _jwks_fetched_at = time.monotonic()
+        for key in _jwks_cache.get("keys", []):
+            if key.get("kid") == kid:
+                return key
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid token.",

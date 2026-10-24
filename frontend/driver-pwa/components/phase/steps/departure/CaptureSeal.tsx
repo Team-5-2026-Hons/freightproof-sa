@@ -1,4 +1,3 @@
-// frontend/driver-pwa/components/phase/steps/departure/CaptureSeal.tsx
 'use client'
 
 import { useEffect, useRef } from 'react'
@@ -100,7 +99,7 @@ export function CaptureSeal({ tripId, phase, stepIndex, draft, onUpdate, onCompl
         sealPhotoDataUrl={draft.sealPhotoDataUrl}
         sealPhotoCapturedAt={draft.capturedAt}
         formatError={showSealFormatHint ? 'Seal number must look like AB-1234 (two letters, four digits).' : undefined}
-        hint={readFromPhoto ? 'Read from the photo — check it matches the seal.' : undefined}
+        hint={readFromPhoto ? 'Read from the photo. Check it matches the seal.' : undefined}
         reading={reading}
         onSealNumberChange={(v) => onUpdate({ sealNumber: v })}
         onSealPhotoCapture={handleSealPhoto}

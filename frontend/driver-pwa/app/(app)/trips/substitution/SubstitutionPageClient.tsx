@@ -8,7 +8,7 @@ import { TabSubpage } from '@/components/layout/TabSubpage'
 import { StatusBanner } from '@/components/ui/StatusBanner'
 import { DriverSubstitutionFlow } from '@/components/trip/DriverSubstitutionFlow'
 
-/** FP-83 T2: the signed-in driver's own handover or takeover check for one arrangement. */
+/** The signed-in driver's own handover or takeover check for one arrangement. */
 export default function SubstitutionPageClient() {
   const searchParams = useSearchParams()
   const goBack = useBack(ROUTES.home)

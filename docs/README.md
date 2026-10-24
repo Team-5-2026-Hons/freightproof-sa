@@ -33,6 +33,8 @@ does not resolve disputed requirements or certify implementation claims.
 
 ## Historical records and evidence
 
+- [Iteration 4 materials](iteration4/) — submission documents, guidelines, marksheets, presentation, speaking script, and user story map.
+- Walkthroughs: [trip creation](TRIP_CREATION_WALKTHROUGH.md), [trip mutations demo](TRIP_MUTATIONS_DEMO.md), [trip creation Word walkthrough](Trip_Creation_Walkthrough.docx), [driver editing](Edit_Driver_Walkthrough.docx), and [vehicle editing](Edit_Vehicle_Horse_Trailer_Walkthrough.docx).
 - [Archive index](archive/INDEX.md) — superseded and completed documents moved out of the default reading set.
 - [Meeting minutes](meeting_minutes/) and [Iteration 3 documentation](Iteration_3_Documentation/) — stakeholder and academic evidence.
 - [Reviews](reviews/) and [audits](audit-2026-07-10-docs-and-backend.md) — findings that may require later disposition; they are not live defect lists.

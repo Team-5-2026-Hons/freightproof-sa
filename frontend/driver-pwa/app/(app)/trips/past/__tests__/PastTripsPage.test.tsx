@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { DriverTripSummary } from '@/lib/types/driver-trip'
 import { ROUTES } from '@/lib/constants/routes'

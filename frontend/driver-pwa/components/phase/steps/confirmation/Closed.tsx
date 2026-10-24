@@ -5,6 +5,7 @@ import { Check, ShieldCheck } from 'lucide-react'
 import { useOptionalTrip } from '@/lib/hooks/useOptionalTrip'
 import { useTripPlaces } from '@/lib/hooks/useTripPlaces'
 import { deliveredSummary } from '@/lib/phase/delivered-summary'
+import { isPhaseBlocked } from '@/lib/phase'
 import { formatTime } from '@/lib/utils/format-time'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@shared/lib/types/trip'
@@ -15,36 +16,27 @@ import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { ConfirmationEvidence } from '@/lib/types/evidence-draft'
 
 interface ClosedProps {
-  tripId: string
   phase: PhaseDescriptor
   stepIndex: number
   draft: ConfirmationEvidence
   onComplete: () => void | Promise<void>
 }
 
-export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedProps) {
+export function Closed({ phase, stepIndex, draft, onComplete }: ClosedProps) {
   // The trip summary rows need the session trip; outside one (tests, a cold deep link
   // mid-load) they are left out rather than guessed.
   const trip = useOptionalTrip()?.trip ?? null
   // Only THIS phase's draft: unloading fields (waybillHandedOver etc.) belong to a
   // separate phase_event_id and are already resolved server-side by this point.
   // driverVisualCount is deliberately excluded — it's optional, and gating on it made a
-  // skipped count silently unclosable. The signature half is the receiver's confirmation
-  // (FP-155), so this checks the artifact id the handover poll wrote into the draft.
+  // skipped count silently unclosable. The signature half is the receiver's confirmation,
+  // so this checks the artifact id the handover poll wrote into the draft.
   const isReady =
     draft.podPhotoDataUrl !== null &&
     Boolean(draft.podSignatureArtifactId)
 
   // Gated on the destination warehouse's scan-IN session (GATED_PHASES, phase_gate.py).
-  // Coalesced to null first: `blocked_on` is optional on the shared type, so a bare
-  // `!== null` reads `undefined !== null` and is permanently true.
-  const isBlocked = (phase.blocked_on ?? null) !== null
-
-  // Navigation stays with the caller: onComplete() submits, clears the draft, and
-  // advances. Its promise is returned so SwipeToConfirm holds the "Submitting…" lock.
-  function handleClose(): void | Promise<void> {
-    return onComplete()
-  }
+  const isBlocked = isPhaseBlocked(phase)
 
   // No success tick and no swipe while blocked: the control is omitted entirely rather
   // than left visible-but-disabled, and the wait card says why.
@@ -53,7 +45,7 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
       <StepLayout phase={phase} stepIndex={stepIndex} showTitle={false} action={<WarehouseWaitAction />}>
         <WarehouseWaitCard title="Scanning in progress">
           The warehouse is still scanning the parcels in at this stop. The trip will
-          close on its own once they finish. Your evidence is saved — no action is
+          close on its own once they finish. Your evidence is saved. No action is
           needed from you.
         </WarehouseWaitCard>
       </StepLayout>
@@ -69,7 +61,8 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
         { label: 'Proof of delivery photo', met: draft.podPhotoDataUrl !== null },
         { label: 'Receiver confirmation', met: Boolean(draft.podSignatureArtifactId) },
       ]}
-      action={<SwipeToConfirm label="Swipe to Close Trip" onConfirm={handleClose} disabled={!isReady} />}
+      // onComplete itself, not a wrapper: its promise is what holds SwipeToConfirm in Submitting.
+      action={<SwipeToConfirm label="Swipe to Close Trip" onConfirm={onComplete} disabled={!isReady} />}
     >
       <div className="flex flex-col items-center pt-8 text-center">
         <span className="flex size-28 items-center justify-center rounded-full bg-success-tint">
@@ -85,7 +78,7 @@ export function Closed({ tripId, phase, stepIndex, draft, onComplete }: ClosedPr
   )
 }
 
-/** Route, arrival and proof — read from the session trip's own ledger (overhaul 9.5). */
+/** Route, arrival and proof — read from the session trip's own ledger. */
 function TripFacts({ trip }: { trip: Trip }) {
   const places = useTripPlaces(trip)
   const { arrivedAt, onTime, anchored, total } = deliveredSummary(trip)

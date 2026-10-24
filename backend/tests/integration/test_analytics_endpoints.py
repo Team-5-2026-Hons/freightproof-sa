@@ -80,6 +80,12 @@ _SUBSTITUTION_MIGRATION_PATH = (
     / "migrations" / "versions" / "2026_10_19_tim_substitution_driver_analytics.py"
 )
 
+# Adds arrival to the driver view's phase dwell. Always run after the FP-83 recreation.
+_ARRIVAL_MIGRATION_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "migrations" / "versions" / "2026_10_23_ciaran_driver_analytics_arrival.py"
+)
+
 # SAST, the zone the views bucket months in — a fixed offset is exact (no DST).
 _SAST = timezone(timedelta(hours=settings.OPERATIONS_UTC_OFFSET_HOURS))
 _MINUTES_PER_HOUR = 60
@@ -99,6 +105,7 @@ _MIGRATION = _load_migration(_MIGRATION_PATH, "tom_analytics_read_models")
 _TRAILER_MIGRATION = _load_migration(_TRAILER_MIGRATION_PATH, "tom_trailer_vehicle_analytics")
 _LIVE_MIGRATION = _load_migration(_LIVE_MIGRATION_PATH, "tom_live_analytics_views")
 _SUBSTITUTION_MIGRATION = _load_migration(_SUBSTITUTION_MIGRATION_PATH, "tim_dsub_driver_analytics")
+_ARRIVAL_MIGRATION = _load_migration(_ARRIVAL_MIGRATION_PATH, "ciaran_drv_arrival_dwell")
 
 
 # ── The one hand-computed timeline ───────────────────────────────────────────
@@ -320,6 +327,7 @@ async def views(db_session: AsyncSession) -> None:
         *_TRAILER_MIGRATION.UPGRADE_STATEMENTS,
         *_LIVE_MIGRATION.UPGRADE_STATEMENTS,
         *_SUBSTITUTION_MIGRATION.UPGRADE_STATEMENTS,
+        *_ARRIVAL_MIGRATION.UPGRADE_STATEMENTS,
     ):
         await db_session.execute(text(statement))
 

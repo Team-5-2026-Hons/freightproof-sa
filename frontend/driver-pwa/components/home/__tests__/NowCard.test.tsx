@@ -40,7 +40,7 @@ function renderCard(trip: Trip, exceptions: readonly TripException[] = []) {
 }
 
 beforeEach(() => {
-  mockSummaries = [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB — Linbro Park', destination_precinct_name: 'FedEx DBN — Riverhorse Valley' }]
+  mockSummaries = [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB · Linbro Park', destination_precinct_name: 'FedEx DBN · Riverhorse Valley' }]
 })
 
 describe('NowCard — trip underway (2.1)', () => {

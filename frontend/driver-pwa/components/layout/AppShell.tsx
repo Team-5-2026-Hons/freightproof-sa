@@ -16,11 +16,11 @@ const ROUTE_TITLES: Record<string, string> = {
 }
 
 // Tabs whose screen opens with its own header, so the large title would say the same
-// thing twice: Profile leads with the driver's photo and name (overhaul 10.1). The title
+// thing twice: Profile leads with the driver's photo and name. The title
 // stays in the DOM, visually hidden, so the screen still announces its name.
 const HIDDEN_LARGE_TITLE = new Set(['/', '/profile'])
 
-// Tabs laid out to exactly one screen instead of scrolling (Tim, 14 Oct: Trips must not
+// Tabs laid out to exactly one screen instead of scrolling (Trips must not
 // scroll — its lists end above the tab bar and "See all" holds the rest). The page fills
 // the flex column below the title. The scrollport can still scroll, but only when the
 // content cannot fit at all — at the large accessibility text sizes — so a driver who

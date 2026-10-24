@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/hooks/useTripAutoRefresh.ts
-//
 // Pure timing/visibility mechanism. Owns the interval, the foreground listeners, the
 // single-flight guard, and the offline skip — knows nothing about trips, TripContext, or
 // what a "refresh" means.

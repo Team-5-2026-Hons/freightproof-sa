@@ -189,7 +189,7 @@ describe('compact rail (D45)', () => {
   })
   it.each([
     ['submitted', 'Submitted at completion'], ['after_close', 'Received after the phase closed'],
-    ['not_submitted', 'Not submitted'], ['trip_cancelled', 'Not submitted — trip cancelled'],
+    ['not_submitted', 'Not submitted'], ['trip_cancelled', 'Not submitted: trip cancelled'],
   ] as const)('preserves %s without images or links', (state, label) => {
     render(<PhaseActs {...props([evidenceAct('a', { state })])} density="compact" />)
 
@@ -330,7 +330,7 @@ describe('PhaseActs: the Recorded rail', () => {
 
   it.each([
     ['uploaded', 'Uploaded'], ['submitted', 'Submitted at completion'], ['not_submitted', 'Not submitted'],
-    ['after_close', 'Received after the phase closed'], ['trip_cancelled', 'Not submitted — trip cancelled'],
+    ['after_close', 'Received after the phase closed'], ['trip_cancelled', 'Not submitted: trip cancelled'],
   ] as const)('words the %s state as "%s"', (state, wording) => {
     render(<PhaseActs {...props([evidenceAct('a', { state })], { lookup: lookupWith([artifact('a')]) })} />)
 

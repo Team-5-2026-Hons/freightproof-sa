@@ -19,11 +19,15 @@ export function trailerCombo(selected: readonly Vehicle[]): TrailerCombo {
     return { valid: true, message: `${only.registration} · ${length}` }
   }
   if (selected.length === MAX_TRAILERS) {
-    const lengths = selected.map(t => t.length_m ?? 0).sort((a, b) => a - b)
+    // A missing length is named, not counted as 0 m: "0 m + 12 m" would blame the pair when the
+    // real problem is a trailer record with no length.
+    const unmeasured = selected.find(t => t.length_m == null)
+    if (unmeasured) return { valid: false, message: `${unmeasured.registration} has no recorded length` }
+    const lengths = selected.map(t => t.length_m as number).sort((a, b) => a - b)
     if (lengths[0] === SHORT_TRAILER_M && lengths[1] === LONG_TRAILER_M) {
       return { valid: true, message: '6 m + 12 m combination is valid' }
     }
-    return { valid: false, message: `${lengths[0]} m + ${lengths[1]} m exceeds the 18 m limit` }
+    return { valid: false, message: `Two trailers must be one ${SHORT_TRAILER_M} m and one ${LONG_TRAILER_M} m` }
   }
-  return { valid: false, message: 'Maximum 2 trailers allowed' }
+  return { valid: false, message: `Maximum ${MAX_TRAILERS} trailers allowed` }
 }

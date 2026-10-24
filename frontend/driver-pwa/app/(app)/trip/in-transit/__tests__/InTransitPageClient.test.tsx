@@ -89,7 +89,7 @@ vi.mock('@/lib/submission/phase-submitter', () => ({
 // "Heading to" names the destination from the driver's trip list (useTripPlaces).
 vi.mock('@/lib/hooks/useMyTrips', () => ({
   useMyTrips: () => ({
-    trips: [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB — Linbro Park', destination_precinct_name: 'FedEx DBN — Riverhorse Valley' }],
+    trips: [{ id: 'trip-1', origin_precinct_name: 'FedEx JHB · Linbro Park', destination_precinct_name: 'FedEx DBN · Riverhorse Valley' }],
     isLoading: false, loadError: null, reload: vi.fn(),
   }),
 }))

@@ -6,6 +6,7 @@ import { manifestLabel } from '@/lib/format/manifest'
 import { delayMinutes, fmtDelay } from '@/lib/format/schedule'
 import { fmtFull } from '@shared/lib/utils/datetime'
 import type { TripSeed } from '@/lib/trips/tripSeed'
+import { splitPrecinctName } from '@shared/lib/utils/precinct-name'
 
 export function isTerminalTrip(trip: Trip): boolean {
   return trip.status === 'closed' || trip.status === 'cancelled'
@@ -33,7 +34,7 @@ export function precinctAtPhase(trip: Trip, phase: PhaseDescriptor, precincts: P
 }
 
 export function precinctLabel(precinct: Precinct | undefined): string {
-  return precinct?.name.split('—')[0]?.trim() ?? 'Location unavailable'
+  return precinct ? splitPrecinctName(precinct.name).place.trim() : 'Location unavailable'
 }
 
 export function phaseStopLabel(trip: Trip, phase: PhaseDescriptor, precincts: Precinct[]): string {

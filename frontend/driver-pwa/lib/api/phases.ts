@@ -23,7 +23,7 @@ interface PhaseCompleteRequestBase {
   driver_captured_at: string
   location_warning_acknowledged_at?: string
   location_warning_reason?: string
-  // FP-83: the custody period the swipe happened in, captured with the evidence and replayed
+  // The custody period the swipe happened in, captured with the evidence and replayed
   // unchanged. Omitted when the server has sent none (only valid before any substitution).
   custody_sequence?: number
 }
@@ -220,7 +220,7 @@ async function artifactIdFor(request: ArtifactIdRequest, custodySequence: number
 
 /**
  * Where a phase body's artifact ids come from. The live submit uploads through /artifacts;
- * the FP-83 late-evidence path (lib/offline/late-evidence-sync.ts) uploads through its own
+ * the late-evidence path (lib/offline/late-evidence-sync.ts) uploads through its own
  * retained-for-review route. Injected so both build the identical body from one switch.
  */
 export type ArtifactResolver = (request: ArtifactIdRequest) => Promise<string>
@@ -264,7 +264,7 @@ export interface PhaseRequestInput {
 
 /**
  * The phase-complete body for a captured draft, without sending it. Throws the same local
- * validation errors submitPhase always has. Shared by the live submit and the FP-83
+ * validation errors submitPhase always has. Shared by the live submit and the
  * late-evidence path so a late phase report is exactly the body the live one would have been.
  */
 export async function buildPhaseCompleteRequest(
@@ -326,7 +326,7 @@ export async function buildPhaseCompleteRequest(
     case 'departure': {
       const e = evidence as DepartureEvidence
       if (e.sealPhotoDataUrl === null || e.sealNumber === null) {
-        throw new Error('Departure evidence incomplete — seal photo and seal number are required.')
+        throw new Error('Departure evidence incomplete: seal photo and seal number are required.')
       }
       // Not captured any more, but a pre-existing offline entry may still carry one —
       // forwarded when present rather than dropped.
@@ -364,12 +364,12 @@ export async function buildPhaseCompleteRequest(
       // Truthiness, not `=== null`, for the photo: a stale offline entry may have the
       // property absent entirely, and `undefined === null` is false.
       if (e.sealCondition === null || !e.sealPhotoDataUrl) {
-        throw new Error('Arrival evidence incomplete — seal condition and seal photo are required.')
+        throw new Error('Arrival evidence incomplete: seal condition and seal photo are required.')
       }
       // A missing seal has nothing to read a number off — required for every other
       // condition, but must never block completion when there is no seal to record.
       if (e.sealCondition !== 'missing' && e.sealNumberAtArrival === null) {
-        throw new Error('Arrival evidence incomplete — seal number is required unless the seal is missing.')
+        throw new Error('Arrival evidence incomplete: seal number is required unless the seal is missing.')
       }
       const sealPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.sealPhotoArtifactId,
@@ -409,7 +409,7 @@ export async function buildPhaseCompleteRequest(
       // required. The signature is already an artifact id: the receiver's own browser
       // rendered the attestation and the server stored it, so there's nothing to upload.
       if (e.podPhotoDataUrl === null || !e.podSignatureArtifactId) {
-        throw new Error('Confirmation evidence incomplete — POD photo and receiver confirmation are required.')
+        throw new Error('Confirmation evidence incomplete: POD photo and receiver confirmation are required.')
       }
       const podPhotoId = await resolve({
         tripId, artifactType: 'photo', readyId: e.podPhotoArtifactId,
@@ -458,7 +458,7 @@ export async function buildPhaseCompleteRequest(
 // `position` is the driver's silent phone fix at submit time; null is legal for every
 // phase except activation, which the backend requires. `driverCapturedAt` is stamped
 // once per attempt and reused across retries, so a delayed resend still reports the
-// original swipe instant. `custodySequence` (FP-83) is likewise the swipe's own period.
+// original swipe instant. `custodySequence` is likewise the swipe's own period.
 export async function submitPhase(
   tripId: string,
   phaseEventId: string,

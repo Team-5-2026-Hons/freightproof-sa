@@ -194,8 +194,19 @@ class Settings(BaseSettings):
     # Never disable when deployed: it is the only cap on Hedera and PP spend.
     RATE_LIMIT_ENABLED: bool = True
 
-    # Only enable behind a proxy that overwrites X-Forwarded-For, or IPs can be forged.
+    # Only enable behind a proxy whose edge guarantees CLIENT_IP_HEADER, or IPs can be forged.
     RATE_LIMIT_TRUST_PROXY_HEADERS: bool = False
+
+    # Which header the edge guarantees. X-Forwarded-For is only safe on an edge that
+    # OVERWRITES it (Railway, nginx). Fly's proxy APPENDS instead, so the left-most entry
+    # there is whatever the caller sent — set this to "fly-client-ip", which fly-proxy
+    # overwrites and a caller therefore cannot dictate.
+    CLIENT_IP_HEADER: str = "x-forwarded-for"
+
+    # Injected by the Fly machine, not by .env — the only reliable in-process signal that
+    # this is running on an appending edge. Read by config_validation to refuse the one
+    # combination that silently forges the receiver_ip evidence field.
+    FLY_APP_NAME: str = ""
 
     ENVIRONMENT: str = "development"
 

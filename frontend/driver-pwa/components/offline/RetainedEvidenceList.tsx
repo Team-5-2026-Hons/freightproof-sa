@@ -39,7 +39,7 @@ function lateOutcomeMessage(outcome: LateEvidenceOutcome): { kind: 'success' | '
     case 'already-recorded':
       return { kind: 'success', title: 'Already on record', body: 'The server already holds this capture from you.' }
     case 'transient':
-      return { kind: 'error', title: 'Not sent yet', body: 'No connection to the server. It is still kept here — try again shortly.' }
+      return { kind: 'error', title: 'Not sent yet', body: 'No connection to the server. It is still kept here. Try again shortly.' }
     case 'refused':
       return { kind: 'error', title: 'Not accepted', body: outcome.reason }
     case 'not-eligible':
@@ -58,7 +58,7 @@ function ItemRow({ item, onChanged }: ItemRowProps) {
   const { notify } = useToast()
   const [busy, setBusy] = useState(false)
   // Discard is the only irreversible action on this screen, so it takes a second,
-  // differently worded tap with the consequence stated (same pattern as OfflineBanner).
+  // differently worded tap with the consequence stated.
   const [confirmingDiscard, setConfirmingDiscard] = useState(false)
 
   const run = async (action: () => Promise<void>) => {
@@ -132,7 +132,7 @@ function ItemRow({ item, onChanged }: ItemRowProps) {
 const EMPTY_SNAPSHOT: RetainedEvidenceSnapshot = { items: [], heldForOtherAccounts: 0, receipts: [] }
 
 /**
- * FP-83 review screen for captures this phone is keeping: refused by the server, quarantined
+ * Review screen for captures this phone is keeping: refused by the server, quarantined
  * (capturer unknown) or retained drafts. Every action is explicit; nothing here is sent or
  * deleted without the driver choosing it, and a quarantined item is never presented as theirs.
  */

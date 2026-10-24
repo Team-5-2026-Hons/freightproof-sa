@@ -57,7 +57,7 @@ async function renderQueue() {
 // (clearAllMocks keeps the module-level mockResolvedValue implementations intact.)
 // The module-scope store reset must run AFTER localStorage.clear() — it recomputes
 // queue length from storage, so the order guarantees each test starts at length 0
-// with no leftover droppedCount or stuck flush mutex from a prior test.
+// with no leftover counts or stuck flush mutex from a prior test.
 beforeEach(() => {
   localStorage.clear()
   idb = createFakeIndexedDb()
@@ -191,7 +191,6 @@ describe('useOfflineQueue', () => {
 
     expect(submitPhase).toHaveBeenCalledTimes(1)
     expect(result.current.queueLength).toBe(0)
-    expect(result.current.droppedCount).toBe(0)
 
     // A second flush pass with nothing left queued must not re-send anything — proves
     // the completed replay was truly disposed of, not left half-resolved.
@@ -658,8 +657,6 @@ describe('useOfflineQueue', () => {
 
       expect(result.current.queueLength).toBe(0)
       expect(result.current.attentionCount).toBe(1)
-      expect(result.current.droppedCount).toBe(0)
-      act(() => result.current.dismissDropped())
       expect(result.current.attentionCount).toBe(1)
       expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
         expect.objectContaining({ status: 'needs-attention', actorId: 'driver-1', evidence: EVIDENCE }),
@@ -675,7 +672,6 @@ describe('useOfflineQueue', () => {
 
       expect(result.current.queueLength).toBe(0)
       expect(result.current.attentionCount).toBe(1)
-      expect(result.current.droppedCount).toBe(0)
       expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([
         expect.objectContaining({ status: 'needs-attention', evidence: EVIDENCE }),
       ])
@@ -692,7 +688,6 @@ describe('useOfflineQueue', () => {
 
       expect(JSON.parse(localStorage.getItem('fp_offline_queue') ?? '[]')).toEqual([])
       expect(result.current.attentionCount).toBe(0)
-      expect(result.current.droppedCount).toBe(0)
     })
   })
 
@@ -911,7 +906,6 @@ describe('queued exception photos', () => {
     expect(result.current.attentionCount).toBe(1)
     // A needs-attention report is not "waiting to sync": it will not retry by itself.
     expect(result.current.queueLength).toBe(0)
-    expect(result.current.droppedCount).toBe(0)
   })
 
   it('flush_409_is_never_dropped', async () => {
@@ -925,7 +919,6 @@ describe('queued exception photos', () => {
     // The phase queue drops 409s silently; a report must stay visible to the driver.
     expect(await getExceptionEnvelope('report-first')).toMatchObject({ status: 'needs-attention' })
     expect(result.current.attentionCount).toBe(1)
-    expect(result.current.droppedCount).toBe(0)
   })
 
   it('never sends a reduced photo set when the server terminally rejects one photo', async () => {
@@ -1108,7 +1101,6 @@ describe('legacy localStorage exception entries', () => {
     expect(uploadArtifact).not.toHaveBeenCalled()
     expect(raiseException).not.toHaveBeenCalled()
     expect(result.current.queueLength).toBe(1)
-    expect(result.current.droppedCount).toBe(0)
   })
 
   it('legacy_exception_left_in_localstorage_when_the_store_refuses_the_write', async () => {
@@ -1380,18 +1372,6 @@ describe('needs-attention reports', () => {
     expect(raiseException).toHaveBeenCalledTimes(1)
     expect(await listExceptionEnvelopes()).toEqual([])
     expect(result.current.attentionCount).toBe(0)
-  })
-
-  it('dismissAttention removes', async () => {
-    const { raiseException } = await import('@/lib/api/exceptions')
-    await seedAttention()
-    const { result } = await renderQueue()
-
-    await act(() => result.current.dismissAttention())
-
-    expect(await listExceptionEnvelopes()).toEqual([])
-    expect(result.current.attentionCount).toBe(0)
-    expect(raiseException).not.toHaveBeenCalled()
   })
 })
 it('stops_after_account_generation_changes', async () => {

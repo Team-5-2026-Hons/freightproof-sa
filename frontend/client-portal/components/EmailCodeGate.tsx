@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { PackError, STORAGE_BLOCKED_NOTICE, requestEmailCode, storageBlocked, verifyEmailCode } from '@/lib/api'
+import { Eyebrow } from './Eyebrow'
 
 // Shown instead of the pack when it was issued to an email address and this browser has
-// not yet entered the code sent there (FP-291). The code is never sent automatically on
+// not yet entered the code sent there. The code is never sent automatically on
 // page load: a link opened by a mail scanner or a link preview must not spend the
 // recipient's code allowance or fill their inbox.
 
@@ -103,7 +104,7 @@ export function EmailCodeGate({ token, emailHint, onVerified }: EmailCodeGatePro
   return (
     <main className="mx-auto flex max-w-md flex-col gap-5 px-4 py-20">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted">FreightProof audit pack</p>
+        <Eyebrow size="micro">FreightProof audit pack</Eyebrow>
         <h1 className="mt-1 text-xl font-extrabold">Confirm it&apos;s you</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           This pack was shared with <span className="num font-semibold text-ink">{shownHint}</span>. To open it, enter

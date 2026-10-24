@@ -3,7 +3,7 @@
 //
 //   'forward' (default) — drilling in: the new screen enters from the trailing edge.
 //   'back'              — a back control: it enters from the leading edge, so a screen
-//                         leaves the way it came (emil-apple-design §7, spatial consistency).
+//                         leaves the way it came.
 //   'none'              — a tab switch: iOS swaps tabs in place, it does not slide them.
 //
 // A module-level value rather than context: it only has to survive the gap between a

@@ -1,5 +1,3 @@
-// frontend/driver-pwa/lib/ocr/readSeal.ts
-//
 // Reads the seal number off the seal photo with the phone's own text recognition (ML Kit
 // on Android, Apple Vision on iOS). On-device: the photo is not sent anywhere for this,
 // it works without signal, and it costs nothing per photo. The browser PWA has no

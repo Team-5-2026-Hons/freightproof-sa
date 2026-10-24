@@ -101,6 +101,15 @@ export function isFinalPhase(
   return phases.every(other => other.sequence_number <= phase.sequence_number)
 }
 
+/**
+ * Whether the server says this phase is waiting on something outside the driver's hands
+ * (the warehouse's scan-in). `blocked_on` is optional on the shared type, so it is coalesced
+ * to null first: a bare `!== null` would read `undefined !== null` and be permanently true.
+ */
+export function isPhaseBlocked(phase: PhaseDescriptor): boolean {
+  return (phase.blocked_on ?? null) !== null
+}
+
 /** Whether this phase carries a Hedera anchor. */
 export function isAnchored(phase: PhaseDescriptor): boolean {
   return ANCHORED_PHASES.includes(phase.phase_type)

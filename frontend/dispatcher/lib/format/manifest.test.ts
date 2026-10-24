@@ -28,6 +28,10 @@ describe('fmtManifestCargo', () => {
   it('leaves the weight out when asked', () => {
     expect(fmtManifestCargo(totals, { withWeight: false })).toBe('2 waybills · 5 parcels')
   })
+
+  it('uses the singular for one waybill and one parcel', () => {
+    expect(fmtManifestCargo({ waybills: 1, parcels: 1, weight_kg: 3 })).toBe('1 waybill · 1 parcel · 3 kg')
+  })
 })
 
 describe('manifestKey', () => {

@@ -33,7 +33,7 @@ const CLEAR_TAB_BAR_AND_ACTION = 'pb-[calc(max(env(safe-area-inset-bottom),16px)
 
 /**
  * A screen pushed from a tab that keeps the tab bar (HIG tab-bars: "Make sure the tab bar
- * is visible when people navigate to different sections" — decision D3): the trip page
+ * is visible when people navigate to different sections"): the trip page
  * and the "See all" lists. Drive mode and phase steps stay full-screen instead.
  */
 export function TabSubpage({ title, subtitle, backLabel, onBack, right, action, children }: TabSubpageProps) {

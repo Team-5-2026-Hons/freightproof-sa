@@ -14,12 +14,12 @@ export function ExceptionAnchorList({ anchors }: { anchors: ExceptionAnchorRecor
   if (anchors.length === 0) return null
   return (
     <section aria-label="Record anchors" className="mt-3">
-      <h4 className="mb-1 text-[13px] font-bold">Record anchors</h4>
+      <h4 className="mb-1 text-small font-bold">Record anchors</h4>
       <ul className="space-y-1.5">
         {anchors.map((anchor) => {
           const reason = notAnchoredReason(anchor)
           return (
-            <li key={anchor.event_id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+            <li key={anchor.event_id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-meta">
               <span className="font-semibold">{ACTION_LABELS[anchor.action]}</span>
               <span className="num text-muted">{formatSast(anchor.occurred_at)}</span>
               {reason === null ? (
@@ -35,7 +35,7 @@ export function ExceptionAnchorList({ anchors }: { anchors: ExceptionAnchorRecor
           )
         })}
       </ul>
-      <p className="mt-2 text-[12px] text-muted">
+      <p className="mt-2 text-meta text-muted">
         A matching anchor shows the record was not changed after it was anchored. It does not prove the incident occurred as
         described, where it happened, or who is liable.
       </p>
