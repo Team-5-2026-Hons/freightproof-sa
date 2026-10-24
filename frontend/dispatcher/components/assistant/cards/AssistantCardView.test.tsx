@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AssistantCard, BookingRow, IncidentRow, RecordRef, TripRow } from '@shared/lib/types/assistant'
 import { AssistantCardView } from './AssistantCardView'
+import { ROUTES } from '@/lib/constants/routes'
 
 const HORSE: RecordRef = { kind: 'vehicle', id: 'v-1', label: 'CA 123-456', detail: 'horse', is_active: true }
 const DRIVER: RecordRef = { kind: 'driver', id: 'd-1', label: 'Timothy Gultig', detail: null, is_active: true }
@@ -53,7 +54,7 @@ describe('AssistantCardView', () => {
 
     show({ ...base, title: 'Active trips', full_list: 'dashboard' })
 
-    expect(screen.getByRole('link', { name: 'See them all on the Dashboard' })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: 'See them all on the Dashboard' })).toHaveAttribute('href', ROUTES.home)
   })
 
   it('a whole-day window reads as the day', () => {

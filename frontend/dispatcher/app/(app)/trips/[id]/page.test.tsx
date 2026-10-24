@@ -9,6 +9,7 @@ import type { TripException } from '@shared/lib/types/exception'
 import type { Trip } from '@shared/lib/types/trip'
 import { line } from '@/components/domain/__tests__/textLine'
 import { substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
+import { ROUTES } from '@/lib/constants/routes'
 
 const push = vi.fn()
 const replace = vi.fn()
@@ -344,7 +345,7 @@ describe('parcel search return navigation', () => {
     navigation.search.set('returnTo', '//other.example/path')
     render(<TripDetailPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
-    expect(push).toHaveBeenCalledWith('/')
+    expect(push).toHaveBeenCalledWith(ROUTES.home)
   })
 })
 

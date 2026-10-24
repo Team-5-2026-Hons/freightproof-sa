@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { OpenPageAction } from '@shared/lib/types/assistant'
 import { hrefForAction } from './links'
+import { ROUTES } from '@/lib/constants/routes'
 
 function page(overrides: Partial<OpenPageAction>): OpenPageAction {
   return { kind: 'open_page', label: 'Open', page: 'dashboard', record_id: null, filters: {}, ...overrides }
@@ -16,12 +17,12 @@ describe('assistant button links', () => {
 
   it('falls back to the list when a record page has no id (a trip to the Dashboard: there is no trips list)', () => {
     expect(hrefForAction(page({ page: 'driver' }))).toBe('/fleet/drivers')
-    expect(hrefForAction(page({ page: 'trip' }))).toBe('/')
+    expect(hrefForAction(page({ page: 'trip' }))).toBe(ROUTES.home)
   })
 
   it("keeps only filters the page reads, and drops the rest", () => {
     expect(hrefForAction(page({ page: 'exceptions', filters: { severity: 'critical', evil: 'x' } }))).toBe('/exceptions?severity=critical')
-    expect(hrefForAction(page({ page: 'dashboard', filters: { severity: 'critical' } }))).toBe('/')
+    expect(hrefForAction(page({ page: 'dashboard', filters: { severity: 'critical' } }))).toBe(ROUTES.home)
   })
 
   it('opens the Add forms, empty: nothing a server reply carried reaches them', () => {

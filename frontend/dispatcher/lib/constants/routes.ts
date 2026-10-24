@@ -1,7 +1,9 @@
 // All dispatcher route strings in one place — never write URL literals in components.
 
 export const ROUTES = {
-  home:            '/',
+  // The public landing page owns '/', so the signed-in dashboard lives one level down.
+  landing:         '/',
+  home:            '/dashboard',
   analytics:       '/analytics',
   trips:           '/trips',
   tripDetail:      (id: string) => `/trips/${id}`,
@@ -25,5 +27,9 @@ export const ROUTES = {
   settingsSection: (id: string) => `/settings?section=${id}`,
   login:           '/login',
   dev:             '/dev',
+  legalPrivacy:    '/legal/privacy',
+  legalTerms:      '/legal/terms',
+  legalCookies:    '/legal/cookies',
+  legalCompany:    '/legal/company',
   devTokens:       '/dev/tokens',
 } as const

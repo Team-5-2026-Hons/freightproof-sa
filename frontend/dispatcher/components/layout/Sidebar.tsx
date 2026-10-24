@@ -43,7 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: ['/'] },
+      { label: 'Dashboard', href: ROUTES.home, icon: 'home', activePatterns: [ROUTES.home] },
       // Analytics and parcel search are read-only and organisation-scoped.
       { label: 'Analytics', href: ROUTES.analytics, icon: 'bars', activePatterns: [ROUTES.analytics] },
     ],
