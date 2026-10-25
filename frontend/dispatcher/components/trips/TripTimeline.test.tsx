@@ -1827,6 +1827,24 @@ describe('incidents on the rail', () => {
     expect(order[1].compareDocumentPosition(order[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('draws_an_incident_on_the_road_inside_the_in_transit_card', () => {
+    const trip = timedTrip()
+    const departedAt = Date.parse(phaseOf(trip, 'departure').completed_at!)
+    renderWith(trip, [incidentAt('i1', 'INC1', new Date(departedAt + 120_000).toISOString())])
+
+    const transit = document.getElementById(`phase-${phaseOf(trip, 'in_transit').phase_event_id}`)!
+    expect(within(transit).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+  })
+
+  it('keeps_an_in_transit_incident_visible_when_minimised', () => {
+    const trip = timedTrip()
+    const departedAt = Date.parse(phaseOf(trip, 'departure').completed_at!)
+    renderWith(trip, [incidentAt('i1', 'INC1', new Date(departedAt + 120_000).toISOString())], 'minimised')
+
+    const transit = document.getElementById(`phase-${phaseOf(trip, 'in_transit').phase_event_id}`)!
+    expect(within(transit).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+  })
+
   it('shows_the_incident_in_the_minimised_view_too', () => {
     const trip = timedTrip()
     renderWith(trip, [incidentAt('i1', 'INC1', minutes(25))], 'minimised')
