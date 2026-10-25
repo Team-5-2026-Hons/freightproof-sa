@@ -192,6 +192,23 @@ describe('DriverSubstitutionProvider', () => {
     expect(harness.noteTripHandedOver).not.toHaveBeenCalled()
   })
 
+  // An immediate_v2 transfer's confirmation_policy is incoming_acceptance_v2 — only the
+  // incoming driver confirms, so the outgoing driver's own session never fetched this
+  // request while it was pending and never learned its role. Before this, a completed
+  // notice like that fell into the generic "unknown role" branch above and only refreshed
+  // quietly: the trip vanished with no "handed over" notice. The one fact that still tells
+  // the two apart is whether this driver is CURRENTLY working the exact trip the notice
+  // names — only the outgoing side of an unseen handover is.
+  it('test_completion_with_unknown_role_on_the_current_trip_is_treated_as_outgoing', async () => {
+    mockFetchNotices.mockResolvedValue([unreadCompleted])
+    const currentTrip = { id: unreadCompleted.trip_id } as unknown as TripState['trip']
+
+    const harness = renderProvider(driverWithId(OUTGOING_ID), { trip: currentTrip })
+
+    await waitFor(() => expect(harness.noteTripHandedOver).toHaveBeenCalledWith(unreadCompleted.trip_id))
+    expect(harness.refreshQuietly).not.toHaveBeenCalled()
+  })
+
   it('test_failed_refresh_keeps_what_already_loaded', async () => {
     mockFetchPending.mockResolvedValueOnce([incomingPending]).mockRejectedValue(new Error('offline'))
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
