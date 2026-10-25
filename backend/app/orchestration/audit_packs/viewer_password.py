@@ -57,7 +57,10 @@ class PasswordCheck:
 
 
 def requires_viewer_password(pack: AuditPack) -> bool:
-    return pack.recipient_email is not None
+    # Needs the password as well as the email: a pack issued to an email address under the old
+    # one-time-code flow has no password_hash, and gating it would lock its recipient out for
+    # good, since no password was ever mailed to them.
+    return pack.recipient_email is not None and pack.password_hash is not None
 
 
 def mask_email(address: str) -> str:
@@ -121,7 +124,10 @@ async def verify_password(db: AsyncSession, pack: AuditPack, *, password: str, n
     shorter grant would only make the recipient re-enter the password for no added
     protection.
     """
-    assert pack.password_hash is not None  # requires_viewer_password checked it
+    if pack.password_hash is None:
+        # No password was ever issued (a link-only or pre-password pack): nothing can match,
+        # and a direct POST here must read as a wrong guess, not crash into a 500.
+        return PasswordCheck(outcome="wrong")
 
     if pack.password_locked_until is not None:
         if pack.password_locked_until > now:

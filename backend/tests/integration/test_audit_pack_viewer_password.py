@@ -313,6 +313,21 @@ async def test_pack_without_email_opens_with_link_alone(client, db_session, audi
     assert response.status_code == 200
 
 
+async def test_pack_emailed_before_passwords_opens_with_link_alone(client, db_session, audit_trip, storage, outbox):
+    """A pack issued to an email under the old one-time-code flow has no password to enter."""
+    # Arrange
+    issued = await _issue(db_session, audit_trip, outbox)
+    issued.pack.password_hash = None
+    await db_session.flush()
+
+    # Act
+    response = await client.get(f"{PUBLIC}/{issued.raw_token}")
+
+    # Assert
+    assert response.status_code == 200
+    assert issued.pack.recipient_email == RECIPIENT
+
+
 # ── Entering the password ───────────────────────────────────────────────────────────
 
 
@@ -394,6 +409,20 @@ async def test_password_works_more_than_once(client, db_session, audit_trip, sto
 
     # Assert
     assert response.status_code == 200
+
+
+async def test_verify_on_pack_without_password_is_400_not_500(client, db_session, audit_trip, storage, outbox):
+    # Arrange
+    issued = await _issue(db_session, audit_trip, outbox)
+    issued.pack.password_hash = None
+    await db_session.flush()
+
+    # Act
+    response = await client.post(f"{PUBLIC}/{issued.raw_token}/password/verify", json={"password": "anything-at-all"})
+
+    # Assert
+    assert response.status_code == 400
+    assert response.json()["reason"] == "wrong"
 
 
 async def test_verify_unknown_token_is_404(client, db_session, audit_trip, storage, outbox):
