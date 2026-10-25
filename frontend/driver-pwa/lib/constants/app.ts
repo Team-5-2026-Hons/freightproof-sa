@@ -13,7 +13,8 @@ export const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? 'support@f
 // (lib/hooks/useTripAutoRefresh.ts) — close enough to live without wasting battery/data.
 export const TRIP_POLL_INTERVAL_MS = 15_000
 
-// The same question asked by a driver who has no trip yet. Slower on purpose: a blocked
-// gate clears in seconds and the driver is standing at it, whereas an assignment is
-// minutes away and this poll runs for as long as the app is open on an empty Home.
-export const UNASSIGNED_TRIP_POLL_INTERVAL_MS = 60_000
+// The same question asked by a driver who has no trip yet. Short because nothing pushes a
+// new assignment to the phone (there is no backend push sender), so this poll is the only
+// way a trip the dispatcher just created reaches a Home left open on the dash. At 60 s it
+// read as "the trip never arrives"; one small GET every 10 s is cheap at fleet scale.
+export const UNASSIGNED_TRIP_POLL_INTERVAL_MS = 10_000
