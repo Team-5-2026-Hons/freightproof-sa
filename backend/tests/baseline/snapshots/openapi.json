@@ -1335,7 +1335,7 @@
       },
       "AuditPackIssued": {
         "additionalProperties": false,
-        "description": "Returned once, at issue: the only time the raw share token exists anywhere.",
+        "description": "Returned once, at issue: the only time the raw share token and password exist\nanywhere outside the email already sent. viewer_password is shown so the dispatcher\ncan still pass it on if that automatic send failed; None for a legacy pack with no\nrecipient email.",
         "properties": {
           "pack": {
             "$ref": "#/components/schemas/AuditPackRead"
@@ -1351,6 +1351,17 @@
           "verify_url": {
             "title": "Verify Url",
             "type": "string"
+          },
+          "viewer_password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Viewer Password"
           }
         },
         "required": [
@@ -7214,36 +7225,6 @@
           "p90"
         ],
         "title": "DurationStats",
-        "type": "object"
-      },
-      "EmailCodeEntry": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "pattern": "^[0-9]{6}$",
-            "title": "Code",
-            "type": "string"
-          }
-        },
-        "required": [
-          "code"
-        ],
-        "title": "EmailCodeEntry",
-        "type": "object"
-      },
-      "EmailCodeSent": {
-        "additionalProperties": false,
-        "description": "Where the code went, masked (j***@santam.co.za): the holder of a forwarded link\nlearns which inbox to ask about, not the full address.",
-        "properties": {
-          "email_hint": {
-            "title": "Email Hint",
-            "type": "string"
-          }
-        },
-        "required": [
-          "email_hint"
-        ],
-        "title": "EmailCodeSent",
         "type": "object"
       },
       "EvidenceAnchorSummary": {
@@ -14777,6 +14758,22 @@
           "recorded_at"
         ],
         "title": "ParticipationActionRef",
+        "type": "object"
+      },
+      "PasswordEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "PasswordEntry",
         "type": "object"
       },
       "PatternBar": {
@@ -26538,100 +26535,6 @@
         ]
       }
     },
-    "/api/v1/public/audit-packs/{token}/email-code": {
-      "post": {
-        "operationId": "request_email_code_endpoint_api_v1_public_audit_packs__token__email_code_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EmailCodeSent"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Email a one-time code to the pack's recipient (needed once per browser)",
-        "tags": [
-          "audit-packs-public"
-        ]
-      }
-    },
-    "/api/v1/public/audit-packs/{token}/email-code/verify": {
-      "post": {
-        "operationId": "verify_email_code_endpoint_api_v1_public_audit_packs__token__email_code_verify_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "token",
-            "required": true,
-            "schema": {
-              "title": "Token",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailCodeEntry"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ViewerGrant"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Exchange the emailed code for a viewer grant",
-        "tags": [
-          "audit-packs-public"
-        ]
-      }
-    },
     "/api/v1/public/audit-packs/{token}/incident-sheet.pdf": {
       "get": {
         "operationId": "shared_incident_sheet_endpoint_api_v1_public_audit_packs__token__incident_sheet_pdf_get",
@@ -26681,6 +26584,58 @@
           }
         },
         "summary": "The incident fact sheet, rendered from the issued pack's snapshot",
+        "tags": [
+          "audit-packs-public"
+        ]
+      }
+    },
+    "/api/v1/public/audit-packs/{token}/password/verify": {
+      "post": {
+        "operationId": "verify_password_endpoint_api_v1_public_audit_packs__token__password_verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerGrant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange the password mailed at issue for a viewer grant",
         "tags": [
           "audit-packs-public"
         ]

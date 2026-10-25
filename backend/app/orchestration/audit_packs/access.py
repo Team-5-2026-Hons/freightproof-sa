@@ -5,9 +5,9 @@ dispatcher seeing views of a revoked link is exactly how a leaked link gets noti
 Nothing here needs an account: insurers and adjusters are one-off visitors, and the
 project's rule is zero-login for roles that have no account (CLAUDE.md).
 
-A pack issued to an email address also needs a viewer grant, earned once by entering the
-code emailed to that address (FP-291, email_codes.py) — so a forwarded link alone does not
-open it. That is a one-time code, not an account.
+A pack issued to an email address also needs a viewer grant, earned by entering the
+password mailed to that address alongside the link at issue (FP-291, viewer_password.py)
+— so a forwarded link alone does not open it. That is a reusable password, not an account.
 """
 
 import asyncio
@@ -33,20 +33,19 @@ from app.db.models.evidence_anchors import EvidenceAnchorEvent
 from app.db.models.phases import PhaseEvent
 from app.db.models.transit import Checkpoint, TripException
 from app.db.models.trips import Trip
-from app.orchestration.audit_packs.email_codes import (
-    CodeCheck,
-    check_email_code,
-    grant_is_valid,
-    mask_email,
-    requires_email_code,
-    send_email_code,
-)
 from app.orchestration.audit_packs.lifecycle import (
     hash_token,
     pack_label,
     seal_payload,
     storage_errors_as_domain_errors,
     verify_url,
+)
+from app.orchestration.audit_packs.viewer_password import (
+    PasswordCheck,
+    grant_is_valid,
+    mask_email,
+    requires_viewer_password,
+    verify_password,
 )
 from app.orchestration.verification.service import verify_subject
 from app.reporting.incident_sheet import render_incident_sheet_pdf
@@ -93,15 +92,14 @@ class EmailVerificationRequired(Exception):
     """The link is live, but this pack opens only for a browser holding a viewer grant."""
 
     def __init__(self, email_hint: str) -> None:
-        super().__init__("Audit pack needs an emailed code")
+        super().__init__("Audit pack needs its mailed password")
         self.email_hint = email_hint
 
 
-_CODE_EVENT: dict[str, AuditPackAccessEventType] = {
-    "verified": AuditPackAccessEventType.CODE_VERIFIED,
-    "wrong": AuditPackAccessEventType.DENIED_BAD_CODE,
-    "expired": AuditPackAccessEventType.DENIED_BAD_CODE,
-    "locked": AuditPackAccessEventType.DENIED_BAD_CODE,
+_PASSWORD_EVENT: dict[str, AuditPackAccessEventType] = {
+    "verified": AuditPackAccessEventType.PASSWORD_VERIFIED,
+    "wrong": AuditPackAccessEventType.DENIED_BAD_PASSWORD,
+    "locked": AuditPackAccessEventType.DENIED_BAD_PASSWORD,
 }
 
 
@@ -164,44 +162,25 @@ async def open_shared_pack(
     """
     now = now or datetime.now(UTC)
     pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
-    if requires_email_code(pack) and not await grant_is_valid(db, pack, raw_grant=requester.grant, now=now):
+    if requires_viewer_password(pack) and not await grant_is_valid(db, pack, raw_grant=requester.grant, now=now):
         _log(db, pack, AuditPackAccessEventType.DENIED_UNVERIFIED, requester)
         await db.flush()
-        assert pack.recipient_email is not None  # requires_email_code checked it
+        assert pack.recipient_email is not None  # requires_viewer_password checked it
         raise EmailVerificationRequired(mask_email(pack.recipient_email))
     _log(db, pack, event_type, requester)
     await db.flush()
     return pack
 
 
-async def request_shared_pack_code(
-    db: AsyncSession, *, raw_token: str, requester: Requester, now: datetime | None = None,
-) -> str:
-    """Email a fresh one-time code to the pack's recipient; returns the masked address.
-
-    Raises what _live_pack and email_codes.send_email_code raise. The send is logged only
-    once SendGrid has accepted it, so the dispatcher never sees "code sent" for an email
-    that never left.
-    """
+async def verify_shared_pack_password(
+    db: AsyncSession, *, raw_token: str, password: str, requester: Requester, now: datetime | None = None,
+) -> PasswordCheck:
+    """Check a password entered on the portal. Every attempt is logged, right or wrong, so
+    the issuing dispatcher can see someone guessing at a forwarded link."""
     now = now or datetime.now(UTC)
     pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
-    reference = (await db.execute(select(Trip.trip_reference).where(Trip.id == pack.trip_id))).scalar_one()
-    await send_email_code(db, pack, label=pack_label(reference, pack.pack_version), now=now)
-    _log(db, pack, AuditPackAccessEventType.CODE_SENT, requester)
-    await db.flush()
-    assert pack.recipient_email is not None  # send_email_code refuses a pack without one
-    return mask_email(pack.recipient_email)
-
-
-async def verify_shared_pack_code(
-    db: AsyncSession, *, raw_token: str, code: str, requester: Requester, now: datetime | None = None,
-) -> CodeCheck:
-    """Check a code entered on the portal. Every attempt is logged, right or wrong, so the
-    issuing dispatcher can see someone guessing at a forwarded link."""
-    now = now or datetime.now(UTC)
-    pack = await _live_pack(db, raw_token=raw_token, requester=requester, now=now)
-    check = await check_email_code(db, pack, code=code, now=now)
-    _log(db, pack, _CODE_EVENT[check.outcome], requester)
+    check = await verify_password(db, pack, password=password, now=now)
+    _log(db, pack, _PASSWORD_EVENT[check.outcome], requester)
     await db.flush()
     return check
 

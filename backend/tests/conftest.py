@@ -150,6 +150,25 @@ async def isolate_anchor_dispatch(monkeypatch: pytest.MonkeyPatch) -> AsyncGener
             *tuple(_BACKGROUND_ANCHOR_TASKS), *tuple(_BACKGROUND_EVIDENCE_TASKS), *tuple(_BACKGROUND_CUSTODY_TASKS),
         )
 
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_sendgrid(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never let a test reach the real SendGrid API: issuing an audit pack with a
+    recipient email now mails its viewer password automatically (FP-291), so every such
+    test would otherwise make a live network call. Fails the same way a SendGrid outage
+    would (fail-open in lifecycle.issue_audit_pack, nothing logged) rather than hanging
+    on an unreachable host or depending on what a real request happens to return.
+
+    A test that needs the real send path (test_audit_pack_viewer_password.py's `outbox`
+    fixture) overrides this with its own monkeypatch of the same target.
+    """
+    from app.core.exceptions import EmailUnavailableError
+
+    async def fake_send(*, to_address: str, subject: str, body: str) -> None:
+        raise EmailUnavailableError("SendGrid is not reachable in tests")
+
+    monkeypatch.setattr("app.orchestration.audit_packs.viewer_password.send_plain_text_email", fake_send)
+
 # ── Test EC key pair (generated once per process) ─────────────────────────────
 # Used to sign test JWTs with ES256, mirroring how Supabase signs real tokens.
 

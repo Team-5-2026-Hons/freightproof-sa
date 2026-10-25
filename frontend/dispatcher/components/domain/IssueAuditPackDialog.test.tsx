@@ -27,6 +27,7 @@ const ISSUED: AuditPackIssued = {
     status: 'active', view_count: 0, last_viewed_at: null,
   },
   share_token: 'tok', share_url: 'https://portal.freightproof.co.za/p/tok', verify_url: 'https://portal.freightproof.co.za/v/pack-1',
+  viewer_password: 'sWordf1sh',
 }
 
 function renderDialog(onIssued = vi.fn()) {
@@ -69,8 +70,9 @@ describe('IssueAuditPackDialog', () => {
       include_location_trail: true, expires_in_days: 30, recipient_email: 'jane@santam.example', external_reference: null,
     }))
     expect(await screen.findByTestId('share-url')).toHaveTextContent('https://portal.freightproof.co.za/p/tok')
-    expect(screen.getByText(/It is shown only now/)).toBeInTheDocument()
-    expect(screen.getByText(/one-time code is emailed to jane@santam.example/)).toBeInTheDocument()
+    expect(screen.getByTestId('viewer-password')).toHaveTextContent('sWordf1sh')
+    expect(screen.getByText(/were just emailed to Jane Adjuster at jane@santam.example/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy password' })).toBeInTheDocument()
     expect(onIssued).toHaveBeenCalledOnce()
   })
 
