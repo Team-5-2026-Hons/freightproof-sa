@@ -44,6 +44,13 @@ class AuditPack(Base):
     recipient_name: Mapped[str] = mapped_column(String(200), nullable=False)
     recipient_organization: Mapped[str] = mapped_column(String(200), nullable=False)
     recipient_email: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
+    # SHA-256 of "<pack id>:<password>" (FP-291b). Set only when recipient_email is: the
+    # password is emailed alongside the share link at issue and never stored raw.
+    password_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    password_failed_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    # Set once failed attempts hit the cap; cleared automatically once the window passes,
+    # since there is no "ask for a new one" recovery path for a password mailed only once.
+    password_locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     include_location_trail: Mapped[bool] = mapped_column(Boolean, nullable=False)
     include_full_driver_id: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # The frozen snapshot every rendering is produced from. Holds personal data, so it
@@ -101,34 +108,28 @@ class AuditPackAccessEvent(Base):
     )
 
 
-class AuditPackEmailCode(Base):
-    """One emailed one-time code for a pack, and the viewer grant it was exchanged for (FP-291).
+class AuditPackGrant(Base):
+    """One viewer grant earned by entering a pack's password (FP-291b).
 
     A share link is a bearer token, so a forwarded link would otherwise open the pack for
-    anyone. A pack issued to an email address opens only for a browser that proved it can
-    read that inbox. Hashes only: the raw code lives in the email, the raw grant in the
-    recipient's browser.
+    anyone. A pack issued to an email address opens only for a browser holding a grant
+    earned with the password mailed to that address. Many rows per pack: the password is
+    reusable (several insurer staff, several devices), and each successful entry earns its
+    own grant rather than sharing one. Hash only: the raw grant lives in the browser.
     """
 
-    __tablename__ = "audit_pack_email_codes"
+    __tablename__ = "audit_pack_grants"
     __table_args__ = (
-        Index("ix_audit_pack_email_codes_pack_created", "audit_pack_id", "created_at"),
-        Index("uq_audit_pack_email_codes_grant_hash", "grant_hash", unique=True),
+        Index("ix_audit_pack_grants_pack_created", "audit_pack_id", "created_at"),
+        Index("uq_audit_pack_grants_grant_hash", "grant_hash", unique=True),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     audit_pack_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("audit_packs.id"), nullable=False
     )
-    # SHA-256 of "<pack id>:<code>"; the pack id stops one precomputed table covering every pack.
-    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    code_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Wrong guesses against this code; at the cap the code is dead and a new one is needed.
-    failed_attempts: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
-    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Set when the code is verified. SHA-256 of the grant the browser now holds.
-    grant_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    grant_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    grant_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
