@@ -778,16 +778,10 @@
       "rate_limit:precinct_mutation"
     ]
   },
-  "POST /api/v1/public/audit-packs/{token}/email-code": {
+  "POST /api/v1/public/audit-packs/{token}/password/verify": {
     "access": "none",
     "dependencies": [
-      "rate_limit:audit_pack_email_code"
-    ]
-  },
-  "POST /api/v1/public/audit-packs/{token}/email-code/verify": {
-    "access": "none",
-    "dependencies": [
-      "rate_limit:audit_pack_email_code"
+      "rate_limit:audit_pack_password_verify"
     ]
   },
   "POST /api/v1/public/audit-packs/{token}/verify": {

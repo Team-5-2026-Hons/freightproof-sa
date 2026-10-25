@@ -334,19 +334,19 @@ describe('TripContext — a driver waiting to be assigned a trip', () => {
     expect(screen.getByTestId('trip-loaded')).toHaveTextContent('yes')
   })
 
-  it('test_waiting_for_an_assignment_polls_slower_than_waiting_at_a_gate', async () => {
+  it('test_waiting_for_an_assignment_polls_at_the_unassigned_interval', async () => {
     await renderWithNoTrip()
     await waitFor(() => expect(mockFetchMyActiveTrip.mock.calls.length).toBeGreaterThanOrEqual(2))
     const afterLeadingEdge = mockFetchMyActiveTrip.mock.calls.length
 
-    // A blocked gate's cadence must NOT be what an all-day wait costs in battery and data.
+    // Nothing pushes a new assignment, so this cadence is how fast a just-created trip shows.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(TRIP_POLL_INTERVAL_MS)
+      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS / 2)
     })
     expect(mockFetchMyActiveTrip.mock.calls.length).toBe(afterLeadingEdge)
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS - TRIP_POLL_INTERVAL_MS)
+      await vi.advanceTimersByTimeAsync(UNASSIGNED_TRIP_POLL_INTERVAL_MS / 2)
     })
     expect(mockFetchMyActiveTrip.mock.calls.length).toBe(afterLeadingEdge + 1)
   })

@@ -10,6 +10,7 @@ import { LocationProvider } from '@/lib/context/LocationContext'
 import { DriverSubstitutionProvider } from '@/lib/context/DriverSubstitutionContext'
 import { AppShell } from '@/components/layout/AppShell'
 import { TripCompleteOverlay } from '@/components/trip/TripCompleteOverlay'
+import { LeaveEndedTripScreen } from '@/components/trip/LeaveEndedTripScreen'
 import { Button } from '@/components/ui/Button'
 import { CapacitorBridge } from '@/components/layout/CapacitorBridge'
 import { ROUTES } from '@/lib/constants/routes'
@@ -94,6 +95,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <TripProvider>
       <PushNotificationsListener />
       <CapacitorBridge />
+      <LeaveEndedTripScreen />
       <DriverSubstitutionProvider>
         <LocationProvider>
           {isFullBleedRoute(pathname) ? children : <AppShell>{children}</AppShell>}

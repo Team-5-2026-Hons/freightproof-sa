@@ -1,11 +1,11 @@
 // The portal's only way to reach the API. No session, no bearer token: the share token
 // in the URL is the credential, sent only to our own API and never in a Referer header.
 //
-// A pack issued to an email address also needs a viewer grant: earned once by
-// entering the code emailed to the recipient, kept in this browser, and sent as a header
-// on every request for that pack — a header, never the URL, which ends up in logs.
+// A pack issued to an email address also needs a viewer grant: earned by entering the
+// password mailed to the recipient alongside the link at issue, kept in this browser,
+// and sent as a header on every request for that pack — a header, never the URL, which
+// ends up in logs.
 import type {
-  EmailCodeSent,
   ErrorBody,
   LiveVerification,
   PublicAuditPackView,
@@ -31,7 +31,7 @@ export class PackError extends Error {
   constructor(
     public readonly status: number,
     message: string,
-    /** Set when the pack needs the emailed code: where it will be sent, masked. */
+    /** Set when the pack needs its mailed password: which inbox it went to, masked. */
     public readonly emailHint: string | null = null,
   ) {
     super(message)
@@ -109,9 +109,9 @@ async function failure(response: Response, token: string | null): Promise<PackEr
   const body = (await response.json().catch(() => ({}))) as ErrorBody
   const message = detailText(body.detail)
   if (response.status === 401 && body.verification_required && token !== null) {
-    // A stored grant the server no longer accepts is useless; drop it so the next code sticks.
+    // A stored grant the server no longer accepts is useless; drop it so the next password sticks.
     forgetGrant(token)
-    return new PackError(401, message ?? 'Enter the emailed code to open this pack.', body.email_hint ?? '')
+    return new PackError(401, message ?? 'Enter the mailed password to open this pack.', body.email_hint ?? '')
   }
   return new PackError(response.status, message ?? response.statusText)
 }
@@ -144,17 +144,13 @@ export async function fetchArtifactBytes(token: string, artifactId: string, sign
   return response.arrayBuffer()
 }
 
-export async function requestEmailCode(token: string): Promise<EmailCodeSent> {
-  return parse(await fetch(`${PUBLIC}/${encode(token)}/email-code`, { ...REQUEST, method: 'POST' }))
-}
-
-/** Exchanges the emailed code for a grant and keeps it, so later visits skip the code. */
-export async function verifyEmailCode(token: string, code: string): Promise<void> {
-  const grant = await parse<ViewerGrant>(await fetch(`${PUBLIC}/${encode(token)}/email-code/verify`, {
+/** Exchanges the mailed password for a grant and keeps it, so later visits skip it. */
+export async function verifyPassword(token: string, password: string): Promise<void> {
+  const grant = await parse<ViewerGrant>(await fetch(`${PUBLIC}/${encode(token)}/password/verify`, {
     ...REQUEST,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ password }),
   }))
   storeGrant(token, grant.grant)
 }

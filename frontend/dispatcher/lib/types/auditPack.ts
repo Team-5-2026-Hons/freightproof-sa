@@ -19,7 +19,8 @@ export const AUDIT_PACK_EXPIRY_OPTIONS: AuditPackExpiryDays[] = [7, 30, 90]
 export interface AuditPackCreate {
   recipient_name: string
   recipient_organization: string
-  // Required since FP-291: the pack opens only after a code emailed here is entered.
+  // Required since FP-291: issuing mails a password to this address, and the pack opens
+  // only after it is entered.
   recipient_email: string
   purpose: AuditPackPurpose
   external_reference: string | null
@@ -62,6 +63,10 @@ export interface AuditPackIssued {
   share_token: string
   share_url: string
   verify_url: string
+  // Shown only now, like share_token: the password just mailed to the recipient, so you
+  // can still pass it on yourself if that automatic send failed. null for a legacy pack
+  // with no recipient email.
+  viewer_password: string | null
 }
 
 export interface AuditPackAccessEvent {

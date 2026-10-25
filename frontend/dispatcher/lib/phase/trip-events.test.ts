@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CompletedSubstitutionSummary } from '@shared/lib/types/driver-substitution'
-import type { PhaseDescriptor } from '@shared/lib/types/phase'
+import type { PhaseDescriptor, PhaseEventId } from '@shared/lib/types/phase'
 import { mockTrips } from '@shared/lib/mocks/trips'
 import { substitutionFixturePack as pack } from '@shared/lib/mocks/driver-substitutions'
 import type { IncidentSummary } from '@/lib/types/incident'
@@ -74,5 +74,49 @@ describe('positionTripEvents', () => {
     const placed = positionTripEvents(plan, [], [incident('inc1', 25), incident('inc1', 25)])
 
     expect(placed.afterPhase.get(plan[2].phase_event_id)).toHaveLength(1)
+  })
+
+  describe('during an In Transit leg', () => {
+    const LEG_TYPES = ['trip_creation', 'activation', 'loading', 'departure', 'in_transit', 'unloading'] as const
+
+    // Departure resolved at minute 30; In Transit is the live leg unless `arrivedAt` resolves it.
+    function legPlan(arrivedAt: number | null = null): PhaseDescriptor[] {
+      return mockTrips[0]!.phases.slice(0, LEG_TYPES.length).map((p, index): PhaseDescriptor => {
+        const resolved = index < 4 || (index === 4 && arrivedAt !== null)
+        return { ...p, phase_event_id: `phase-${index}` as PhaseEventId, sequence_number: index, phase_type: LEG_TYPES[index],
+          status: resolved ? 'completed' : 'pending', completed_at: !resolved ? null : index === 4 ? at(arrivedAt!) : at(index * 10) }
+      })
+    }
+
+    it('draws_a_hijacking_after_departure_inside_the_in_transit_card', () => {
+      const plan = legPlan()
+      const placed = positionTripEvents(plan, [], [incident('inc1', 40)])
+
+      expect(placed.inPhase.get('phase-4')?.map(e => e.kind)).toEqual(['incident'])
+      expect(placed.afterPhase.get('phase-3')).toBeUndefined()
+    })
+
+    it('draws_a_driver_transfer_on_the_road_inside_the_in_transit_card', () => {
+      const plan = legPlan(60)
+      const placed = positionTripEvents(plan, [transfer(45)], [])
+
+      expect(placed.inPhase.get('phase-4')?.map(e => e.kind)).toEqual(['transfer'])
+    })
+
+    it('keeps_an_event_after_arrival_between_the_cards', () => {
+      const plan = legPlan(60)
+      const placed = positionTripEvents(plan, [], [incident('inc1', 70)])
+
+      expect(placed.inPhase.size).toBe(0)
+      expect(placed.afterPhase.get('phase-4')?.map(e => e.kind)).toEqual(['incident'])
+    })
+
+    it('keeps_events_in_other_phases_between_the_cards', () => {
+      const plan = legPlan()
+      const placed = positionTripEvents(plan, [transfer(15)], [])
+
+      expect(placed.inPhase.size).toBe(0)
+      expect(placed.afterPhase.get('phase-1')?.map(e => e.kind)).toEqual(['transfer'])
+    })
   })
 })

@@ -665,12 +665,16 @@ class AuditPackRead(_Frozen):
 
 
 class AuditPackIssued(_Frozen):
-    """Returned once, at issue: the only time the raw share token exists anywhere."""
+    """Returned once, at issue: the only time the raw share token and password exist
+    anywhere outside the email already sent. viewer_password is shown so the dispatcher
+    can still pass it on if that automatic send failed; None for a legacy pack with no
+    recipient email."""
 
     pack: AuditPackRead
     share_token: str
     share_url: str
     verify_url: str
+    viewer_password: str | None = None
 
 
 class AuditPackAccessEventRead(_Frozen):
@@ -780,22 +784,15 @@ class IncidentDeclarationCreate(BaseModel):
         return self
 
 
-# ── Emailed one-time code (FP-291) ──────────────────────────────────────────────────
+# ── Mailed viewer password (FP-291) ──────────────────────────────────────────────────
 
-EMAIL_CODE_PATTERN = r"^[0-9]{6}$"
-
-
-class EmailCodeSent(_Frozen):
-    """Where the code went, masked (j***@santam.co.za): the holder of a forwarded link
-    learns which inbox to ask about, not the full address."""
-
-    email_hint: str
+PASSWORD_MAX_LENGTH = 128  # generous ceiling for a pasted password; the hash is what's compared
 
 
-class EmailCodeEntry(BaseModel):
+class PasswordEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    code: Annotated[str, StringConstraints(strip_whitespace=True, pattern=EMAIL_CODE_PATTERN)]
+    password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=PASSWORD_MAX_LENGTH)]
 
 
 class ViewerGrant(_Frozen):

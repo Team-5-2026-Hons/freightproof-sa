@@ -31,10 +31,10 @@ const STATUS_CHIP: Record<AuditPackStatus, { type: ChipType; label: string }> = 
 const EVENT_LABEL: Record<string, string> = {
   viewed: 'Opened', pdf_downloaded: 'Downloaded PDF', photo_viewed: 'Viewed a photo', verify_run: 'Ran live check',
   denied_expired: 'Tried an expired link', denied_revoked: 'Tried a revoked link',
-  // FP-291 emailed code. Unverified opens are expected once (the recipient's first visit);
-  // many, or wrong codes, are what a forwarded link looks like.
-  code_sent: 'Code emailed', code_verified: 'Entered the emailed code',
-  denied_bad_code: 'Entered a wrong or expired code', denied_unverified: 'Opened without the code',
+  // FP-291 mailed password. Unverified opens are expected once (the recipient's first visit);
+  // many, or wrong passwords, are what a forwarded link looks like.
+  password_emailed: 'Password emailed', password_verified: 'Entered the mailed password',
+  denied_bad_password: 'Entered a wrong password', denied_unverified: 'Opened without the password',
 }
 
 function when(iso: string | null): string {

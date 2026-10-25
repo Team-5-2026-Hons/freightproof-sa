@@ -228,6 +228,7 @@ export function TripTimeline({
           highlightedExceptionId={highlightedId}
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
+          events={events.inPhase.get(phase.phase_event_id)?.map(event => renderEvent(event))}
         />
         {(events.afterPhase.get(phase.phase_event_id) ?? []).map(event => renderEvent(event,
           event.kind === 'transfer' && phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.transfer.effective_at)))}

@@ -39,6 +39,8 @@ interface Props {
   reveal: { exceptionId: string; requestId: number } | null
   /** Collapsed cards show a header and a verdict headline only; expanding them shows everything. */
   minimised?: boolean
+  /** Incidents and driver transfers that happened during this leg (In Transit only), drawn under its record. */
+  events?: React.ReactNode
 }
 
 function receiptOf(trip: Trip, phase: PhaseDescriptor): BlockchainReceipt | undefined {
@@ -97,9 +99,13 @@ export function TimelinePhase(props: Props): React.JSX.Element {
   const compactActs = !isTransit && model.acts.length > 0
   // A phase with no verdict (trip creation) has no header line to carry the count, so minimised
   // says it here; every other minimised card carries it in its verdict.
-  const collapsedContent = minimised
+  const baseCollapsed = minimised
     ? (!model.verdict && exceptions.length > 0 ? <p className="mt-1.5 text-body font-semibold text-warn">{exceptionCountLabel(exceptions)}</p> : undefined)
     : compactActs ? <PhaseActs {...recorded} acts={model.acts} phase={phase} live={false} density="compact" /> : undefined
+  // A hijacking is the loudest record on the trip: it stays visible even when the reader minimised the card.
+  const legEvents = props.events ? <div className="mt-3 min-w-0">{props.events}</div> : null
+  const collapsedContent = legEvents ? <>{baseCollapsed}{legEvents}</> : baseCollapsed
+  const content = body || legEvents ? <>{body || null}{legEvents}</> : undefined
 
   return (
     <div id={`${PHASE_ANCHOR_PREFIX}${phase.phase_event_id}`} role="group" aria-label={`${phaseName} phase${exceptions.length ? ' and exceptions' : ''}`} style={{ scrollMarginTop: `var(${TIMELINE_TOOLBAR_HEIGHT_VAR}, 0px)` }} className="min-w-0">
@@ -119,7 +125,7 @@ export function TimelinePhase(props: Props): React.JSX.Element {
         // A leg not yet started or not reached has no body and stays a collapsed dashed card.
         // Minimised is the reader's explicit ask for less: there the leg collapses like any other
         // phase (still open while it is the live one), and its headline and count stay visible.
-        alwaysOpen={isTransit && model.hasBody && !minimised}
+        alwaysOpen={isTransit && (model.hasBody || legEvents !== null) && !minimised}
         verdict={model.verdict ? <PhaseVerdictLine verdict={model.verdict} /> : undefined}
         // Minimised keeps the headline and how many exceptions the phase holds; the reasons and the
         // event rail are one expand away. The count is plain text: the card header is already the
@@ -130,7 +136,7 @@ export function TimelinePhase(props: Props): React.JSX.Element {
         warning={warning}
         openRequestId={reveal?.requestId ?? null}
       >
-        {body || undefined}
+        {content}
       </PhaseTimelineItem>
     </div>
   )

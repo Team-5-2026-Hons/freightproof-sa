@@ -43,13 +43,13 @@ from app.core.config import settings
 # precede merkle_batches for the same reason. The receiver-handover chain comes first:
 # verifications point at confirmations and tokens, attempts and confirmations at
 # tokens, and tokens at phase_events and trip_stops. Audit packs go first of all: access
-# events and email codes point at packs, packs at consignments and trip-scoped receipts, and incident
+# events and grants point at packs, packs at consignments and trip-scoped receipts, and incident
 # declarations at exceptions. Driver-substitution support rows precede driver_substitutions (corrections
 # point at it), and requests follow it because completed substitutions point at them. Both facts (coverage and order) are checked against the
 # models by tests/unit/test_dev_reset_lifecycle.py.
 _DELETE_ORDER = [
     "audit_pack_access_events",
-    "audit_pack_email_codes",
+    "audit_pack_grants",
     "audit_packs",
     "incident_declarations",
     # Incidents after their declarations, and before the exceptions, parcels, phase events
