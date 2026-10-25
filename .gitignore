@@ -242,3 +242,5 @@ graphify-out/cache/
 # Parcel Perfect watch output (scripts/pp_watch.py) — contains PP payloads with
 # names, addresses and cell numbers. POPIA: never committed to a public repo.
 pp_watch_out/
+.vercel
+.env*
