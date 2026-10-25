@@ -33,6 +33,8 @@
 	<string>FreightProof connects to a FreightProof server on this network when testing against a local backend.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FreightProof records location during active trips and checkpoints as journey evidence.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>FreightProof records location during active trips and checkpoints as journey evidence.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>FreightProof saves captured evidence photos to your library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
