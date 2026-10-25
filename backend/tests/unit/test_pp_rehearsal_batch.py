@@ -230,6 +230,10 @@ async def test_local_manifests_run_the_same_morning_leg(store: FakeMockStateStor
         header = (await MockParcelPerfectClient().get_manifest(number)).header
         zone = pp_module.pp_timezone()
 
+        # Both are Optional on PPManifestHeader; a local leg is only meaningful once the
+        # fixture has set them, so a None here is a fixture fault, not a schedule mismatch.
+        assert header.planned_departure_at is not None
+        assert header.expected_arrival_at is not None
         assert header.planned_departure_at.astimezone(zone).strftime("%H:%M") == "09:00"
         assert header.expected_arrival_at.astimezone(zone).strftime("%H:%M") == "09:45"
         assert header.expected_arrival_at.astimezone(zone).date() == today
