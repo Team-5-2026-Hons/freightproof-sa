@@ -400,6 +400,17 @@ function usePhaseStepController<T extends PhaseEvidence>(
     })
   }
 
+  // Every isCurrentCapture() bail below used to be silent — indistinguishable, from the
+  // driver's seat, from a dead swipe or a dead Continue button. Most of the time a stale
+  // capture is also a remounted screen (a new custody_sequence changes PhaseStepContent's
+  // key), but the bail itself runs inside whatever async step was already in flight at that
+  // moment — capture(), previewPhaseLocation(), or the driver's own tap — and must say so
+  // rather than quietly drop it. Same sentence every other stale-capture path in this app
+  // uses (assertActorGeneration / phase-submitter.ts's 'retained' outcome).
+  function notifyStaleCapture(): void {
+    notify({ kind: 'error', title: 'Could not continue', body: 'Account changed; captured work is retained.' })
+  }
+
   function notifyFinalLocationWarning(addressedPhase: PhaseDescriptor | null): void {
     const assessment = addressedPhase?.action_location_assessment
     const hasReliableWarning = assessment !== null && assessment !== undefined && (
@@ -516,7 +527,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     driverCapturedAt: string,
     acknowledgement: LocationWarningAcknowledgement | null,
   ) {
-    if (!isCurrentCapture()) return
+    if (!isCurrentCapture()) { notifyStaleCapture(); return }
     onHandOff()
     if (idempotencyKeyRef.current === null) idempotencyKeyRef.current = crypto.randomUUID()
     const evidence = draftRef.current
@@ -573,7 +584,8 @@ function usePhaseStepController<T extends PhaseEvidence>(
   }
 
   async function startLocationCheck(): Promise<void> {
-    if (locationPreviewLoading || !isCurrentCapture()) return
+    if (locationPreviewLoading) return
+    if (!isCurrentCapture()) { notifyStaleCapture(); return }
     const attemptStartedAt = new Date().toISOString()
     setLocationPreviewLoading(true)
     setLocationPreviewError(null)
@@ -584,7 +596,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
     const offline = typeof navigator !== 'undefined' && !navigator.onLine
     setOfflineLocationCheck(offline)
     const coords = await capture()
-    if (!isCurrentCapture()) return
+    if (!isCurrentCapture()) { notifyStaleCapture(); return }
     if (coords === null) {
       setPendingCapturedAt(attemptStartedAt)
       setLocationPreviewLoading(false)
@@ -610,7 +622,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         accuracy_metres: position.accuracyM,
         captured_at: coords.capturedAt,
       })
-      if (!isCurrentCapture()) return
+      if (!isCurrentCapture()) { notifyStaleCapture(); return }
       const requiresAcknowledgement =
         (assessment.proximity === 'separated' && assessment.separation_metres !== null)
         || assessment.truck_in_precinct === false
@@ -630,7 +642,7 @@ function usePhaseStepController<T extends PhaseEvidence>(
         handOffSubmission(position, coords.capturedAt, null)
       }
     } catch (err) {
-      if (!isCurrentCapture()) return
+      if (!isCurrentCapture()) { notifyStaleCapture(); return }
       console.error('PhaseStepPageClient: location preview failed', err)
       setLocationPreviewError('Location preview failed')
     } finally {

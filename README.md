@@ -12,7 +12,7 @@ Ciaran Formby · Tim Gultig · Chiko Kasongo · Tom Davis
 FreightProof records every custody handover in a road freight trip, from origin depot to
 destination depot, and anchors a SHA-256 hash of each recorded phase to the Hedera
 Consensus Service. When a hijacking, disputed delivery, or missing-parcel claim arises,
-the trip's record shows who had the cargo, in which vehicle, where, and when — and
+the trip's record shows who had the cargo, in which vehicle, where, and when —jhh and
 whether that record has changed since it was written.
 
 It does not replace GPS tracking (Pulsit), manifest systems (Parcel Perfect), or gate

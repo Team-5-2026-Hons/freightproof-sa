@@ -73,6 +73,14 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
   // notice carries only ids, and by then the request is no longer in the pending list —
   // remembering the role is what lets an outgoing driver's working trip be dropped at once.
   const roleByRequestRef = useRef(new Map<string, SubstitutionRole>())
+  // An immediate_v2 transfer only asks the INCOMING driver to confirm (confirmation_policy
+  // incoming_acceptance_v2) — the outgoing driver's session never sees the request as
+  // pending, so roleByRequestRef never learns 'outgoing' for it. Without this, their
+  // 'completed' notice fell into the generic else branch below: a quiet refresh drops the
+  // trip with no "handed over" notice at all. Set during render (idempotent), read in the
+  // effect, so a trip poll does not have to be a dependency the effect reruns on.
+  const currentTripIdRef = useRef<string | null>(null)
+  currentTripIdRef.current = tripCtx?.trip !== null && tripCtx?.trip !== undefined ? String(tripCtx.trip.id) : null
   // Completed notices already acted on, so a notice that stays unread across many polls
   // triggers one trip refresh, not one per tick.
   const handledCompletionsRef = useRef(new Set<string>())
@@ -127,11 +135,17 @@ export function DriverSubstitutionProvider({ children }: { children: React.React
     for (const notice of notices) {
       if (notice.kind !== 'completed' || handledCompletionsRef.current.has(notice.id)) continue
       handledCompletionsRef.current.add(notice.id)
-      if (roleByRequestRef.current.get(notice.request_id) === 'outgoing') {
+      const role = roleByRequestRef.current.get(notice.request_id)
+      // role === undefined covers both "gaining a trip we never saw pending" and "losing
+      // one via immediate_v2, which never surfaced as pending to us" (see currentTripIdRef
+      // above) — the trip id this driver is CURRENTLY working tells the two apart: only the
+      // second one still equals it right now.
+      if (role === 'outgoing' || (role === undefined && currentTripIdRef.current === notice.trip_id)) {
         noteTripHandedOver?.(notice.trip_id)
       } else {
-        // Incoming, or a role this session never saw: the server decides. A pinned former
-        // trip answers TRIP_HANDED_OVER and TripContext drops it; a new current trip loads.
+        // Incoming, or an unrelated trip this session never saw: the server decides. A
+        // pinned former trip answers TRIP_HANDED_OVER and TripContext drops it; a new
+        // current trip loads.
         void refreshTripQuietly?.()
       }
     }

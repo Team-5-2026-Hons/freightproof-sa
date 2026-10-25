@@ -318,6 +318,11 @@ describe('capture scope during location checks', () => {
 
     expect(mockSubmitPhase).not.toHaveBeenCalled()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // The dropped attempt used to be silent — indistinguishable from a dead swipe. It must
+    // say what happened, the same sentence every other stale-capture path in this app uses.
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'error', title: 'Could not continue', body: 'Account changed; captured work is retained.',
+    }))
     fireEvent.click(screen.getByText('submit-loading'))
     await waitFor(() => expect(mockSubmitPhase).toHaveBeenCalledTimes(1))
     expect(mockSubmitPhase.mock.calls[0][8]).toBe(4)

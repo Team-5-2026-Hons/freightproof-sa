@@ -127,7 +127,8 @@ IDVS_WEBHOOK_SECRET=<from the Didit dashboard webhook config>
 
 # Everything else — DATABASE_URL, REDIS_URL, SUPABASE_*, HEDERA_* — as per
 # backend/.env.example. DATABASE_URL points at the same Supabase project (PostgreSQL 17.6,
-# af-south-1).
+# eu-north-1/Stockholm — this doc previously said af-south-1; corrected 2026-10-24, see
+# CLAUDE.md's POPIA note which still needs the same fix by whoever owns that PR).
 ```
 
 **`DEV_PANEL_ENABLED`**: leave unset for a real deployment. The deployed demo genuinely

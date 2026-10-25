@@ -13,12 +13,12 @@
 
 app = "freightproof-api"
 
-# Johannesburg. The personal data itself stays in Supabase (af-south-1) per POPIA, but
-# every request carrying it terminates in this process — putting the compute off-continent
-# would move identities, GPS and photos through another region in transit, and add a
-# round trip to every query for the trouble. Verify availability with
-# `fly platform regions | grep jnb` before the first deploy.
-primary_region = "jnb"
+# Stockholm. Supabase project is eu-north-1/Stockholm, not af-south-1 as the rest of the
+# docs (deployment-runbook.md, CLAUDE.md's POPIA note) still claim as of 2026-10-24 — see
+# the flag raised with the team. Pinning compute next to the database avoids a transatlantic
+# round trip per query. Verify availability with `fly platform regions | grep arn` before
+# the first deploy.
+primary_region = "arn"
 
 [build]
   dockerfile = "Dockerfile"
