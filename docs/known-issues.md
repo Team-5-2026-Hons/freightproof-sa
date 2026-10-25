@@ -98,7 +98,7 @@ banner returns, do not accept it for the App project — and never for Pods, whi
 
 ---
 
-## 4. API database timeout policy — FP-275 implemented, load validation pending
+## 4. API database timeout policy — local load validated; deployment calibration outstanding
 
 **Files:** `backend/app/db/engine.py`, `backend/app/db/session.py`,
 `backend/app/db/errors.py`, `backend/app/core/config.py`, and the API error handlers.
@@ -111,15 +111,46 @@ The earlier description of connection establishment as entirely unbounded was in
 **FP-275 implementation:** configurable connect, pool-wait, command and cleanup
 budgets; database-specific availability classification (including Supabase pooler
 capacity refusals); controlled HTTP 503 responses; bounded session cleanup, bounded
-discard of half-open connections, and cancellation handling. The API's normal
-stale-connection check remains enabled. See [configuration and focused verification](testing/fp-275-database-timeouts.md).
+discard of half-open connections (asyncpg 0.32+, see below), and cancellation handling.
+The API's normal stale-connection check remains enabled. See [configuration and focused verification](testing/fp-275-database-timeouts.md).
 
-**Still outstanding:** measure normal deployment latency to calibrate the provisional
-defaults, then run and document FP-299's concurrent-load scenarios. Focused timeout tests
-do not establish throughput, a whole-request deadline, or production p99 latency.
-Keep the declared under-load limitation open until that evidence exists. The original
-proposal to add `pool_recycle` is deferred to that measurement: there is no observed
-idle cutoff to size it from.
+**FP-299 evidence (21 October 2026):** the repeatable local runner passed 39/39 smoke
+cycles and 39/39 default-budget cycles. In each profile, all 1,782 load requests ended
+as a valid response, the controlled database 503 or a deliberate cancellation within
+their predeclared bounds, and no request hung. After every fault, 12 reads and a
+committed write succeeded on the same pool, which returned to zero checked-out
+connections; only the pool's two retained connections stayed open, with no leaked
+sockets or tasks. In every command and chat-database lock cycle, no timed-out statement
+was left waiting in PostgreSQL. See [commands, measured results and retained artifacts](testing/fp-299-database-timeout-load.md).
+This closes the missing evidence for API timeout and recovery behaviour under the
+documented local load.
+
+**Driver change from FP-299:** repeated faults showed that FP-275's custom discard
+listener could leave sockets open on asyncpg 0.31, and that aborting the socket first
+instead stops PostgreSQL's cancel for the timed-out statement. `requirements.txt` (a
+shared file) therefore requires asyncpg 0.32+, whose close is bounded on its own, and the
+listener is removed. Environments installed before this change must reinstall the
+backend requirements; a unit test fails while an older asyncpg is installed.
+
+**Still outstanding:** the defaults bound a failure but do not make it fast: at the default
+budgets a request can wait about 20 s for a pool slot, and a stalled command or pre-ping
+fails after about 30–32 s. Measure representative deployment latency and connection holds
+to calibrate them. Analytics chat holds its database connection while it waits for the
+AI provider: three 5-second waits delayed every concurrent read by about 5 s, and three
+25-second waits made unrelated reads hit the 20-second pool budget. Transaction lifetime
+across provider calls needs a deployment-informed decision. The local synthetic fixture
+establishes neither hosted capacity nor production p99 or a whole-request deadline.
+`pool_recycle` remains deferred because there is no measured deployment idle cutoff to
+size it from.
+
+**Open from FP-299 — cancelled requests:** when a request is cancelled while its query is
+waiting in PostgreSQL (in FP-299's harness, by cancelling the HTTP call), SQLAlchemy
+force-closes the connection and the statement is never cancelled on the server: it stays
+queued on its lock, holding a server connection, until the lock is released. Timeouts
+are not affected. Whether client disconnects in a deployment trigger this was not
+established. A server-side bound such as a `statement_timeout` or `lock_timeout` would
+cover it, but needs checking against the Supabase pooler first. See the
+[FP-299 report](testing/fp-299-database-timeout-load.md#a-cancelled-requests-statement-keeps-waiting).
 
 **Error-path review fixes:** optional orchestration work now propagates database outages
 to the structured 503 handler, and service/endpoint rollback failures preserve the
@@ -131,7 +162,8 @@ construct separate engines; changing `db/session.py` does not automatically chan
 When the broker is down, the in-process anchor fallback also runs on the task engine,
 inside the API process, without these budgets.
 
-**Owner:** Chiko — FP-275 implementation; FP-299 load-test evidence follows separately.
+**Owner:** Chiko — FP-275 implementation and FP-299 local load evidence; deployment
+calibration remains separate.
 
 ---
 

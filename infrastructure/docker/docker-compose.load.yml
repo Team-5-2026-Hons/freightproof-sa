@@ -1,0 +1,67 @@
+# FreightProof SA — disposable stack for the FP-299 database-timeout load runner.
+#
+# Separate from docker-compose.test.yml on purpose: the runner injects real faults (stalled
+# handshakes, silenced sockets, table locks) and needs its own Redis, so nothing here is
+# shared with the integration suite or the dev stack. The default network is internal and
+# no port is published, so the runner can reach only these two services, and PostgreSQL
+# keeps its data on tmpfs. Never point the runner at DATABASE_URL or Supabase.
+#
+# Explicit project name: without it, Compose derives the name from the parent directory,
+# which every compose file here shares, and would treat the other stacks as orphans.
+#
+# Run from the repository root (PowerShell; on POSIX shells use --env-file /dev/null).
+# --env-file NUL stops Compose from reading a developer's .env.
+#   $compose = @('--env-file', 'NUL', '-f', 'infrastructure/docker/docker-compose.load.yml')
+#   docker compose @compose build runner
+#   docker compose @compose up -d --wait test-db test-redis
+#   docker compose @compose run --rm --no-deps runner python -m scripts.load_db_timeouts --profile smoke --output /results/rerun-smoke.json
+#   docker compose @compose down --volumes
+#
+# Reports land in docs/testing/fp-299-results/. Use a new file name for a rerun, and
+# replace the recorded smoke.json/evidence.json only when deliberately re-recording.
+name: freightproof-load
+
+services:
+  test-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: freightproof_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d freightproof_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  test-redis:
+    image: redis:7-alpine
+    # No persistence: the chat budget's keys must not outlive the run.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  runner:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile.load
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@test-db:5432/freightproof_test
+      REDIS_URL: redis://test-redis:6379/0
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../../docs/testing/fp-299-results:/results
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+
+networks:
+  default:
+    internal: true

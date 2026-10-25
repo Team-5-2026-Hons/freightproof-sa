@@ -1,0 +1,39 @@
+# FreightProof SA — FP-299 load runner and backend verification image.
+# Runs scripts/load_db_timeouts.py, and the backend checks (ruff, mypy, pytest), against
+# the disposable services in docker-compose.load.yml. Not a production image.
+#
+# The build context is the repository root, because backend contract tests read
+# frontend/shared and the analytics page's wording. Only the paths copied below enter the
+# image; Dockerfile.load.dockerignore also keeps every .env out of the build context.
+#
+# Build: docker compose --env-file NUL -f infrastructure/docker/docker-compose.load.yml build runner
+
+FROM python:3.13-slim
+
+WORKDIR /work/backend
+
+# Same system packages as backend/Dockerfile: JDK for hedera-sdk-py's jnius bridge, and
+# Pango/HarfBuzz for WeasyPrint, which the app imports at module level.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc libpq-dev default-jdk libpango-1.0-0 libpangoft2-1.0-0 \
+    libharfbuzz-subset0 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY backend/requirements.txt backend/requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# Explicit copies keep developer settings, virtualenvs and caches out of the image.
+COPY backend/app ./app
+COPY backend/migrations ./migrations
+COPY backend/scripts ./scripts
+# The chat scenarios reuse tests/fake_ai_provider.py, and the checks run the test suite.
+COPY backend/tests ./tests
+COPY backend/pytest.ini backend/ruff.toml backend/mypy.ini backend/.importlinter backend/structure-baseline.json ./
+COPY frontend/shared /work/frontend/shared
+# Incoming FP-295 contract tests compare chat explanations with these page strings.
+COPY frontend/dispatcher/components/analytics/fleet/copy.ts \
+     frontend/dispatcher/components/analytics/fleet/costCopy.ts \
+     /work/frontend/dispatcher/components/analytics/fleet/
+
+# No default output: a bare `run` must never write into the committed evidence folder.
+CMD ["python", "-m", "scripts.load_db_timeouts", "--help"]

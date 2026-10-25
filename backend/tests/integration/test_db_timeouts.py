@@ -17,7 +17,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, async_sessionmaker
 
 from app import main as main_module
 from app.api.v1.endpoints import audit_packs, handover, phases, trip_admin, trips
@@ -37,7 +37,6 @@ from app.schemas.people import UserRead
 
 SHORT_TIMEOUT = 0.15
 ROLLBACK_TIMEOUT = 0.05
-SILENT_CLEANUP_TIMEOUT = 0.5
 WATCHDOG = 3.0
 TEST_USER = UserRead(
     id=uuid4(), organization_id=uuid4(), email="timeouts@example.test", full_name="Timeout test",
@@ -51,6 +50,17 @@ async def select_one(db: DatabaseSession, **kwargs: object) -> list[object]:
     """Stand-in for list_trips: one real query through the request's session."""
     await db.execute(text("SELECT 1"))
     return []
+
+
+async def active_statements(connection: AsyncConnection, marker: str) -> int:
+    """Count server backends still executing a statement tagged with marker."""
+    # PostgreSQL snapshots activity once per transaction; clear it so each poll is current.
+    await connection.execute(text("SELECT pg_stat_clear_snapshot()"))
+    count = await connection.scalar(text(
+        "SELECT count(*) FROM pg_stat_activity"
+        " WHERE state = 'active' AND pid <> pg_backend_pid() AND query LIKE :pattern"
+    ), {"pattern": f"%{marker}%"})
+    return int(count or 0)
 
 
 @asynccontextmanager
@@ -144,8 +154,7 @@ async def proxied_engine() -> AsyncGenerator[tuple[AsyncEngine, SilencingProxy],
     proxied_url = url.set(host="127.0.0.1", port=server.sockets[0].getsockname()[1])
     config = settings.model_copy(update={
         "DATABASE_URL": proxied_url.render_as_string(hide_password=False),
-        "DB_POOL_SIZE": 1, "DB_MAX_OVERFLOW": 0,
-        "DB_COMMAND_TIMEOUT_SECONDS": SHORT_TIMEOUT, "DB_CLEANUP_TIMEOUT_SECONDS": SILENT_CLEANUP_TIMEOUT,
+        "DB_POOL_SIZE": 1, "DB_MAX_OVERFLOW": 0, "DB_COMMAND_TIMEOUT_SECONDS": SHORT_TIMEOUT,
     })
     engine = create_db_engine(config)
     try:
@@ -277,19 +286,27 @@ async def test_service_conflict_survives_real_stalled_rollback(
 
 
 async def test_slow_command_times_out_and_discards_connection(local_engine: AsyncEngine) -> None:
+    loop = asyncio.get_running_loop()
+    marker = f"fp275-cancel-{uuid4().hex}"
     async with local_engine.connect() as connection:
-        started = asyncio.get_running_loop().time()
+        started = loop.time()
 
         async with asyncio.timeout(WATCHDOG):
             with pytest.raises(DatabaseUnavailableError) as caught:
-                await connection.execute(text("SELECT pg_sleep(:seconds)"), {"seconds": WATCHDOG * 2})
+                await connection.execute(text(f"SELECT pg_sleep(:seconds) /* {marker} */"), {"seconds": WATCHDOG * 2})
 
         assert caught.value.reason == "command_timeout"
-        assert SHORT_TIMEOUT * 0.8 <= asyncio.get_running_loop().time() - started < WATCHDOG
+        assert SHORT_TIMEOUT * 0.8 <= loop.time() - started < WATCHDOG
         assert connection.invalidated
 
     async with local_engine.connect() as recovered:
         assert await recovered.scalar(text("SELECT 1")) == 1
+        # Freeing the client is not enough: PostgreSQL must cancel the statement too, or
+        # its backend keeps running (and holding locks) after the 503 (FP-299).
+        deadline = loop.time() + WATCHDOG
+        while await active_statements(recovered, marker) and loop.time() < deadline:
+            await asyncio.sleep(SHORT_TIMEOUT)
+        assert await active_statements(recovered, marker) == 0
     assert isinstance(local_engine.pool, AvailabilityPool)
     assert local_engine.pool.checkedout() == 0
 
@@ -318,8 +335,8 @@ async def test_pre_ping_timeout_is_classified_and_releases_pool(
 async def test_silent_connection_command_timeout_is_bounded(
     proxied_engine: tuple[AsyncEngine, SilencingProxy],
 ) -> None:
-    # On asyncpg 0.30-0.31 without the discard listener, close waited forever for the
-    # server to acknowledge the cancel on a socket that would never answer (0.32 bounds it).
+    # A half-open socket never acknowledges the cancel. asyncpg 0.32+ (the requirements.txt
+    # floor) bounds that close; 0.30-0.31 waited for the acknowledgement forever.
     engine, proxy = proxied_engine
     async with engine.connect() as connection:
         await connection.execute(text("SELECT 1"))

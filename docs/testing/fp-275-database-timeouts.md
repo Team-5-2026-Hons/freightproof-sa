@@ -13,12 +13,13 @@ Parcel Perfect assignment hint retains its existing advisory fallback.
 | `DB_CONNECT_TIMEOUT_SECONDS` | 10 | Opening a new database connection |
 | `DB_POOL_TIMEOUT_SECONDS` | 20 | Waiting for a pool slot |
 | `DB_COMMAND_TIMEOUT_SECONDS` | 30 | Driver commands, including pre-ping/transaction commands |
-| `DB_CLEANUP_TIMEOUT_SECONDS` | 5 | Each rollback or close, and closing a discarded connection |
+| `DB_CLEANUP_TIMEOUT_SECONDS` | 5 | Each session rollback or close (a discarded connection's close has SQLAlchemy's own 2 s limit) |
 
 All values must be positive and finite. An omitted or blank setting uses its default.
 The defaults are **provisional operating budgets, not measured Supabase p99 values**.
 Measure normal connection, checkout and command times in the representative deployment
-before tuning them, then retain the separate FP-299 under-load evidence.
+before tuning them. The [FP-299 report](fp-299-database-timeout-load.md) records the
+separate local concurrent-load evidence and the asyncpg 0.32 requirement that came out of it.
 
 Calibration rules that follow from the code, not from measurement:
 
@@ -34,13 +35,14 @@ Calibration rules that follow from the code, not from measurement:
   completion on the same trip can wait behind it.
 - **Pre-ping detection costs one command budget.** A silently dropped idle connection is
   found only when its ping times out. `pool_recycle` was considered and not adopted: no
-  measured idle cutoff exists to size it from. Revisit with FP-299's measurements.
+  measured deployment idle cutoff exists to size it from. FP-299 injects silence
+  deliberately; it does not measure the hosted pooler's cutoff.
 
 These are per-operation limits. A request can wait for a pool slot, perform a connection
-check/reconnect, execute multiple commands, and clean up. A cleanup failure makes one
-bounded discard, so cleanup can cost two cleanup budgets. SQLAlchemy can also retry a
-stale connection during checkout. Do not describe the largest single setting as an
-end-to-end HTTP deadline.
+check/reconnect, execute multiple commands, and clean up. Rollback and close each have
+their own cleanup budget, and closing a discarded connection can add SQLAlchemy's fixed
+2 s close limit. SQLAlchemy can also retry a stale connection during checkout.
+Do not describe the largest single setting as an end-to-end HTTP deadline.
 
 ## Behaviour
 
@@ -53,11 +55,15 @@ end-to-end HTTP deadline.
   `XX000` keeps its ordinary 500 handling.
 - The SQLAlchemy error hook discards a connection on a timed-out/failed DB operation.
   Normal stale-connection detection retains SQLAlchemy's reconnect behaviour.
-- Every discarded connection gets one cleanup budget to close gracefully, then its socket
-  is aborted. Without that bound, asyncpg 0.30–0.31 (still allowed by `requirements.txt`)
-  waits indefinitely for a cancel acknowledgement that a silently dropped (half-open)
-  socket never delivers, and the request and its pool slot hang. asyncpg 0.32 bounds that
-  wait itself. On 0.31 the half-open tests fail without the listener and pass with it.
+- SQLAlchemy closes a discarded connection with `close(timeout=2)`. On asyncpg 0.32+ (the
+  `requirements.txt` floor since FP-299) that close first sends PostgreSQL's cancel for a
+  timed-out statement, then aborts the socket at the deadline. A half-open connection
+  therefore cannot hang, and the statement also stops on the server instead of running
+  on, holding its locks, after the 503. FP-275 originally added a listener to bound this
+  close on asyncpg 0.30–0.31. FP-299 found that it could leave sockets open on 0.31, and
+  that aborting the socket first instead skips the server-side cancel, so the floor was
+  raised and the listener removed. See the
+  [FP-299 findings](fp-299-database-timeout-load.md#discard-findings-and-the-asyncpg-032-requirement).
 - Session rollback and close are bounded, including explicit service-side rollbacks.
   `get_db` and service/endpoint error handlers log a rollback failure without masking
   the original request error. A consignment conflict therefore keeps its 409 mapping
@@ -98,7 +104,8 @@ pytest tests/unit/test_phase_meta_contract.py
 The tests exercise:
 
 - a real stalled TCP handshake and a real refused connection;
-- a real exhausted SQLAlchemy pool and a real timed-out PostgreSQL command;
+- a real exhausted SQLAlchemy pool and a real timed-out PostgreSQL command, which the
+  server must also have cancelled;
 - a real half-open connection (a local relay that stops forwarding), for both a command
   and the pre-ping;
 - recovery, and API responses for every endpoint that maps SQL errors;
@@ -125,7 +132,12 @@ pytest -m slow tests/baseline/test_b7_import_cycles.py
 FP-299 is the repeatable concurrent-load test and measured results report. These
 focused checks establish mechanisms, not capacity or deployment latency claims.
 
-## Verification run — 20 October 2026
+## Historical FP-275 verification run — 20 October 2026
+
+The results below describe the original FP-275 source and dependency snapshot, including
+its since-removed discard listener. For the merged `Chiko` baseline, the asyncpg 0.32
+requirement and the measured load results, see the
+[FP-299 verification report](fp-299-database-timeout-load.md).
 
 Base commit: `d16c9287` (`origin/dev`), with the FP-275 working-tree changes.
 Tests ran in a Linux container using Python 3.13.16, SQLAlchemy 2.0.55, asyncpg 0.32.0,
@@ -215,4 +227,5 @@ handover keeps its existing log messages and uses the shared rollback helper.
 
 Shared configuration files: `backend/app/core/config.py` and `backend/app/main.py`.
 The four optional environment keys are listed in the configuration table. No migration
-or dependency change is required.
+or dependency change is required. (FP-275 itself needed none; FP-299 later raised the
+asyncpg floor to 0.32 in `requirements.txt`, see the [FP-299 report](fp-299-database-timeout-load.md).)

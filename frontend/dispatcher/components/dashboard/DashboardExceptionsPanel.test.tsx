@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DashboardExceptionsPanel } from './DashboardExceptionsPanel'
 import { useExceptionQueue, type UseExceptionQueueResult } from '@/lib/hooks/useExceptions'
+import { ROUTES } from '@/lib/constants/routes'
 import type { TripExceptionListItem } from '@shared/lib/types/exception'
 
 vi.mock('@/lib/hooks/useExceptions', () => ({ useExceptionQueue: vi.fn() }))
@@ -50,7 +51,7 @@ describe('DashboardExceptionsPanel', () => {
 
     render(<DashboardExceptionsPanel />)
 
-    expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute('href', '/exceptions/abc?returnTo=%2F')
+    expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute('href', `/exceptions/abc?returnTo=${encodeURIComponent(ROUTES.home)}`)
   })
 
   it('says nothing is waiting, with a zero count, when every exception is reviewed', () => {
@@ -80,7 +81,7 @@ describe('DashboardExceptionsPanel', () => {
 
     render(<DashboardExceptionsPanel />)
 
-    expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute('href', '/exceptions/abc?returnTo=%2F')
+    expect(within(screen.getByRole('table')).getByRole('link')).toHaveAttribute('href', `/exceptions/abc?returnTo=${encodeURIComponent(ROUTES.home)}`)
     expect(screen.getByText(/Couldn't refresh · showing data from \d{2}:\d{2}/)).toBeInTheDocument()
     expect(screen.queryByText('Failed to load exceptions')).toBeNull()
     screen.getByRole('button', { name: 'Try again' }).click()

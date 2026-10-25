@@ -1,19 +1,13 @@
 """Construct the API engine with the same timeout policy in production and tests."""
 
-import asyncio
-import logging
-from collections.abc import Callable
-
 from sqlalchemy import event
-from sqlalchemy.engine import AdaptedConnection, Dialect, ExceptionContext
+from sqlalchemy.engine import Dialect, ExceptionContext
 from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool, ConnectionPoolEntry, PoolProxiedConnection
 
 from app.core.config import Settings
 from app.db.errors import DatabaseUnavailableError, database_unavailable
-
-logger = logging.getLogger(__name__)
 
 
 class AvailabilityPool(AsyncAdaptedQueuePool):
@@ -67,39 +61,12 @@ def _handle_error(context: ExceptionContext) -> DatabaseUnavailableError | None:
     return failure
 
 
-def _bounded_discard(
-    cleanup_timeout: float,
-) -> Callable[[DBAPIConnection, ConnectionPoolEntry, BaseException | None], None]:
-    """Give a discarded connection one cleanup budget to close, then abort its socket.
-
-    SQLAlchemy closes an invalidated asyncpg connection gracefully. After a command or
-    pre-ping timeout, asyncpg 0.30-0.31 (still allowed by requirements.txt) first waits,
-    with no limit, for the server to acknowledge the cancel on the old socket. A silently
-    dropped (half-open) socket never answers, so the request and its pool slot would hang
-    for good. asyncpg 0.32 bounds that wait itself; this keeps the guarantee across the
-    supported range. Once the socket is closed or aborted, SQLAlchemy's close returns at once.
-    """
-
-    def discard(
-        dbapi_connection: DBAPIConnection, connection_record: ConnectionPoolEntry,
-        exception: BaseException | None,
-    ) -> None:
-        if not isinstance(dbapi_connection, AdaptedConnection):
-            return
-        try:
-            dbapi_connection.run_async(lambda driver: asyncio.wait_for(driver.close(), cleanup_timeout))
-        except Exception as close_error:
-            # Timed out or failed: asyncpg has already aborted the socket in that case,
-            # and terminate() is the no-wait fallback for anything that slipped past.
-            logger.warning("Discarded database connection aborted error_type=%s", type(close_error).__name__)
-            driver = dbapi_connection.driver_connection
-            if not driver.is_closed():
-                driver.terminate()
-
-    return discard
-
-
 def create_db_engine(config: Settings) -> AsyncEngine:
+    # No custom discard listener. SQLAlchemy closes an invalidated asyncpg connection with
+    # close(timeout=2). On asyncpg 0.32+ (the requirements.txt floor) that close first sends
+    # PostgreSQL's cancel for a timed-out statement, then aborts the socket at the deadline,
+    # so a half-open connection cannot hang. Aborting the socket ourselves first would also
+    # cancel that pending cancel request, leaving the statement running on the server (FP-299).
     engine = create_async_engine(
         config.DATABASE_URL,
         poolclass=AvailabilityPool,
@@ -114,5 +81,4 @@ def create_db_engine(config: Settings) -> AsyncEngine:
     )
     event.listen(engine.sync_engine, "do_connect", _connect)
     event.listen(engine.sync_engine, "handle_error", _handle_error, retval=True)
-    event.listen(engine.sync_engine.pool, "invalidate", _bounded_discard(config.DB_CLEANUP_TIMEOUT_SECONDS))
     return engine
