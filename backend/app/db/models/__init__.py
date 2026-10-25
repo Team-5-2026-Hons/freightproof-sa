@@ -52,7 +52,7 @@ from app.db.models.incidents import (  # noqa: E402,F401
 from app.db.models.audit_packs import (  # noqa: E402,F401
     AuditPack,
     AuditPackAccessEvent,
-    AuditPackEmailCode,
+    AuditPackGrant,
     IncidentDeclaration,
 )
 from app.db.models.evidence_anchors import EvidenceAnchorEvent, ExceptionArtifact  # noqa: E402,F401

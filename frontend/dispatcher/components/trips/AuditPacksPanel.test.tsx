@@ -140,13 +140,13 @@ describe('AuditPacksPanel', () => {
     await waitFor(() => expect(screen.getByText('Tried a revoked link')).toHaveClass('text-err'))
   })
 
-  it('labels the emailed-code events and highlights wrong codes', async () => {
+  it('labels the mailed-password events and highlights wrong passwords', async () => {
     // Arrange
     vi.mocked(listAuditPacks).mockResolvedValue([pack()])
     vi.mocked(listAuditPackAccessEvents).mockResolvedValue([
-      { event_type: 'denied_bad_code', client_ip: '41.0.0.9', user_agent: null, created_at: '2026-09-16T06:03:00Z' },
-      { event_type: 'code_verified', client_ip: '41.0.0.1', user_agent: null, created_at: '2026-09-16T06:02:00Z' },
-      { event_type: 'code_sent', client_ip: '41.0.0.1', user_agent: null, created_at: '2026-09-16T06:01:00Z' },
+      { event_type: 'denied_bad_password', client_ip: '41.0.0.9', user_agent: null, created_at: '2026-09-16T06:03:00Z' },
+      { event_type: 'password_verified', client_ip: '41.0.0.1', user_agent: null, created_at: '2026-09-16T06:02:00Z' },
+      { event_type: 'password_emailed', client_ip: '41.0.0.1', user_agent: null, created_at: '2026-09-16T06:01:00Z' },
       { event_type: 'denied_unverified', client_ip: '41.0.0.1', user_agent: null, created_at: '2026-09-16T06:00:00Z' },
     ])
     renderPanel()
@@ -156,10 +156,10 @@ describe('AuditPacksPanel', () => {
 
     // Assert
     const log = await screen.findByRole('list', { name: 'Access log for TRP-0042-AP1' })
-    expect(log).toHaveTextContent('Code emailed')
-    expect(log).toHaveTextContent('Entered the emailed code')
-    expect(log).toHaveTextContent('Opened without the code')
-    await waitFor(() => expect(screen.getByText('Entered a wrong or expired code')).toHaveClass('text-err'))
+    expect(log).toHaveTextContent('Password emailed')
+    expect(log).toHaveTextContent('Entered the mailed password')
+    expect(log).toHaveTextContent('Opened without the password')
+    await waitFor(() => expect(screen.getByText('Entered a wrong password')).toHaveClass('text-err'))
   })
 })
 

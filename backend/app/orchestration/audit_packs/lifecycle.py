@@ -27,6 +27,7 @@ from app.blockchain.anchor_service import anchor_subject, compute_payload_hash
 from app.blockchain.hedera import mirror_base_url
 from app.core.config import settings
 from app.core.exceptions import (
+    EmailUnavailableError,
     FileStorageUnavailableError,
     HederaServiceError,
     HederaTimeoutError,
@@ -44,6 +45,7 @@ from app.db.models.enums import (
 )
 from app.db.models.trips import Trip
 from app.orchestration.audit_packs.builder import build_audit_manifest
+from app.orchestration.audit_packs.viewer_password import generate_password, hash_password, send_issue_email
 from app.reporting.incident_sheet import render_incident_sheet_pdf
 from app.reporting.pdf_renderer import render_audit_pack_pdf
 from app.schemas.audit_pack import (
@@ -77,6 +79,10 @@ class IssuedPack:
     pack: AuditPack
     # Exists only in this return value — the database keeps its hash.
     raw_token: str
+    # None for a legacy pack with no recipient email. Exists only here and in the email
+    # already sent — the database keeps its hash. Returned to the dispatcher so they can
+    # still pass it on if the automatic send failed (see the fail-open comment below).
+    raw_password: str | None = None
 
 
 @contextmanager
@@ -208,6 +214,7 @@ async def issue_audit_pack(
     version = await _next_version(db, trip_id)
     pack_id = uuid.uuid4()
     raw_token = secrets.token_urlsafe(SHARE_TOKEN_BYTES)
+    raw_password = generate_password() if request.recipient_email else None
     expires_at = now + timedelta(days=request.expires_in_days)
 
     issue = PackIssue(
@@ -232,13 +239,27 @@ async def issue_audit_pack(
         manifest_json=manifest_json, manifest_sha256=compute_payload_hash(manifest_json),
         pdf_storage_bucket=stored.s3_bucket, pdf_storage_key=stored.s3_key, pdf_sha256=stored.file_hash,
         pdf_size_bytes=len(pdf), anchor_status=AnchorStatus.PENDING, token_hash=hash_token(raw_token),
+        password_hash=hash_password(pack_id, raw_password) if raw_password else None,
         issued_at=now, expires_at=expires_at, issued_by_user_id=issued_by.id,
     )
     db.add(pack)
     await db.flush()
     await _seal(db, pack)
+    if raw_password is not None:
+        try:
+            await send_issue_email(pack, label=issue.pack_label, share_url=share_url(raw_token), raw_password=raw_password)
+        except EmailUnavailableError:
+            # Fail-open like the seal above: a SendGrid outage must not stop the pack being
+            # issued. The dispatcher still has the share link and can pass it on another way.
+            logger.exception("Audit pack issue email could not be sent for pack_id=%s", pack.id)
+        else:
+            # Logged only once SendGrid has accepted it, so the dispatcher never sees
+            # "password emailed" for an email that never left.
+            db.add(AuditPackAccessEvent(
+                id=uuid.uuid4(), audit_pack_id=pack.id, event_type=AuditPackAccessEventType.PASSWORD_EMAILED,
+            ))
     await db.flush()
-    return IssuedPack(pack=pack, raw_token=raw_token)
+    return IssuedPack(pack=pack, raw_token=raw_token, raw_password=raw_password)
 
 
 async def get_audit_pack(db: AsyncSession, *, pack_id: uuid.UUID, organization_id: uuid.UUID) -> AuditPack:

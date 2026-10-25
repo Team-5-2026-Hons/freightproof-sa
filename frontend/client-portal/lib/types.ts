@@ -521,12 +521,7 @@ export interface ErrorBody {
   email_hint?: string
 }
 
-// ── Emailed one-time code ───────────────────────────────────────────────────────────
-
-export interface EmailCodeSent {
-  /** Masked, e.g. j***@santam.co.za. */
-  email_hint: string
-}
+// ── Mailed viewer password ──────────────────────────────────────────────────────────
 
 export interface ViewerGrant {
   grant: string

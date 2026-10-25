@@ -44,6 +44,7 @@ async def override_get_db(db_session: AsyncSession) -> AsyncGenerator[None, None
     app.dependency_overrides.pop(get_db, None)
 
 
+
 @pytest.fixture
 async def audit_trip(db_session: AsyncSession) -> AuditTrip:
     return await seed_audit_trip(db_session)
@@ -89,8 +90,8 @@ async def _issue_emailed(db: AsyncSession, seed: AuditTrip, **overrides: object)
 async def _issue(db: AsyncSession, seed: AuditTrip, **overrides: object) -> IssuedPack:
     """A pack issued before FP-291: no recipient email, so the link alone opens it.
 
-    Most tests here are about what an open link shows and logs, not about the emailed-code
-    gate (tested in test_audit_pack_email_codes.py), so they use this kind of pack.
+    Most tests here are about what an open link shows and logs, not about the mailed-password
+    gate (tested in test_audit_pack_viewer_password.py), so they use this kind of pack.
     """
     issued = await _issue_emailed(db, seed, **overrides)
     issued.pack.recipient_email = None

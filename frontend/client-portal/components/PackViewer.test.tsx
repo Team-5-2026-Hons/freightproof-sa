@@ -11,21 +11,18 @@ import { PackViewer } from './PackViewer'
 vi.mock('next/dynamic', () => ({ default: () => () => null }))
 
 const fetchPack = vi.fn()
-const requestEmailCode = vi.fn()
-const verifyEmailCode = vi.fn()
+const verifyPassword = vi.fn()
 const storageBlocked = vi.fn(() => false)
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   fetchPack: (token: string) => fetchPack(token),
-  requestEmailCode: (token: string) => requestEmailCode(token),
-  verifyEmailCode: (token: string, code: string) => verifyEmailCode(token, code),
+  verifyPassword: (token: string, password: string) => verifyPassword(token, password),
   storageBlocked: () => storageBlocked(),
 }))
 
 beforeEach(() => {
   fetchPack.mockReset()
-  requestEmailCode.mockReset()
-  verifyEmailCode.mockReset()
+  verifyPassword.mockReset()
   storageBlocked.mockReset()
   storageBlocked.mockReturnValue(false)
   Element.prototype.scrollIntoView = vi.fn()
@@ -125,26 +122,24 @@ describe('PackViewer incident', () => {
   })
 })
 
-describe('PackViewer emailed code (FP-291)', () => {
-  it('asks for the emailed code instead of showing an error, then opens the pack', async () => {
+describe('PackViewer mailed password (FP-291)', () => {
+  it('asks for the mailed password instead of showing an error, then opens the pack', async () => {
     // Arrange
     const user = userEvent.setup()
     fetchPack
-      .mockRejectedValueOnce(new PackError(401, 'Enter the code we email you to open this pack.', 'j***@santam.example'))
+      .mockRejectedValueOnce(new PackError(401, 'Enter the mailed password to open this pack.', 'j***@santam.example'))
       .mockResolvedValueOnce(makeView(makeManifest()))
-    requestEmailCode.mockResolvedValue({ email_hint: 'j***@santam.example' })
-    verifyEmailCode.mockResolvedValue(undefined)
+    verifyPassword.mockResolvedValue(undefined)
     render(<PackViewer token="tok" />)
     expect(await screen.findByRole('heading', { name: "Confirm it's you" })).toBeInTheDocument()
     expect(screen.getByText('j***@santam.example')).toBeInTheDocument()
 
     // Act
-    await user.click(screen.getByRole('button', { name: 'Email me a code' }))
-    await user.type(await screen.findByLabelText('6-digit code'), '048213')
+    await user.type(await screen.findByLabelText('Password'), 's3cretPass')
     await user.click(screen.getByRole('button', { name: 'Open pack' }))
 
     // Assert
-    expect(verifyEmailCode).toHaveBeenCalledWith('tok', '048213')
+    expect(verifyPassword).toHaveBeenCalledWith('tok', 's3cretPass')
     expect(await screen.findByRole('heading', { name: 'Trip FP-AUDIT', level: 1 })).toBeInTheDocument()
     expect(fetchPack).toHaveBeenCalledTimes(2)
   })

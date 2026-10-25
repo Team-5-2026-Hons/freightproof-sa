@@ -440,10 +440,10 @@ class AuditPackAccessEventType(str, enum.Enum):
     DENIED_EXPIRED  = "denied_expired"
     DENIED_REVOKED  = "denied_revoked"
     # FP-291: a link alone no longer opens a pack issued to an email address.
-    CODE_SENT          = "code_sent"
-    CODE_VERIFIED      = "code_verified"
-    DENIED_BAD_CODE    = "denied_bad_code"
-    DENIED_UNVERIFIED  = "denied_unverified"
+    PASSWORD_EMAILED     = "password_emailed"
+    PASSWORD_VERIFIED    = "password_verified"
+    DENIED_BAD_PASSWORD  = "denied_bad_password"
+    DENIED_UNVERIFIED    = "denied_unverified"
 
 
 class IncidentType(str, enum.Enum):

@@ -29,7 +29,7 @@ interface Props {
 }
 
 // Same shape check as the backend's: one @, a dotted domain, no spaces. Whether the inbox
-// is real is proved later, when the recipient enters the code sent there.
+// is real is proved later, when the recipient enters the password mailed there.
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
 
 const EMPTY: AuditPackCreate = {
@@ -52,6 +52,7 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
   const [submitting, setSubmitting] = useState(false)
   const [issued, setIssued] = useState<AuditPackIssued | null>(null)
   const { copied, copy: copyToClipboard } = useCopyToClipboard()
+  const { copied: passwordCopied, copy: copyPasswordToClipboard } = useCopyToClipboard()
 
   if (!open) return null
   const emailValid = EMAIL_SHAPE.test(form.recipient_email.trim())
@@ -96,18 +97,27 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
     await copyToClipboard(issued.share_url)
   }
 
+  async function copyPassword() {
+    if (!issued?.viewer_password) return
+    await copyPasswordToClipboard(issued.viewer_password)
+  }
+
   if (issued) {
     return (
       <Modal open onClose={close} title={`Issued ${issued.pack.pack_label}`}>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">
-          Send this link to {issued.pack.recipient_name}. It is shown only now (FreightProof keeps just its fingerprint)
-          and it expires on {new Date(issued.pack.expires_at).toLocaleDateString('en-ZA')}. You can revoke it at any time.
+          The link and a password were just emailed to {issued.pack.recipient_name} at {issued.pack.recipient_email}.
+          Both are shown only now (FreightProof keeps just their fingerprints) in case that send failed and you need
+          to pass them on yourself.
         </p>
         <p className="mb-3 text-[13px] leading-relaxed text-on-surf-v">
-          The link alone does not open the pack: on first opening, a one-time code is emailed to{' '}
-          {issued.pack.recipient_email}, so a forwarded link is no use to anyone else.
+          The link alone does not open the pack: the password is needed too, so a forwarded link is no use to anyone
+          else. It expires on {new Date(issued.pack.expires_at).toLocaleDateString('en-ZA')}. You can revoke it at any time.
         </p>
         <div className="mb-3 break-all rounded-md bg-surf-low px-3 py-2 font-mono text-[12px]" data-testid="share-url">{issued.share_url}</div>
+        {issued.viewer_password && (
+          <div className="mb-3 break-all rounded-md bg-surf-low px-3 py-2 font-mono text-[12px]" data-testid="viewer-password">{issued.viewer_password}</div>
+        )}
         <p className="mb-4 text-[12px] text-on-surf-v">
           {issued.pack.anchor_status === 'anchored'
             ? 'The pack is sealed on Hedera.'
@@ -115,6 +125,9 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
         </p>
         <div className="flex flex-col gap-2">
           <Button full onClick={copy}>{copied ? 'Link copied' : 'Copy share link'}</Button>
+          {issued.viewer_password && (
+            <Button variant="secondary" full onClick={copyPassword}>{passwordCopied ? 'Password copied' : 'Copy password'}</Button>
+          )}
           <Button variant="secondary" full onClick={close}>Done</Button>
         </div>
       </Modal>
@@ -135,7 +148,7 @@ export function IssueAuditPackDialog({ tripId, consignments, open, onClose, onIs
           type="email"
           value={form.recipient_email}
           onChange={e => update('recipient_email', e.target.value)}
-          helperText="They are emailed a one-time code here before the pack opens."
+          helperText="The link and a password to open it are emailed here as soon as you issue the pack."
           error={form.recipient_email.trim() !== '' && !emailValid ? 'Enter a full email address, e.g. name@insurer.co.za' : undefined}
         />
         <Select label="Purpose" value={form.purpose} onChange={e => update('purpose', e.target.value as AuditPackPurpose)}>

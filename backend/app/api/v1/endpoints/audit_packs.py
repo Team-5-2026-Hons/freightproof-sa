@@ -187,7 +187,7 @@ async def issue_audit_pack_endpoint(
         raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail=_UNEXPECTED) from exc
     return AuditPackIssued(
         pack=read, share_token=issued.raw_token, share_url=share_url(issued.raw_token),
-        verify_url=verify_url(issued.pack.id),
+        verify_url=verify_url(issued.pack.id), viewer_password=issued.raw_password,
     )
 
 
