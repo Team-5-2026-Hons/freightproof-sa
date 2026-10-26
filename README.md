@@ -12,7 +12,7 @@ Ciaran Formby · Tim Gultig · Chiko Kasongo · Tom Davis
 FreightProof records every custody handover in a road freight trip, from origin depot to
 destination depot, and anchors a SHA-256 hash of each recorded phase to the Hedera
 Consensus Service. When a hijacking, disputed delivery, or missing-parcel claim arises,
-the trip's record shows who had the cargo, in which vehicle, where, and when —jhh and
+the trip's record shows who had the cargo, in which vehicle, where, and when — and
 whether that record has changed since it was written.
 
 It does not replace GPS tracking (Pulsit), manifest systems (Parcel Perfect), or gate
@@ -58,6 +58,11 @@ integrations/blockchain/crypto → db`. Endpoints stay thin; business rules live
 
 **Privacy (POPIA):** personal data — identities, GPS fixes, photos, parcel details — stays
 in PostgreSQL. Only SHA-256 hashes are sent to Hedera.
+
+The Supabase project is in `eu-north-1` (Stockholm), so that personal data is resident in
+the EU rather than in South Africa. The team treats this as an accepted interim position
+pending a documented cross-border transfer basis under POPIA section 72 — it was not a
+designed data-residency boundary. The hash-only boundary at Hedera is unaffected by region.
 
 ---
 
@@ -107,6 +112,7 @@ manifest trip's cargo is pinned by its manifest snapshot hash
 | Storage | Supabase Storage |
 | Frontend | Next.js 15 (App Router), React 19, TypeScript 5.5, Tailwind CSS |
 | Driver app | Next.js static export + Capacitor (Android APK) + @serwist/next (browser PWA) |
+| Hosting | API on Fly.io (Stockholm); dispatcher, receiver and client portal on Vercel; database and object storage on Supabase (`eu-north-1`) |
 | CI | GitHub Actions (`.github/workflows/ci.yml`) |
 
 ---
@@ -213,18 +219,32 @@ Alternatively, `docker compose -f infrastructure/docker/docker-compose.dev.yml u
 runs Redis, the API, a Celery worker, and the dispatcher. It does not run Postgres; the
 database is the Supabase project in `DATABASE_URL`.
 
-### 4. Driver Android APK (optional)
+### 4. Driver mobile build (optional)
 
-A production build refuses to start unless `NEXT_PUBLIC_DEMO_MODE` is set explicitly:
-`false` for the real backend, `true` for a simulated demo build. `NEXT_PUBLIC_API_URL`
-must point at a reachable, non-localhost backend.
+The driver app is a Next.js static export wrapped in a Capacitor shell. Both an iOS and an
+Android project exist under `frontend/driver-pwa/`; the build distributed to testers is the
+iOS one, via Apple TestFlight. The Android project is kept current but has not been run
+against the hosted API.
+
+Because the app is a static export there is no server to read configuration at runtime:
+`NEXT_PUBLIC_API_URL` is baked into the bundle at build time and cannot be changed without
+a new build. A production build also refuses to start unless `NEXT_PUBLIC_DEMO_MODE` is set
+explicitly — `false` for the real backend, `true` for a simulated demo build.
 
 ```bash
 cd frontend/driver-pwa
 npm run build          # static export to out/
-npx cap sync android   # copies out/ into the Android project
-npx cap open android   # opens Android Studio; run on a device or emulator
+
+npx cap sync ios       # copies out/ into the iOS project
+npx cap open ios       # opens Xcode; run on a device or archive for TestFlight
+
+npx cap sync android   # or the Android equivalent
+npx cap open android   # opens Android Studio
 ```
+
+There is no hosted browser build of the driver app. `output: 'export'` means the
+`headers()` block in `next.config.ts` does nothing, so if one is ever published its
+security headers have to be set at the hosting layer.
 
 ---
 
@@ -257,10 +277,34 @@ Branch from `dev`, open a pull request back into `dev`, and follow the conventio
 
 ## Live deployment
 
-| Surface | URL |
-|---|---|
-| Frontend (Vercel) | [freightproof-sa.vercel.app](https://freightproof-sa.vercel.app/) |
-| Backend API (Fly.io) | [api.freightproof.co.za](https://api.freightproof.co.za) |
+| Surface | Host | Origin |
+|---|---|---|
+| Dispatcher dashboard | Vercel | [www.freightproof.co.za](https://www.freightproof.co.za) |
+| Receiver handover page | Vercel | [receiver.freightproof.co.za](https://receiver.freightproof.co.za) |
+| Client evidence portal | Vercel | [client-portal.freightproof.co.za](https://client-portal.freightproof.co.za) |
+| API | Fly.io | [api.freightproof.co.za](https://api.freightproof.co.za) |
+| Driver app | Apple TestFlight | in-app (`capacitor://localhost`) |
+
+**The API.** One Docker image, three Fly processes (`backend/fly.toml`): the uvicorn web
+process, a Celery worker, and a Celery beat scheduler. All three are needed — under a
+web-only deployment every Hedera anchor queued by an endpoint sits in Redis unclaimed and
+none of the scheduled sweeps run, so nothing retries a failed anchor either. Beat must stay
+at exactly one machine; two schedulers fire every recovery sweep twice, which means
+duplicate Hedera submissions. Scale-to-zero is off, because a cold start would land on a
+driver mid-handover and the delay would be carried into the evidence timestamps.
+
+**Region.** Compute is pinned to Stockholm (`primary_region = "arn"`) to sit next to the
+Supabase project in `eu-north-1`, rather than pay a transatlantic round trip per query.
+
+**Deploys are manual.** `fly deploy` from `backend/`; Vercel builds each frontend project
+from its own root directory on push. Nothing in the deploy runs Alembic — migrations are
+applied by hand from `dev` after merge, because `DATABASE_URL` is a shared database with a
+single Alembic version.
+
+Each frontend is a separate Vercel project with its own root directory under `frontend/`.
+The receiver cannot be served from a `*.vercel.app` URL: its handover binding cookie is
+`SameSite=Strict; Secure`, so the app must share a registrable domain with the API, which
+is why the subdomains above are a constraint rather than a preference.
 
 ## Licence
 
