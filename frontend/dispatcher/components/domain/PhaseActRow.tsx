@@ -18,17 +18,19 @@ import type { EvidenceGroup } from '@/lib/phase/act-groups'
 import { NumericText } from './NumericText'
 import { CompactActLine, COMPACT_SUBGRID } from './CompactActLine'
 import { ExceptionRow, type OpenException } from './ExceptionRow'
+import { TripEventRow, type TripEventHandlers } from './TripEventRow'
 
-type RailKind = 'evidence' | 'milestone' | 'completion' | 'exception' | 'absent' | 'anchor' | 'expected' | 'more'
+type RailKind = 'evidence' | 'milestone' | 'completion' | 'exception' | 'absent' | 'anchor' | 'expected' | 'more' | 'incident' | 'transfer'
 type Tone = 'ok' | 'warn' | 'err' | 'neutral' | 'chain'
 
 const KIND_ICON: Record<RailKind, IconName> = {
   evidence: 'cam', milestone: 'truck', completion: 'check', exception: 'warn', absent: 'cam', anchor: 'hex', expected: 'clock', more: 'plus',
+  incident: 'siren', transfer: 'swap',
 }
 const TONE_TEXT: Record<Tone, string> = {
   ok: 'text-ok', warn: 'text-warn', err: 'text-err', neutral: 'text-on-surf-v', chain: 'text-chain',
 }
-const KIND_TONE: Partial<Record<RailKind, Tone>> = { completion: 'ok', exception: 'warn', anchor: 'chain' }
+const KIND_TONE: Partial<Record<RailKind, Tone>> = { completion: 'ok', exception: 'warn', anchor: 'chain', incident: 'err' }
 
 const HEADLINE = 'text-body font-semibold text-on-surf'
 const DETAIL = 'text-body text-on-surf-v'
@@ -47,7 +49,11 @@ export interface ActRowContext {
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
   onOpenException: OpenException
+  /** In Transit only: where an incident or a driver transfer row leads. */
+  tripEvents?: TripEventHandlers
 }
+
+const NO_TRIP_EVENT_HANDLERS: TripEventHandlers = { onOpenIncident: () => undefined, onOpenTransfer: () => undefined }
 
 interface RailRowProps {
   kind: RailKind
@@ -127,7 +133,7 @@ function compactEvidence(group: EvidenceGroup, context: ActRowContext): CompactR
   return { times: [...times.values()], detail: `${titles}${count} · ${states}` }
 }
 
-function compactRecord(item: Exclude<ActItem, { kind: 'exception' }>, context: ActRowContext): CompactRecord | null {
+function compactRecord(item: Exclude<ActItem, { kind: 'exception' } | { kind: 'trip_event' }>, context: ActRowContext): CompactRecord | null {
   switch (item.kind) {
     case 'evidence_group': return compactEvidence(item, context)
     case 'completion': return {
@@ -147,6 +153,11 @@ function CompactRow({ item, context, connectToNext = false }: ItemProps) {
     return exception ? <li data-row-kind="exception" className={COMPACT_SUBGRID}><ExceptionRow exception={exception} at={item.at} phaseId={context.phase.phase_event_id}
       selected={exception.id === context.selectedExceptionId} highlighted={exception.id === context.highlightedExceptionId}
       onOpen={context.onOpenException} density="compact" connectToNext={connectToNext} /></li> : null
+  }
+  if (item.kind === 'trip_event') {
+    return <li data-row-kind={item.event.kind} className={COMPACT_SUBGRID}>
+      <TripEventRow act={item} handlers={context.tripEvents ?? NO_TRIP_EVENT_HANDLERS} density="compact" connectToNext={connectToNext} />
+    </li>
   }
   const record = compactRecord(item, context)
   if (record === null) return null
@@ -175,6 +186,10 @@ export function ActRow({ item, context, highlighted, density = 'full', nested = 
       return <RailRow kind="expected" highlighted={false}><ExpectedBody act={item} context={context} /></RailRow>
     case 'anchor':
       return <ForensicOnly><RailRow kind="anchor" highlighted={false}><AnchorBody act={item} /></RailRow></ForensicOnly>
+    case 'trip_event':
+      return <RailRow kind={item.event.kind} highlighted={highlighted}>
+        <TripEventRow act={item} handlers={context.tripEvents ?? NO_TRIP_EVENT_HANDLERS} />
+      </RailRow>
     case 'exception': {
       const exception = context.exceptionsById.get(item.exceptionId)
       if (!exception) return null

@@ -15,6 +15,7 @@ import type { BlockchainReceipt } from '@shared/lib/types/blockchain'
 import type { EvidenceArtifactWithUrl, EvidenceRole } from '@shared/lib/types/evidence'
 import { EVIDENCE_ROLES, EVIDENCE_ROLE_FIELD } from '@shared/lib/constants/phase-meta'
 import { departureSealForLeg, isResolved, legDepartureAt } from './derive'
+import { tripEventKey, tripEventTime, type TripTimelineEvent } from './trip-events'
 
 export type EvidenceActState = 'uploaded' | 'submitted' | 'not_submitted' | 'after_close' | 'trip_cancelled'
 export type EvidenceProvenance = 'driver' | 'receiver' | 'unknown'
@@ -62,7 +63,12 @@ export interface ExpectedAct {
   reason: 'evidence' | 'driver_confirmation' | 'warehouse_scan' | 'en_route'
 }
 
-export type PhaseAct = EvidenceAct | MilestoneAct | CompletionAct | ExceptionAct | AbsentAct | AnchorAct | ExpectedAct
+/** in_transit only: an incident or a driver transfer that happened during the leg (placed by
+ *  positionTripEvents). A record of the trip, not of the phase, so the ledger builders never make
+ *  one; withTripEventActs merges them in. */
+export interface TripEventAct { kind: 'trip_event'; key: string; at: string; event: TripTimelineEvent }
+
+export type PhaseAct = EvidenceAct | MilestoneAct | CompletionAct | ExceptionAct | AbsentAct | AnchorAct | ExpectedAct | TripEventAct
 
 // Roles whose upload is a file to open, not an image to draw: the receiver's attestation and
 // the linehaul PDF. Drawn as an <img>, a PDF reads as "Image failed to load".
@@ -373,6 +379,7 @@ function eventTime(act: PhaseAct): number | null {
     case 'milestone': return toMillis(act.at)
     case 'completion': return toMillis(act.confirmedAt ?? act.recordedAt)
     case 'exception': return toMillis(act.at)
+    case 'trip_event': return toMillis(act.at)
     default: return null
   }
 }
@@ -412,4 +419,24 @@ export function buildPhaseActs(input: PhaseActsInput): PhaseAct[] {
     ...anchorActs(ctx),
     ...expectedActs(ctx),
   ]
+}
+
+// Rows that close a list rather than mark a point on it: what the completion found missing (it
+// sits just before the completion), the receipt and what is still expected.
+const TAIL_KINDS: ReadonlySet<PhaseAct['kind']> = new Set<PhaseAct['kind']>(['absent', 'anchor', 'expected'])
+
+/** Merges the leg's incidents and transfers into a card's rows by time, so "Departed", a panic,
+ *  the hijacking and "Reached" read as one chronology. Each goes before the first row that is
+ *  later than it, or before the tail rows. Confirmation findings are skipped: they belong to the
+ *  completion and are drawn under it. Expects `events` in time order (positionTripEvents). */
+export function withTripEventActs(acts: readonly PhaseAct[], events: readonly TripTimelineEvent[]): PhaseAct[] {
+  const merged = [...acts]
+  for (const event of events) {
+    const act: TripEventAct = { kind: 'trip_event', key: `trip-event:${tripEventKey(event)}`, at: tripEventTime(event), event }
+    const at = toMillis(act.at) ?? Number.POSITIVE_INFINITY
+    const index = merged.findIndex(other => TAIL_KINDS.has(other.kind)
+      || (!(other.kind === 'exception' && other.trigger !== 'event') && (eventTime(other) ?? Number.NEGATIVE_INFINITY) > at))
+    merged.splice(index === -1 ? merged.length : index, 0, act)
+  }
+  return merged
 }

@@ -101,6 +101,8 @@ interface Props {
   incidents?: readonly IncidentSummary[]
   /** An incident's card was activated; the page shows it in the Info panel. */
   onOpenIncident?: (incidentId: string) => void
+  /** The incident the Info panel is showing, so its row can show the same selected state as an exception's. */
+  selectedIncidentId?: string | null
   /** The exception the panel is open on, so its row can show the same selected state. */
   selectedExceptionId?: string | null
   /** A page-originated "Show in timeline": open the card, keep the row visible, land on it. */
@@ -112,7 +114,7 @@ interface Props {
 }
 
 export function TripTimeline({
-  trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, onOpenTransfer = NO_OPEN_TRANSFER, incidents = NO_INCIDENTS, onOpenIncident = NO_OPEN_INCIDENT, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
+  trip, precincts, lastUpdated, onJump, view = TIMELINE_VIEWS.evidence, onViewChange, expanded = false, onToggleExpanded, onOpenException = NO_OPEN, onOpenTransfer = NO_OPEN_TRANSFER, incidents = NO_INCIDENTS, onOpenIncident = NO_OPEN_INCIDENT, selectedIncidentId = null, selectedExceptionId = null, revealRequest, onRevealHandled, warnings = [], ...evidence
 }: Props): React.JSX.Element {
   const timelineRef = useRef<HTMLElement>(null)
   const viewControlId = useId()
@@ -144,7 +146,8 @@ export function TripTimeline({
   /** One rail entry: a transfer opens its evidence modal, an incident opens its page. */
   const renderEvent = (event: TripTimelineEvent, sameRecordedTime = false): React.JSX.Element => event.kind === 'transfer'
     ? <DriverTransferTimelineEvent key={`transfer:${event.transfer.substitution_id}`} event={event.transfer} onOpen={onOpenTransfer} sameRecordedTime={sameRecordedTime} />
-    : <IncidentTimelineEvent key={`incident:${event.incident.incident_id}`} incident={event.incident} onOpen={onOpenIncident} />
+    : <IncidentTimelineEvent key={`incident:${event.incident.incident_id}`} incident={event.incident} onOpen={onOpenIncident} selected={event.incident.incident_id === selectedIncidentId} />
+  const tripEventHandlers = { onOpenIncident, onOpenTransfer, selectedIncidentId }
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
   const now = useNow(CLOCK_TICK_MS)
   const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
@@ -228,7 +231,8 @@ export function TripTimeline({
           highlightedExceptionId={highlightedId}
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
-          events={events.inPhase.get(phase.phase_event_id)?.map(event => renderEvent(event))}
+          tripEvents={events.inPhase.get(phase.phase_event_id)}
+          tripEventHandlers={tripEventHandlers}
         />
         {(events.afterPhase.get(phase.phase_event_id) ?? []).map(event => renderEvent(event,
           event.kind === 'transfer' && phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.transfer.effective_at)))}

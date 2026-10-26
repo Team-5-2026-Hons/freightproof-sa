@@ -1833,7 +1833,10 @@ describe('incidents on the rail', () => {
     renderWith(trip, [incidentAt('i1', 'INC1', new Date(departedAt + 120_000).toISOString())])
 
     const transit = document.getElementById(`phase-${phaseOf(trip, 'in_transit').phase_event_id}`)!
-    expect(within(transit).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+    const row = transit.querySelector('li[data-row-kind="incident"]')!
+    expect(within(row as HTMLElement).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+    expect(transit.querySelector('li[data-row-kind="milestone"]')!.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(transit.textContent).toMatch(/1 incident/)
   })
 
   it('keeps_an_in_transit_incident_visible_when_minimised', () => {
@@ -1859,6 +1862,17 @@ describe('incidents on the rail', () => {
 
     const block = screen.getByRole('region', { name: 'Unplaced incidents' })
     expect(within(block).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+  })
+
+  it('marks_the_selected_in_transit_incident_row_and_only_that_one', () => {
+    const trip = timedTrip()
+    const departedAt = Date.parse(phaseOf(trip, 'departure').completed_at!)
+    render(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence}
+      incidents={[incidentAt('i1', 'INC1', new Date(departedAt + 60_000).toISOString()), incidentAt('i2', 'INC2', new Date(departedAt + 120_000).toISOString())]}
+      selectedIncidentId="i2" />)
+
+    expect(screen.getByRole('button', { name: /Incident INC2/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: /Incident INC1/ })).not.toHaveAttribute('aria-current')
   })
 
   it('asks_the_page_to_show_the_incident_when_its_card_is_activated', async () => {

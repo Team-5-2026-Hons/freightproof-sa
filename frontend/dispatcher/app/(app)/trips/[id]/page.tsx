@@ -18,6 +18,7 @@ import { TripDetailPanel, LEGACY_AUDIT_PANEL, type IncidentFocusRequest } from '
 import { PHASE_ANCHOR_PREFIX } from '@/components/trips/PhaseTimelineItem'
 import type { RevealRequest } from '@/components/trips/useExceptionReveal'
 import { useDismissExceptionSelection } from '@/components/trips/useDismissExceptionSelection'
+import { INCIDENT_ROW_ATTR } from '@/components/incidents/TripIncidentsSection'
 import type { ExceptionFilter } from '@/components/trips/TripExceptionsPanel'
 import { IntegritySummary } from '@/components/blockchain/IntegritySummary'
 import { useTripDetail } from '@/lib/hooks/useTripDetail'
@@ -33,6 +34,8 @@ import { firstUnreviewedException, TRIP_LEVEL_SCOPE } from '@/lib/phase/exceptio
 import { exceptionEventTime } from '@/lib/phase/acts'
 
 const PANELS: readonly string[] = Object.values(TRIP_PANELS)
+// Where a selected incident appears on the page: its timeline row, and its entry in the Info panel.
+const INCIDENT_RECORD_ATTRS = ['data-incident-id', INCIDENT_ROW_ATTR] as const
 
 /** Scrolls `item` to the top of `timelineRef`'s own scroll container: the exact
  *  positioning both the "Jump to current phase" button and the `#phase-<id>` hash-anchor
@@ -133,6 +136,12 @@ function TripDetail({ tripId }: { tripId: string }) {
   // A timeline incident card shows the incident in the Info panel rather than leaving the trip; the panel's
   // own "View incident" link is the way on to the incident's page.
   const [incidentFocus, setIncidentFocus] = useState<IncidentFocusRequest | null>(null)
+  // The incident the Info panel is showing, so its timeline row can wear the selected state an
+  // exception row wears while the exceptions panel is open on it. Opening an exception switches
+  // the panel, which ends this on its own.
+  const selectedIncidentId = incidentFocus && panel === TRIP_PANELS.information && (docked || overlayOpen) ? incidentFocus.incidentId : null
+  // Clicking away (or Escape) lets go of it, exactly as it lets go of a selected exception.
+  useDismissExceptionSelection(selectedIncidentId, () => setIncidentFocus(null), INCIDENT_RECORD_ATTRS)
   const [revealRequest, setRevealRequest] = useState<RevealRequest | null>(null)
   const [pendingTimelineReveal, setPendingTimelineReveal] = useState<Omit<RevealRequest, 'requestId'> | null>(null)
   const returnTo = `${ROUTES.tripDetail(tripId)}${search.size ? `?${search.toString()}` : ''}`
@@ -275,7 +284,7 @@ function TripDetail({ tripId }: { tripId: string }) {
           <TripTimeline trip={trip} precincts={precincts} artifactsById={artifacts.byId} artifactLoading={artifacts.isLoading} artifactError={artifacts.error} onRetryArtifacts={artifacts.refetch} onChanged={refetchSilent} lastUpdated={lastUpdated} onJump={jump}
             view={timelineView} onViewChange={changeTimelineView}
             expanded={timelineExpanded} onToggleExpanded={toggleExpanded}
-            onOpenException={openException} onOpenTransfer={setOpenTransferId} incidents={incidents.data} onOpenIncident={showIncident} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
+            onOpenException={openException} onOpenTransfer={setOpenTransferId} incidents={incidents.data} onOpenIncident={showIncident} selectedIncidentId={selectedIncidentId} selectedExceptionId={selectedExceptionId} revealRequest={revealRequest} warnings={warnings}
             onRevealHandled={targetId => landRowInTimeline(timelineRef, document.getElementById(targetId))} />
           <IntegritySummary trip={trip} />
         </div>
