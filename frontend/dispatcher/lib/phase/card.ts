@@ -15,7 +15,8 @@ import type { Trip } from '@shared/lib/types/trip'
 import type { BlockchainReceipt } from '@shared/lib/types/blockchain'
 import type { EvidenceArtifactWithUrl } from '@shared/lib/types/evidence'
 import type { TripException } from '@shared/lib/types/exception'
-import { buildExceptionActs, buildPhaseActs, type PhaseAct } from './acts'
+import { buildExceptionActs, buildPhaseActs, withTripEventActs, type PhaseAct } from './acts'
+import { tripEventReasons, type TripTimelineEvent } from './trip-events'
 import { buildPhaseChecks, type PhaseCheck } from './checks'
 import { phaseVerdict, type PhaseVerdict } from './verdict'
 import { isResolved, legDepartureAt, originScannedCount } from './derive'
@@ -32,6 +33,8 @@ export interface PhaseCardInput {
   exceptions: readonly TripException[]
   receipt: BlockchainReceipt | undefined
   nowMs: number
+  /** in_transit only: the leg's incidents and driver transfers, in time order (positionTripEvents). */
+  tripEvents?: readonly TripTimelineEvent[]
 }
 
 export interface PhaseCardModel {
@@ -97,15 +100,18 @@ export function buildPhaseCardModel(input: PhaseCardInput): PhaseCardModel {
   const isActive = currentTripPhase(trip)?.phase_event_id === phase.phase_event_id
   const live = isActive && running
 
-  const acts = buildPhaseActs({
+  const tripEvents = input.tripEvents ?? []
+  const acts = withTripEventActs(buildPhaseActs({
     phase, allPhases: trip.phases, isActive, tripStatus: trip.status, tripClosedAt: trip.closed_at,
     artifacts: input.artifacts, exceptions, receipt,
-  })
+  }), tripEvents)
   const checks = checksFor(input, resolved)
   const uploads = acts.filter(act => act.kind === 'evidence' && act.state === 'uploaded').length
-  const verdict = phaseVerdict({
+  const baseVerdict = phaseVerdict({
     phase, checks, exceptions, actCounts: { uploads }, isActive, tripStatus: trip.status, leg: legOf(trip, phase), nowMs,
   })
+  const eventReasons = tripEventReasons(tripEvents)
+  const verdict = baseVerdict && eventReasons.length > 0 ? { ...baseVerdict, reasons: [...eventReasons, ...baseVerdict.reasons] } : baseVerdict
 
   return {
     isActive,

@@ -103,6 +103,22 @@ describe('positionTripEvents', () => {
       expect(placed.inPhase.get('phase-4')?.map(e => e.kind)).toEqual(['transfer'])
     })
 
+    it('draws_a_driver_transfer_then_a_hijacking_on_one_leg_inside_it_in_time_order', () => {
+      const plan = legPlan()
+      const placed = positionTripEvents(plan, [transfer(45)], [incident('inc1', 50)])
+
+      expect(placed.inPhase.get('phase-4')?.map(e => e.kind)).toEqual(['transfer', 'incident'])
+      expect(placed.afterPhase.size).toBe(0)
+    })
+
+    it('splits_a_transfer_at_loading_from_a_hijacking_on_the_road', () => {
+      const plan = legPlan()
+      const placed = positionTripEvents(plan, [transfer(25)], [incident('inc1', 50)])
+
+      expect(placed.afterPhase.get('phase-2')?.map(e => e.kind)).toEqual(['transfer'])
+      expect(placed.inPhase.get('phase-4')?.map(e => e.kind)).toEqual(['incident'])
+    })
+
     it('keeps_an_event_after_arrival_between_the_cards', () => {
       const plan = legPlan(60)
       const placed = positionTripEvents(plan, [], [incident('inc1', 70)])

@@ -145,6 +145,7 @@ export function TripTimeline({
   const renderEvent = (event: TripTimelineEvent, sameRecordedTime = false): React.JSX.Element => event.kind === 'transfer'
     ? <DriverTransferTimelineEvent key={`transfer:${event.transfer.substitution_id}`} event={event.transfer} onOpen={onOpenTransfer} sameRecordedTime={sameRecordedTime} />
     : <IncidentTimelineEvent key={`incident:${event.incident.incident_id}`} incident={event.incident} onOpen={onOpenIncident} />
+  const tripEventHandlers = { onOpenIncident, onOpenTransfer }
   const phaseIds = new Set(phases.map(p => p.phase_event_id))
   const now = useNow(CLOCK_TICK_MS)
   const { highlightedId } = useExceptionReveal(revealRequest, onRevealHandled)
@@ -228,7 +229,8 @@ export function TripTimeline({
           highlightedExceptionId={highlightedId}
           reveal={revealRequest?.phaseId === phase.phase_event_id ? { exceptionId: revealRequest.exceptionId, requestId: revealRequest.requestId } : null}
           minimised={minimised}
-          events={events.inPhase.get(phase.phase_event_id)?.map(event => renderEvent(event))}
+          tripEvents={events.inPhase.get(phase.phase_event_id)}
+          tripEventHandlers={tripEventHandlers}
         />
         {(events.afterPhase.get(phase.phase_event_id) ?? []).map(event => renderEvent(event,
           event.kind === 'transfer' && phase.completed_at !== null && Date.parse(phase.completed_at) === Date.parse(event.transfer.effective_at)))}

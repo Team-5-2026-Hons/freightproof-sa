@@ -10,6 +10,7 @@ import { useRecentKeys } from '@/lib/hooks/useRecentKeys'
 import { ExceptionMoreRow, type OpenException } from './ExceptionRow'
 import type { EvidenceLookup } from './EvidenceGroupRow'
 import { ActRow, RailRow, type ActRowContext } from './PhaseActRow'
+import type { TripEventHandlers } from './TripEventRow'
 import { COMPACT_COLUMNS, COMPACT_SUBGRID } from './CompactActLine'
 import { PhaseZone } from './PhaseZone'
 
@@ -32,6 +33,8 @@ export interface PhaseActsProps {
   selectedExceptionId: string | null
   highlightedExceptionId: string | null
   onOpenException: OpenException
+  /** In Transit only: where an incident or a driver transfer row leads. */
+  tripEvents?: TripEventHandlers
   density?: 'compact' | 'full'
 }
 
@@ -73,6 +76,7 @@ export function PhaseActs(props: PhaseActsProps) {
     selectedExceptionId: props.selectedExceptionId,
     highlightedExceptionId: props.highlightedExceptionId,
     onOpenException: props.onOpenException,
+    tripEvents: props.tripEvents,
   }
   const moreAfter = hiddenExceptionCount > 0 ? lastVisibleExceptionIndex(shown) : -1
 

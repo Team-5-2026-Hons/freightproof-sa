@@ -1,6 +1,7 @@
 import type { CompletedSubstitutionSummary } from '@shared/lib/types/driver-substitution'
 import type { PhaseDescriptor } from '@shared/lib/types/phase'
 import type { IncidentSummary } from '@/lib/types/incident'
+import { countLabel } from '@/lib/format/count'
 import { positionTimelineEvents, type TimelinePlacement } from './driver-transfers'
 
 /** A dated record the timeline draws between phase cards, or inside an In Transit card (see inPhase). */
@@ -13,11 +14,13 @@ export function incidentEventTime(incident: IncidentSummary): string {
   return incident.reported_occurred_at ?? incident.received_at
 }
 
-function eventTime(event: TripTimelineEvent): string {
+/** The instant an event sits at on the timeline. */
+export function tripEventTime(event: TripTimelineEvent): string {
   return event.kind === 'transfer' ? event.transfer.effective_at : incidentEventTime(event.incident)
 }
 
-function eventKey(event: TripTimelineEvent): string {
+/** One stable key per record, shared by the placement de-duplication and the card's rows. */
+export function tripEventKey(event: TripTimelineEvent): string {
   return event.kind === 'transfer' ? `transfer:${event.transfer.substitution_id}` : `incident:${event.incident.incident_id}`
 }
 
@@ -48,7 +51,7 @@ export function positionTripEvents(
     ...transfers.map((transfer): TripTimelineEvent => ({ kind: 'transfer', transfer })),
     ...incidents.map((incident): TripTimelineEvent => ({ kind: 'incident', incident })),
   ]
-  const placed = positionTimelineEvents(phases, events, eventTime, eventKey, tieBreak)
+  const placed = positionTimelineEvents(phases, events, tripEventTime, tripEventKey, tieBreak)
   const afterPhase = new Map(placed.afterPhase)
   const inPhase = new Map<string, readonly TripTimelineEvent[]>()
   phases.forEach((phase, index) => {
@@ -59,4 +62,16 @@ export function positionTripEvents(
     afterPhase.delete(phase.phase_event_id)
   })
   return { ...placed, afterPhase, inPhase }
+}
+
+/** What a card's header says about the leg's incidents and transfers, so a hijacking is not hidden
+ *  behind "No exceptions recorded" (an incident is not an exception). Incidents first: they are
+ *  the records someone is still working. */
+export function tripEventReasons(events: readonly TripTimelineEvent[]): string[] {
+  const incidents = events.filter(event => event.kind === 'incident').length
+  const transfers = events.length - incidents
+  return [
+    ...(incidents > 0 ? [countLabel(incidents, 'incident')] : []),
+    ...(transfers === 1 ? ['Driver transferred'] : transfers > 1 ? [countLabel(transfers, 'driver transfer')] : []),
+  ]
 }

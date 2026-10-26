@@ -1833,7 +1833,10 @@ describe('incidents on the rail', () => {
     renderWith(trip, [incidentAt('i1', 'INC1', new Date(departedAt + 120_000).toISOString())])
 
     const transit = document.getElementById(`phase-${phaseOf(trip, 'in_transit').phase_event_id}`)!
-    expect(within(transit).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+    const row = transit.querySelector('li[data-row-kind="incident"]')!
+    expect(within(row as HTMLElement).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
+    expect(transit.querySelector('li[data-row-kind="milestone"]')!.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(transit.textContent).toMatch(/1 incident/)
   })
 
   it('keeps_an_in_transit_incident_visible_when_minimised', () => {
