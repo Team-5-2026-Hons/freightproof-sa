@@ -11,18 +11,25 @@ import type { CompletedSubstitutionSummary } from '@shared/lib/types/driver-subs
 import type { IncidentSummary } from '@/lib/types/incident'
 import { fmtDateTime } from '@shared/lib/utils/datetime'
 import { COMPACT_HIT_AREA, COMPACT_SUBGRID, CompactActLine } from './CompactActLine'
+import { EXCEPTION_SELECTED_SURFACE, EXCEPTION_SELECTION_OUTLINE } from './ExceptionRow'
 
 /** What a trip-event row does when activated: the page shows the incident, or the handover evidence. */
 export interface TripEventHandlers {
   onOpenIncident: (incidentId: string) => void
   onOpenTransfer: (substitutionId: string) => void
+  /** The incident the Info panel is showing: its row wears the selected-exception state. */
+  selectedIncidentId?: string | null
 }
 
 const ROW_BASE = 'relative block min-h-11 w-full min-w-0 rounded-md px-3 py-2 text-left transition-colors duration-150 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-sec'
 // A live incident wears the critical exception row's border, because both are waiting on someone;
 // a closed one drops to the quiet border, like a reviewed record.
-const LIVE_INCIDENT = 'border border-err/60 bg-err-c/30 hover:border-err'
-const CLOSED_INCIDENT = 'border border-outline-v/40 bg-surf-lowest hover:border-outline'
+const LIVE_INCIDENT = 'border border-err/60 hover:border-err'
+const CLOSED_INCIDENT = 'border border-outline-v/40 hover:border-outline'
+const LIVE_SURFACE = 'bg-err-c/30'
+const CLOSED_SURFACE = 'bg-surf-lowest'
+// Replaces the surface rather than layering on it: two background utilities on one element do not combine.
+const SELECTED = `${EXCEPTION_SELECTED_SURFACE} ${EXCEPTION_SELECTION_OUTLINE}`
 // A transfer is a record, not an alert: drawn flat like "Departed", with a hover to say it opens.
 const TRANSFER = '-mx-3 hover:bg-surf'
 const TIME = 'font-semibold tabular-nums tracking-[0.03em]'
@@ -44,13 +51,16 @@ function transferNames(transfer: CompletedSubstitutionSummary): string {
   return `${transfer.outgoing.full_name} → ${transfer.incoming.full_name}`
 }
 
-function IncidentBody({ incident, at, onOpen }: { incident: IncidentSummary; at: string; onOpen: (id: string) => void }) {
+function IncidentBody({ incident, at, selected, onOpen }: { incident: IncidentSummary; at: string; selected: boolean; onOpen: (id: string) => void }) {
   const live = incident.status !== 'closed'
   const details = incidentDetails(incident)
+  // Selected reads exactly like a selected exception row, so the panel's subject is findable on the rail.
+  const surface = selected ? SELECTED : live ? LIVE_SURFACE : CLOSED_SURFACE
   return (
     <button type="button" data-incident-id={incident.incident_id} onClick={() => onOpen(incident.incident_id)}
+      aria-current={selected ? 'true' : undefined} data-selected={selected ? 'true' : undefined}
       aria-label={`Incident ${incidentTitle(incident)}. Open incident`}
-      className={`${ROW_BASE} ${live ? LIVE_INCIDENT : CLOSED_INCIDENT}`}>
+      className={`${ROW_BASE} ${live ? LIVE_INCIDENT : CLOSED_INCIDENT} ${surface}`}>
       <span className="flex flex-wrap items-center gap-1.5 text-body font-semibold text-on-surf">
         {incidentTitle(incident)}
         <IncidentStatusChip status={incident.status} />
@@ -96,10 +106,11 @@ export function TripEventRow({ act, handlers, density = 'full', connectToNext = 
   const { event } = act
   if (density === 'compact') {
     const incident = event.kind === 'incident' ? event.incident : null
+    const selected = incident !== null && incident.incident_id === handlers.selectedIncidentId
     return (
-      <button type="button" onClick={() => incident ? handlers.onOpenIncident(incident.incident_id) : event.kind === 'transfer' && handlers.onOpenTransfer(event.transfer.substitution_id)}
+      <button type="button" aria-current={selected ? 'true' : undefined} data-selected={selected ? 'true' : undefined} onClick={() => incident ? handlers.onOpenIncident(incident.incident_id) : event.kind === 'transfer' && handlers.onOpenTransfer(event.transfer.substitution_id)}
         aria-label={incident ? `Incident ${incidentTitle(incident)}. Open incident` : event.kind === 'transfer' ? `Driver transferred, ${transferNames(event.transfer)}. View handover` : undefined}
-        className={COMPACT_BUTTON}>
+        className={`${COMPACT_BUTTON} ${selected ? SELECTED : ''}`}>
         <CompactActLine times={[{ at: act.at, source: 'server' }]} icon={incident ? 'siren' : 'swap'}
           iconClassName={incident && incident.status !== 'closed' ? 'text-err' : 'text-on-surf-v'} connectToNext={connectToNext}>
           {incident
@@ -110,6 +121,6 @@ export function TripEventRow({ act, handlers, density = 'full', connectToNext = 
     )
   }
   return event.kind === 'incident'
-    ? <IncidentBody incident={event.incident} at={act.at} onOpen={handlers.onOpenIncident} />
+    ? <IncidentBody incident={event.incident} at={act.at} selected={event.incident.incident_id === handlers.selectedIncidentId} onOpen={handlers.onOpenIncident} />
     : <TransferBody transfer={event.transfer} onOpen={handlers.onOpenTransfer} />
 }

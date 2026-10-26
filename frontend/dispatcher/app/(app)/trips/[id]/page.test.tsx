@@ -10,12 +10,14 @@ import type { Trip } from '@shared/lib/types/trip'
 import { line } from '@/components/domain/__tests__/textLine'
 import { substitutionFixturePack } from '@shared/lib/mocks/driver-substitutions'
 import { ROUTES } from '@/lib/constants/routes'
+import type { IncidentSummary } from '@/lib/types/incident'
 
 const push = vi.fn()
 const replace = vi.fn()
 const notify = vi.fn()
 const navigation = vi.hoisted(() => ({ search: new URLSearchParams(), tripId: null as string | null }))
 const artifactState = vi.hoisted(() => ({ error: null as string | null, refetch: vi.fn() }))
+const incidentState = vi.hoisted(() => ({ data: [] as IncidentSummary[] }))
 const forensicMode = vi.hoisted(() => ({
   canViewForensics: true,
   forensicOn: true,
@@ -46,6 +48,11 @@ vi.mock('@/lib/api/auditPacks', async () => {
 vi.mock('@/lib/api/driverSubstitutions', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api/driverSubstitutions')>('@/lib/api/driverSubstitutions')
   return { ...actual, getCompletedSubstitution: vi.fn(() => new Promise(() => {})) }
+})
+
+vi.mock('@/lib/hooks/useIncidents', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/hooks/useIncidents')>('@/lib/hooks/useIncidents')
+  return { ...actual, useTripIncidents: () => ({ data: incidentState.data, isLoading: false, isValidating: false, error: null, refetch: vi.fn(), refetchSilent: vi.fn() }) }
 })
 
 vi.mock('@/lib/hooks/usePrecincts', () => ({
@@ -403,6 +410,7 @@ function tripDriving(): Trip {
 }
 
 beforeEach(() => {
+  incidentState.data = []
   push.mockReset()
   replace.mockReset()
   notify.mockReset()
@@ -1208,5 +1216,53 @@ describe('Trip detail driver transfer evidence', () => {
     const modal = screen.getByRole('dialog', { name: 'Driver transfer evidence' })
     expect(screen.getByRole('dialog', { name: 'Trip information' }).contains(modal)).toBe(false)
     expect(within(modal).getByRole('status', { name: 'Loading transfer evidence' })).toBeInTheDocument()
+  })
+})
+
+describe('Trip detail incident selection', () => {
+  beforeEach(() => { Element.prototype.scrollIntoView = vi.fn() })
+
+  function incidentOn(trip: Trip): IncidentSummary {
+    const at = '2026-05-09T12:30:00Z'
+    return { incident_id: 'incident-1', reference: 'INC1', trip_id: trip.id, trip_reference: trip.trip_reference, trip_status: trip.status,
+      incident_type: 'hijacking', summary: 'Driver activated panic button.', status: 'open', confidence: 'reported', outcome: null,
+      assigned_to_user_id: null, assigned_to_name: null, reported_occurred_at: at, received_at: at, trip_stopped_at: null, closed_at: null,
+      created_at: at, exception_ids: [], exceptions_total: 0, exceptions_reviewed: 0, parcels_total: 0, parcels_unresolved: 0 }
+  }
+
+  it('marks_the_incident_the_info_panel_shows_as_selected_like_an_exception', () => {
+    const media = vi.spyOn(window, 'matchMedia').mockReturnValue({ ...window.matchMedia(''), matches: true })
+    incidentState.data = [incidentOn(tripWithLoadingExceptionsOutOfOrder())]
+    try {
+      render(<TripDetailPage />)
+      const timeline = screen.getByRole('region', { name: 'Trip timeline' })
+      const incident = within(timeline).getByRole('button', { name: /Incident INC1/ })
+      expect(incident).not.toHaveAttribute('aria-current')
+
+      fireEvent.click(incident)
+
+      expect(within(timeline).getByRole('button', { name: /Incident INC1/ })).toHaveAttribute('aria-current', 'true')
+    } finally { media.mockRestore() }
+  })
+
+  it('lets_go_of_the_incident_on_a_click_elsewhere_or_escape_but_not_on_the_incident_itself', () => {
+    const media = vi.spyOn(window, 'matchMedia').mockReturnValue({ ...window.matchMedia(''), matches: true })
+    incidentState.data = [incidentOn(tripWithLoadingExceptionsOutOfOrder())]
+    try {
+      render(<TripDetailPage />)
+      const timeline = screen.getByRole('region', { name: 'Trip timeline' })
+      const incident = (): HTMLElement => within(timeline).getByRole('button', { name: /Incident INC1/ })
+      fireEvent.click(incident())
+
+      fireEvent.click(incident())
+      expect(incident()).toHaveAttribute('aria-current', 'true')
+
+      fireEvent.click(screen.getByRole('heading', { level: 1 }))
+      expect(incident()).not.toHaveAttribute('aria-current')
+
+      fireEvent.click(incident())
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+      expect(incident()).not.toHaveAttribute('aria-current')
+    } finally { media.mockRestore() }
   })
 })

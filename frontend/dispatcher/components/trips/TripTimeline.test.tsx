@@ -1864,6 +1864,17 @@ describe('incidents on the rail', () => {
     expect(within(block).getByRole('button', { name: /Incident INC1/ })).toBeInTheDocument()
   })
 
+  it('marks_the_selected_in_transit_incident_row_and_only_that_one', () => {
+    const trip = timedTrip()
+    const departedAt = Date.parse(phaseOf(trip, 'departure').completed_at!)
+    render(<TripTimeline trip={trip} precincts={mockPrecincts} lastUpdated={null} onJump={vi.fn()} {...evidence}
+      incidents={[incidentAt('i1', 'INC1', new Date(departedAt + 60_000).toISOString()), incidentAt('i2', 'INC2', new Date(departedAt + 120_000).toISOString())]}
+      selectedIncidentId="i2" />)
+
+    expect(screen.getByRole('button', { name: /Incident INC2/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: /Incident INC1/ })).not.toHaveAttribute('aria-current')
+  })
+
   it('asks_the_page_to_show_the_incident_when_its_card_is_activated', async () => {
     const onOpenIncident = vi.fn()
     renderWith(timedTrip(), [incidentAt('i1', 'INC1', minutes(25))], 'evidence', onOpenIncident)
